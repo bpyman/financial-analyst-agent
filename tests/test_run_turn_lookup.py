@@ -12,7 +12,9 @@ GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
 )
 UNKNOWN_METRIC_QUERY = "What was Google's ROE based on their latest quarterly report?"
 UNKNOWN_COSTS_QUERY = "What was Google's costs based on their latest quarterly report?"
-GOOGLE_REVENUE_QUERY = "What was Google's revenue based on their latest quarterly report?"
+GOOGLE_GROSS_PROFIT_QUERY = (
+    "What was Google's gross profit based on their latest quarterly report?"
+)
 GOOGLE_OPERATING_MARGIN_QUERY = (
     "What was Google's operating margin based on their latest quarterly report?"
 )
@@ -199,8 +201,8 @@ def test_fixture_runtime_does_not_invent_net_income_for_unrelated_query() -> Non
     assert all(row.value != NET_INCOME for row in result.table_rows)
 
 
-def test_fixture_runtime_refuses_when_recorded_fact_missing_for_revenue() -> None:
-    result = run_turn(GOOGLE_REVENUE_QUERY, fixture_runtime())
+def test_fixture_runtime_refuses_when_recorded_fact_missing_for_gross_profit() -> None:
+    result = run_turn(GOOGLE_GROSS_PROFIT_QUERY, fixture_runtime())
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
     assert result.message is not None

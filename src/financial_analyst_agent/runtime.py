@@ -21,12 +21,31 @@ _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
     ("gross margin", "gross_margin"),
     ("net margin", "net_margin"),
 )
+_ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
+    ("microsoft", "Microsoft"),
+    ("msft", "Microsoft"),
+    ("alphabet", "Google"),
+    ("google", "Google"),
+    ("googl", "Google"),
+    ("goog", "Google"),
+)
 
 
 def _company_from_query(normalized: str) -> str:
-    if "google" in normalized or "alphabet" in normalized:
-        return "Google"
+    companies = _companies_from_query(normalized)
+    if companies:
+        return companies[0]
     return "unknown"
+
+
+def _companies_from_query(normalized: str) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for phrase, name in _ISSUER_PHRASES:
+        if phrase in normalized and name not in seen:
+            found.append(name)
+            seen.add(name)
+    return found
 
 
 def _metric_from_query(normalized: str) -> str:
@@ -48,10 +67,17 @@ class DemoCompleter:
 
     def complete(self, query: str) -> SimpleNamespace:
         normalized = query.strip().casefold()
+        metric = _metric_from_query(normalized)
+        if "compare" in normalized:
+            return SimpleNamespace(
+                intent=Intent.COMPARE,
+                companies=_companies_from_query(normalized),
+                metric=metric,
+            )
         return SimpleNamespace(
             intent=Intent.LOOKUP,
             company=_company_from_query(normalized),
-            metric=_metric_from_query(normalized),
+            metric=metric,
         )
 
 

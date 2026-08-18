@@ -1,5 +1,6 @@
 """Fixture-runtime fact lookup: identity plus recorded XBRL selection."""
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -9,68 +10,145 @@ from financial_analyst_agent.domain.models import FactRecord, Filing, FinancialF
 from financial_analyst_agent.providers.sec.aliases import ALIASES
 from financial_analyst_agent.services.fact_selector import select_quarterly_fact
 
-_ALPHABET_NAME = "Alphabet Inc."
-_ALPHABET_CIK = "0001652044"
-_ALPHABET_TICKER = "GOOG"
-
-_FILING = Filing(
-    form="10-Q",
-    accession_number="0001652044-26-000071",
-    filed_date=date(2026, 7, 23),
-    report_date=date(2026, 6, 30),
-    primary_document="goog-20260630.htm",
-)
-_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/1652044/"
-    "000165204426000071/goog-20260630.htm"
-)
+_QUARTER_START = date(2026, 4, 1)
+_QUARTER_END = date(2026, 6, 30)
+_YTD_START = date(2026, 1, 1)
 
 
-def _record(*, start_date: date, value: Decimal) -> FactRecord:
+@dataclass(frozen=True)
+class _IssuerFixture:
+    name: str
+    ticker: str
+    cik: str
+    filing: Filing
+    source_url: str
+    facts: tuple[FactRecord, ...]
+
+
+def _record(filing: Filing, *, start_date: date, value: Decimal, concept: str) -> FactRecord:
     return FactRecord(
-        accession_number=_FILING.accession_number,
-        end_date=_FILING.report_date,
+        accession_number=filing.accession_number,
+        end_date=filing.report_date,
         start_date=start_date,
-        form=_FILING.form,
+        form=filing.form,
         unit="USD",
         value=value,
-        concept="NetIncomeLoss",
+        concept=concept,
         taxonomy="us-gaap",
-        filed_date=_FILING.filed_date,
+        filed_date=filing.filed_date,
     )
 
 
-# YTD duration is a distractor; selector must keep the standalone quarter.
-_RECORDED_FACTS = [
-    _record(start_date=date(2026, 1, 1), value=Decimal("50000000000")),
-    _record(start_date=date(2026, 4, 1), value=Decimal("20000000000")),
-]
+_ALPHABET_FILING = Filing(
+    form="10-Q",
+    accession_number="0001652044-26-000071",
+    filed_date=date(2026, 7, 23),
+    report_date=_QUARTER_END,
+    primary_document="goog-20260630.htm",
+)
+_ALPHABET = _IssuerFixture(
+    name="Alphabet Inc.",
+    ticker="GOOG",
+    cik="0001652044",
+    filing=_ALPHABET_FILING,
+    source_url=(
+        "https://www.sec.gov/Archives/edgar/data/1652044/"
+        "000165204426000071/goog-20260630.htm"
+    ),
+    facts=(
+        # YTD duration is a distractor; selector must keep the standalone quarter.
+        _record(
+            _ALPHABET_FILING,
+            start_date=_YTD_START,
+            value=Decimal("50000000000"),
+            concept="NetIncomeLoss",
+        ),
+        _record(
+            _ALPHABET_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("20000000000"),
+            concept="NetIncomeLoss",
+        ),
+        _record(
+            _ALPHABET_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("28000000000"),
+            concept="OperatingIncomeLoss",
+        ),
+        _record(
+            _ALPHABET_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("80000000000"),
+            concept="RevenueFromContractWithCustomerExcludingAssessedTax",
+        ),
+    ),
+)
+
+_MICROSOFT_FILING = Filing(
+    form="10-Q",
+    accession_number="0000789019-26-000088",
+    filed_date=date(2026, 7, 22),
+    report_date=_QUARTER_END,
+    primary_document="msft-20260630.htm",
+)
+_MICROSOFT = _IssuerFixture(
+    name="Microsoft Corporation",
+    ticker="MSFT",
+    cik="0000789019",
+    filing=_MICROSOFT_FILING,
+    source_url=(
+        "https://www.sec.gov/Archives/edgar/data/789019/"
+        "000078901926000088/msft-20260630.htm"
+    ),
+    facts=(
+        _record(
+            _MICROSOFT_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("32000000000"),
+            concept="OperatingIncomeLoss",
+        ),
+        _record(
+            _MICROSOFT_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("64000000000"),
+            concept="Revenues",
+        ),
+    ),
+)
+
+_ISSUERS: tuple[_IssuerFixture, ...] = (_ALPHABET, _MICROSOFT)
 
 
 class FixtureFactLookup:
-    """Recorded Alphabet facts. Never calls live SEC."""
+    """Recorded issuer facts. Never calls live SEC."""
 
     def get_financials(self, company: str, metric: str) -> FinancialFact:
-        issuer_name, ticker, cik = _resolve_issuer(company)
+        issuer = _resolve_issuer(company)
         return select_quarterly_fact(
-            _RECORDED_FACTS,
-            _FILING,
+            list(issuer.facts),
+            issuer.filing,
             Metric(metric),
             "USD",
-            company_name=issuer_name,
-            ticker=ticker,
-            cik=cik,
-            source_url=_SOURCE_URL,
+            company_name=issuer.name,
+            ticker=issuer.ticker,
+            cik=issuer.cik,
+            source_url=issuer.source_url,
         )
 
 
-def _resolve_issuer(query: str) -> tuple[str, str, str]:
+def _resolve_issuer(query: str) -> _IssuerFixture:
     normalized = query.strip().casefold()
     legal_name = ALIASES.get(normalized, query.strip())
-    if legal_name.casefold() == _ALPHABET_NAME.casefold() or normalized in {
-        "goog",
-        "googl",
-        _ALPHABET_CIK,
-    }:
-        return _ALPHABET_NAME, _ALPHABET_TICKER, _ALPHABET_CIK
+    for issuer in _ISSUERS:
+        aliases = {
+            issuer.name.casefold(),
+            issuer.ticker.casefold(),
+            issuer.cik,
+        }
+        if issuer is _ALPHABET:
+            aliases.update({"goog", "googl", "google", "alphabet"})
+        if issuer is _MICROSOFT:
+            aliases.update({"microsoft", "msft"})
+        if normalized in aliases or legal_name.casefold() == issuer.name.casefold():
+            return issuer
     raise CompanyNotFoundError(f"Unknown issuer: {query}")
