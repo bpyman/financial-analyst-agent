@@ -2,6 +2,7 @@
 
 from fastmcp import FastMCP
 
+from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.runtime import build_runtime
 from financial_analyst_agent.turn import ALLOWED_METRICS
 from financial_analyst_agent.turn import compare_metrics as compare_metric_rows
@@ -27,6 +28,33 @@ def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
         raise ValueError(f"Unknown metric {metric!r}. Allowed: {allowed}")
     rows = compare_metric_rows(build_runtime().facts, issuers, metric)
     return {"rows": [row.model_dump(mode="json") for row in rows]}
+
+
+@mcp.tool()
+def rank_companies(industry: str, limit: int = 10) -> dict[str, object]:
+    """Rank US operating companies in an industry from the dated universe snapshot."""
+    runtime = build_runtime()
+    if runtime.ranking is None:
+        raise RuntimeError("ranking adapter is not configured")
+    try:
+        table = runtime.ranking.rank_companies(industry, limit)
+    except UnknownIndustryError as exc:
+        raise ValueError(str(exc)) from exc
+    return {
+        "as_of": table.as_of,
+        "source": table.source,
+        "sector": table.sector,
+        "rows": [
+            {
+                "rank": index,
+                "company_name": company.name,
+                "ticker": company.ticker,
+                "cik": company.cik,
+                "market_cap": str(company.market_cap),
+            }
+            for index, company in enumerate(table.companies, start=1)
+        ],
+    }
 
 
 if __name__ == "__main__":

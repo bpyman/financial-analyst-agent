@@ -32,6 +32,9 @@ def main() -> None:
 
     st.markdown(f"**Intent:** `{result.intent}`")
 
+    for banner in result.banners:
+        st.info(banner)
+
     for trace in result.tool_traces:
         with st.expander(f"Tool: {trace.tool}", expanded=True):
             st.json({"args": trace.args, "provenance": trace.provenance})

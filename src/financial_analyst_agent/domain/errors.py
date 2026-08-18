@@ -56,3 +56,7 @@ class ConfigurationError(FinancialAnalystError):
     """Invalid, incomplete, or contradictory application configuration."""
 
     code = "configuration_error"
+
+
+class UnknownIndustryError(FinancialAnalystError):
+    code = "unknown_industry"

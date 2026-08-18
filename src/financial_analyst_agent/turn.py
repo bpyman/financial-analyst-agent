@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     CompanyNotFoundError,
+    UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
 from financial_analyst_agent.domain.serialization import DecimalStr
@@ -67,10 +68,15 @@ class FactsPort(Protocol):
     def get_financials(self, company: str, metric: str) -> Any: ...
 
 
+class RankingPort(Protocol):
+    def rank_companies(self, industry: str, limit: int) -> Any: ...
+
+
 @dataclass(frozen=True)
 class Runtime:
     completer: Completer
     facts: FactsPort
+    ranking: RankingPort | None = None
 
 
 class ToolTrace(BaseModel):
@@ -96,6 +102,7 @@ class TableRow(BaseModel):
     ticker: str
     cik: str
     metric: str
+    rank: int | None = None
     value: DecimalStr | None = None
     currency: str | None = None
     start_date: date | None = None
@@ -126,6 +133,49 @@ def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
         tool_traces=[],
         renderer=RendererKind.REFUSE,
         message=f"Unknown metric {metric!r}. Allowed: {allowed}",
+    )
+
+
+def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    if runtime.ranking is None:
+        raise RuntimeError("rank intent requires a ranking adapter")
+    try:
+        table = runtime.ranking.rank_companies(plan.industry, plan.limit)
+    except UnknownIndustryError as exc:
+        return TurnResult(
+            intent=Intent.RANK,
+            tool_traces=[],
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    rows = [
+        TableRow(
+            company_name=company.name,
+            ticker=company.ticker,
+            cik=company.cik,
+            metric="market_cap",
+            rank=index,
+            value=company.market_cap,
+            currency="USD",
+        )
+        for index, company in enumerate(table.companies, start=1)
+    ]
+    return TurnResult(
+        intent=Intent.RANK,
+        tool_traces=[
+            ToolTrace(
+                tool="rank_companies",
+                args={"industry": plan.industry, "limit": plan.limit},
+                provenance={
+                    "snapshot_as_of": table.as_of,
+                    "source": table.source,
+                    "sector": table.sector,
+                },
+            )
+        ],
+        renderer=RendererKind.TABLE,
+        table_rows=rows,
+        banners=[f"Universe snapshot as of {table.as_of}"],
     )
 
 
@@ -269,6 +319,8 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         if plan.metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, plan.metric)
         return _compare_turn(plan, runtime)
+    if plan.intent is Intent.RANK:
+        return _rank_turn(plan, runtime)
     if plan.intent is Intent.LOOKUP and plan.metric not in REPORTED_METRICS:
         return _refuse_unknown_metric(plan.intent, plan.metric)
     args = {"company": plan.company, "metric": plan.metric}

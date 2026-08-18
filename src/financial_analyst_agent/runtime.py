@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.facts import FixtureFactLookup
+from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import Intent, Runtime
 
@@ -48,6 +49,32 @@ def _companies_from_query(normalized: str) -> list[str]:
     return found
 
 
+def _limit_from_query(normalized: str) -> int:
+    match = re.search(r"\btop\s+(\d+)\b", normalized)
+    if match is None:
+        return 10
+    return int(match.group(1))
+
+
+def _industry_from_query(normalized: str) -> str:
+    for phrase in (
+        "health care",
+        "healthcare",
+        "financial services",
+        "information technology",
+        "financials",
+        "finance",
+        "technology",
+        "tech",
+    ):
+        if phrase in normalized:
+            return phrase
+    match = re.search(r"\bin\s+([a-z0-9][a-z0-9 &/-]*)", normalized)
+    if match is not None:
+        return match.group(1).strip()
+    return "unknown"
+
+
 def _metric_from_query(normalized: str) -> str:
     for phrase, metric in _REPORTED_PHRASES:
         if phrase in normalized:
@@ -74,6 +101,12 @@ class DemoCompleter:
                 companies=_companies_from_query(normalized),
                 metric=metric,
             )
+        if re.search(r"\btop\b", normalized):
+            return SimpleNamespace(
+                intent=Intent.RANK,
+                industry=_industry_from_query(normalized),
+                limit=_limit_from_query(normalized),
+            )
         return SimpleNamespace(
             intent=Intent.LOOKUP,
             company=_company_from_query(normalized),
@@ -82,13 +115,18 @@ class DemoCompleter:
 
 
 def fixture_runtime() -> Runtime:
-    return Runtime(completer=DemoCompleter(), facts=FixtureFactLookup())
+    return Runtime(
+        completer=DemoCompleter(),
+        facts=FixtureFactLookup(),
+        ranking=SnapshotRanking.from_path(),
+    )
 
 
 def live_runtime(settings: Settings | None = None) -> Runtime:
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(settings or get_settings()),
+        ranking=SnapshotRanking.from_path(),
     )
 
 

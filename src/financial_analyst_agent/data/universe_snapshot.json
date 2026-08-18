@@ -1,0 +1,196 @@
+{
+  "as_of": "2026-08-17T16:00:00+00:00",
+  "source": "universe_snapshot",
+  "companies": [
+    {
+      "cik": "0000059478",
+      "name": "Eli Lilly and Company",
+      "ticker": "LLY",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "800000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000731766",
+      "name": "UnitedHealth Group Incorporated",
+      "ticker": "UNH",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "500000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000200406",
+      "name": "Johnson & Johnson",
+      "ticker": "JNJ",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "395000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001551152",
+      "name": "AbbVie Inc.",
+      "ticker": "ABBV",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "330000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000310158",
+      "name": "Merck & Co., Inc.",
+      "ticker": "MRK",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "280000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000097745",
+      "name": "Thermo Fisher Scientific Inc.",
+      "ticker": "TMO",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "210000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000001800",
+      "name": "Abbott Laboratories",
+      "ticker": "ABT",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "195000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000313616",
+      "name": "Danaher Corporation",
+      "ticker": "DHR",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "175000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000318154",
+      "name": "Amgen Inc.",
+      "ticker": "AMGN",
+      "sector": "Healthcare",
+      "exchange": "NASDAQ",
+      "market_cap": "155000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000078003",
+      "name": "Pfizer Inc.",
+      "ticker": "PFE",
+      "sector": "Healthcare",
+      "exchange": "NYSE",
+      "market_cap": "140000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000882095",
+      "name": "Gilead Sciences, Inc.",
+      "ticker": "GILD",
+      "sector": "Healthcare",
+      "exchange": "NASDAQ",
+      "market_cap": "90000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000019617",
+      "name": "JPMorgan Chase & Co.",
+      "ticker": "JPM",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "600000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000070858",
+      "name": "Bank of America Corporation",
+      "ticker": "BAC",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "300000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000072971",
+      "name": "Wells Fargo & Company",
+      "ticker": "WFC",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "200000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000886982",
+      "name": "The Goldman Sachs Group, Inc.",
+      "ticker": "GS",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "150000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000320193",
+      "name": "Apple Inc.",
+      "ticker": "AAPL",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "3500000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000789019",
+      "name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "3100000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001652044",
+      "name": "Alphabet Inc.",
+      "ticker": "GOOGL",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "2190000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001652044",
+      "name": "Alphabet Inc.",
+      "ticker": "GOOG",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "2200000000000",
+      "is_etf": false,
+      "is_fund": false
+    }
+  ]
+}

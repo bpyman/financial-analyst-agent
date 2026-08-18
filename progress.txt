@@ -1,0 +1,21 @@
+# Progress
+
+## 2026-08-17 — 03 Snapshot rank E2E (PRD US 18–24, 32–33, 38, 49)
+
+Task completed: `.scratch/financial-analyst-agent/issues/done/03-snapshot-rank-e2e.md`
+
+Key decisions:
+- Keep `run_turn` as the only feature seam. Ranking is a `Runtime` adapter over a checked-in snapshot; live FMP is build-time only.
+- Closed aliases are `finance`/`healthcare`/`technology` plus canonical FMP sector names. No `banks`/`software` until a freeze actually distinguishes those sets. `AI` refuses with the allowed list.
+- ETF/fund/OTC drop and CIK consolidation happen in `build_universe_snapshot`. The rank adapter still skips ETF/fund and one-row-per-CIK so a messy freeze cannot leak products.
+- Snapshot timestamp is a TurnResult banner plus `rank_companies` provenance; Streamlit renders banners. Short sectors return what exists (finance has 4 names) with no padding.
+
+Files changed:
+- `tests/test_run_turn_rank.py`
+- `src/financial_analyst_agent/turn.py`, `runtime.py`, `ranking.py`, `universe.py`, `snapshot_builder.py`, `mcp_server.py`, `app.py`, `domain/errors.py`
+- `src/financial_analyst_agent/data/universe_snapshot.json`
+- `scripts/build_universe_snapshot.py`, `pyproject.toml`
+
+Blockers / next:
+- Issue 04 (rank-and-lookup) is unblocked. Completer is still keyword `DemoCompleter` until 07.
+- Checked-in snapshot is a small fixture, not a full FMP universe. Rebuild before the interview with `FMP_API_KEY` (or `--input` stub): `uv run python scripts/build_universe_snapshot.py`.
