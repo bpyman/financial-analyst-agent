@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     sec_max_requests_per_second: float = 5.0
     sec_timeout_seconds: float = 30.0
     sec_cache_dir: Path | None = None
+    fmp_api_key: str = ""
+    fmp_base_url: str = "https://financialmodelingprep.com"
     app_mode: AppMode = AppMode.LIVE
 
     model_config = SettingsConfigDict(
@@ -74,6 +76,14 @@ class Settings(BaseSettings):
             raise ValueError("SEC_TIMEOUT_SECONDS must be greater than 0")
         return value
 
+    @field_validator("fmp_base_url")
+    @classmethod
+    def validate_fmp_base_url(cls, value: str) -> str:
+        stripped = value.strip().rstrip("/")
+        if not stripped:
+            raise ValueError("FMP_BASE_URL must be nonempty")
+        return stripped
+
     def require_user_agent(self) -> str:
         if not self.sec_user_agent.strip():
             raise ConfigurationError(
@@ -81,6 +91,15 @@ class Settings(BaseSettings):
                 "Set SEC_USER_AGENT in the environment or .env file."
             )
         return self.sec_user_agent
+
+    def require_fmp_api_key(self) -> str:
+        key = self.fmp_api_key.strip()
+        if not key:
+            raise ConfigurationError(
+                "FMP_API_KEY is required to rebuild the universe snapshot. "
+                "Set FMP_API_KEY in the environment or .env file."
+            )
+        return key
 
 
 def get_settings() -> Settings:

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -13,23 +12,68 @@ from typing import Any
 
 import httpx
 
+from financial_analyst_agent.config import Settings, get_settings
+from financial_analyst_agent.domain.errors import ConfigurationError
+from financial_analyst_agent.providers.sec.client import SECClient
+from financial_analyst_agent.providers.sec.tickers import (
+    extract_usable_ticker_entries,
+    normalize_ticker,
+    parse_cik,
+)
 from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
+    US_EXCHANGES,
     UniverseCompany,
     build_universe_snapshot,
     write_universe_snapshot,
 )
 
-FMP_SCREENER_URL = "https://financialmodelingprep.com/api/v3/stock-screener"
+FMP_SCREENER_PATH = "/stable/company-screener"
 FMP_EXCHANGES = ("NASDAQ", "NYSE", "AMEX")
+_EXCHANGE_ALIASES: dict[str, str] = {
+    "NASDAQ GLOBAL SELECT": "NASDAQ",
+    "NASDAQ GLOBAL MARKET": "NASDAQ",
+    "NASDAQ CAPITAL MARKET": "NASDAQ",
+    "NEW YORK STOCK EXCHANGE": "NYSE",
+    "NYSE ARCA": "NYSEARCA",
+    "NYSE AMERICAN": "NYSEAMERICAN",
+    "AMERICAN STOCK EXCHANGE": "AMEX",
+}
+
+
+def _ticker_cik_index(tickers_payload: dict[str, Any]) -> dict[str, str]:
+    return {
+        entry["ticker"]: entry["cik"] for entry in extract_usable_ticker_entries(tickers_payload)
+    }
+
+
+def _canonical_exchange(payload: dict[str, Any]) -> str:
+    short = str(payload.get("exchangeShortName") or "").strip()
+    descriptive = str(payload.get("exchange") or "").strip()
+    candidate = short or descriptive
+    upper = candidate.upper()
+    if upper in US_EXCHANGES:
+        return upper
+    return _EXCHANGE_ALIASES.get(upper, candidate)
+
+
+def _enrich_screener_row(
+    payload: dict[str, Any], cik_by_ticker: Mapping[str, str]
+) -> dict[str, Any]:
+    enriched = dict(payload)
+    cik = parse_cik(enriched.get("cik"))
+    if cik is None:
+        symbol = str(enriched.get("ticker") or enriched.get("symbol") or "").strip()
+        if symbol:
+            cik = cik_by_ticker.get(normalize_ticker(symbol))
+    if cik is not None:
+        enriched["cik"] = cik
+    return enriched
 
 
 def vendor_company_from_mapping(payload: dict[str, Any]) -> UniverseCompany | None:
-    cik_raw = payload.get("cik")
-    if cik_raw is None:
-        return None
-    cik = str(cik_raw).strip()
-    if not cik.isdigit():
+    cik = parse_cik(payload.get("cik"))
+    if cik is None:
         return None
     market_cap = _market_cap_to_decimal_str(
         payload.get("market_cap", payload.get("marketCap"))
@@ -41,19 +85,32 @@ def vendor_company_from_mapping(payload: dict[str, Any]) -> UniverseCompany | No
     sector = str(payload.get("sector") or "").strip()
     if not name or not ticker or not sector:
         return None
-    exchange = str(
-        payload.get("exchange") or payload.get("exchangeShortName") or ""
-    ).strip()
     return UniverseCompany(
-        cik=cik.zfill(10),
+        cik=cik,
         name=name,
         ticker=ticker,
         sector=sector,
-        exchange=exchange,
+        exchange=_canonical_exchange(payload),
         market_cap=Decimal(market_cap),
         is_etf=bool(payload.get("is_etf", payload.get("isEtf", payload.get("isETF", False)))),
         is_fund=bool(payload.get("is_fund", payload.get("isFund", False))),
     )
+
+
+def companies_from_vendor_payloads(
+    payloads: Sequence[Any],
+    *,
+    tickers_payload: dict[str, Any] | None = None,
+) -> list[UniverseCompany]:
+    cik_by_ticker = _ticker_cik_index(tickers_payload or {})
+    rows: list[UniverseCompany] = []
+    for item in payloads:
+        if not isinstance(item, dict):
+            continue
+        company = vendor_company_from_mapping(_enrich_screener_row(item, cik_by_ticker))
+        if company is not None:
+            rows.append(company)
+    return rows
 
 
 def load_vendor_rows(path: Path) -> list[UniverseCompany]:
@@ -62,26 +119,29 @@ def load_vendor_rows(path: Path) -> list[UniverseCompany]:
         raw = raw.get("companies", [])
     if not isinstance(raw, list):
         raise ValueError("vendor dump must be a list or an object with companies")
-    rows: list[UniverseCompany] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        company = vendor_company_from_mapping(item)
-        if company is not None:
-            rows.append(company)
-    return rows
+    return companies_from_vendor_payloads(raw)
 
 
-def fetch_fmp_rows(api_key: str, client: httpx.Client | None = None) -> list[UniverseCompany]:
+def fetch_fmp_rows(
+    api_key: str,
+    client: httpx.Client | None = None,
+    tickers_payload: dict[str, Any] | None = None,
+    settings: Settings | None = None,
+) -> list[UniverseCompany]:
+    resolved = settings or get_settings()
+    screener_url = f"{resolved.fmp_base_url}{FMP_SCREENER_PATH}"
     http = client or httpx.Client(timeout=60.0)
     owns_client = client is None
-    rows: list[UniverseCompany] = []
+    raw_rows: list[Any] = []
     try:
         for exchange in FMP_EXCHANGES:
             response = http.get(
-                FMP_SCREENER_URL,
+                screener_url,
                 params={
                     "exchange": exchange,
+                    "isEtf": "false",
+                    "isFund": "false",
+                    "isActivelyTrading": "true",
                     "limit": 10000,
                     "apikey": api_key,
                 },
@@ -90,16 +150,14 @@ def fetch_fmp_rows(api_key: str, client: httpx.Client | None = None) -> list[Uni
             payload = response.json()
             if not isinstance(payload, list):
                 raise ValueError(f"unexpected FMP screener payload for {exchange}")
-            for item in payload:
-                if not isinstance(item, dict):
-                    continue
-                company = vendor_company_from_mapping(item)
-                if company is not None:
-                    rows.append(company)
+            raw_rows.extend(payload)
+        identity = tickers_payload
+        if identity is None:
+            identity = SECClient(resolved, client=http).get_company_tickers()
+        return companies_from_vendor_payloads(raw_rows, tickers_payload=identity)
     finally:
         if owns_client:
             http.close()
-    return rows
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -125,16 +183,24 @@ def main(argv: Sequence[str] | None = None) -> None:
         rows = load_vendor_rows(args.input)
         source = "universe_snapshot"
     else:
-        api_key = os.environ.get("FMP_API_KEY", "").strip()
-        if not api_key:
-            parser.error("FMP_API_KEY is required unless --input is provided")
-        rows = fetch_fmp_rows(api_key)
+        settings = get_settings()
+        try:
+            api_key = settings.require_fmp_api_key()
+            settings.require_user_agent()
+        except ConfigurationError as exc:
+            parser.error(str(exc))
+        rows = fetch_fmp_rows(api_key, settings=settings)
         source = "fmp_universe_snapshot"
     snapshot = build_universe_snapshot(
         rows,
         as_of=datetime.now(UTC),
         source=source,
     )
+    if not snapshot.companies:
+        raise ValueError(
+            "refusing to write empty universe snapshot; "
+            "check CIK identity enrichment and US operating-company filters"
+        )
     written = write_universe_snapshot(snapshot, args.output)
     print(f"Wrote {len(snapshot.companies)} companies to {written}")
 

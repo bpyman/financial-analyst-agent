@@ -1,19 +1,52 @@
 """Gold: top 10 healthcare from the checked-in universe snapshot through run_turn."""
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
+import pytest
+
+from financial_analyst_agent.config import Settings
+from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.ranking import SnapshotRanking
-from financial_analyst_agent.runtime import DemoCompleter, fixture_runtime
+from financial_analyst_agent.runtime import DemoCompleter
+from financial_analyst_agent.snapshot_builder import (
+    companies_from_vendor_payloads,
+    fetch_fmp_rows,
+    main,
+)
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
-from financial_analyst_agent.universe import UniverseCompany, build_universe_snapshot
+from financial_analyst_agent.universe import (
+    UniverseCompany,
+    build_universe_snapshot,
+    load_universe_snapshot,
+)
 
 HEALTHCARE_TOP_10_QUERY = "What are the top 10 companies in healthcare?"
-
+FIXTURE_SNAPSHOT_PATH = Path(__file__).parent / "fixtures" / "universe_snapshot.json"
 SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
 
-# Fixture-runtime gold literals (checked-in snapshot, not a live screener).
+
+def _gold_rank_runtime() -> Runtime:
+    return Runtime(
+        completer=DemoCompleter(),
+        facts=FixtureFactLookup(),
+        ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
+    )
+
+
+def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
+    snapshot = load_universe_snapshot()
+    healthcare = [company for company in snapshot.companies if company.sector == "Healthcare"]
+    assert snapshot.source == "fmp_universe_snapshot"
+    assert len(snapshot.companies) > 19
+    assert len(healthcare) > 11
+
+
+# Fixture-runtime gold literals (injected snapshot, not the live vendor freeze).
 HEALTHCARE_TOP_10 = (
     ("Eli Lilly and Company", "LLY", "0000059478", Decimal("800000000000")),
     ("UnitedHealth Group Incorporated", "UNH", "0000731766", Decimal("500000000000")),
@@ -29,7 +62,7 @@ HEALTHCARE_TOP_10 = (
 
 
 def test_run_turn_returns_rank_table_for_top_10_healthcare() -> None:
-    result = run_turn(HEALTHCARE_TOP_10_QUERY, fixture_runtime())
+    result = run_turn(HEALTHCARE_TOP_10_QUERY, _gold_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -61,12 +94,23 @@ def test_run_turn_returns_rank_table_for_top_10_healthcare() -> None:
         assert row.reason is None
 
 
+def test_run_turn_returns_rank_table_for_bare_top_10_healthcare() -> None:
+    result = run_turn("top 10 healthcare", _gold_rank_runtime())
+
+    assert result.intent is Intent.RANK
+    assert result.renderer is RendererKind.TABLE
+    assert result.tool_traces[0].args == {"industry": "healthcare", "limit": 10}
+    assert [row.ticker for row in result.table_rows] == [
+        ticker for _, ticker, _, _ in HEALTHCARE_TOP_10
+    ]
+
+
 UNKNOWN_INDUSTRY_QUERY = "What are the top 10 companies in AI?"
 ALLOWED_INDUSTRIES = ("finance", "healthcare", "technology")
 
 
 def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
-    result = run_turn(UNKNOWN_INDUSTRY_QUERY, fixture_runtime())
+    result = run_turn(UNKNOWN_INDUSTRY_QUERY, _gold_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.REFUSE
@@ -79,6 +123,23 @@ def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
         assert industry in result.message.casefold()
 
 
+def test_run_turn_refuses_biotechnology_and_fintech_instead_of_technology() -> None:
+    runtime = _gold_rank_runtime()
+    for query, label in (
+        ("What are the top 10 biotechnology companies?", "biotechnology"),
+        ("What are the top 10 companies in fintech?", "fintech"),
+    ):
+        result = run_turn(query, runtime)
+        assert result.intent is Intent.RANK
+        assert result.renderer is RendererKind.REFUSE
+        assert result.table_rows == []
+        assert result.tool_traces == []
+        assert result.message is not None
+        assert label in result.message.casefold()
+        for industry in ALLOWED_INDUSTRIES:
+            assert industry in result.message.casefold()
+
+
 FINANCE_TOP_10_QUERY = "What are the top 10 companies in finance?"
 FINANCE_TOP_4 = (
     ("JPMorgan Chase & Co.", "JPM", "0000019617", Decimal("600000000000")),
@@ -89,7 +150,7 @@ FINANCE_TOP_4 = (
 
 
 def test_run_turn_ranks_finance_alias_and_does_not_pad_short_sectors() -> None:
-    result = run_turn(FINANCE_TOP_10_QUERY, fixture_runtime())
+    result = run_turn(FINANCE_TOP_10_QUERY, _gold_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -114,7 +175,7 @@ TECHNOLOGY_TOP_3 = (
 
 
 def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
-    result = run_turn(TECHNOLOGY_TOP_10_QUERY, fixture_runtime())
+    result = run_turn(TECHNOLOGY_TOP_10_QUERY, _gold_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -223,4 +284,173 @@ def test_run_turn_ranks_builder_snapshot_without_etfs_funds_or_duplicate_ciks() 
     assert "UNHC" not in tickers
     assert "OTCH" not in tickers
     assert [row.cik for row in result.table_rows].count("0000731766") == 1
+
+
+def test_run_turn_ranks_fmp_screener_rows_after_cik_and_exchange_normalization() -> None:
+    """Live FMP screener rows omit cik and use descriptive exchange names."""
+    rows = companies_from_vendor_payloads(
+        (
+            {
+                "symbol": "MSFT",
+                "companyName": "Microsoft Corporation",
+                "marketCap": 3100000000000,
+                "sector": "Technology",
+                "exchange": "NASDAQ Global Select",
+                "exchangeShortName": "NASDAQ",
+                "isEtf": False,
+                "isFund": False,
+            },
+            {
+                "symbol": "GOOG",
+                "companyName": "Alphabet Inc.",
+                "marketCap": 2200000000000,
+                "sector": "Technology",
+                "exchange": "NASDAQ Global Select",
+                "exchangeShortName": "NASDAQ",
+                "isEtf": False,
+                "isFund": False,
+            },
+        ),
+        tickers_payload={
+            "0": {"cik_str": 789019, "ticker": "MSFT", "title": "MICROSOFT CORP"},
+            "1": {"cik_str": 1652044, "ticker": "GOOG", "title": "Alphabet Inc."},
+        },
+    )
+    snapshot = build_universe_snapshot(
+        rows,
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+        source="fmp_universe_snapshot",
+    )
+    result = run_turn(
+        TECHNOLOGY_TOP_10_QUERY,
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert result.intent is Intent.RANK
+    assert result.renderer is RendererKind.TABLE
+    assert [(row.ticker, row.cik) for row in result.table_rows] == [
+        ("MSFT", "0000789019"),
+        ("GOOG", "0001652044"),
+    ]
+
+
+def test_fetch_fmp_rows_uses_stable_screener_on_configured_base_url() -> None:
+    requested: list[httpx.URL] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url)
+        if request.url.path == "/stable/company-screener":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "symbol": "MSFT",
+                        "companyName": "Microsoft Corporation",
+                        "marketCap": 3100000000000,
+                        "sector": "Technology",
+                        "exchange": "NASDAQ Global Select",
+                        "exchangeShortName": "NASDAQ",
+                        "isEtf": False,
+                        "isFund": False,
+                    }
+                ],
+            )
+        return httpx.Response(404, json={"error": "unexpected url"})
+
+    rows = fetch_fmp_rows(
+        "test-key",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        tickers_payload={
+            "0": {"cik_str": 789019, "ticker": "MSFT", "title": "MICROSOFT CORP"},
+        },
+        settings=Settings(
+            fmp_api_key="test-key",
+            fmp_base_url="https://fmp.example",
+            sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        ),
+    )
+
+    screener_urls = [url for url in requested if "company-screener" in url.path]
+    assert screener_urls
+    assert all(url.host == "fmp.example" for url in screener_urls)
+    assert all(url.path == "/stable/company-screener" for url in screener_urls)
+    assert all("/api/v3/" not in str(url) for url in requested)
+    assert {row.ticker for row in rows} == {"MSFT"}
+
+
+def test_fetch_fmp_rows_includes_us_listed_foreign_issuers() -> None:
+    requested: list[httpx.URL] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url)
+        if request.url.path == "/stable/company-screener":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "symbol": "NVO",
+                        "companyName": "Novo Nordisk A/S",
+                        "marketCap": 450000000000,
+                        "sector": "Healthcare",
+                        "country": "DK",
+                        "exchange": "New York Stock Exchange",
+                        "exchangeShortName": "NYSE",
+                        "isEtf": False,
+                        "isFund": False,
+                    }
+                ],
+            )
+        return httpx.Response(404, json={"error": "unexpected url"})
+
+    rows = fetch_fmp_rows(
+        "test-key",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        tickers_payload={
+            "0": {"cik_str": 353259, "ticker": "NVO", "title": "NOVO NORDISK A S"},
+        },
+        settings=Settings(
+            fmp_api_key="test-key",
+            fmp_base_url="https://fmp.example",
+            sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        ),
+    )
+
+    screener_urls = [url for url in requested if "company-screener" in url.path]
+    assert screener_urls
+    assert all("country" not in url.params for url in screener_urls)
+    assert {(row.ticker, row.cik, row.exchange) for row in rows} == {
+        ("NVO", "0000353259", "NYSE")
+    }
+
+
+def test_snapshot_builder_refuses_to_write_empty_universe(tmp_path: Path) -> None:
+    stub = tmp_path / "vendor.json"
+    stub.write_text(
+        json.dumps(
+            [
+                {
+                    "symbol": "MSFT",
+                    "companyName": "Microsoft Corporation",
+                    "marketCap": 3100000000000,
+                    "sector": "Technology",
+                    "exchange": "NASDAQ Global Select",
+                    "exchangeShortName": "NASDAQ",
+                    "isEtf": False,
+                    "isFund": False,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "universe_snapshot.json"
+    output.write_text("do-not-clobber", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="empty"):
+        main(["--input", str(stub), "--output", str(output)])
+
+    assert output.read_text(encoding="utf-8") == "do-not-clobber"
 

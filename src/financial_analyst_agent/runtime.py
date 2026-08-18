@@ -56,22 +56,21 @@ def _limit_from_query(normalized: str) -> int:
     return int(match.group(1))
 
 
+def _normalize_industry_label(raw: str) -> str:
+    label = re.split(r"\s+\band\b", raw.strip(), maxsplit=1)[0]
+    return label.strip(" .,?!").strip()
+
+
 def _industry_from_query(normalized: str) -> str:
-    for phrase in (
-        "health care",
-        "healthcare",
-        "financial services",
-        "information technology",
-        "financials",
-        "finance",
-        "technology",
-        "tech",
+    for pattern in (
+        r"\btop\s+\d+\s+companies\s+in\s+(.+)",
+        r"\btop\s+\d+\s+(.+?)\s+companies\b",
+        r"\bin\s+(.+)",
+        r"\btop\s+\d+\s+(.+)",
     ):
-        if phrase in normalized:
-            return phrase
-    match = re.search(r"\bin\s+([a-z0-9][a-z0-9 &/-]*)", normalized)
-    if match is not None:
-        return match.group(1).strip()
+        match = re.search(pattern, normalized)
+        if match is not None:
+            return _normalize_industry_label(match.group(1))
     return "unknown"
 
 

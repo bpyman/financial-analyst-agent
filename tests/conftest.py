@@ -13,3 +13,4 @@ def _keep_non_network_tests_offline(
     monkeypatch.setenv("APP_MODE", "fixture")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("SEC_USER_AGENT", "")
+    monkeypatch.setenv("FMP_API_KEY", "")
