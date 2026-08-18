@@ -13,7 +13,6 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
-    ConfigurationError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
@@ -142,33 +141,23 @@ class TurnResult(BaseModel):
     essay: str | None = None
 
 
-def _numeric_tokens(text: str) -> list[str]:
-    return _NUMERIC_TOKEN.findall(text)
-
-
 def _numeral_lock_extras(essay: str, tool_json: str) -> list[str]:
-    """Return numeric tokens in the essay that do not appear in tool JSON."""
-    allowed = set(_numeric_tokens(tool_json))
-    extras: list[str] = []
-    seen: set[str] = set()
-    for token in _numeric_tokens(essay):
-        if token in allowed or token in seen:
-            continue
-        seen.add(token)
-        extras.append(token)
-    return extras
+    allowed = set(_NUMERIC_TOKEN.findall(tool_json))
+    return list(
+        dict.fromkeys(
+            token for token in _NUMERIC_TOKEN.findall(essay) if token not in allowed
+        )
+    )
 
 
-def _tool_json(traces: list[ToolTrace]) -> str:
-    return json.dumps([trace.model_dump(mode="json") for trace in traces])
-
-
-def _explain_turn(query: str, runtime: Runtime) -> TurnResult:
+def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if runtime.essay is None:
-        raise ConfigurationError("explain intent requires an essay completer")
-    traces = [ToolTrace(tool="explain_topic", args={"topic": query})]
-    essay = runtime.essay.complete_essay(query)
-    extras = _numeral_lock_extras(essay, _tool_json(traces))
+        raise RuntimeError("explain intent requires an essay completer")
+    traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
+    essay = runtime.essay.complete_essay(plan.topic)
+    extras = _numeral_lock_extras(
+        essay, json.dumps([trace.model_dump(mode="json") for trace in traces])
+    )
     if extras:
         invented = ", ".join(extras)
         return TurnResult(
@@ -503,7 +492,7 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
 def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
-        return _explain_turn(query, runtime)
+        return _explain_turn(plan, runtime)
     if plan.intent is Intent.COMPARE:
         if plan.metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, plan.metric)

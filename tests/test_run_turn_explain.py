@@ -2,16 +2,17 @@
 
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import fixture_runtime
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, fixture_runtime
+from financial_analyst_agent.turn import (
+    MODEL_ANALYSIS_BANNER,
+    EssayCompleter,
+    Intent,
+    RendererKind,
+    Runtime,
+    run_turn,
+)
 
 AI_HEALTHCARE_QUERY = "How can AI disrupt healthcare?"
-MODEL_ANALYSIS_BANNER = "model-analysis"
-NUMBER_FREE_ESSAY = (
-    "AI can disrupt healthcare by automating imaging review, triage, and documentation. "
-    "Common use cases include clinical decision support, administrative coding, "
-    "and patient outreach."
-)
 
 
 class _ExplainCompleter:
@@ -25,7 +26,7 @@ class _NumberFreeEssay:
     def complete_essay(self, query: str) -> str:
         if query != AI_HEALTHCARE_QUERY:
             raise AssertionError(f"unexpected essay query: {query!r}")
-        return NUMBER_FREE_ESSAY
+        return FIXTURE_EXPLAIN_ESSAY
 
 
 class _ExplodingFacts:
@@ -38,7 +39,7 @@ class _ExplodingRanking:
         raise AssertionError("explain must not rank companies")
 
 
-def _explain_runtime(essay: object) -> Runtime:
+def _explain_runtime(essay: EssayCompleter) -> Runtime:
     return Runtime(
         completer=_ExplainCompleter(),
         facts=_ExplodingFacts(),
@@ -58,7 +59,7 @@ def test_run_turn_explain_returns_model_analysis_essay_without_retrieval() -> No
     assert result.intent is Intent.EXPLAIN
     assert result.renderer is RendererKind.ESSAY
     assert MODEL_ANALYSIS_BANNER in result.banners
-    assert result.essay == NUMBER_FREE_ESSAY
+    assert result.essay == FIXTURE_EXPLAIN_ESSAY
     assert result.table_rows == []
     assert result.numeral_lock_extras == []
     tools = [trace.tool for trace in result.tool_traces]

@@ -43,7 +43,7 @@ def main() -> None:
         st.error(result.message)
         return
     if result.renderer is RendererKind.ESSAY:
-        st.markdown(result.essay or "")
+        st.markdown(result.essay)
         return
     if result.renderer is RendererKind.TABLE:
         st.dataframe(
