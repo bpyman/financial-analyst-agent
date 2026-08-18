@@ -321,6 +321,80 @@ def test_run_turn_keeps_partial_compare_row_when_one_issuer_fact_is_missing() ->
     assert alphabet.reason is None
 
 
+def test_run_turn_compare_does_not_pick_one_conflicting_concept() -> None:
+    class _ConflictingMicrosoftFacts:
+        def get_financials(self, company: str, metric: str) -> object:
+            if company == "Microsoft" and metric == "operating_income":
+                shared = dict(
+                    company_name=MICROSOFT_NAME,
+                    ticker=MICROSOFT_TICKER,
+                    cik=MICROSOFT_CIK,
+                    metric=metric,
+                    start_date=PERIOD_START,
+                    end_date=PERIOD_END,
+                    accession_number=MICROSOFT_ACCESSION,
+                    source_url=MICROSOFT_SOURCE_URL,
+                )
+                return (
+                    _component_fact(
+                        **shared,
+                        value=MICROSOFT_OPERATING_INCOME,
+                        concept=MICROSOFT_OPERATING_INCOME_CONCEPT,
+                    ),
+                    _component_fact(
+                        **shared,
+                        value=Decimal("1"),
+                        concept="OperatingIncomeLossAlt",
+                    ),
+                )
+            if company == "Microsoft":
+                return _component_fact(
+                    company_name=MICROSOFT_NAME,
+                    ticker=MICROSOFT_TICKER,
+                    cik=MICROSOFT_CIK,
+                    metric=metric,
+                    value=MICROSOFT_REVENUE,
+                    start_date=PERIOD_START,
+                    end_date=PERIOD_END,
+                    accession_number=MICROSOFT_ACCESSION,
+                    concept=MICROSOFT_REVENUE_CONCEPT,
+                    source_url=MICROSOFT_SOURCE_URL,
+                )
+            if company == "Google":
+                return _component_fact(
+                    company_name=ALPHABET_NAME,
+                    ticker=ALPHABET_TICKER,
+                    cik=ALPHABET_CIK,
+                    metric=metric,
+                    value=(
+                        ALPHABET_OPERATING_INCOME
+                        if metric == "operating_income"
+                        else ALPHABET_REVENUE
+                    ),
+                    start_date=PERIOD_START,
+                    end_date=PERIOD_END,
+                    accession_number=ALPHABET_ACCESSION,
+                    concept=(
+                        ALPHABET_OPERATING_INCOME_CONCEPT
+                        if metric == "operating_income"
+                        else ALPHABET_REVENUE_CONCEPT
+                    ),
+                    source_url=ALPHABET_SOURCE_URL,
+                )
+            raise AssertionError(f"unexpected get_financials({company!r}, {metric!r})")
+
+    result = run_turn(
+        MSFT_GOOG_OPERATING_MARGINS_QUERY,
+        Runtime(completer=_CompareCompleter(), facts=_ConflictingMicrosoftFacts()),
+    )
+
+    assert result.renderer is RendererKind.TABLE
+    microsoft, alphabet = result.table_rows
+    assert microsoft.value is None
+    assert microsoft.reason == "ambiguous_concept"
+    assert alphabet.value == ALPHABET_OPERATING_MARGIN
+
+
 def test_run_turn_refuses_unknown_compare_ratio_with_allowed_list() -> None:
     result = run_turn(UNKNOWN_RATIO_QUERY, fixture_runtime())
 

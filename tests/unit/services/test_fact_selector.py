@@ -21,7 +21,7 @@ REPORT_END = date(2024, 9, 28)
 
 
 def _select(facts: list, filing=FILING) -> object:
-    return select_quarterly_fact(
+    selected = select_quarterly_fact(
         facts,
         filing,
         Metric.NET_INCOME,
@@ -29,6 +29,8 @@ def _select(facts: list, filing=FILING) -> object:
         source_url=SOURCE_URL,
         **COMPANY,
     )
+    assert len(selected) == 1
+    return selected[0]
 
 
 def test_selects_standalone_quarterly_fact() -> None:
@@ -176,8 +178,9 @@ def test_10_q_a_filing_requires_10_q_a_form_on_fact() -> None:
         source_url=SOURCE_URL,
         **COMPANY,
     )
-    assert result.value == Decimal("200")
-    assert result.form == "10-Q/A"
+    assert len(result) == 1
+    assert result[0].value == Decimal("200")
+    assert result[0].form == "10-Q/A"
 
 
 def test_matching_concepts_return_highest_priority() -> None:

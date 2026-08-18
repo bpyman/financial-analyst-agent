@@ -4,7 +4,9 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import build_runtime, fixture_runtime
+from financial_analyst_agent.domain.errors import AmbiguousFactError
+from financial_analyst_agent.providers.sec.company_resolver import resolve_company
+from financial_analyst_agent.runtime import DemoCompleter, build_runtime, fixture_runtime
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
@@ -19,6 +21,18 @@ GOOGLE_OPERATING_MARGIN_QUERY = (
     "What was Google's operating margin based on their latest quarterly report?"
 )
 UNRELATED_QUERY = "How can AI disrupt healthcare?"
+EXXONMOBIL_NET_INCOME_QUERY = (
+    "What was ExxonMobil's net income based on their latest quarterly report?"
+)
+XOM_NET_INCOME_QUERY = "What was XOM's net income based on their latest quarterly report?"
+EXXON_NET_INCOME_QUERY = "What was Exxon's net income based on their latest quarterly report?"
+APPL_NET_INCOME_QUERY = "What was Appl's net income based on their latest quarterly report?"
+SUCCESSOR_TICKERS = {
+    "0": {"cik_str": 2115436, "ticker": "XOM", "title": "ExxonMobil Holdings Corp"},
+    "1": {"cik_str": 2014337, "ticker": "NPT", "title": "Texxon Holding Ltd"},
+    "2": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+    "3": {"cik_str": 1418121, "ticker": "APLE", "title": "Apple Hospitality REIT, Inc."},
+}
 
 # Closed catalog from the PRD: reported facts plus allowed formulas.
 ALLOWED_METRICS = (
@@ -93,6 +107,29 @@ class _FormulaCompleter:
 class _ExplodingFacts:
     def get_financials(self, company: str, metric: str) -> SimpleNamespace:
         raise AssertionError("get_financials must not invent a number for an unknown metric")
+
+
+class _SuccessorFacts:
+    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        resolved = resolve_company(company, SUCCESSOR_TICKERS)
+        return SimpleNamespace(
+            company_name=resolved.name,
+            ticker=resolved.tickers[0],
+            cik=resolved.cik,
+            metric=metric,
+            value=Decimal("14525000000"),
+            currency="USD",
+            start_date=PERIOD_START,
+            end_date=PERIOD_END,
+            form=FORM,
+            accession_number="0000034088-26-000093",
+            taxonomy=TAXONOMY,
+            concept=CONCEPT,
+            source_url=(
+                "https://www.sec.gov/Archives/edgar/data/2115436/"
+                "000003408826000093/xom-20260630.htm"
+            ),
+        )
 
 
 def test_run_turn_returns_lookup_table_for_google_latest_quarter_net_income() -> None:
@@ -221,3 +258,65 @@ def test_run_turn_refuses_formula_metric_from_completer_without_calling_facts() 
     assert result.tool_traces == []
     assert result.message is not None
     assert "operating_margin" in result.message
+
+
+def _assert_successor_lookup(query: str) -> None:
+    result = run_turn(
+        query,
+        Runtime(completer=DemoCompleter(), facts=_SuccessorFacts()),
+    )
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    row = result.table_rows[0]
+    assert row.cik == "0002115436"
+    assert row.ticker == "XOM"
+    assert row.company_name == "ExxonMobil Holdings Corp"
+    assert row.value == Decimal("14525000000")
+    assert result.tool_traces[0].args["metric"] == "net_income"
+
+
+def test_run_turn_lookup_resolves_exxonmobil_successor_name() -> None:
+    _assert_successor_lookup(EXXONMOBIL_NET_INCOME_QUERY)
+
+
+def test_run_turn_lookup_resolves_xom_ticker() -> None:
+    _assert_successor_lookup(XOM_NET_INCOME_QUERY)
+
+
+def test_run_turn_lookup_resolves_exxon_prefix() -> None:
+    _assert_successor_lookup(EXXON_NET_INCOME_QUERY)
+
+
+def test_run_turn_refuses_conflicting_catalog_concepts() -> None:
+    class _AmbiguousFacts:
+        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+            raise AmbiguousFactError(
+                "Supported concepts produced conflicting quarterly values",
+                details={"metric": metric, "concepts": ["NetIncomeLoss", "ProfitLoss"]},
+            )
+
+    result = run_turn(
+        XOM_NET_INCOME_QUERY,
+        Runtime(completer=DemoCompleter(), facts=_AmbiguousFacts()),
+    )
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.REFUSE
+    assert result.table_rows == []
+    assert result.tool_traces == []
+    assert result.message is not None
+    assert "conflicting" in result.message.casefold()
+
+
+def test_run_turn_refuses_ambiguous_company_prefix() -> None:
+    result = run_turn(
+        APPL_NET_INCOME_QUERY,
+        Runtime(completer=DemoCompleter(), facts=_SuccessorFacts()),
+    )
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.REFUSE
+    assert result.table_rows == []
+    assert result.tool_traces == []
+    assert result.message is not None
+    assert "appl" in result.message.casefold() or "multiple" in result.message.casefold()

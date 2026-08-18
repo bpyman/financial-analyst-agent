@@ -122,7 +122,7 @@ _ISSUERS: tuple[_IssuerFixture, ...] = (_ALPHABET, _MICROSOFT)
 class FixtureFactLookup:
     """Recorded issuer facts. Never calls live SEC."""
 
-    def get_financials(self, company: str, metric: str) -> FinancialFact:
+    def get_financials(self, company: str, metric: str) -> tuple[FinancialFact, ...]:
         issuer = _resolve_issuer(company)
         return select_quarterly_fact(
             list(issuer.facts),

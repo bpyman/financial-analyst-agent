@@ -9,7 +9,9 @@ from financial_analyst_agent.universe import (
     UniverseCompany,
     UniverseSnapshot,
     allowed_industry_names,
+    is_common_operating_listing,
     load_universe_snapshot,
+    preferred_listing,
     resolve_industry,
 )
 
@@ -42,18 +44,14 @@ class SnapshotRanking:
         ranked = [
             company
             for company in self._snapshot.companies
-            if company.sector == sector and not company.is_etf and not company.is_fund
+            if company.sector == sector and is_common_operating_listing(company)
         ]
-        ranked.sort(key=lambda company: company.market_cap, reverse=True)
-        seen_ciks: set[str] = set()
-        selected: list[UniverseCompany] = []
+        by_cik: dict[str, list[UniverseCompany]] = {}
         for company in ranked:
-            if company.cik in seen_ciks:
-                continue
-            seen_ciks.add(company.cik)
-            selected.append(company)
-            if len(selected) >= limit:
-                break
+            by_cik.setdefault(company.cik, []).append(company)
+        selected = [preferred_listing(group) for group in by_cik.values()]
+        selected.sort(key=lambda company: company.market_cap, reverse=True)
+        selected = selected[:limit]
         return RankTable(
             as_of=_format_as_of(self._snapshot.as_of),
             source=self._snapshot.source,

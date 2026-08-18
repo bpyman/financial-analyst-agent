@@ -36,6 +36,9 @@ def _company_from_query(normalized: str) -> str:
     companies = _companies_from_query(normalized)
     if companies:
         return companies[0]
+    issuer = _issuer_from_lookup_query(normalized)
+    if issuer:
+        return issuer
     return "unknown"
 
 
@@ -47,6 +50,20 @@ def _companies_from_query(normalized: str) -> list[str]:
             found.append(name)
             seen.add(name)
     return found
+
+
+def _issuer_from_lookup_query(normalized: str) -> str | None:
+    metric_phrases = "|".join(
+        re.escape(phrase) for phrase, _metric in (*_REPORTED_PHRASES, *_FORMULA_PHRASES)
+    )
+    match = re.search(
+        rf"\b(?:what (?:was|is|were)|whats)\s+(.+?)(?:'s)?\s+(?:{metric_phrases})\b",
+        normalized,
+    )
+    if match is None:
+        return None
+    issuer = match.group(1).strip(" .,?!'")
+    return issuer or None
 
 
 def _limit_from_query(normalized: str) -> int:

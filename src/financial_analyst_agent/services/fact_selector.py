@@ -133,7 +133,7 @@ def select_quarterly_fact(
     ticker: str,
     cik: str,
     source_url: str,
-) -> FinancialFact:
+) -> tuple[FinancialFact, ...]:
     """
     Select a directly reported standalone-quarter fact for a single filing.
 
@@ -192,7 +192,9 @@ def select_quarterly_fact(
         )
 
     _, selected = resolved_by_concept[0]
-    return _build_financial_fact(selected, metric, currency, company_name, ticker, cik, source_url)
+    return (
+        _build_financial_fact(selected, metric, currency, company_name, ticker, cik, source_url),
+    )
 
 
 def select_quarterly_fact_with_filing_fallback(
@@ -204,9 +206,9 @@ def select_quarterly_fact_with_filing_fallback(
     ticker: str,
     cik: str,
     source_url_for_filing: Callable[[Filing], str],
-) -> FinancialFact:
+) -> tuple[FinancialFact, ...]:
     """
-    Select a quarterly fact using amendment-first filing fallback.
+    Select quarterly facts using amendment-first filing fallback.
 
     Tries each candidate filing for the newest report_date in order without
     mixing facts across accessions. UnsupportedQuarterlyFactError from a filing

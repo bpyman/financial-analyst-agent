@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from financial_analyst_agent.domain.errors import (
+    AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
     UnknownIndustryError,
@@ -54,10 +55,12 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
 _LOOKUP_FAILURES = (
     UnsupportedQuarterlyFactError,
     AmbiguousFactError,
+    AmbiguousCompanyError,
     CompanyNotFoundError,
 )
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
+AMBIGUOUS_CONCEPT = "ambiguous_concept"
 
 
 class Completer(Protocol):
@@ -124,6 +127,45 @@ class TurnResult(BaseModel):
     banners: list[str] = Field(default_factory=list)
     numeral_lock_extras: list[str] = Field(default_factory=list)
     message: str | None = None
+
+
+def _lookup_facts(result: Any) -> list[Any]:
+    facts = list(result) if isinstance(result, (list, tuple)) else [result]
+    return facts
+
+
+def _table_row_from_fact(fact: Any) -> TableRow:
+    metric = fact.metric
+    metric_value = metric.value if hasattr(metric, "value") else metric
+    return TableRow(
+        company_name=fact.company_name,
+        ticker=fact.ticker,
+        cik=fact.cik,
+        metric=metric_value,
+        value=fact.value,
+        currency=fact.currency,
+        start_date=fact.start_date,
+        end_date=fact.end_date,
+        form=fact.form,
+        accession_number=fact.accession_number,
+        taxonomy=fact.taxonomy,
+        concept=fact.concept,
+        source_url=fact.source_url,
+    )
+
+
+def _lookup_provenance(facts: list[Any]) -> dict[str, Any]:
+    primary = facts[0]
+    provenance: dict[str, Any] = {
+        "accession_number": primary.accession_number,
+        "concept": primary.concept,
+        "source_url": primary.source_url,
+        "start_date": primary.start_date.isoformat(),
+        "end_date": primary.end_date.isoformat(),
+    }
+    if len(facts) > 1:
+        provenance["concepts"] = [fact.concept for fact in facts]
+    return provenance
 
 
 def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
@@ -222,7 +264,10 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            fetched = [facts.get_financials(issuer, component) for component in component_names]
+            fetched_groups = [
+                _lookup_facts(facts.get_financials(issuer, component))
+                for component in component_names
+            ]
         except _LOOKUP_FAILURES:
             rows.append(
                 TableRow(
@@ -234,6 +279,22 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
                 )
             )
             continue
+        if any(len(group) != 1 for group in fetched_groups):
+            identity = fetched_groups[0][0]
+            if identity.cik in seen_ciks:
+                continue
+            seen_ciks.add(identity.cik)
+            rows.append(
+                TableRow(
+                    company_name=identity.company_name,
+                    ticker=identity.ticker,
+                    cik=identity.cik,
+                    metric=metric,
+                    reason=AMBIGUOUS_CONCEPT,
+                )
+            )
+            continue
+        fetched = [group[0] for group in fetched_groups]
         identity = fetched[0]
         if identity.cik in seen_ciks:
             continue
@@ -325,7 +386,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         return _refuse_unknown_metric(plan.intent, plan.metric)
     args = {"company": plan.company, "metric": plan.metric}
     try:
-        fact = runtime.facts.get_financials(plan.company, plan.metric)
+        fetched = runtime.facts.get_financials(plan.company, plan.metric)
     except _LOOKUP_FAILURES as exc:
         return TurnResult(
             intent=plan.intent,
@@ -333,37 +394,24 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
+    facts = _lookup_facts(fetched)
+    if len(facts) != 1:
+        return TurnResult(
+            intent=plan.intent,
+            tool_traces=[],
+            renderer=RendererKind.REFUSE,
+            message="Supported concepts produced conflicting quarterly values",
+        )
+    fact = facts[0]
     return TurnResult(
         intent=plan.intent,
         tool_traces=[
             ToolTrace(
                 tool="get_financials",
                 args=args,
-                provenance={
-                    "accession_number": fact.accession_number,
-                    "concept": fact.concept,
-                    "source_url": fact.source_url,
-                    "start_date": fact.start_date.isoformat(),
-                    "end_date": fact.end_date.isoformat(),
-                },
+                provenance=_lookup_provenance(facts),
             )
         ],
         renderer=RendererKind.TABLE,
-        table_rows=[
-            TableRow(
-                company_name=fact.company_name,
-                ticker=fact.ticker,
-                cik=fact.cik,
-                metric=fact.metric,
-                value=fact.value,
-                currency=fact.currency,
-                start_date=fact.start_date,
-                end_date=fact.end_date,
-                form=fact.form,
-                accession_number=fact.accession_number,
-                taxonomy=fact.taxonomy,
-                concept=fact.concept,
-                source_url=fact.source_url,
-            )
-        ],
+        table_rows=[_table_row_from_fact(fact)],
     )

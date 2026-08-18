@@ -14,10 +14,16 @@ mcp = FastMCP("financial-analyst")
 def get_financials(company: str, metric: str) -> dict[str, object]:
     """Return the latest standalone quarterly fact for a company and metric."""
     fact = build_runtime().facts.get_financials(company, metric)
-    dumped = fact.model_dump(mode="json")
-    if not isinstance(dumped, dict):
-        raise TypeError("get_financials must serialize to an object")
-    return dumped
+    facts = fact if isinstance(fact, (list, tuple)) else (fact,)
+    dumped: list[dict[str, object]] = []
+    for item in facts:
+        payload = item.model_dump(mode="json")
+        if not isinstance(payload, dict):
+            raise TypeError("get_financials must serialize to an object")
+        dumped.append(payload)
+    if len(dumped) == 1:
+        return dumped[0]
+    return {"facts": dumped}
 
 
 @mcp.tool()
