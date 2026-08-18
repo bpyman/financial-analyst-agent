@@ -1,9 +1,9 @@
 """OpenAI structured-output planner. Emits a closed intent, never numbers."""
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import openai
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, model_validator
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import PlannerError
@@ -26,14 +26,123 @@ _SYSTEM_PROMPT = (
 )
 
 
+def _nonempty_text(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("must not be blank")
+    return normalized
+
+
+def _at_least_two_companies(value: list[str]) -> list[str]:
+    if len(value) < 2:
+        raise ValueError("companies must contain at least two issuers")
+    return value
+
+
+def _positive_limit(value: int) -> int:
+    if value < 1:
+        raise ValueError("limit must be positive")
+    return value
+
+
+NonEmptyText = Annotated[str, AfterValidator(_nonempty_text)]
+ComparedCompanies = Annotated[list[NonEmptyText], AfterValidator(_at_least_two_companies)]
+PositiveLimit = Annotated[int, AfterValidator(_positive_limit)]
+
+
+class _LookupPlan(BaseModel):
+    intent: Literal[Intent.LOOKUP]
+    company: NonEmptyText
+    metric: NonEmptyText
+
+
+class _ComparePlan(BaseModel):
+    intent: Literal[Intent.COMPARE]
+    companies: ComparedCompanies
+    metric: NonEmptyText
+
+
+class _RankPlan(BaseModel):
+    intent: Literal[Intent.RANK]
+    industry: NonEmptyText
+    limit: PositiveLimit = 10
+
+
+class _RankAndLookupPlan(BaseModel):
+    intent: Literal[Intent.RANK_AND_LOOKUP]
+    industry: NonEmptyText
+    metric: NonEmptyText
+    limit: PositiveLimit = 10
+
+
+class _ExplainPlan(BaseModel):
+    intent: Literal[Intent.EXPLAIN]
+    topic: NonEmptyText
+
+
+class _NewsAndExplainPlan(BaseModel):
+    intent: Literal[Intent.NEWS_AND_EXPLAIN]
+
+
+PlanAction = (
+    _LookupPlan
+    | _ComparePlan
+    | _RankPlan
+    | _RankAndLookupPlan
+    | _ExplainPlan
+    | _NewsAndExplainPlan
+)
+
+
 class Plan(BaseModel):
-    intent: Intent
-    company: str | None = None
-    companies: list[str] = Field(default_factory=list)
-    metric: str | None = None
-    industry: str | None = None
-    limit: int = 10
-    topic: str | None = None
+    action: PlanAction
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_flat_action(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "action" not in value and "intent" in value:
+            return {"action": value}
+        return value
+
+    @property
+    def intent(self) -> Intent:
+        return self.action.intent
+
+    @property
+    def company(self) -> str | None:
+        if isinstance(self.action, _LookupPlan):
+            return self.action.company
+        return None
+
+    @property
+    def companies(self) -> list[str]:
+        if isinstance(self.action, _ComparePlan):
+            return self.action.companies
+        return []
+
+    @property
+    def metric(self) -> str | None:
+        if isinstance(self.action, (_LookupPlan, _ComparePlan, _RankAndLookupPlan)):
+            return self.action.metric
+        return None
+
+    @property
+    def industry(self) -> str | None:
+        if isinstance(self.action, (_RankPlan, _RankAndLookupPlan)):
+            return self.action.industry
+        return None
+
+    @property
+    def limit(self) -> int:
+        if isinstance(self.action, (_RankPlan, _RankAndLookupPlan)):
+            return self.action.limit
+        return 10
+
+    @property
+    def topic(self) -> str | None:
+        if isinstance(self.action, _ExplainPlan):
+            return self.action.topic
+        return None
 
 
 class OpenAIStructuredCompleter:

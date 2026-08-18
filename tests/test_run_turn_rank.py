@@ -1,6 +1,7 @@
 """Gold: top 10 healthcare from the checked-in universe snapshot through run_turn."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -130,6 +131,36 @@ def test_run_turn_returns_rank_table_for_bare_top_10_healthcare() -> None:
 
 UNKNOWN_INDUSTRY_QUERY = "What are the top 10 companies in AI?"
 ALLOWED_INDUSTRIES = ("finance", "healthcare", "technology")
+
+
+class _MissingIndustryCompleter:
+    def __init__(self, intent: Intent) -> None:
+        self._intent = intent
+
+    def complete(self, query: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            intent=self._intent,
+            industry=None,
+            metric="net_income",
+            limit=10,
+        )
+
+
+@pytest.mark.parametrize("intent", [Intent.RANK, Intent.RANK_AND_LOOKUP])
+def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
+    intent: Intent,
+) -> None:
+    runtime = replace(_gold_rank_runtime(), completer=_MissingIndustryCompleter(intent))
+
+    result = run_turn("rank companies", runtime)
+
+    assert result.intent is intent
+    assert result.renderer is RendererKind.REFUSE
+    assert result.tool_traces == []
+    assert result.message is not None
+    assert "unknown industry" in result.message.casefold()
+    for industry in ALLOWED_INDUSTRIES:
+        assert industry in result.message.casefold()
 
 
 def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
@@ -818,4 +849,3 @@ def test_snapshot_builder_refuses_to_write_empty_universe(tmp_path: Path) -> Non
         main(["--input", str(stub), "--output", str(output)])
 
     assert output.read_text(encoding="utf-8") == "do-not-clobber"
-

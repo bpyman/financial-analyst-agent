@@ -321,8 +321,9 @@ def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
 def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if runtime.ranking is None:
         raise RuntimeError("rank intent requires a ranking adapter")
+    industry = plan.industry or ""
     try:
-        table = runtime.ranking.rank_companies(plan.industry, plan.limit)
+        table = runtime.ranking.rank_companies(industry, plan.limit)
     except UnknownIndustryError as exc:
         return TurnResult(
             intent=Intent.RANK,
@@ -347,7 +348,7 @@ def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
         tool_traces=[
             ToolTrace(
                 tool="rank_companies",
-                args={"industry": plan.industry, "limit": plan.limit},
+                args={"industry": industry, "limit": plan.limit},
                 provenance={
                     "snapshot_as_of": table.as_of,
                     "source": table.source,
@@ -493,8 +494,9 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if runtime.ranking is None:
         raise RuntimeError("rank_and_lookup intent requires a ranking adapter")
     metric = plan.metric
+    industry = plan.industry or ""
     try:
-        table = runtime.ranking.rank_companies(plan.industry, plan.limit)
+        table = runtime.ranking.rank_companies(industry, plan.limit)
     except UnknownIndustryError as exc:
         return TurnResult(
             intent=Intent.RANK_AND_LOOKUP,
@@ -505,7 +507,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     traces = [
         ToolTrace(
             tool="rank_companies",
-            args={"industry": plan.industry, "limit": plan.limit},
+            args={"industry": industry, "limit": plan.limit},
             provenance={
                 "snapshot_as_of": table.as_of,
                 "source": table.source,

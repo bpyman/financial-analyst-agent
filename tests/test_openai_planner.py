@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import ConfigurationError
@@ -47,8 +48,61 @@ def test_openai_completer_emits_closed_intent_from_structured_output() -> None:
 
 def test_openai_completer_schema_only_allows_closed_intents() -> None:
     schema = Plan.model_json_schema()
-    names = set(schema["$defs"]["Intent"]["enum"])
+    variants = schema["properties"]["action"]["anyOf"]
+    names = {
+        schema["$defs"][variant["$ref"].rsplit("/", maxsplit=1)[-1]]["properties"][
+            "intent"
+        ]["const"]
+        for variant in variants
+    }
     assert names == _CLOSED_INTENTS
+
+
+@pytest.mark.parametrize(
+    ("payload", "missing_parameter"),
+    [
+        ({"intent": "lookup", "metric": "net_income"}, "company"),
+        ({"intent": "lookup", "company": "Google"}, "metric"),
+        (
+            {"intent": "compare", "companies": ["Microsoft"], "metric": "net_margin"},
+            "companies",
+        ),
+        ({"intent": "compare", "companies": ["Microsoft", "Google"]}, "metric"),
+        ({"intent": "rank", "industry": None, "limit": 10}, "industry"),
+        ({"intent": "rank", "industry": "   ", "limit": 10}, "industry"),
+        ({"intent": "rank", "industry": "healthcare", "limit": 0}, "limit"),
+        ({"intent": "rank_and_lookup", "metric": "net_income", "limit": 10}, "industry"),
+        ({"intent": "rank_and_lookup", "industry": "healthcare", "limit": 10}, "metric"),
+        (
+            {
+                "intent": "rank_and_lookup",
+                "industry": "healthcare",
+                "metric": "net_income",
+                "limit": 0,
+            },
+            "limit",
+        ),
+        ({"intent": "explain"}, "topic"),
+    ],
+    ids=[
+        "lookup-company",
+        "lookup-metric",
+        "compare-companies",
+        "compare-metric",
+        "rank-industry",
+        "rank-blank-industry",
+        "rank-limit",
+        "rank-and-lookup-industry",
+        "rank-and-lookup-metric",
+        "rank-and-lookup-limit",
+        "explain-topic",
+    ],
+)
+def test_plan_rejects_incomplete_intent_parameters(
+    payload: dict[str, object], missing_parameter: str
+) -> None:
+    with pytest.raises(ValidationError, match=missing_parameter):
+        Plan.model_validate(payload)
 
 
 def test_missing_openai_config_is_configuration_error_not_regex_planner(
