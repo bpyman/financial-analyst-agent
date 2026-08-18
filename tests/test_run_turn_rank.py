@@ -49,11 +49,12 @@ def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
     assert "EP-PC" not in tickers
     assert "SOMN" not in tickers
     assert "OXLCG" not in tickers
-    assert "BXSL" not in tickers
     assert "DMII" not in tickers
-    assert "GBDC" not in tickers
-    assert "ARCC" not in tickers
-    assert all("acquisition" not in name for name in names)
+    assert "MU" in tickers
+    assert "PNW" in tickers
+    industries = {company.industry.casefold() for company in snapshot.companies if company.industry}
+    assert "shell companies" not in industries
+    assert "financial - conglomerates" not in industries
     assert all("pfd cv tr secs" not in name for name in names)
     assert all("collateral tr" not in name for name in names)
     assert all("notes due" not in name for name in names)
@@ -306,7 +307,7 @@ def test_run_turn_ranks_builder_snapshot_without_etfs_funds_or_duplicate_ciks() 
     assert [row.cik for row in result.table_rows].count("0000731766") == 1
 
 
-def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells() -> None:
+def test_run_turn_ranks_operating_finance_issuers_not_shells_or_conglomerate_vehicles() -> None:
     snapshot = build_universe_snapshot(
         (
             _company(
@@ -315,13 +316,7 @@ def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells(
                 ticker="JPM",
                 sector="Financial Services",
                 market_cap="600000000000",
-            ),
-            _company(
-                cik="0001736035",
-                name="Blackstone Secured Lending Fund",
-                ticker="BXSL",
-                sector="Financial Services",
-                market_cap="5000000000",
+                industry="Banks - Diversified",
             ),
             _company(
                 cik="0002047258",
@@ -329,20 +324,15 @@ def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells(
                 ticker="DMII",
                 sector="Financial Services",
                 market_cap="645918000",
-            ),
-            _company(
-                cik="0001476765",
-                name="Golub Capital BDC, Inc.",
-                ticker="GBDC",
-                sector="Financial Services",
-                market_cap="4000000000",
+                industry="Shell Companies",
             ),
             _company(
                 cik="0002040002",
-                name="Research Alliance Corporation III Class A Ordinary Shares",
-                ticker="RACC",
+                name="Long Table Growth Corp.",
+                ticker="LTGR",
                 sector="Financial Services",
-                market_cap="350000000",
+                market_cap="171000000",
+                industry="Financial - Conglomerates",
             ),
             _company(
                 cik="0001287750",
@@ -350,13 +340,7 @@ def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells(
                 ticker="ARCC",
                 sector="Financial Services",
                 market_cap="14000000000",
-            ),
-            _company(
-                cik="0002040001",
-                name="Talon Capital Corp.",
-                ticker="TLNC",
-                sector="Financial Services",
-                market_cap="400000000",
+                industry="Asset Management",
             ),
         ),
         as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
@@ -372,7 +356,43 @@ def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells(
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
-    assert [row.ticker for row in result.table_rows] == ["JPM"]
+    assert [row.ticker for row in result.table_rows] == ["JPM", "ARCC"]
+    assert "DMII" not in [row.ticker for row in result.table_rows]
+    assert "LTGR" not in [row.ticker for row in result.table_rows]
+
+
+def test_run_turn_keeps_common_shares_whose_ticker_shares_a_letter_suffix() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0000723125",
+                name="Micron Technology, Inc.",
+                ticker="MU",
+                sector="Technology",
+                market_cap="150000000000",
+                industry="Semiconductors",
+            ),
+            _company(
+                cik="0000794367",
+                name="Macy's, Inc.",
+                ticker="M",
+                sector="Consumer Cyclical",
+                market_cap="5000000000",
+                industry="Department Stores",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+    result = run_turn(
+        "What are the top 10 companies in technology?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert [row.ticker for row in result.table_rows] == ["MU"]
 
 
 def test_run_turn_excludes_shell_company_industry_even_without_acquisition_in_name() -> None:

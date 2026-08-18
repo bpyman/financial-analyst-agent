@@ -42,7 +42,8 @@ _NON_COMMON_TICKER = re.compile(
     r"(?:-P[A-Z]?|-U(?:N)?|-W(?:S|T)?|-R)$",
     re.IGNORECASE,
 )
-_STRUCTURED_PRODUCT_NAME = re.compile(
+# FMP puts the instrument description in companyName; there is no securityType field.
+_INSTRUMENT_TITLE = re.compile(
     r"\bpfd\b|preferred\s+stock|perpetual\s+preferred|\bwarrants?\b|"
     r"collateral\s+tr(?:ust|\b)|tr\s+secs|capital\s+trust|"
     r"notes?\s+due|senior\s+notes|"
@@ -54,30 +55,13 @@ _STRUCTURED_PRODUCT_NAME = re.compile(
     r"\bstrats\b",
     re.IGNORECASE,
 )
-_VEHICLE_INDUSTRIES = frozenset({"shell companies"})
-_VEHICLE_SERIES = r"(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|\d+)"
-_VEHICLE_ISSUER = re.compile(
-    r"\bfunds?\b"
-    r"|\bbdcs?\b"
-    r"|acquisition"
-    r"|\bblank\s+checks?\b"
-    r"|\bspacs?\b"
-    rf"|\bholdings?\s+{_VEHICLE_SERIES}\b"
-    rf"|\bequity\s+partners?\s+{_VEHICLE_SERIES}\b"
-    rf"|\bcapital\s+(?:investment\s+)?corp(?:oration)?\.?\s+{_VEHICLE_SERIES}\b"
-    rf"|\bpartners?\s+{_VEHICLE_SERIES}\b"
-    rf"|\bcorp(?:oration)?\.?\s+{_VEHICLE_SERIES}\b"
-    r"|\bspecialty\s+lending\b"
-    r"|\bdirect\s+lending\b"
-    r"|\bcredit\s+company\b",
-    re.IGNORECASE,
-)
-_FINANCE_VEHICLE_NAME = re.compile(
-    r"\bcapital\s+(?:investment\s+)?corp"
-    r"|\bdevelopment\s+corp"
-    r"|\bmerger\s+corp"
-    r"|\bpartners?\s+corporation\b",
-    re.IGNORECASE,
+# Empirically vehicle-dominated FMP industries. Asset Management is not in this
+# set: it mixes BlackRock with BDCs, and the screener has no isBdc flag.
+_NON_OPERATING_INDUSTRIES = frozenset(
+    {
+        "shell companies",
+        "financial - conglomerates",
+    }
 )
 
 
@@ -103,17 +87,11 @@ def _is_common_share(company: UniverseCompany) -> bool:
         return False
     if _NON_COMMON_TICKER.search(company.ticker.strip()):
         return False
-    return _STRUCTURED_PRODUCT_NAME.search(company.name) is None
+    return _INSTRUMENT_TITLE.search(company.name) is None
 
 
 def _is_operating_issuer(company: UniverseCompany) -> bool:
-    if company.industry.strip().casefold() in _VEHICLE_INDUSTRIES:
-        return False
-    if _VEHICLE_ISSUER.search(company.name):
-        return False
-    if company.sector.casefold() != "financial services":
-        return True
-    return _FINANCE_VEHICLE_NAME.search(company.name) is None
+    return company.industry.strip().casefold() not in _NON_OPERATING_INDUSTRIES
 
 
 def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
