@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.runtime import fixture_runtime
 from financial_analyst_agent.turn import (
     Intent,
@@ -30,6 +31,13 @@ class _NewsCompleter:
         if query != NVIDIA_SUPPLY_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=query)
+
+
+class _RewritingNewsCompleter:
+    def complete(self, query: str) -> SimpleNamespace:
+        if query != NVIDIA_SUPPLY_QUERY:
+            raise AssertionError(f"unexpected query: {query!r}")
+        return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query="NVIDIA")
 
 
 class _GroundedEssay:
@@ -63,6 +71,11 @@ class _EmptyNews:
         return []
 
 
+class _FailingNews:
+    def search_news(self, query: str) -> list[NewsHit]:
+        raise ProviderError("Tavily search failed", details={"query": query})
+
+
 def _news_runtime(news: object, essay: object) -> Runtime:
     return Runtime(
         completer=_NewsCompleter(),
@@ -92,6 +105,21 @@ def test_run_turn_news_and_explain_cites_fixture_hits() -> None:
     assert [hit["url"] for hit in trace.provenance["hits"]] == [FIXTURE_HIT.url]
 
 
+def test_run_turn_news_and_explain_uses_original_query_when_plan_rewrites_it() -> None:
+    result = run_turn(
+        NVIDIA_SUPPLY_QUERY,
+        Runtime(
+            completer=_RewritingNewsCompleter(),
+            facts=_ExplodingFacts(),
+            news=_FixtureNews(),
+            essay=_GroundedEssay(),
+        ),
+    )
+
+    assert result.renderer is RendererKind.ESSAY
+    assert result.tool_traces[0].args["query"] == NVIDIA_SUPPLY_QUERY
+
+
 def test_run_turn_news_and_explain_refuses_empty_hits_without_essay() -> None:
     result = run_turn(NVIDIA_SUPPLY_QUERY, _news_runtime(_EmptyNews(), _ExplodingEssay()))
 
@@ -104,6 +132,25 @@ def test_run_turn_news_and_explain_refuses_empty_hits_without_essay() -> None:
     assert result.tool_traces[0].args["query"] == NVIDIA_SUPPLY_QUERY
     assert result.message is not None
     assert "usable" in result.message.casefold()
+
+
+def test_run_turn_news_and_explain_refuses_provider_failure_without_essay() -> None:
+    result = run_turn(NVIDIA_SUPPLY_QUERY, _news_runtime(_FailingNews(), _ExplodingEssay()))
+
+    assert result.intent is Intent.NEWS_AND_EXPLAIN
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
+    assert result.citations == []
+    assert len(result.tool_traces) == 1
+    trace = result.tool_traces[0]
+    assert trace.tool == "search_news"
+    assert trace.args["query"] == NVIDIA_SUPPLY_QUERY
+    assert trace.provenance["error"] == {
+        "code": "provider_error",
+        "message": "Tavily search failed",
+    }
+    assert result.message is not None
+    assert "unavailable" in result.message.casefold()
 
 
 class _InventedDollarEssay:
@@ -156,5 +203,3 @@ def test_fixture_runtime_news_and_explain_uses_recorded_hits() -> None:
     assert trace.args["query"] == NVIDIA_SUPPLY_QUERY
     assert trace.args["topic"] == "news"
     assert trace.args["max_results"] == 5
-
-

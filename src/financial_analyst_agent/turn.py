@@ -13,6 +13,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    ProviderError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
@@ -211,17 +212,35 @@ def _hits_json(hits: list[NewsHit]) -> str:
     return json.dumps([hit.model_dump(mode="json") for hit in hits])
 
 
-def _news_and_explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
+def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     if runtime.news is None:
         raise RuntimeError("news_and_explain intent requires a news adapter")
     if runtime.essay is None:
         raise RuntimeError("news_and_explain intent requires an essay completer")
-    query = plan.query
-    hits = _usable_news_hits(runtime.news.search_news(query))
+    search_args = _search_news_args(query)
+    try:
+        hits = _usable_news_hits(runtime.news.search_news(query))
+    except ProviderError as exc:
+        return TurnResult(
+            intent=Intent.NEWS_AND_EXPLAIN,
+            tool_traces=[
+                ToolTrace(
+                    tool="search_news",
+                    args=search_args,
+                    provenance={
+                        "error": {"code": exc.code, "message": str(exc)},
+                    },
+                )
+            ],
+            renderer=RendererKind.REFUSE,
+            message=(
+                "News search is unavailable. Refusing rather than using training data."
+            ),
+        )
     traces = [
         ToolTrace(
             tool="search_news",
-            args=_search_news_args(query),
+            args=search_args,
             provenance={"hits": [hit.model_dump(mode="json") for hit in hits]},
         )
     ]
@@ -572,7 +591,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.EXPLAIN:
         return _explain_turn(plan, runtime)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
-        return _news_and_explain_turn(plan, runtime)
+        return _news_and_explain_turn(query, runtime)
     if plan.intent is Intent.COMPARE:
         if plan.metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, plan.metric)
