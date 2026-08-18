@@ -1,5 +1,7 @@
 """Application seam: run_turn(query, runtime) → TurnResult."""
 
+import json
+import re
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
@@ -11,6 +13,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    ConfigurationError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
@@ -61,10 +64,18 @@ _LOOKUP_FAILURES = (
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
+MODEL_ANALYSIS_BANNER = "model-analysis"
+_NUMERIC_TOKEN = re.compile(
+    r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
+)
 
 
 class Completer(Protocol):
     def complete(self, query: str) -> Any: ...
+
+
+class EssayCompleter(Protocol):
+    def complete_essay(self, query: str) -> str: ...
 
 
 class FactsPort(Protocol):
@@ -80,6 +91,7 @@ class Runtime:
     completer: Completer
     facts: FactsPort
     ranking: RankingPort | None = None
+    essay: EssayCompleter | None = None
 
 
 class ToolTrace(BaseModel):
@@ -127,6 +139,52 @@ class TurnResult(BaseModel):
     banners: list[str] = Field(default_factory=list)
     numeral_lock_extras: list[str] = Field(default_factory=list)
     message: str | None = None
+    essay: str | None = None
+
+
+def _numeric_tokens(text: str) -> list[str]:
+    return _NUMERIC_TOKEN.findall(text)
+
+
+def _numeral_lock_extras(essay: str, tool_json: str) -> list[str]:
+    """Return numeric tokens in the essay that do not appear in tool JSON."""
+    allowed = set(_numeric_tokens(tool_json))
+    extras: list[str] = []
+    seen: set[str] = set()
+    for token in _numeric_tokens(essay):
+        if token in allowed or token in seen:
+            continue
+        seen.add(token)
+        extras.append(token)
+    return extras
+
+
+def _tool_json(traces: list[ToolTrace]) -> str:
+    return json.dumps([trace.model_dump(mode="json") for trace in traces])
+
+
+def _explain_turn(query: str, runtime: Runtime) -> TurnResult:
+    if runtime.essay is None:
+        raise ConfigurationError("explain intent requires an essay completer")
+    traces = [ToolTrace(tool="explain_topic", args={"topic": query})]
+    essay = runtime.essay.complete_essay(query)
+    extras = _numeral_lock_extras(essay, _tool_json(traces))
+    if extras:
+        invented = ", ".join(extras)
+        return TurnResult(
+            intent=Intent.EXPLAIN,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            numeral_lock_extras=extras,
+            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+        )
+    return TurnResult(
+        intent=Intent.EXPLAIN,
+        tool_traces=traces,
+        renderer=RendererKind.ESSAY,
+        banners=[MODEL_ANALYSIS_BANNER],
+        essay=essay,
+    )
 
 
 def _lookup_facts(result: Any) -> list[Any]:
@@ -444,6 +502,8 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
 
 def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
+    if plan.intent is Intent.EXPLAIN:
+        return _explain_turn(query, runtime)
     if plan.intent is Intent.COMPARE:
         if plan.metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, plan.metric)

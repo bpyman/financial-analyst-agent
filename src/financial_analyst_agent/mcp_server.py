@@ -62,5 +62,14 @@ def rank_companies(industry: str, limit: int = 10) -> dict[str, object]:
     }
 
 
+@mcp.tool()
+def explain_topic(topic: str) -> dict[str, object]:
+    """Write a labeled model-analysis essay. The turn renderer numeral-locks the text."""
+    runtime = build_runtime()
+    if runtime.essay is None:
+        raise RuntimeError("essay completer is not configured")
+    return {"essay": runtime.essay.complete_essay(topic)}
+
+
 if __name__ == "__main__":
     mcp.run(transport="http", host="127.0.0.1", port=8000)

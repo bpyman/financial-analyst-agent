@@ -42,6 +42,9 @@ def main() -> None:
     if result.renderer is RendererKind.REFUSE:
         st.error(result.message)
         return
+    if result.renderer is RendererKind.ESSAY:
+        st.markdown(result.essay or "")
+        return
     if result.renderer is RendererKind.TABLE:
         st.dataframe(
             [row.model_dump(mode="json") for row in result.table_rows],

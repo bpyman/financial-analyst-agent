@@ -20,7 +20,7 @@ GOOGLE_GROSS_PROFIT_QUERY = (
 GOOGLE_OPERATING_MARGIN_QUERY = (
     "What was Google's operating margin based on their latest quarterly report?"
 )
-UNRELATED_QUERY = "How can AI disrupt healthcare?"
+UNRELATED_QUERY = "What is the weather in Atlanta?"
 EXXONMOBIL_NET_INCOME_QUERY = (
     "What was ExxonMobil's net income based on their latest quarterly report?"
 )

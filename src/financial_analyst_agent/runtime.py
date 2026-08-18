@@ -106,12 +106,28 @@ def _metric_from_query(normalized: str) -> str:
     return "unknown"
 
 
+FIXTURE_EXPLAIN_ESSAY = (
+    "AI can disrupt healthcare by automating imaging review, triage, and documentation. "
+    "Common use cases include clinical decision support, administrative coding, "
+    "and patient outreach."
+)
+
+
+class FixtureEssayCompleter:
+    """Recorded essay so explain turns stay offline."""
+
+    def complete_essay(self, query: str) -> str:
+        return FIXTURE_EXPLAIN_ESSAY
+
+
 class DemoCompleter:
     """Injectable fake completer so this slice is demoable without OpenAI."""
 
     def complete(self, query: str) -> SimpleNamespace:
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
+        if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):
+            return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
         if "compare" in normalized:
             return SimpleNamespace(
                 intent=Intent.COMPARE,
@@ -145,6 +161,7 @@ def fixture_runtime() -> Runtime:
         completer=DemoCompleter(),
         facts=FixtureFactLookup(),
         ranking=SnapshotRanking.from_path(),
+        essay=FixtureEssayCompleter(),
     )
 
 
@@ -153,6 +170,7 @@ def live_runtime(settings: Settings | None = None) -> Runtime:
         completer=DemoCompleter(),
         facts=SecFactLookup(settings or get_settings()),
         ranking=SnapshotRanking.from_path(),
+        essay=FixtureEssayCompleter(),
     )
 
 
