@@ -23,3 +23,10 @@ def test_settings_require_fmp_api_key_points_at_dotenv(monkeypatch: pytest.Monke
 
     with pytest.raises(ConfigurationError, match=r"FMP_API_KEY.*\.env"):
         Settings().require_fmp_api_key()
+
+
+def test_settings_require_tavily_api_key_points_at_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+
+    with pytest.raises(ConfigurationError, match=r"TAVILY_API_KEY.*\.env"):
+        Settings().require_tavily_api_key()

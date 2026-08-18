@@ -64,6 +64,9 @@ PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 MODEL_ANALYSIS_BANNER = "model-analysis"
+SEARCH_NEWS_TOPIC = "news"
+SEARCH_NEWS_MAX_RESULTS = 5
+SEARCH_NEWS_TIME_RANGE = "week"
 _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
@@ -74,7 +77,7 @@ class Completer(Protocol):
 
 
 class EssayCompleter(Protocol):
-    def complete_essay(self, query: str) -> str: ...
+    def complete_essay(self, query: str, tool_json: str = "") -> str: ...
 
 
 class FactsPort(Protocol):
@@ -85,12 +88,25 @@ class RankingPort(Protocol):
     def rank_companies(self, industry: str, limit: int) -> Any: ...
 
 
+class NewsPort(Protocol):
+    def search_news(self, query: str) -> list["NewsHit"]: ...
+
+
 @dataclass(frozen=True)
 class Runtime:
     completer: Completer
     facts: FactsPort
     ranking: RankingPort | None = None
+    news: NewsPort | None = None
     essay: EssayCompleter | None = None
+
+
+class NewsHit(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+    score: float | None = None
+    published: str | None = None
 
 
 class ToolTrace(BaseModel):
@@ -139,6 +155,7 @@ class TurnResult(BaseModel):
     numeral_lock_extras: list[str] = Field(default_factory=list)
     message: str | None = None
     essay: str | None = None
+    citations: list[NewsHit] = Field(default_factory=list)
 
 
 def _numeral_lock_extras(essay: str, tool_json: str) -> list[str]:
@@ -172,6 +189,67 @@ def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
         banners=[MODEL_ANALYSIS_BANNER],
+        essay=essay,
+    )
+
+
+def _usable_news_hits(hits: list[NewsHit]) -> list[NewsHit]:
+    usable = [hit for hit in hits if hit.title.strip() and hit.url.strip()]
+    return usable[:SEARCH_NEWS_MAX_RESULTS]
+
+
+def _search_news_args(query: str) -> dict[str, Any]:
+    return {
+        "query": query,
+        "topic": SEARCH_NEWS_TOPIC,
+        "max_results": SEARCH_NEWS_MAX_RESULTS,
+        "time_range": SEARCH_NEWS_TIME_RANGE,
+    }
+
+
+def _hits_json(hits: list[NewsHit]) -> str:
+    return json.dumps([hit.model_dump(mode="json") for hit in hits])
+
+
+def _news_and_explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    if runtime.news is None:
+        raise RuntimeError("news_and_explain intent requires a news adapter")
+    if runtime.essay is None:
+        raise RuntimeError("news_and_explain intent requires an essay completer")
+    query = plan.query
+    hits = _usable_news_hits(runtime.news.search_news(query))
+    traces = [
+        ToolTrace(
+            tool="search_news",
+            args=_search_news_args(query),
+            provenance={"hits": [hit.model_dump(mode="json") for hit in hits]},
+        )
+    ]
+    if not hits:
+        return TurnResult(
+            intent=Intent.NEWS_AND_EXPLAIN,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="No usable news hits for this query. Refusing rather than using training data.",
+        )
+    tool_json = _hits_json(hits)
+    essay = runtime.essay.complete_essay(query, tool_json)
+    extras = _numeral_lock_extras(essay, tool_json)
+    if extras:
+        invented = ", ".join(extras)
+        return TurnResult(
+            intent=Intent.NEWS_AND_EXPLAIN,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            citations=hits,
+            numeral_lock_extras=extras,
+            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+        )
+    return TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        tool_traces=traces,
+        renderer=RendererKind.ESSAY,
+        citations=hits,
         essay=essay,
     )
 
@@ -493,6 +571,8 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
         return _explain_turn(plan, runtime)
+    if plan.intent is Intent.NEWS_AND_EXPLAIN:
+        return _news_and_explain_turn(plan, runtime)
     if plan.intent is Intent.COMPARE:
         if plan.metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, plan.metric)

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     sec_cache_dir: Path | None = None
     fmp_api_key: str = ""
     fmp_base_url: str = "https://financialmodelingprep.com"
+    tavily_api_key: str = ""
+    tavily_base_url: str = "https://api.tavily.com"
     app_mode: AppMode = AppMode.LIVE
 
     model_config = SettingsConfigDict(
@@ -84,6 +86,14 @@ class Settings(BaseSettings):
             raise ValueError("FMP_BASE_URL must be nonempty")
         return stripped
 
+    @field_validator("tavily_base_url")
+    @classmethod
+    def validate_tavily_base_url(cls, value: str) -> str:
+        stripped = value.strip().rstrip("/")
+        if not stripped:
+            raise ValueError("TAVILY_BASE_URL must be nonempty")
+        return stripped
+
     def require_user_agent(self) -> str:
         if not self.sec_user_agent.strip():
             raise ConfigurationError(
@@ -98,6 +108,15 @@ class Settings(BaseSettings):
             raise ConfigurationError(
                 "FMP_API_KEY is required to rebuild the universe snapshot. "
                 "Set FMP_API_KEY in the environment or .env file."
+            )
+        return key
+
+    def require_tavily_api_key(self) -> str:
+        key = self.tavily_api_key.strip()
+        if not key:
+            raise ConfigurationError(
+                "TAVILY_API_KEY is required for live news search. "
+                "Set TAVILY_API_KEY in the environment or .env file."
             )
         return key
 

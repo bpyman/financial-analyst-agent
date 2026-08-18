@@ -1,10 +1,12 @@
 """Fixture and live runtimes for run_turn."""
 
+import json
 import re
 from types import SimpleNamespace
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.facts import FixtureFactLookup
+from financial_analyst_agent.news import FixtureNewsSearch, TavilyNewsSearch
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import REPORTED_METRICS, Intent, Runtime
@@ -106,6 +108,12 @@ def _metric_from_query(normalized: str) -> str:
     return "unknown"
 
 
+def _is_news_query(normalized: str) -> bool:
+    if "supply chain" in normalized or "supply-chain" in normalized:
+        return True
+    return re.search(r"what(?:['’]?s| is) going on", normalized) is not None
+
+
 FIXTURE_EXPLAIN_ESSAY = (
     "AI can disrupt healthcare by automating imaging review, triage, and documentation. "
     "Common use cases include clinical decision support, administrative coding, "
@@ -114,10 +122,33 @@ FIXTURE_EXPLAIN_ESSAY = (
 
 
 class FixtureEssayCompleter:
-    """Recorded essay so explain turns stay offline."""
+    """Recorded essay so explain and news_and_explain turns stay offline."""
 
-    def complete_essay(self, query: str) -> str:
-        return FIXTURE_EXPLAIN_ESSAY
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        if not tool_json:
+            return FIXTURE_EXPLAIN_ESSAY
+        try:
+            payload = json.loads(tool_json)
+        except json.JSONDecodeError:
+            return FIXTURE_EXPLAIN_ESSAY
+        if not isinstance(payload, list):
+            return FIXTURE_EXPLAIN_ESSAY
+        sentences: list[str] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            snippet = str(item.get("snippet") or "").strip()
+            published = str(item.get("published") or "").strip()
+            if not title:
+                continue
+            sentence = f"{title}: {snippet}" if snippet else title
+            if published:
+                sentence = f"{sentence} ({published})"
+            sentences.append(sentence)
+        if not sentences:
+            return FIXTURE_EXPLAIN_ESSAY
+        return " ".join(sentences)
 
 
 class DemoCompleter:
@@ -128,6 +159,8 @@ class DemoCompleter:
         metric = _metric_from_query(normalized)
         if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):
             return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
+        if _is_news_query(normalized):
+            return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=query)
         if "compare" in normalized:
             return SimpleNamespace(
                 intent=Intent.COMPARE,
@@ -161,15 +194,18 @@ def fixture_runtime() -> Runtime:
         completer=DemoCompleter(),
         facts=FixtureFactLookup(),
         ranking=SnapshotRanking.from_path(),
+        news=FixtureNewsSearch(),
         essay=FixtureEssayCompleter(),
     )
 
 
 def live_runtime(settings: Settings | None = None) -> Runtime:
+    resolved = settings or get_settings()
     return Runtime(
         completer=DemoCompleter(),
-        facts=SecFactLookup(settings or get_settings()),
+        facts=SecFactLookup(resolved),
         ranking=SnapshotRanking.from_path(),
+        news=TavilyNewsSearch(resolved),
         essay=FixtureEssayCompleter(),
     )
 

@@ -71,5 +71,15 @@ def explain_topic(topic: str) -> dict[str, object]:
     return {"essay": runtime.essay.complete_essay(topic)}
 
 
+@mcp.tool()
+def search_news(query: str) -> dict[str, object]:
+    """Search current-event news for the user query. Title and URL are required."""
+    runtime = build_runtime()
+    if runtime.news is None:
+        raise RuntimeError("news adapter is not configured")
+    hits = runtime.news.search_news(query)
+    return {"hits": [hit.model_dump(mode="json") for hit in hits]}
+
+
 if __name__ == "__main__":
     mcp.run(transport="http", host="127.0.0.1", port=8000)

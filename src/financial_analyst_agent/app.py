@@ -35,6 +35,10 @@ def main() -> None:
     for banner in result.banners:
         st.info(banner)
 
+    for hit in result.citations:
+        published = f" ({hit.published})" if hit.published else ""
+        st.markdown(f"- [{hit.title}]({hit.url}){published}")
+
     for trace in result.tool_traces:
         with st.expander(f"Tool: {trace.tool}", expanded=True):
             st.json({"args": trace.args, "provenance": trace.provenance})
