@@ -57,17 +57,27 @@ def _canonical_exchange(payload: dict[str, Any]) -> str:
     return _EXCHANGE_ALIASES.get(upper, candidate)
 
 
+def _listing_symbol(payload: dict[str, Any]) -> str:
+    return normalize_ticker(str(payload.get("ticker") or payload.get("symbol") or ""))
+
+
 def _enrich_screener_row(
     payload: dict[str, Any], cik_by_ticker: Mapping[str, str]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     enriched = dict(payload)
+    symbol = _listing_symbol(enriched)
+    if not symbol:
+        return None
+    sec_cik = cik_by_ticker.get(symbol)
+    if sec_cik is not None:
+        enriched["cik"] = sec_cik
+        return enriched
+    if cik_by_ticker:
+        return None
     cik = parse_cik(enriched.get("cik"))
     if cik is None:
-        symbol = str(enriched.get("ticker") or enriched.get("symbol") or "").strip()
-        if symbol:
-            cik = cik_by_ticker.get(normalize_ticker(symbol))
-    if cik is not None:
-        enriched["cik"] = cik
+        return None
+    enriched["cik"] = cik
     return enriched
 
 
@@ -94,6 +104,7 @@ def vendor_company_from_mapping(payload: dict[str, Any]) -> UniverseCompany | No
         market_cap=Decimal(market_cap),
         is_etf=bool(payload.get("is_etf", payload.get("isEtf", payload.get("isETF", False)))),
         is_fund=bool(payload.get("is_fund", payload.get("isFund", False))),
+        industry=str(payload.get("industry") or "").strip(),
     )
 
 
@@ -107,7 +118,10 @@ def companies_from_vendor_payloads(
     for item in payloads:
         if not isinstance(item, dict):
             continue
-        company = vendor_company_from_mapping(_enrich_screener_row(item, cik_by_ticker))
+        enriched = _enrich_screener_row(item, cik_by_ticker)
+        if enriched is None:
+            continue
+        company = vendor_company_from_mapping(enriched)
         if company is not None:
             rows.append(company)
     return rows

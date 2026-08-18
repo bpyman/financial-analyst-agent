@@ -18,6 +18,7 @@
 - Closed aliases: `finance`/`healthcare`/`technology` (plus canonical FMP sector names present in the snapshot). `banks`/`software` omitted because this freeze does not distinguish them from parent sectors. `AI` refuses with the allowed list.
 - Builder (`uv run python scripts/build_universe_snapshot.py` or `--input` stub) drops ETFs/funds/OTC and keeps one row per CIK. `rank_companies` is on local MCP HTTP; Streamlit shows the snapshot timestamp as a banner.
 - Follow-up: `run_turn("top 10 healthcare")` matches as `rank` (bare top-N alias, still refuses unknown industries). FMP screener no longer sends `country=US`; rebuild the packaged snapshot to include US-listed foreign issuers such as NVO, AZN, and TSM.
+- Follow-up: snapshot membership keeps common shares of operating issuers. Vendor `isFund`/`isEtf` flags are not trusted alone; funds, BDCs, acquisition shells, and FMP `Shell Companies` are excluded, and the packaged freeze was rebuilt.
 
 ## Answer
 

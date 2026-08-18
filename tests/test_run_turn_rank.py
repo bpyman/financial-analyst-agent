@@ -41,9 +41,27 @@ def _gold_rank_runtime() -> Runtime:
 def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
     snapshot = load_universe_snapshot()
     healthcare = [company for company in snapshot.companies if company.sector == "Healthcare"]
+    tickers = {company.ticker for company in snapshot.companies}
+    names = [company.name.casefold() for company in snapshot.companies]
     assert snapshot.source == "fmp_universe_snapshot"
     assert len(snapshot.companies) > 19
     assert len(healthcare) > 11
+    assert "EP-PC" not in tickers
+    assert "SOMN" not in tickers
+    assert "OXLCG" not in tickers
+    assert "BXSL" not in tickers
+    assert "DMII" not in tickers
+    assert "GBDC" not in tickers
+    assert "ARCC" not in tickers
+    assert all("acquisition" not in name for name in names)
+    assert all("pfd cv tr secs" not in name for name in names)
+    assert all("collateral tr" not in name for name in names)
+    assert all("notes due" not in name for name in names)
+    assert all("senior notes" not in name for name in names)
+    southern = next(company for company in snapshot.companies if company.cik == "0000092122")
+    assert southern.ticker == "SO"
+    xom = next(company for company in snapshot.companies if company.ticker == "XOM")
+    assert xom.cik == "0002115436"
 
 
 # Fixture-runtime gold literals (injected snapshot, not the live vendor freeze).
@@ -208,6 +226,7 @@ def _company(
     exchange: str = "NYSE",
     is_etf: bool = False,
     is_fund: bool = False,
+    industry: str = "",
 ) -> UniverseCompany:
     return UniverseCompany(
         cik=cik,
@@ -218,6 +237,7 @@ def _company(
         market_cap=Decimal(market_cap),
         is_etf=is_etf,
         is_fund=is_fund,
+        industry=industry,
     )
 
 
@@ -284,6 +304,318 @@ def test_run_turn_ranks_builder_snapshot_without_etfs_funds_or_duplicate_ciks() 
     assert "UNHC" not in tickers
     assert "OTCH" not in tickers
     assert [row.cik for row in result.table_rows].count("0000731766") == 1
+
+
+def test_run_turn_ranks_operating_finance_issuers_not_unflagged_funds_or_shells() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0000019617",
+                name="JPMorgan Chase & Co.",
+                ticker="JPM",
+                sector="Financial Services",
+                market_cap="600000000000",
+            ),
+            _company(
+                cik="0001736035",
+                name="Blackstone Secured Lending Fund",
+                ticker="BXSL",
+                sector="Financial Services",
+                market_cap="5000000000",
+            ),
+            _company(
+                cik="0002047258",
+                name="Drugs Made In America Acquisition II Corp. Ordinary Shares",
+                ticker="DMII",
+                sector="Financial Services",
+                market_cap="645918000",
+            ),
+            _company(
+                cik="0001476765",
+                name="Golub Capital BDC, Inc.",
+                ticker="GBDC",
+                sector="Financial Services",
+                market_cap="4000000000",
+            ),
+            _company(
+                cik="0002040002",
+                name="Research Alliance Corporation III Class A Ordinary Shares",
+                ticker="RACC",
+                sector="Financial Services",
+                market_cap="350000000",
+            ),
+            _company(
+                cik="0001287750",
+                name="Ares Capital Corporation",
+                ticker="ARCC",
+                sector="Financial Services",
+                market_cap="14000000000",
+            ),
+            _company(
+                cik="0002040001",
+                name="Talon Capital Corp.",
+                ticker="TLNC",
+                sector="Financial Services",
+                market_cap="400000000",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+    result = run_turn(
+        FINANCE_TOP_10_QUERY,
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert result.intent is Intent.RANK
+    assert result.renderer is RendererKind.TABLE
+    assert [row.ticker for row in result.table_rows] == ["JPM"]
+
+
+def test_run_turn_excludes_shell_company_industry_even_without_acquisition_in_name() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0000019617",
+                name="JPMorgan Chase & Co.",
+                ticker="JPM",
+                sector="Financial Services",
+                market_cap="600000000000",
+                industry="Banks - Diversified",
+            ),
+            _company(
+                cik="0002040001",
+                name="Talon Capital Corp.",
+                ticker="TLNC",
+                sector="Financial Services",
+                market_cap="400000000",
+                industry="Shell Companies",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+    result = run_turn(
+        FINANCE_TOP_10_QUERY,
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert result.intent is Intent.RANK
+    assert result.renderer is RendererKind.TABLE
+    assert [row.ticker for row in result.table_rows] == ["JPM"]
+
+
+def test_run_turn_ranks_common_operating_companies_not_preferreds_or_trusts() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0000034088",
+                name="Exxon Mobil Corporation",
+                ticker="XOM",
+                sector="Energy",
+                market_cap="500000000000",
+            ),
+            _company(
+                cik="0001506307",
+                name="El Paso Energy Capital Trust I PFD CV TR SECS",
+                ticker="EP-PC",
+                sector="Energy",
+                market_cap="112533190000",
+            ),
+            _company(
+                cik="0000753308",
+                name="NextEra Energy, Inc.",
+                ticker="NEE",
+                sector="Utilities",
+                market_cap="150000000000",
+            ),
+            _company(
+                cik="0000764622",
+                name="Pinnacle West Capital Corporation",
+                ticker="PNW",
+                sector="Utilities",
+                market_cap="80000000000",
+            ),
+            _company(
+                cik="0001348952",
+                name="Entergy Louisiana, LLC COLLATERAL TR MT",
+                ticker="ELC",
+                sector="Utilities",
+                market_cap="49766091729",
+            ),
+            _company(
+                cik="0001067983",
+                name="Berkshire Hathaway Inc.",
+                ticker="BRK-A",
+                sector="Financial Services",
+                market_cap="1000000000000",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+    energy = run_turn(
+        "What are the top 10 companies in energy?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+    utilities = run_turn(
+        "What are the top 10 companies in utilities?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+    finance = run_turn(
+        FINANCE_TOP_10_QUERY,
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert [row.ticker for row in energy.table_rows] == ["XOM"]
+    assert [row.ticker for row in utilities.table_rows] == ["NEE", "PNW"]
+    assert [row.ticker for row in finance.table_rows] == ["BRK-A"]
+
+
+def test_run_turn_ranks_operating_companies_not_listed_debt() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0000019617",
+                name="JPMorgan Chase & Co.",
+                ticker="JPM",
+                sector="Financial Services",
+                market_cap="800000000000",
+            ),
+            _company(
+                cik="0001495222",
+                name="Oxford Lane Capital Corp. 7.95% Notes due 2032",
+                ticker="OXLCG",
+                sector="Financial Services",
+                market_cap="8492458000",
+                exchange="NASDAQ",
+            ),
+            _company(
+                cik="0001467623",
+                name="TPG Mortgage Investment Trust Inc  9.500% Senior Notes due 2029",
+                ticker="TPGN",
+                sector="Financial Services",
+                market_cap="7000000000",
+                exchange="NYSE",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+    result = run_turn(
+        "What are the top 200 companies in financial services?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    tickers = [row.ticker for row in result.table_rows]
+    assert tickers == ["JPM"]
+    assert "OXLCG" not in tickers
+    assert all("notes due" not in row.company_name.casefold() for row in result.table_rows)
+
+
+def test_run_turn_keeps_sec_common_share_not_note_ticker() -> None:
+    rows = companies_from_vendor_payloads(
+        (
+            {
+                "symbol": "SOMN",
+                "cik": "0000092122",
+                "companyName": "The Southern Company",
+                "marketCap": 107637913197,
+                "sector": "Utilities",
+                "exchangeShortName": "NYSE",
+                "isEtf": False,
+                "isFund": False,
+            },
+            {
+                "symbol": "SO",
+                "cik": "0000092122",
+                "companyName": "The Southern Company",
+                "marketCap": 90000000000,
+                "sector": "Utilities",
+                "exchangeShortName": "NYSE",
+                "isEtf": False,
+                "isFund": False,
+            },
+        ),
+        tickers_payload={
+            "0": {"cik_str": 92122, "ticker": "SO", "title": "SOUTHERN CO"},
+            "1": {"cik_str": 92122, "ticker": "SOMN", "title": "SOUTHERN CO"},
+        },
+    )
+    snapshot = build_universe_snapshot(
+        rows,
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+        source="fmp_universe_snapshot",
+    )
+    result = run_turn(
+        "What are the top 10 companies in utilities?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert [(row.ticker, row.cik) for row in result.table_rows] == [
+        ("SO", "0000092122"),
+    ]
+
+
+def test_run_turn_uses_sec_cik_when_vendor_cik_disagrees() -> None:
+    rows = companies_from_vendor_payloads(
+        (
+            {
+                "symbol": "XOM",
+                "cik": "0002115436",
+                "companyName": "Exxon Mobil Corporation",
+                "marketCap": 669413179200,
+                "sector": "Energy",
+                "exchangeShortName": "NYSE",
+                "isEtf": False,
+                "isFund": False,
+            },
+        ),
+        tickers_payload={
+            "0": {"cik_str": 34088, "ticker": "XOM", "title": "EXXON MOBIL CORP"},
+        },
+    )
+    snapshot = build_universe_snapshot(
+        rows,
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+        source="fmp_universe_snapshot",
+    )
+    result = run_turn(
+        "What are the top 10 companies in energy?",
+        Runtime(
+            completer=DemoCompleter(),
+            facts=_ExplodingFacts(),
+            ranking=SnapshotRanking(snapshot),
+        ),
+    )
+
+    assert [(row.ticker, row.cik) for row in result.table_rows] == [
+        ("XOM", "0000034088"),
+    ]
 
 
 def test_run_turn_ranks_fmp_screener_rows_after_cik_and_exchange_normalization() -> None:

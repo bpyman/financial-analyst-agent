@@ -1,5 +1,8 @@
 """Dated universe snapshot: membership freeze for ranking."""
 
+import json
+import re
+from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +37,49 @@ INDUSTRY_ALIASES: dict[str, str] = {
     "information technology": "Technology",
 }
 
+# NYSE/NASDAQ product suffixes: preferreds, units, warrants, rights — not common shares.
+_NON_COMMON_TICKER = re.compile(
+    r"(?:-P[A-Z]?|-U(?:N)?|-W(?:S|T)?|-R)$",
+    re.IGNORECASE,
+)
+_STRUCTURED_PRODUCT_NAME = re.compile(
+    r"\bpfd\b|preferred\s+stock|perpetual\s+preferred|\bwarrants?\b|"
+    r"collateral\s+tr(?:ust|\b)|tr\s+secs|capital\s+trust|"
+    r"notes?\s+due|senior\s+notes|"
+    r"\d+(?:\.\d+)?\s*%|"
+    r"\b(?:sr|senior)\s+nts?\b|"
+    r"jr\s+sub(?:ordinated)?\s+nts?\b|"
+    r"index\s+plus\s+trust|"
+    r"\btrust\s+(?:for|series)\b|"
+    r"\bstrats\b",
+    re.IGNORECASE,
+)
+_VEHICLE_INDUSTRIES = frozenset({"shell companies"})
+_VEHICLE_SERIES = r"(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|\d+)"
+_VEHICLE_ISSUER = re.compile(
+    r"\bfunds?\b"
+    r"|\bbdcs?\b"
+    r"|acquisition"
+    r"|\bblank\s+checks?\b"
+    r"|\bspacs?\b"
+    rf"|\bholdings?\s+{_VEHICLE_SERIES}\b"
+    rf"|\bequity\s+partners?\s+{_VEHICLE_SERIES}\b"
+    rf"|\bcapital\s+(?:investment\s+)?corp(?:oration)?\.?\s+{_VEHICLE_SERIES}\b"
+    rf"|\bpartners?\s+{_VEHICLE_SERIES}\b"
+    rf"|\bcorp(?:oration)?\.?\s+{_VEHICLE_SERIES}\b"
+    r"|\bspecialty\s+lending\b"
+    r"|\bdirect\s+lending\b"
+    r"|\bcredit\s+company\b",
+    re.IGNORECASE,
+)
+_FINANCE_VEHICLE_NAME = re.compile(
+    r"\bcapital\s+(?:investment\s+)?corp"
+    r"|\bdevelopment\s+corp"
+    r"|\bmerger\s+corp"
+    r"|\bpartners?\s+corporation\b",
+    re.IGNORECASE,
+)
+
 
 class UniverseCompany(BaseModel):
     cik: str = Field(min_length=10, max_length=10, pattern=r"^\d{10}$")
@@ -44,6 +90,50 @@ class UniverseCompany(BaseModel):
     market_cap: DecimalStr
     is_etf: bool = False
     is_fund: bool = False
+    industry: str = ""
+
+
+def is_common_operating_listing(company: UniverseCompany) -> bool:
+    """True for common shares of operating issuers, not funds, shells, or structured products."""
+    return _is_common_share(company) and _is_operating_issuer(company)
+
+
+def _is_common_share(company: UniverseCompany) -> bool:
+    if company.is_etf or company.is_fund:
+        return False
+    if _NON_COMMON_TICKER.search(company.ticker.strip()):
+        return False
+    return _STRUCTURED_PRODUCT_NAME.search(company.name) is None
+
+
+def _is_operating_issuer(company: UniverseCompany) -> bool:
+    if company.industry.strip().casefold() in _VEHICLE_INDUSTRIES:
+        return False
+    if _VEHICLE_ISSUER.search(company.name):
+        return False
+    if company.sector.casefold() != "financial services":
+        return True
+    return _FINANCE_VEHICLE_NAME.search(company.name) is None
+
+
+def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
+    """Pick the common operating listing for one CIK.
+
+    Note/preferred tickers are often a longer extension of the common symbol
+    (SO vs SOMN) and can carry inflated vendor market caps.
+    """
+    listings = list(rows)
+    if len(listings) == 1:
+        return listings[0]
+    tickers = [row.ticker.strip().upper() for row in listings]
+    stems = [
+        row
+        for row, ticker in zip(listings, tickers, strict=True)
+        if not any(ticker != other and ticker.startswith(other) for other in tickers)
+    ]
+    if not stems:
+        stems = listings
+    return min(stems, key=lambda row: (len(row.ticker), -row.market_cap))
 
 
 class UniverseSnapshot(BaseModel):
@@ -61,10 +151,18 @@ def write_universe_snapshot(snapshot: UniverseSnapshot, path: Path | None = None
     snapshot_path = path or DEFAULT_SNAPSHOT_PATH
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
     snapshot_path.write_text(
-        snapshot.model_dump_json(indent=2) + "\n",
+        _snapshot_json(snapshot) + "\n",
         encoding="utf-8",
     )
     return snapshot_path
+
+
+def _snapshot_json(snapshot: UniverseSnapshot) -> str:
+    payload = snapshot.model_dump(mode="json")
+    for company in payload["companies"]:
+        if not company.get("industry"):
+            company.pop("industry", None)
+    return json.dumps(payload, indent=2)
 
 
 def build_universe_snapshot(
@@ -77,17 +175,17 @@ def build_universe_snapshot(
     eligible = [
         row
         for row in rows
-        if not row.is_etf
-        and not row.is_fund
+        if is_common_operating_listing(row)
         and row.exchange.upper() in US_EXCHANGES
         and row.sector
     ]
     eligible.sort(key=lambda row: row.market_cap, reverse=True)
-    by_cik: dict[str, UniverseCompany] = {}
+    by_cik: dict[str, list[UniverseCompany]] = defaultdict(list)
     for row in eligible:
-        if row.cik not in by_cik:
-            by_cik[row.cik] = row
-    return UniverseSnapshot(as_of=as_of, source=source, companies=list(by_cik.values()))
+        by_cik[row.cik].append(row)
+    companies = [preferred_listing(group) for group in by_cik.values()]
+    companies.sort(key=lambda row: row.market_cap, reverse=True)
+    return UniverseSnapshot(as_of=as_of, source=source, companies=companies)
 
 
 def resolve_industry(industry: str, snapshot: UniverseSnapshot) -> str | None:
