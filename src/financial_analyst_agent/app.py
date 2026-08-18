@@ -3,33 +3,18 @@
 import streamlit as st
 
 from financial_analyst_agent.config import AppMode, get_settings
-from financial_analyst_agent.runtime import build_runtime
-from financial_analyst_agent.turn import RendererKind, Runtime, run_turn
+from financial_analyst_agent.domain.errors import ConfigurationError
+from financial_analyst_agent.runtime import runtime_for_kill_switch
+from financial_analyst_agent.turn import RendererKind, TurnResult, run_turn
 
 _GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
+KILL_SWITCH_BANNER = (
+    "KILL-SWITCH ON — fixture runtime (recorded facts, not live EDGAR). "
+    "Say this out loud. Do not present a cassette as live."
+)
 
 
-@st.cache_resource
-def _runtime() -> Runtime:
-    return build_runtime()
-
-
-def main() -> None:
-    st.set_page_config(page_title="Financial analyst agent", layout="wide")
-    st.title("Financial analyst agent")
-    settings = get_settings()
-    if settings.app_mode is AppMode.FIXTURE:
-        st.caption("Fixture runtime — recorded facts, not live EDGAR.")
-    else:
-        st.caption("Live SEC — companyfacts XBRL, not a fixture cassette.")
-
-    query = st.text_input("Question", value=_GOLD_QUERY)
-    if not st.button("Ask", type="primary") and "result" not in st.session_state:
-        return
-
-    result = run_turn(query, _runtime())
-    st.session_state["result"] = result
-
+def render_turn_result(result: TurnResult) -> None:
     st.markdown(f"**Intent:** `{result.intent}`")
 
     for banner in result.banners:
@@ -54,6 +39,33 @@ def main() -> None:
             [row.model_dump(mode="json") for row in result.table_rows],
             use_container_width=True,
         )
+
+
+def main() -> None:
+    st.set_page_config(page_title="Financial analyst agent", layout="wide")
+    st.title("Financial analyst agent")
+    settings = get_settings()
+    kill_switch = st.sidebar.toggle(
+        "Fixture kill-switch",
+        value=settings.app_mode is AppMode.FIXTURE,
+        help="Recorded adapters. Announce this if you use it.",
+    )
+    if kill_switch:
+        st.warning(KILL_SWITCH_BANNER)
+    else:
+        st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
+
+    query = st.text_input("Question", value=_GOLD_QUERY)
+    if not st.button("Ask", type="primary") and "result" not in st.session_state:
+        return
+
+    try:
+        result = run_turn(query, runtime_for_kill_switch(enabled=kill_switch))
+    except ConfigurationError as exc:
+        st.error(str(exc))
+        return
+    st.session_state["result"] = result
+    render_turn_result(result)
 
 
 if __name__ == "__main__":

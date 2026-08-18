@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.runtime import fixture_runtime
@@ -51,6 +53,7 @@ ALPHABET_SOURCE_URL = (
 )
 
 
+@pytest.mark.gold
 def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margins() -> None:
     result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, fixture_runtime())
 

@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
@@ -40,6 +42,7 @@ UNH_SOURCE_URL = (
 )
 
 
+@pytest.mark.gold
 def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None:
     result = run_turn(HEALTHCARE_INCOME_QUERY, _gold_rank_runtime())
 

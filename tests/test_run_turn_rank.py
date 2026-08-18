@@ -13,7 +13,7 @@ import pytest
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.ranking import SnapshotRanking
-from financial_analyst_agent.runtime import DemoCompleter
+from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH, DemoCompleter
 from financial_analyst_agent.snapshot_builder import (
     companies_from_vendor_payloads,
     fetch_fmp_rows,
@@ -28,7 +28,7 @@ from financial_analyst_agent.universe import (
 )
 
 HEALTHCARE_TOP_10_QUERY = "What are the top 10 companies in healthcare?"
-FIXTURE_SNAPSHOT_PATH = Path(__file__).parent / "fixtures" / "universe_snapshot.json"
+FIXTURE_SNAPSHOT_PATH = FIXTURE_UNIVERSE_SNAPSHOT_PATH
 SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
 
 
@@ -163,6 +163,7 @@ def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
         assert industry in result.message.casefold()
 
 
+@pytest.mark.gold
 def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
     result = run_turn(UNKNOWN_INDUSTRY_QUERY, _gold_rank_runtime())
 

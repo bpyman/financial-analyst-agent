@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 from types import SimpleNamespace
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
@@ -11,6 +12,10 @@ from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import REPORTED_METRICS, Intent, Runtime
+
+FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
+    Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
+)
 
 _REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
     ("cost of revenue", "cost_of_revenue"),
@@ -194,7 +199,7 @@ def fixture_runtime() -> Runtime:
     return Runtime(
         completer=DemoCompleter(),
         facts=FixtureFactLookup(),
-        ranking=SnapshotRanking.from_path(),
+        ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=FixtureNewsSearch(),
         essay=FixtureEssayCompleter(),
     )
@@ -211,8 +216,19 @@ def live_runtime(settings: Settings | None = None) -> Runtime:
     )
 
 
+def runtime_for_kill_switch(
+    *,
+    enabled: bool,
+    settings: Settings | None = None,
+) -> Runtime:
+    if enabled:
+        return fixture_runtime()
+    return live_runtime(settings)
+
+
 def build_runtime(settings: Settings | None = None) -> Runtime:
     resolved = settings or get_settings()
-    if resolved.app_mode is AppMode.FIXTURE:
-        return fixture_runtime()
-    return live_runtime(resolved)
+    return runtime_for_kill_switch(
+        enabled=resolved.app_mode is AppMode.FIXTURE,
+        settings=resolved,
+    )

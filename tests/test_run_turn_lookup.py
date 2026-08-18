@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.domain.errors import AmbiguousFactError
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.runtime import DemoCompleter, build_runtime, fixture_runtime
@@ -169,6 +171,7 @@ def test_run_turn_returns_lookup_table_for_google_latest_quarter_net_income() ->
     assert row.source_url == SOURCE_URL
 
 
+@pytest.mark.gold
 def test_run_turn_resolves_google_and_selects_standalone_quarter() -> None:
     result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, fixture_runtime())
 
