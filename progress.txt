@@ -19,3 +19,22 @@ Files changed:
 Blockers / next:
 - Issue 04 (rank-and-lookup) is unblocked. Completer is still keyword `DemoCompleter` until 07.
 - Checked-in snapshot is a small fixture, not a full FMP universe. Rebuild before the interview with `FMP_API_KEY` (or `--input` stub): `uv run python scripts/build_universe_snapshot.py`.
+
+## 2026-08-18 — 04 Rank-and-lookup E2E (PRD US 6, 17, 31–33, 45)
+
+Task completed: `.scratch/financial-analyst-agent/issues/done/04-rank-and-lookup-e2e.md`
+
+Key decisions:
+- Compose inside `run_turn`: rank first, then `get_financials(cik)` for each ranking row. Completer emits industry/limit/metric only; a model ticker list is ignored.
+- Fixture facts record Lilly and UnitedHealth net income; other healthcare constituents stay `missing_fact` partial rows.
+- No new MCP tool. Streamlit already renders snapshot banner, rank card, per-CIK lookup cards, and table rank + filing columns.
+
+Files changed:
+- `tests/test_run_turn_rank_and_lookup.py`
+- `src/financial_analyst_agent/turn.py`, `runtime.py`, `facts.py`
+- `.scratch/financial-analyst-agent/issues/done/04-rank-and-lookup-e2e.md`
+
+Blockers / next:
+- Issue 05 (explain + numeral lock) is unblocked and is the next tracer. 07 still waits on 05 and 06.
+- Completer is still keyword `DemoCompleter`; "income" maps to `net_income` so the composed prompt works until the structured planner.
+- Fixture ranking snapshot is still the small test freeze; packaged snapshot + live SEC will fill more rows at demo time.

@@ -7,7 +7,7 @@ from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import Intent, Runtime
+from financial_analyst_agent.turn import REPORTED_METRICS, Intent, Runtime
 
 _REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
     ("cost of revenue", "cost_of_revenue"),
@@ -16,6 +16,7 @@ _REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
     ("gross profit", "gross_profit"),
     ("net income", "net_income"),
     ("revenue", "revenue"),
+    ("income", "net_income"),
 )
 _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
     ("operating margin", "operating_margin"),
@@ -118,10 +119,19 @@ class DemoCompleter:
                 metric=metric,
             )
         if re.search(r"\btop\b", normalized):
+            industry = _industry_from_query(normalized)
+            limit = _limit_from_query(normalized)
+            if metric in REPORTED_METRICS:
+                return SimpleNamespace(
+                    intent=Intent.RANK_AND_LOOKUP,
+                    industry=industry,
+                    limit=limit,
+                    metric=metric,
+                )
             return SimpleNamespace(
                 intent=Intent.RANK,
-                industry=_industry_from_query(normalized),
-                limit=_limit_from_query(normalized),
+                industry=industry,
+                limit=limit,
             )
         return SimpleNamespace(
             intent=Intent.LOOKUP,

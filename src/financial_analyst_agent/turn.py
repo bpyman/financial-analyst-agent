@@ -342,6 +342,82 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
     return rows
 
 
+def _rank_and_lookup_row(company: Any, index: int, metric: str, reason: str) -> TableRow:
+    return TableRow(
+        company_name=company.name,
+        ticker=company.ticker,
+        cik=company.cik,
+        metric=metric,
+        rank=index,
+        reason=reason,
+    )
+
+
+def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    if runtime.ranking is None:
+        raise RuntimeError("rank_and_lookup intent requires a ranking adapter")
+    metric = plan.metric
+    try:
+        table = runtime.ranking.rank_companies(plan.industry, plan.limit)
+    except UnknownIndustryError as exc:
+        return TurnResult(
+            intent=Intent.RANK_AND_LOOKUP,
+            tool_traces=[],
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    traces = [
+        ToolTrace(
+            tool="rank_companies",
+            args={"industry": plan.industry, "limit": plan.limit},
+            provenance={
+                "snapshot_as_of": table.as_of,
+                "source": table.source,
+                "sector": table.sector,
+            },
+        )
+    ]
+    rows: list[TableRow] = []
+    for index, company in enumerate(table.companies, start=1):
+        args = {"company": company.cik, "metric": metric}
+        try:
+            fetched = runtime.facts.get_financials(company.cik, metric)
+            facts = _lookup_facts(fetched)
+        except _LOOKUP_FAILURES:
+            rows.append(_rank_and_lookup_row(company, index, metric, MISSING_FACT))
+            traces.append(ToolTrace(tool="get_financials", args=args))
+            continue
+        if len(facts) != 1:
+            rows.append(_rank_and_lookup_row(company, index, metric, AMBIGUOUS_CONCEPT))
+            traces.append(ToolTrace(tool="get_financials", args=args))
+            continue
+        fact = facts[0]
+        rows.append(
+            _table_row_from_fact(fact).model_copy(
+                update={
+                    "company_name": company.name,
+                    "ticker": company.ticker,
+                    "cik": company.cik,
+                    "rank": index,
+                }
+            )
+        )
+        traces.append(
+            ToolTrace(
+                tool="get_financials",
+                args=args,
+                provenance=_lookup_provenance(facts),
+            )
+        )
+    return TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        tool_traces=traces,
+        renderer=RendererKind.TABLE,
+        table_rows=rows,
+        banners=[f"Universe snapshot as of {table.as_of}"],
+    )
+
+
 def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
     issuers = list(plan.companies)
     metric = plan.metric
@@ -382,6 +458,10 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         return _compare_turn(plan, runtime)
     if plan.intent is Intent.RANK:
         return _rank_turn(plan, runtime)
+    if plan.intent is Intent.RANK_AND_LOOKUP:
+        if plan.metric not in REPORTED_METRICS:
+            return _refuse_unknown_metric(plan.intent, plan.metric)
+        return _rank_and_lookup_turn(plan, runtime)
     if plan.intent is Intent.LOOKUP and plan.metric not in REPORTED_METRICS:
         return _refuse_unknown_metric(plan.intent, plan.metric)
     args = {"company": plan.company, "metric": plan.metric}

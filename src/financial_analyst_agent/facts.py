@@ -116,7 +116,59 @@ _MICROSOFT = _IssuerFixture(
     ),
 )
 
-_ISSUERS: tuple[_IssuerFixture, ...] = (_ALPHABET, _MICROSOFT)
+_LILLY_FILING = Filing(
+    form="10-Q",
+    accession_number="0000059478-26-000040",
+    filed_date=date(2026, 7, 21),
+    report_date=_QUARTER_END,
+    primary_document="lly-20260630.htm",
+)
+_LILLY = _IssuerFixture(
+    name="Eli Lilly and Company",
+    ticker="LLY",
+    cik="0000059478",
+    filing=_LILLY_FILING,
+    source_url=(
+        "https://www.sec.gov/Archives/edgar/data/59478/"
+        "000005947826000040/lly-20260630.htm"
+    ),
+    facts=(
+        _record(
+            _LILLY_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("2800000000"),
+            concept="NetIncomeLoss",
+        ),
+    ),
+)
+
+_UNITEDHEALTH_FILING = Filing(
+    form="10-Q",
+    accession_number="0000731766-26-000055",
+    filed_date=date(2026, 7, 20),
+    report_date=_QUARTER_END,
+    primary_document="unh-20260630.htm",
+)
+_UNITEDHEALTH = _IssuerFixture(
+    name="UnitedHealth Group Incorporated",
+    ticker="UNH",
+    cik="0000731766",
+    filing=_UNITEDHEALTH_FILING,
+    source_url=(
+        "https://www.sec.gov/Archives/edgar/data/731766/"
+        "000073176626000055/unh-20260630.htm"
+    ),
+    facts=(
+        _record(
+            _UNITEDHEALTH_FILING,
+            start_date=_QUARTER_START,
+            value=Decimal("4200000000"),
+            concept="NetIncomeLoss",
+        ),
+    ),
+)
+
+_ISSUERS: tuple[_IssuerFixture, ...] = (_ALPHABET, _MICROSOFT, _LILLY, _UNITEDHEALTH)
 
 
 class FixtureFactLookup:
