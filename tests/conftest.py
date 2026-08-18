@@ -15,3 +15,4 @@ def _keep_non_network_tests_offline(
     monkeypatch.setenv("SEC_USER_AGENT", "")
     monkeypatch.setenv("FMP_API_KEY", "")
     monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")

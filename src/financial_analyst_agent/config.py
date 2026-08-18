@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     fmp_base_url: str = "https://financialmodelingprep.com"
     tavily_api_key: str = ""
     tavily_base_url: str = "https://api.tavily.com"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-2024-11-20"
+    openai_base_url: str = ""
     app_mode: AppMode = AppMode.LIVE
 
     model_config = SettingsConfigDict(
@@ -119,6 +122,24 @@ class Settings(BaseSettings):
                 "Set TAVILY_API_KEY in the environment or .env file."
             )
         return key
+
+    def require_openai_api_key(self) -> str:
+        key = self.openai_api_key.strip()
+        if not key:
+            raise ConfigurationError(
+                "OPENAI_API_KEY is required for the live planner. "
+                "Set OPENAI_API_KEY in the environment or .env file."
+            )
+        return key
+
+    def require_openai_model(self) -> str:
+        model = self.openai_model.strip()
+        if not model:
+            raise ConfigurationError(
+                "OPENAI_MODEL is required for the live planner. "
+                "Set OPENAI_MODEL in the environment or .env file."
+            )
+        return model
 
 
 def get_settings() -> Settings:

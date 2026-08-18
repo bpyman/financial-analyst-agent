@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.news import FixtureNewsSearch, TavilyNewsSearch
+from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import REPORTED_METRICS, Intent, Runtime
@@ -202,7 +203,7 @@ def fixture_runtime() -> Runtime:
 def live_runtime(settings: Settings | None = None) -> Runtime:
     resolved = settings or get_settings()
     return Runtime(
-        completer=DemoCompleter(),
+        completer=OpenAIStructuredCompleter.from_settings(resolved),
         facts=SecFactLookup(resolved),
         ranking=SnapshotRanking.from_path(),
         news=TavilyNewsSearch(resolved),

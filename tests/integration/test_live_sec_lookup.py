@@ -6,8 +6,11 @@ from decimal import Decimal
 import pytest
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.runtime import live_runtime
-from financial_analyst_agent.turn import Intent, RendererKind, run_turn
+from financial_analyst_agent.news import TavilyNewsSearch
+from financial_analyst_agent.ranking import SnapshotRanking
+from financial_analyst_agent.runtime import DemoCompleter, FixtureEssayCompleter
+from financial_analyst_agent.sec_facts import SecFactLookup
+from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
 ALPHABET_CIK = "0001652044"
@@ -20,7 +23,16 @@ def test_run_turn_live_sec_lookup_google_net_income() -> None:
     if not settings.sec_user_agent.strip():
         pytest.skip("SEC_USER_AGENT required for live SEC")
 
-    result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, live_runtime(settings))
+    result = run_turn(
+        GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY,
+        Runtime(
+            completer=DemoCompleter(),
+            facts=SecFactLookup(settings),
+            ranking=SnapshotRanking.from_path(),
+            news=TavilyNewsSearch(settings),
+            essay=FixtureEssayCompleter(),
+        ),
+    )
 
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.TABLE

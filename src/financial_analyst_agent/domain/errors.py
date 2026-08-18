@@ -60,3 +60,7 @@ class ConfigurationError(FinancialAnalystError):
 
 class UnknownIndustryError(FinancialAnalystError):
     code = "unknown_industry"
+
+
+class PlannerError(FinancialAnalystError):
+    code = "planner_error"
