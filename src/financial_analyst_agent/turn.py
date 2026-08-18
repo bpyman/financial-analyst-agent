@@ -154,18 +154,14 @@ def _table_row_from_fact(fact: Any) -> TableRow:
     )
 
 
-def _lookup_provenance(facts: list[Any]) -> dict[str, Any]:
-    primary = facts[0]
-    provenance: dict[str, Any] = {
-        "accession_number": primary.accession_number,
-        "concept": primary.concept,
-        "source_url": primary.source_url,
-        "start_date": primary.start_date.isoformat(),
-        "end_date": primary.end_date.isoformat(),
+def _lookup_provenance(fact: Any) -> dict[str, Any]:
+    return {
+        "accession_number": fact.accession_number,
+        "concept": fact.concept,
+        "source_url": fact.source_url,
+        "start_date": fact.start_date.isoformat(),
+        "end_date": fact.end_date.isoformat(),
     }
-    if len(facts) > 1:
-        provenance["concepts"] = [fact.concept for fact in facts]
-    return provenance
 
 
 def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
@@ -279,11 +275,11 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
                 )
             )
             continue
+        identity = fetched_groups[0][0]
+        if identity.cik in seen_ciks:
+            continue
+        seen_ciks.add(identity.cik)
         if any(len(group) != 1 for group in fetched_groups):
-            identity = fetched_groups[0][0]
-            if identity.cik in seen_ciks:
-                continue
-            seen_ciks.add(identity.cik)
             rows.append(
                 TableRow(
                     company_name=identity.company_name,
@@ -295,10 +291,6 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
             )
             continue
         fetched = [group[0] for group in fetched_groups]
-        identity = fetched[0]
-        if identity.cik in seen_ciks:
-            continue
-        seen_ciks.add(identity.cik)
         period = _aligned_period(fetched)
         components = [
             _provenance_from_fact(fact, component)
@@ -406,7 +398,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
             ToolTrace(
                 tool="get_financials",
                 args=args,
-                provenance=_lookup_provenance(facts),
+                provenance=_lookup_provenance(fact),
             )
         )
     return TurnResult(
@@ -489,7 +481,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             ToolTrace(
                 tool="get_financials",
                 args=args,
-                provenance=_lookup_provenance(facts),
+                provenance=_lookup_provenance(fact),
             )
         ],
         renderer=RendererKind.TABLE,

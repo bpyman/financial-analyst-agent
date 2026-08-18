@@ -36,10 +36,6 @@ def related_lookup_ciks(resolved_cik: str, filings: list[Filing]) -> tuple[str, 
     return tuple(ordered)
 
 
-def _is_missing_companyfacts(exc: ProviderError) -> bool:
-    return exc.details.get("status_code") == 404
-
-
 class SecFactLookup:
     """Live EDGAR lookup behind the same get_financials port as the fixture adapter."""
 
@@ -61,14 +57,10 @@ class SecFactLookup:
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
         for cik in related_lookup_ciks(resolved.cik, filings):
-            if cik == resolved.cik:
-                issuer_filings = filings
-            else:
-                issuer_filings = parse_submissions(self._client.get_submissions(cik))
             try:
                 company_facts_payload = self._client.get_company_facts(cik)
             except ProviderError as exc:
-                if not _is_missing_companyfacts(exc):
+                if exc.details.get("status_code") != 404:
                     raise
                 last_missing = exc
                 continue
@@ -77,15 +69,13 @@ class SecFactLookup:
                 parsed_metric,
                 _SUPPORTED_CURRENCY,
             )
-            source_cik = cik
-
-            def source_url_for_filing(filing: Filing, issuer_cik: str = source_cik) -> str:
+            def source_url_for_filing(filing: Filing, issuer_cik: str = cik) -> str:
                 return build_filing_source_url(issuer_cik, filing)
 
             try:
                 return select_quarterly_fact_with_filing_fallback(
                     records,
-                    issuer_filings,
+                    filings,
                     parsed_metric,
                     _SUPPORTED_CURRENCY,
                     resolved.name,
@@ -93,9 +83,7 @@ class SecFactLookup:
                     cik,
                     source_url_for_filing,
                 )
-            except UnsupportedQuarterlyFactError as exc:
-                last_unsupported = exc
-            except FilingNotFoundError as exc:
+            except (UnsupportedQuarterlyFactError, FilingNotFoundError) as exc:
                 last_unsupported = exc
         if last_unsupported is not None:
             raise last_unsupported

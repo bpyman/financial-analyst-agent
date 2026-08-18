@@ -104,8 +104,6 @@ def test_sec_fact_lookup_uses_accession_filer_when_successor_has_no_quarter() ->
             return httpx.Response(200, json=_submissions(SUCCESSOR_CIK, ACCESSION))
         if path.endswith(f"/companyfacts/CIK{SUCCESSOR_CIK}.json"):
             return httpx.Response(200, json=_empty_facts(SUCCESSOR_CIK))
-        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
-            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
             return httpx.Response(200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})
@@ -147,8 +145,6 @@ def test_sec_fact_lookup_uses_accession_filer_when_successor_companyfacts_are_mi
             return httpx.Response(200, json=_submissions(SUCCESSOR_CIK, ACCESSION))
         if path.endswith(f"/companyfacts/CIK{SUCCESSOR_CIK}.json"):
             return httpx.Response(404, json={"error": "not found"})
-        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
-            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
             return httpx.Response(200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})

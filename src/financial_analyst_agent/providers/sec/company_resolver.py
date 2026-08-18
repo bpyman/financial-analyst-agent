@@ -23,17 +23,13 @@ _LEGAL_SUFFIXES = re.compile(
 _MIN_CORE_PREFIX_LEN = 4
 
 
-def _normalize_query(query: str) -> str:
-    return re.sub(r"\s+", " ", query.strip()).casefold()
-
-
-def _normalize_company_name(name: str) -> str:
-    return re.sub(r"\s+", " ", name.strip()).casefold()
+def _normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
 def _core_company_name(name: str) -> str:
     """Strip legal suffixes and punctuation so successor titles match operating names."""
-    text = _normalize_company_name(name)
+    text = _normalize_text(name)
     while True:
         stripped = _LEGAL_SUFFIXES.sub("", text).strip(" ,.")
         if stripped == text:
@@ -85,11 +81,11 @@ def _unique_cik(
 
 
 def _name_match_ciks(query: str, entries: list[dict[str, str]]) -> set[str]:
-    normalized_query = _normalize_company_name(query)
+    normalized_query = _normalize_text(query)
     exact = {
         entry["cik"]
         for entry in entries
-        if _normalize_company_name(entry["title"]) == normalized_query
+        if _normalize_text(entry["title"]) == normalized_query
     }
     if exact:
         return exact
@@ -128,7 +124,7 @@ def resolve_company(query: str, tickers_payload: dict[str, Any]) -> Company:
     Core-name matching covers successor/holdings titles (ExxonMobil vs
     ExxonMobil Holdings Corp) without a per-issuer alias list.
     """
-    normalized_query = _normalize_query(query)
+    normalized_query = _normalize_text(query)
     entries = extract_usable_ticker_entries(tickers_payload)
     if not entries:
         raise CompanyNotFoundError("SEC ticker mapping was empty")

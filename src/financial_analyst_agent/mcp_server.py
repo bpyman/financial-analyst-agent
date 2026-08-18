@@ -4,7 +4,7 @@ from fastmcp import FastMCP
 
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.runtime import build_runtime
-from financial_analyst_agent.turn import ALLOWED_METRICS
+from financial_analyst_agent.turn import ALLOWED_METRICS, _lookup_facts
 from financial_analyst_agent.turn import compare_metrics as compare_metric_rows
 
 mcp = FastMCP("financial-analyst")
@@ -13,8 +13,7 @@ mcp = FastMCP("financial-analyst")
 @mcp.tool()
 def get_financials(company: str, metric: str) -> dict[str, object]:
     """Return the latest standalone quarterly fact for a company and metric."""
-    fact = build_runtime().facts.get_financials(company, metric)
-    facts = fact if isinstance(fact, (list, tuple)) else (fact,)
+    facts = _lookup_facts(build_runtime().facts.get_financials(company, metric))
     dumped: list[dict[str, object]] = []
     for item in facts:
         payload = item.model_dump(mode="json")
