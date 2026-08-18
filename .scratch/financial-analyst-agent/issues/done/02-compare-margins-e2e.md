@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Quarterly lookup E2E
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] `run_turn` on the MSFT vs GOOG operating-margin prompt returns `compare` and a table of formula results with component provenance
 - [x] Period mismatch does not compute a blended margin; partial rows show a typed reason
@@ -17,3 +17,7 @@
 - Gold tests go through `run_turn` with the fixture runtime or an injected `Runtime` (`pytest` default excludes `network`).
 - `operating_margin` is Decimal `operating_income / revenue` from matched-period reported facts; mismatched periods and missing issuer facts become partial rows (`period_mismatch`, `missing_fact`).
 - GOOG and GOOGL collapse to one Alphabet CIK inside `compare_metrics`. `compare_metrics` is also on local MCP HTTP; Streamlit still renders via `run_turn`.
+
+## Answer
+
+`run_turn` on the MSFT vs GOOG operating-margin prompt returns `compare` + a period-aligned formula table with component provenance. Period mismatch and missing facts stay partial; GOOG/GOOGL collapse to one Alphabet row; unknown ratios refuse with the closed catalog.

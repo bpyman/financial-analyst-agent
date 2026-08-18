@@ -28,6 +28,7 @@ htmlcov/
 
 # Runtime cache (SEC downloads, etc.)
 .cache/
+.tmp/
 
 # IDE
 .idea/

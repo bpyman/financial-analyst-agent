@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] `run_turn` returns `lookup` + table renderer + provenance for a Google/Alphabet latest-quarter net income query against the fixture runtime
 - [x] Streamlit shows intent, tool card, and fact table for that query
@@ -17,3 +17,7 @@
 - Gold tests and inherited fact-selector tests are offline (`pytest` default excludes `network`).
 - `FactsPort.get_financials` is shared: `FixtureFactLookup` offline, `SecFactLookup` live. Streamlit and MCP call `build_runtime()` (`APP_MODE=live|fixture`).
 - Live Google lookup: `uv run pytest tests/integration/test_live_sec_lookup.py -m network`.
+
+## Answer
+
+`run_turn` on the Google latest-quarter net income query returns `lookup` + a fact table with XBRL provenance. Identity resolution (Google → Alphabet) is inside `get_financials`. Streamlit and local MCP HTTP share the same `FactsPort`. Default tests are offline; live SEC is optional.
