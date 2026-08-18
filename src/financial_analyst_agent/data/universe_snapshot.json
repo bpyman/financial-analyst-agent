@@ -8495,17 +8495,6 @@
       "industry": "Aerospace & Defense"
     },
     {
-      "cik": "0001287750",
-      "name": "Ares Capital Corporation",
-      "ticker": "ARCC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "14101968676",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000927003",
       "name": "Advanced Energy Industries, Inc.",
       "ticker": "AEIS",
@@ -14358,17 +14347,6 @@
       "industry": "Aerospace & Defense"
     },
     {
-      "cik": "0001655888",
-      "name": "Blue Owl Capital Corporation",
-      "ticker": "OBDC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "5707512376",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Financial - Credit Services"
-    },
-    {
       "cik": "0000103379",
       "name": "V.F. Corporation",
       "ticker": "VFC",
@@ -14422,17 +14400,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Broadcasting"
-    },
-    {
-      "cik": "0001736035",
-      "name": "Blackstone Secured Lending Fund",
-      "ticker": "BXSL",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "5632504993",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001495153",
@@ -14763,17 +14730,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Rental & Leasing Services"
-    },
-    {
-      "cik": "0001396440",
-      "name": "Main Street Capital Corporation",
-      "ticker": "MAIN",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "5407356870",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001849253",
@@ -15181,17 +15137,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Information Technology Services"
-    },
-    {
-      "cik": "0001747777",
-      "name": "Blue Owl Technology Finance Corp.",
-      "ticker": "OTF",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "5149207731",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000913353",
@@ -18571,17 +18516,6 @@
       "industry": "Oil & Gas Exploration & Production"
     },
     {
-      "cik": "0001476765",
-      "name": "Golub Capital BDC, Inc.",
-      "ticker": "GBDC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "3417696775",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001974138",
       "name": "NCR Atleos Corporation",
       "ticker": "NATL",
@@ -18753,17 +18687,6 @@
       "sector": "Financial Services",
       "exchange": "NYSE",
       "market_cap": "3368391488",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
-      "cik": "0001422183",
-      "name": "FS KKR Capital Corp.",
-      "ticker": "FSK",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "3363597860",
       "is_etf": false,
       "is_fund": false,
       "industry": "Asset Management"
@@ -23950,17 +23873,6 @@
       "industry": "Internet Content & Information"
     },
     {
-      "cik": "0001508655",
-      "name": "Sixth Street Specialty Lending, Inc.",
-      "ticker": "TSLX",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "1752161424",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001395937",
       "name": "Syndax Pharmaceuticals, Inc.",
       "ticker": "SNDX",
@@ -27360,17 +27272,6 @@
       "industry": "Software - Application"
     },
     {
-      "cik": "0001414932",
-      "name": "Oaktree Specialty Lending Corporation",
-      "ticker": "OCSL",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "1131898971",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000933267",
       "name": "IRSA Inversiones y Representaciones Sociedad An\u00f3nima",
       "ticker": "IRS",
@@ -27536,17 +27437,6 @@
       "industry": "Software - Application"
     },
     {
-      "cik": "0001287032",
-      "name": "Prospect Capital Corporation",
-      "ticker": "PSEC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "1107226913",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000102037",
       "name": "Universal Corporation",
       "ticker": "UVV",
@@ -27556,17 +27446,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Tobacco"
-    },
-    {
-      "cik": "0001572694",
-      "name": "Goldman Sachs BDC, Inc.",
-      "ticker": "GSBD",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "1100925475",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001160308",
@@ -28304,17 +28183,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Security & Protection Services"
-    },
-    {
-      "cik": "0001379785",
-      "name": "Barings BDC, Inc.",
-      "ticker": "BBDC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "983197641",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001409493",
@@ -29285,17 +29153,6 @@
       "industry": "Financial - Credit Services"
     },
     {
-      "cik": "0001747172",
-      "name": "Kayne Anderson BDC, Inc.",
-      "ticker": "KBDC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "883782027",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000006845",
       "name": "Apogee Enterprises, Inc.",
       "ticker": "APOG",
@@ -30209,17 +30066,6 @@
       "industry": "Electrical Equipment & Parts"
     },
     {
-      "cik": "0001544206",
-      "name": "Carlyle Secured Lending, Inc.",
-      "ticker": "CGBD",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "782537661",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000866729",
       "name": "Scholastic Corporation",
       "ticker": "SCHL",
@@ -30229,17 +30075,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Publishing"
-    },
-    {
-      "cik": "0001655050",
-      "name": "Bain Capital Specialty Finance, Inc.",
-      "ticker": "BCSF",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "782314194",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001859836",
@@ -30671,17 +30506,6 @@
       "industry": "Asset Management"
     },
     {
-      "cik": "0001716951",
-      "name": "OFS Credit Company, Inc.",
-      "ticker": "OCCIM",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "739156446",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001834026",
       "name": "Gold Royalty Corp.",
       "ticker": "GROY",
@@ -30911,17 +30735,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Auto - Manufacturers"
-    },
-    {
-      "cik": "0001496099",
-      "name": "New Mountain Finance Corporation",
-      "ticker": "NMFC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "705559428",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000076282",
@@ -32123,17 +31936,6 @@
       "industry": "Software - Application"
     },
     {
-      "cik": "0001737924",
-      "name": "Nuveen Churchill Direct Lending Corp.",
-      "ticker": "NCDL",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "603509934",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000930236",
       "name": "Redwood Trust, Inc.",
       "ticker": "RWT",
@@ -32748,17 +32550,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Biotechnology"
-    },
-    {
-      "cik": "0001535778",
-      "name": "MSC Income Fund, Inc.",
-      "ticker": "MSIF",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "553665258",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001016281",
@@ -33408,17 +33199,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Marine Shipping"
-    },
-    {
-      "cik": "0001604174",
-      "name": "Eagle Point Credit Company Inc.",
-      "ticker": "ECC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "501072110",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001731348",
@@ -34356,17 +34136,6 @@
       "industry": "Software - Application"
     },
     {
-      "cik": "0001143513",
-      "name": "Gladstone Capital Corporation",
-      "ticker": "GLAD",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "439887053",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001653558",
       "name": "Priority Technology Holdings, Inc.",
       "ticker": "PRTH",
@@ -35058,17 +34827,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Banks - Regional"
-    },
-    {
-      "cik": "0001633336",
-      "name": "Crescent Capital BDC, Inc.",
-      "ticker": "CCAP",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "398673720",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001799207",
@@ -36182,17 +35940,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0001370755",
-      "name": "BlackRock TCP Capital Corp.",
-      "ticker": "TCPC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "342323424",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000933034",
       "name": "Strattec Security Corporation",
       "ticker": "STRT",
@@ -36708,17 +36455,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Real Estate - Development"
-    },
-    {
-      "cik": "0001794776",
-      "name": "Palmer Square Capital BDC Inc.",
-      "ticker": "PSBD",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "317432303",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001347178",
@@ -38437,17 +38173,6 @@
       "industry": "Furnishings, Fixtures & Appliances"
     },
     {
-      "cik": "0001487428",
-      "name": "Horizon Technology Finance Corporation",
-      "ticker": "HRZN",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "250409065",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001342423",
       "name": "Limoneira Company",
       "ticker": "LMNR",
@@ -38479,17 +38204,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Auto - Dealerships"
-    },
-    {
-      "cik": "0001551901",
-      "name": "Stellus Capital Investment Corporation",
-      "ticker": "SCM",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "248367439",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001666291",
@@ -39097,17 +38811,6 @@
       "industry": "Drug Manufacturers - Specialty & Generic"
     },
     {
-      "cik": "0001580345",
-      "name": "TriplePoint Venture Growth BDC Corp.",
-      "ticker": "TPVG",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "222888406",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001947016",
       "name": "Starfighters Space Inc",
       "ticker": "FJET",
@@ -39271,17 +38974,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Electronic Gaming & Multimedia"
-    },
-    {
-      "cik": "0001843162",
-      "name": "Chicago Atlantic BDC, Inc.",
-      "ticker": "LIEN",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "217002793",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001023313",
@@ -41132,17 +40824,6 @@
       "industry": "Specialty Retail"
     },
     {
-      "cik": "0001552198",
-      "name": "WhiteHorse Finance, Inc.",
-      "ticker": "WHF",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "152053620",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001858848",
       "name": "Tenaya Therapeutics, Inc.",
       "ticker": "TNYA",
@@ -41262,17 +40943,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Manufacturing - Textiles"
-    },
-    {
-      "cik": "0001259429",
-      "name": "Oxford Square Capital Corp.",
-      "ticker": "OXSQ",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "149182360",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0002027815",
@@ -45257,17 +44927,6 @@
       "industry": "Food Distribution"
     },
     {
-      "cik": "0001675033",
-      "name": "Great Elm Capital Corp.",
-      "ticker": "GECC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "66191281",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001881551",
       "name": "Solidion Technology Inc.",
       "ticker": "STI",
@@ -45849,17 +45508,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Insurance - Diversified"
-    },
-    {
-      "cik": "0001998043",
-      "name": "Pearl Diver Credit Company Inc.",
-      "ticker": "PDPA",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "59374258",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001719406",
@@ -46784,17 +46432,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Devices"
-    },
-    {
-      "cik": "0001487918",
-      "name": "OFS Capital Corporation",
-      "ticker": "OFS",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "47697158",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001742770",
@@ -48665,17 +48302,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Marine Shipping"
-    },
-    {
-      "cik": "0000081955",
-      "name": "Rand Capital Corp",
-      "ticker": "RAND",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "30054518",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001534708",
@@ -51789,17 +51415,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Conglomerates"
-    },
-    {
-      "cik": "0001578348",
-      "name": "Investcorp Credit Management BDC, Inc.",
-      "ticker": "ICMB",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "11950087",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001607962",

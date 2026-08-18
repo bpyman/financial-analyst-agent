@@ -20,6 +20,7 @@ from financial_analyst_agent.snapshot_builder import (
 )
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from financial_analyst_agent.universe import (
+    INELIGIBLE_ISSUER_CIKS,
     UniverseCompany,
     build_universe_snapshot,
     load_universe_snapshot,
@@ -52,6 +53,9 @@ def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
     assert "DMII" not in tickers
     assert "MU" in tickers
     assert "PNW" in tickers
+    assert "BLK" in tickers
+    freeze_ciks = {company.cik for company in snapshot.companies}
+    assert not INELIGIBLE_ISSUER_CIKS & freeze_ciks
     industries = {company.industry.casefold() for company in snapshot.companies if company.industry}
     assert "shell companies" not in industries
     assert "financial - conglomerates" not in industries
@@ -335,6 +339,14 @@ def test_run_turn_ranks_operating_finance_issuers_not_shells_or_conglomerate_veh
                 industry="Financial - Conglomerates",
             ),
             _company(
+                cik="0002012383",
+                name="BlackRock, Inc.",
+                ticker="BLK",
+                sector="Financial Services",
+                market_cap="170000000000",
+                industry="Asset Management",
+            ),
+            _company(
                 cik="0001287750",
                 name="Ares Capital Corporation",
                 ticker="ARCC",
@@ -356,9 +368,10 @@ def test_run_turn_ranks_operating_finance_issuers_not_shells_or_conglomerate_veh
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
-    assert [row.ticker for row in result.table_rows] == ["JPM", "ARCC"]
+    assert [row.ticker for row in result.table_rows] == ["JPM", "BLK"]
     assert "DMII" not in [row.ticker for row in result.table_rows]
     assert "LTGR" not in [row.ticker for row in result.table_rows]
+    assert "ARCC" not in [row.ticker for row in result.table_rows]
 
 
 def test_run_turn_keeps_common_shares_whose_ticker_shares_a_letter_suffix() -> None:

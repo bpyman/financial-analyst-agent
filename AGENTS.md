@@ -11,3 +11,7 @@ Default role strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-fo
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Snapshot membership
+
+When ranking includes a fund, SPAC, BDC, note, or other non-operating listing, add its CIK to `src/financial_analyst_agent/data/ineligible_issuers.json` per `docs/adr/0001-snapshot-membership.md`.

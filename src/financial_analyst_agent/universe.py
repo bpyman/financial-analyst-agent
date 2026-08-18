@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from financial_analyst_agent.domain.serialization import DecimalStr
 
 DEFAULT_SNAPSHOT_PATH = Path(__file__).parent / "data" / "universe_snapshot.json"
+_INELIGIBLE_ISSUERS_PATH = Path(__file__).parent / "data" / "ineligible_issuers.json"
 
 US_EXCHANGES: frozenset[str] = frozenset(
     {
@@ -56,13 +57,22 @@ _INSTRUMENT_TITLE = re.compile(
     re.IGNORECASE,
 )
 # Empirically vehicle-dominated FMP industries. Asset Management is not in this
-# set: it mixes BlackRock with BDCs, and the screener has no isBdc flag.
+# set: it mixes BlackRock with BDCs. Residual lookalikes are CIKs in
+# ineligible_issuers.json (ADR 0001).
 _NON_OPERATING_INDUSTRIES = frozenset(
     {
         "shell companies",
         "financial - conglomerates",
     }
 )
+
+
+def _ineligible_issuer_ciks(path: Path = _INELIGIBLE_ISSUERS_PATH) -> frozenset[str]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return frozenset(str(issuer["cik"]) for issuer in payload["issuers"])
+
+
+INELIGIBLE_ISSUER_CIKS = _ineligible_issuer_ciks()
 
 
 class UniverseCompany(BaseModel):
@@ -91,6 +101,8 @@ def _is_common_share(company: UniverseCompany) -> bool:
 
 
 def _is_operating_issuer(company: UniverseCompany) -> bool:
+    if company.cik in INELIGIBLE_ISSUER_CIKS:
+        return False
     return company.industry.strip().casefold() not in _NON_OPERATING_INDUSTRIES
 
 
