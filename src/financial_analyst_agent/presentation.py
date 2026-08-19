@@ -178,7 +178,8 @@ class DisplayTable:
 @dataclass(frozen=True)
 class DisplayTrace:
     header: str
-    fields: tuple[tuple[str, str], ...]
+    inputs: tuple[tuple[str, str], ...]
+    outputs: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -243,7 +244,7 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,
-        metric_header=format_field_name(row.metric),
+        metric_header=_humanize_field(row.metric),
         amount=format_metric_value(row.metric, row.value),
         period_label=(
             "Latest standalone quarter · "
@@ -307,13 +308,21 @@ def _trace_identity(args: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (_humanize_field(str(key)), _format_trace_value(value))
+        for key, value in payload.items()
+    )
+
+
 def _display_trace(trace: Any) -> DisplayTrace:
     identity = _trace_identity(trace.args)
     header = f"{trace.tool} · {identity}" if identity else trace.tool
-    fields: list[tuple[str, str]] = []
-    for key, value in {**trace.args, **trace.provenance}.items():
-        fields.append((format_field_name(str(key)), _format_trace_value(value)))
-    return DisplayTrace(header=header, fields=tuple(fields))
+    return DisplayTrace(
+        header=header,
+        inputs=_trace_fields(trace.args),
+        outputs=_trace_fields(trace.provenance),
+    )
 
 
 def _format_trace_value(value: Any) -> str:
@@ -337,7 +346,7 @@ def _format_trace_value(value: Any) -> str:
     if isinstance(value, dict):
         lines: list[str] = []
         for key, item in value.items():
-            label = format_field_name(str(key))
+            label = _humanize_field(str(key))
             formatted = _format_trace_value(item)
             if isinstance(item, (dict, list)):
                 lines.append(f"{label}:")

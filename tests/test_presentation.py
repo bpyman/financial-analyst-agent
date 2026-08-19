@@ -170,7 +170,7 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert card is not None
     assert card.company_name == "Alphabet Inc."
     assert card.ticker == "GOOG"
-    assert card.metric_header == "net_income (Net income)"
+    assert card.metric_header == "Net income"
     assert card.amount == "$62.58 B"
     assert (
         card.period_label
@@ -180,6 +180,19 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert card.accession_number == "0001652044-26-000048"
     assert card.concept == "NetIncomeLoss"
     assert card.source_url.endswith("goog-20260331.htm")
+    trace = presented.traces[0]
+    assert dict(trace.inputs) == {
+        "Company": "Google",
+        "Metric": "net_income",
+    }
+    outputs = dict(trace.outputs)
+    assert outputs["Accession number"] == "0001652044-26-000048"
+    assert outputs["Concept"] == "NetIncomeLoss"
+    assert outputs["Start date"] == "Jan 1, 2026"
+    assert outputs["End date"] == "Mar 31, 2026"
+    assert "source_url" not in outputs
+    assert all("(" not in label and "_" not in label for label, _ in trace.inputs)
+    assert all("(" not in label and "_" not in label for label, _ in trace.outputs)
 
 
 def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
@@ -334,15 +347,15 @@ def test_present_trace_formats_nested_news_hits_as_readable_lines() -> None:
         ],
     )
 
-    hits = dict(present_turn(result).traces[0].fields)["hits (Hits)"]
+    hits = dict(present_turn(result).traces[0].outputs)["Hits"]
 
     assert hits == (
-        "- title (Title): First hit\n"
-        "  url (Url): https://example.com/first\n"
-        "  published (Published): Jan 1, 2026\n"
-        "- title (Title): Second hit\n"
-        "  url (Url): https://example.com/second\n"
-        "  published (Published): yesterday morning"
+        "- Title: First hit\n"
+        "  Url: https://example.com/first\n"
+        "  Published: Jan 1, 2026\n"
+        "- Title: Second hit\n"
+        "  Url: https://example.com/second\n"
+        "  Published: yesterday morning"
     )
 
 

@@ -44,8 +44,28 @@ def _render_presentation(presented: Presentation) -> None:
         st.markdown(presented.essay)
     for trace in presented.traces:
         with st.expander(trace.header, expanded=False):
-            for label, value in trace.fields:
-                st.markdown(f"**{label}:** {value}")
+            groups = [
+                (title, fields)
+                for title, fields in (
+                    ("Inputs", trace.inputs),
+                    ("Outputs", trace.outputs),
+                )
+                if fields
+            ]
+            if len(groups) == 2:
+                columns = st.columns(2)
+                for column, (title, fields) in zip(columns, groups, strict=True):
+                    with column:
+                        _render_trace_group(title, fields)
+            else:
+                for title, fields in groups:
+                    _render_trace_group(title, fields)
+
+
+def _render_trace_group(title: str, fields: tuple[tuple[str, str], ...]) -> None:
+    st.caption(title)
+    for label, value in fields:
+        st.markdown(f"**{label}:** {value}")
 
 
 def _render_fact_card(card: QuarterlyFactCard) -> None:
