@@ -137,14 +137,12 @@ def select_quarterly_fact(
     """
     Select a directly reported standalone-quarter fact for a single filing.
 
-    Evaluates every supported XBRL concept for the metric. Same-concept precedence
-    is applied before cross-concept comparison. Matching values resolve to the
-    highest-priority catalog concept; conflicting values raise AmbiguousFactError.
+    Tries catalog concepts in order and returns the first with a standalone
+    quarter. Same-concept duplicates still raise AmbiguousFactError. A later
+    concept is only a fallback when earlier ones have no quarterly candidate.
     Never derives values by subtraction.
     """
     concept_candidates = get_concept_candidates(metric)
-    resolved_by_concept: list[tuple[tuple[str, str], FactRecord]] = []
-
     for taxonomy, concept in concept_candidates:
         concept_facts = [
             fact for fact in facts if fact.taxonomy == taxonomy and fact.concept == concept
@@ -159,41 +157,19 @@ def select_quarterly_fact(
             continue
 
         selected = _resolve_same_concept_candidates(candidates)
-        resolved_by_concept.append(((taxonomy, concept), selected))
-
-    if not resolved_by_concept:
-        raise UnsupportedQuarterlyFactError(
-            "No directly reported standalone-quarter fact exists for metric",
-            details={
-                "metric": metric.value,
-                "filing_accession": filing.accession_number,
-                "report_date": filing.report_date.isoformat(),
-            },
+        return (
+            _build_financial_fact(
+                selected, metric, currency, company_name, ticker, cik, source_url
+            ),
         )
 
-    values = {selected.value for _, selected in resolved_by_concept}
-    if len(values) > 1:
-        raise AmbiguousFactError(
-            "Supported concepts produced conflicting quarterly values",
-            details={
-                "metric": metric.value,
-                "filing_accession": filing.accession_number,
-                "report_date": filing.report_date.isoformat(),
-                "concepts": [
-                    {
-                        "taxonomy": taxonomy,
-                        "concept": concept,
-                        "value": str(selected.value),
-                        "filed_date": selected.filed_date.isoformat(),
-                    }
-                    for (taxonomy, concept), selected in resolved_by_concept
-                ],
-            },
-        )
-
-    _, selected = resolved_by_concept[0]
-    return (
-        _build_financial_fact(selected, metric, currency, company_name, ticker, cik, source_url),
+    raise UnsupportedQuarterlyFactError(
+        "No directly reported standalone-quarter fact exists for metric",
+        details={
+            "metric": metric.value,
+            "filing_accession": filing.accession_number,
+            "report_date": filing.report_date.isoformat(),
+        },
     )
 
 

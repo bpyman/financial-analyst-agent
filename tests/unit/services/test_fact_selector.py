@@ -194,16 +194,21 @@ def test_matching_concepts_return_highest_priority() -> None:
     assert result.value == shared_value
 
 
-def test_conflicting_concepts_raise_ambiguous_fact_error() -> None:
+def test_conflicting_concepts_keep_highest_priority() -> None:
     facts = [
         make_fact(concept="NetIncomeLoss", value=Decimal("23636000000")),
         make_fact(concept="ProfitLoss", value=Decimal("999")),
     ]
-    with pytest.raises(AmbiguousFactError) as exc_info:
-        _select(facts)
-    details = exc_info.value.details
-    assert details["metric"] == "net_income"
-    assert len(details["concepts"]) == 2
+    result = _select(facts)
+    assert result.concept == "NetIncomeLoss"
+    assert result.value == Decimal("23636000000")
+
+
+def test_falls_back_to_next_concept_when_priority_concept_is_absent() -> None:
+    facts = [make_fact(concept="ProfitLoss", value=Decimal("18000000000"))]
+    result = _select(facts)
+    assert result.concept == "ProfitLoss"
+    assert result.value == Decimal("18000000000")
 
 
 def test_operating_expenses_rejects_total_costs_concept() -> None:
