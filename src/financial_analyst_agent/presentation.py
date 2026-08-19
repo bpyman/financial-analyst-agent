@@ -1,7 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+from financial_analyst_agent.turn import (
+    ALLOWED_METRICS,
+    Intent,
+    RendererKind,
+    TableRow,
+    TurnResult,
+)
 
 _MONTHS = (
     "Jan",
@@ -118,3 +128,213 @@ def try_parse_datetime(raw: str) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+_TABLE_KEYS = (
+    "company_name",
+    "ticker",
+    "cik",
+    "metric",
+    "rank",
+    "value",
+    "currency",
+    "start_date",
+    "end_date",
+    "form",
+    "accession_number",
+    "taxonomy",
+    "concept",
+    "source_url",
+    "reason",
+)
+_SNAPSHOT_PREFIX = "Universe snapshot as of "
+
+
+@dataclass(frozen=True)
+class QuarterlyFactCard:
+    company_name: str
+    ticker: str
+    metric_header: str
+    amount: str
+    period_label: str
+    form: str
+    accession_number: str
+    concept: str
+    source_url: str
+
+
+@dataclass(frozen=True)
+class DisplayTable:
+    headers: tuple[str, ...]
+    keys: tuple[str, ...]
+    rows: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class DisplayTrace:
+    header: str
+    fields: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class DisplayCitation:
+    title: str
+    url: str
+    published: str | None
+
+
+@dataclass(frozen=True)
+class Presentation:
+    intent: str
+    banners: tuple[str, ...]
+    traces: tuple[DisplayTrace, ...]
+    citations: tuple[DisplayCitation, ...]
+    fact_card: QuarterlyFactCard | None
+    table: DisplayTable | None
+    essay: str | None
+    message: str | None
+
+
+def metric_legend() -> tuple[str, ...]:
+    return tuple(format_field_name(metric) for metric in ALLOWED_METRICS)
+
+
+def present_turn(result: TurnResult) -> Presentation:
+    fact_card = None
+    table = None
+    if (
+        result.intent is Intent.LOOKUP
+        and result.renderer is RendererKind.TABLE
+        and len(result.table_rows) == 1
+        and result.table_rows[0].value is not None
+        and result.table_rows[0].start_date is not None
+        and result.table_rows[0].end_date is not None
+    ):
+        fact_card = _fact_card(result.table_rows[0])
+    elif result.renderer is RendererKind.TABLE:
+        table = _display_table(result.table_rows)
+    return Presentation(
+        intent=result.intent.value,
+        banners=tuple(_format_banner(banner) for banner in result.banners),
+        traces=tuple(_display_trace(trace) for trace in result.tool_traces),
+        citations=tuple(_display_citation(hit) for hit in result.citations),
+        fact_card=fact_card,
+        table=table,
+        essay=result.essay,
+        message=result.message,
+    )
+
+
+def _fact_card(row: TableRow) -> QuarterlyFactCard:
+    assert row.start_date is not None
+    assert row.end_date is not None
+    return QuarterlyFactCard(
+        company_name=row.company_name,
+        ticker=row.ticker,
+        metric_header=format_field_name(row.metric),
+        amount=format_metric_value(row.metric, row.value),
+        period_label=(
+            "Latest standalone quarter · "
+            f"{format_date(row.start_date)} – {format_date(row.end_date)}"
+        ),
+        form=row.form or "",
+        accession_number=row.accession_number or "",
+        concept=row.concept or "",
+        source_url=row.source_url or "",
+    )
+
+
+def _cell_empty(value: Any) -> bool:
+    return value is None or value == "" or value == []
+
+
+def _display_table(rows: list[TableRow]) -> DisplayTable:
+    keys = [
+        key
+        for key in _TABLE_KEYS
+        if any(not _cell_empty(getattr(row, key)) for row in rows)
+    ]
+    headers = tuple(format_field_name(key) for key in keys)
+    rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
+    return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered)
+
+
+def _format_cell(row: TableRow, key: str) -> str:
+    value = getattr(row, key)
+    if _cell_empty(value):
+        return ""
+    if key == "value":
+        return format_metric_value(row.metric, value)
+    if key in {"start_date", "end_date"}:
+        return format_date(value)
+    if key == "reason":
+        return format_reason(value)
+    if key == "rank":
+        return str(value)
+    return str(value)
+
+
+def _format_banner(banner: str) -> str:
+    if not banner.startswith(_SNAPSHOT_PREFIX):
+        return banner
+    parsed = try_parse_datetime(banner[len(_SNAPSHOT_PREFIX) :])
+    if parsed is None:
+        return banner
+    return f"{_SNAPSHOT_PREFIX}{format_datetime_utc(parsed)}"
+
+
+def _trace_identity(args: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("company", "metric", "industry", "query", "topic"):
+        value = args.get(key)
+        if value is not None and value != "":
+            parts.append(str(value))
+    issuers = args.get("issuers")
+    if isinstance(issuers, list) and issuers:
+        parts.append(", ".join(str(item) for item in issuers))
+    return " · ".join(parts)
+
+
+def _display_trace(trace: Any) -> DisplayTrace:
+    identity = _trace_identity(trace.args)
+    header = f"{trace.tool} · {identity}" if identity else trace.tool
+    fields: list[tuple[str, str]] = []
+    for key, value in {**trace.args, **trace.provenance}.items():
+        fields.append((format_field_name(str(key)), _format_trace_value(value)))
+    return DisplayTrace(header=header, fields=tuple(fields))
+
+
+def _format_trace_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return format_datetime_utc(value)
+    if isinstance(value, date):
+        return format_date(value)
+    if isinstance(value, (int, bool)):
+        return str(value)
+    if isinstance(value, Decimal):
+        return format_usd(value)
+    if isinstance(value, str):
+        parsed = try_parse_datetime(value)
+        if parsed is not None and ("T" in value or " " in value.strip()):
+            return format_datetime_utc(parsed)
+        try:
+            as_date = date.fromisoformat(value)
+        except ValueError:
+            return value
+        return format_date(as_date)
+    if isinstance(value, dict):
+        return "; ".join(
+            f"{format_field_name(str(key))}: {_format_trace_value(item)}"
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return ", ".join(_format_trace_value(item) for item in value)
+    return str(value)
+
+
+def _display_citation(hit: Any) -> DisplayCitation:
+    published = hit.published
+    if published:
+        parsed = try_parse_datetime(published)
+        published = format_datetime_utc(parsed) if parsed is not None else published
+    return DisplayCitation(title=hit.title, url=hit.url, published=published)

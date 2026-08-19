@@ -9,7 +9,17 @@ from financial_analyst_agent.presentation import (
     format_percent,
     format_reason,
     format_usd,
+    metric_legend,
+    present_turn,
     try_parse_datetime,
+)
+from financial_analyst_agent.turn import (
+    Intent,
+    NewsHit,
+    RendererKind,
+    TableRow,
+    ToolTrace,
+    TurnResult,
 )
 
 
@@ -103,3 +113,187 @@ def test_try_parse_datetime_iso() -> None:
 
 def test_try_parse_datetime_unparseable_is_none() -> None:
     assert try_parse_datetime("yesterday morning") is None
+
+
+def _lookup_result() -> TurnResult:
+    return TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[
+            ToolTrace(
+                tool="get_financials",
+                args={"company": "Google", "metric": "net_income"},
+                provenance={
+                    "accession_number": "0001652044-26-000048",
+                    "concept": "NetIncomeLoss",
+                    "source_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-03-31",
+                },
+            )
+        ],
+        table_rows=[
+            TableRow(
+                company_name="Alphabet Inc.",
+                ticker="GOOG",
+                cik="0001652044",
+                metric="net_income",
+                value=Decimal("62578000000"),
+                currency="USD",
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 3, 31),
+                form="10-Q",
+                accession_number="0001652044-26-000048",
+                taxonomy="us-gaap",
+                concept="NetIncomeLoss",
+                source_url="https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm",
+            )
+        ],
+    )
+
+
+def test_present_lookup_uses_fact_card_not_table() -> None:
+    presented = present_turn(_lookup_result())
+    assert presented.intent == "lookup"
+    assert presented.table is None
+    card = presented.fact_card
+    assert card is not None
+    assert card.company_name == "Alphabet Inc."
+    assert card.ticker == "GOOG"
+    assert card.metric_header == "net_income (Net income)"
+    assert card.amount == "$62.58 B"
+    assert (
+        card.period_label
+        == "Latest standalone quarter · Jan 1, 2026 – Mar 31, 2026"
+    )
+    assert card.form == "10-Q"
+    assert card.accession_number == "0001652044-26-000048"
+    assert card.concept == "NetIncomeLoss"
+    assert card.source_url.endswith("goog-20260331.htm")
+
+
+def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
+    result = TurnResult(
+        intent=Intent.RANK,
+        renderer=RendererKind.TABLE,
+        banners=["Universe snapshot as of 2026-08-17T16:00:00+00:00"],
+        tool_traces=[
+            ToolTrace(
+                tool="rank_companies",
+                args={"industry": "healthcare", "limit": 10},
+                provenance={"snapshot_as_of": "2026-08-17T16:00:00+00:00"},
+            )
+        ],
+        table_rows=[
+            TableRow(
+                company_name="Eli Lilly and Company",
+                ticker="LLY",
+                cik="0000059478",
+                metric="market_cap",
+                rank=1,
+                value=Decimal("800000000000"),
+                currency="USD",
+            )
+        ],
+    )
+    presented = present_turn(result)
+    assert presented.fact_card is None
+    table = presented.table
+    assert table is not None
+    assert "rank" in table.keys
+    assert "form" not in table.keys
+    assert "reason" not in table.keys
+    assert table.headers[0] == "company_name (Company)"
+    rank_index = table.keys.index("rank")
+    value_index = table.keys.index("value")
+    assert table.rows[0][rank_index] == "1"
+    assert table.rows[0][value_index] == "$800.00 B"
+    assert presented.banners == (
+        "Universe snapshot as of Aug 17, 2026, 4:00 PM UTC",
+    )
+
+
+def test_present_compare_formats_percent_and_keeps_reason() -> None:
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[
+            ToolTrace(
+                tool="compare_metrics",
+                args={
+                    "issuers": ["Microsoft", "Google"],
+                    "metric": "operating_margin",
+                },
+            )
+        ],
+        table_rows=[
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="operating_margin",
+                reason="missing_fact",
+            ),
+            TableRow(
+                company_name="Alphabet Inc.",
+                ticker="GOOG",
+                cik="0001652044",
+                metric="operating_margin",
+                value=Decimal("39696000000") / Decimal("109896000000"),
+                currency="USD",
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 3, 31),
+            ),
+        ],
+    )
+    presented = present_turn(result)
+    table = presented.table
+    assert table is not None
+    assert "reason" in table.keys
+    reason_index = table.keys.index("reason")
+    value_index = table.keys.index("value")
+    assert table.rows[0][reason_index] == "missing_fact (Missing fact)"
+    assert table.rows[0][value_index] == ""
+    assert table.rows[1][value_index] == "36.1%"
+    assert presented.traces[0].header.startswith("compare_metrics ·")
+
+
+def test_present_news_keeps_unparseable_published() -> None:
+    result = TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="Supply chain remains tight.",
+        citations=[
+            NewsHit(
+                title="Hit",
+                url="https://example.com/n",
+                published="yesterday morning",
+            )
+        ],
+        tool_traces=[ToolTrace(tool="search_news", args={"query": "NVIDIA"})],
+    )
+    presented = present_turn(result)
+    assert presented.citations[0].published == "yesterday morning"
+    assert presented.essay == "Supply chain remains tight."
+    assert presented.table is None
+    assert presented.fact_card is None
+
+
+def test_present_refuse_keeps_message() -> None:
+    result = TurnResult(
+        intent=Intent.RANK,
+        renderer=RendererKind.REFUSE,
+        message="Unknown industry 'AI'. Allowed: finance, healthcare, technology",
+        tool_traces=[],
+    )
+    presented = present_turn(result)
+    assert presented.message is not None
+    assert "AI" in presented.message
+    assert presented.table is None
+
+
+def test_metric_legend_lists_closed_catalog() -> None:
+    legend = metric_legend()
+    assert legend[0] == "revenue (Revenue)"
+    assert "operating_margin (Operating margin)" in legend
+    assert len(legend) == 9
