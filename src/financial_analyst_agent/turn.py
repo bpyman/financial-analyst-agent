@@ -13,11 +13,11 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
-    FilingNotFoundError,
     ProviderError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
+from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
 
 
@@ -56,13 +56,12 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "net_margin": ("net_income", "revenue"),
 }
 
-_MISSING_FACT_FAILURES = (
+_LOOKUP_FAILURES = (
+    AmbiguousFactError,
     UnsupportedQuarterlyFactError,
     AmbiguousCompanyError,
     CompanyNotFoundError,
-    FilingNotFoundError,
 )
-_LOOKUP_FAILURES = (AmbiguousFactError, *_MISSING_FACT_FAILURES)
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
@@ -85,7 +84,7 @@ class EssayCompleter(Protocol):
 
 
 class FactsPort(Protocol):
-    def get_financials(self, company: str, metric: str) -> Any: ...
+    def get_financials(self, company: str, metric: str) -> FinancialFact: ...
 
 
 class RankingPort(Protocol):
@@ -287,11 +286,6 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     )
 
 
-def _lookup_facts(result: Any) -> list[Any]:
-    facts = list(result) if isinstance(result, (list, tuple)) else [result]
-    return facts
-
-
 def _table_row_from_fact(fact: Any) -> TableRow:
     metric = fact.metric
     metric_value = metric.value if hasattr(metric, "value") else metric
@@ -412,6 +406,30 @@ def _aligned_period(facts: list[Any]) -> tuple[date, date] | None:
     return next(iter(periods))
 
 
+def _partial_lookup_reason(exc: BaseException) -> str:
+    return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
+
+
+def _compare_unresolved_row(issuer: str, metric: str, reason: str) -> TableRow:
+    return TableRow(
+        company_name=issuer,
+        ticker="",
+        cik="",
+        metric=metric,
+        reason=reason,
+    )
+
+
+def _compare_row(identity: Any, metric: str, **kwargs: Any) -> TableRow:
+    return TableRow(
+        company_name=identity.company_name,
+        ticker=identity.ticker,
+        cik=identity.cik,
+        metric=metric,
+        **kwargs,
+    )
+
+
 def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[TableRow]:
     """Resolve issuers, fetch formula components, and period-align Decimal results."""
     component_names = _component_metrics(metric)
@@ -419,48 +437,17 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            fetched_groups = [
-                _lookup_facts(facts.get_financials(issuer, component))
+            fetched = [
+                facts.get_financials(issuer, component)
                 for component in component_names
             ]
-        except AmbiguousFactError:
-            rows.append(
-                TableRow(
-                    company_name=issuer,
-                    ticker="",
-                    cik="",
-                    metric=metric,
-                    reason=AMBIGUOUS_CONCEPT,
-                )
-            )
+        except _LOOKUP_FAILURES as exc:
+            rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
             continue
-        except _MISSING_FACT_FAILURES:
-            rows.append(
-                TableRow(
-                    company_name=issuer,
-                    ticker="",
-                    cik="",
-                    metric=metric,
-                    reason=MISSING_FACT,
-                )
-            )
-            continue
-        identity = fetched_groups[0][0]
+        identity = fetched[0]
         if identity.cik in seen_ciks:
             continue
         seen_ciks.add(identity.cik)
-        if any(len(group) != 1 for group in fetched_groups):
-            rows.append(
-                TableRow(
-                    company_name=identity.company_name,
-                    ticker=identity.ticker,
-                    cik=identity.cik,
-                    metric=metric,
-                    reason=AMBIGUOUS_CONCEPT,
-                )
-            )
-            continue
-        fetched = [group[0] for group in fetched_groups]
         period = _aligned_period(fetched)
         components = [
             _provenance_from_fact(fact, component)
@@ -468,37 +455,33 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
         ]
         if period is None:
             rows.append(
-                TableRow(
-                    company_name=identity.company_name,
-                    ticker=identity.ticker,
-                    cik=identity.cik,
-                    metric=metric,
+                _compare_row(
+                    identity,
+                    metric,
                     components=components,
                     reason=PERIOD_MISMATCH,
                 )
             )
             continue
         period_start, period_end = period
-        if metric in FORMULA_COMPONENTS and fetched[1].value == 0:
-            rows.append(
-                TableRow(
-                    company_name=identity.company_name,
-                    ticker=identity.ticker,
-                    cik=identity.cik,
-                    metric=metric,
-                    start_date=period_start,
-                    end_date=period_end,
-                    components=components,
-                    reason=ZERO_DENOMINATOR,
+        if metric in FORMULA_COMPONENTS:
+            _numerator, denominator = fetched
+            if denominator.value == 0:
+                rows.append(
+                    _compare_row(
+                        identity,
+                        metric,
+                        start_date=period_start,
+                        end_date=period_end,
+                        components=components,
+                        reason=ZERO_DENOMINATOR,
+                    )
                 )
-            )
-            continue
+                continue
         rows.append(
-            TableRow(
-                company_name=identity.company_name,
-                ticker=identity.ticker,
-                cik=identity.cik,
-                metric=metric,
+            _compare_row(
+                identity,
+                metric,
                 value=_formula_value(metric, fetched),
                 start_date=period_start,
                 end_date=period_end,
@@ -558,21 +541,13 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     for index, company in enumerate(table.companies, start=1):
         args = {"company": company.cik, "metric": metric}
         try:
-            fetched = runtime.facts.get_financials(company.cik, metric)
-            facts = _lookup_facts(fetched)
-        except AmbiguousFactError:
-            rows.append(_rank_and_lookup_row(company, index, metric, AMBIGUOUS_CONCEPT))
+            fact = runtime.facts.get_financials(company.cik, metric)
+        except _LOOKUP_FAILURES as exc:
+            rows.append(
+                _rank_and_lookup_row(company, index, metric, _partial_lookup_reason(exc))
+            )
             traces.append(ToolTrace(tool="get_financials", args=args))
             continue
-        except _MISSING_FACT_FAILURES:
-            rows.append(_rank_and_lookup_row(company, index, metric, MISSING_FACT))
-            traces.append(ToolTrace(tool="get_financials", args=args))
-            continue
-        if len(facts) != 1:
-            rows.append(_rank_and_lookup_row(company, index, metric, AMBIGUOUS_CONCEPT))
-            traces.append(ToolTrace(tool="get_financials", args=args))
-            continue
-        fact = facts[0]
         rows.append(
             _table_row_from_fact(fact).model_copy(
                 update={
@@ -651,7 +626,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         return _refuse_unknown_metric(plan.intent, plan.metric)
     args = {"company": plan.company, "metric": plan.metric}
     try:
-        fetched = runtime.facts.get_financials(plan.company, plan.metric)
+        fact = runtime.facts.get_financials(plan.company, plan.metric)
     except _LOOKUP_FAILURES as exc:
         return TurnResult(
             intent=plan.intent,
@@ -659,15 +634,6 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
-    facts = _lookup_facts(fetched)
-    if len(facts) != 1:
-        return TurnResult(
-            intent=plan.intent,
-            tool_traces=[],
-            renderer=RendererKind.REFUSE,
-            message="Supported concepts produced conflicting quarterly values",
-        )
-    fact = facts[0]
     return TurnResult(
         intent=plan.intent,
         tool_traces=[

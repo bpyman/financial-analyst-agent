@@ -4,7 +4,7 @@ from fastmcp import FastMCP
 
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.runtime import build_runtime
-from financial_analyst_agent.turn import ALLOWED_METRICS, _lookup_facts
+from financial_analyst_agent.turn import ALLOWED_METRICS
 from financial_analyst_agent.turn import compare_metrics as compare_metric_rows
 
 mcp = FastMCP("financial-analyst")
@@ -13,16 +13,11 @@ mcp = FastMCP("financial-analyst")
 @mcp.tool()
 def get_financials(company: str, metric: str) -> dict[str, object]:
     """Return the latest standalone quarterly fact for a company and metric."""
-    facts = _lookup_facts(build_runtime().facts.get_financials(company, metric))
-    dumped: list[dict[str, object]] = []
-    for item in facts:
-        payload = item.model_dump(mode="json")
-        if not isinstance(payload, dict):
-            raise TypeError("get_financials must serialize to an object")
-        dumped.append(payload)
-    if len(dumped) == 1:
-        return dumped[0]
-    return {"facts": dumped}
+    fact = build_runtime().facts.get_financials(company, metric)
+    payload = fact.model_dump(mode="json")
+    if not isinstance(payload, dict):
+        raise TypeError("get_financials must serialize to an object")
+    return payload
 
 
 @mcp.tool()

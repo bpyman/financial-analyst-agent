@@ -8,7 +8,6 @@ import pytest
 
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
-    FilingNotFoundError,
     UnsupportedQuarterlyFactError,
 )
 from financial_analyst_agent.ranking import SnapshotRanking
@@ -139,7 +138,7 @@ def test_run_turn_rank_and_lookup_keeps_good_rows_when_issuers_have_no_10_q() ->
         def get_financials(self, company: str, metric: str) -> SimpleNamespace:
             if company == "0000059478":
                 return super().get_financials(company, metric)
-            raise FilingNotFoundError("No 10-Q or 10-Q/A filings found")
+            raise UnsupportedQuarterlyFactError("No 10-Q or 10-Q/A filings found")
 
     result = run_turn(
         HEALTHCARE_INCOME_QUERY,

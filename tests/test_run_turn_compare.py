@@ -7,8 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
-from financial_analyst_agent.facts import FixtureFactLookup
+from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_lookup import ALLOWED_METRICS
 
@@ -265,7 +266,10 @@ class _ShareClassCompleter:
 def test_run_turn_consolidates_goog_and_googl_to_one_alphabet_row() -> None:
     result = run_turn(
         "compare GOOG and GOOGL operating margins",
-        Runtime(completer=_ShareClassCompleter(), facts=FixtureFactLookup()),
+        Runtime(
+            completer=_ShareClassCompleter(),
+            facts=SecFactLookup(client=RecordedSECDataSource()),
+        ),
     )
 
     assert result.intent is Intent.COMPARE
@@ -386,66 +390,11 @@ def test_run_turn_keeps_partial_compare_row_when_revenue_is_zero() -> None:
 
 
 def test_run_turn_compare_does_not_pick_one_conflicting_concept() -> None:
-    class _ConflictingMicrosoftFacts:
-        def get_financials(self, company: str, metric: str) -> object:
+    class _ConflictingMicrosoftFacts(_MissingMicrosoftFacts):
+        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
             if company == "Microsoft" and metric == "operating_income":
-                shared = dict(
-                    company_name=MICROSOFT_NAME,
-                    ticker=MICROSOFT_TICKER,
-                    cik=MICROSOFT_CIK,
-                    metric=metric,
-                    start_date=PERIOD_START,
-                    end_date=PERIOD_END,
-                    accession_number=MICROSOFT_ACCESSION,
-                    source_url=MICROSOFT_SOURCE_URL,
-                )
-                return (
-                    _component_fact(
-                        **shared,
-                        value=MICROSOFT_OPERATING_INCOME,
-                        concept=MICROSOFT_OPERATING_INCOME_CONCEPT,
-                    ),
-                    _component_fact(
-                        **shared,
-                        value=Decimal("1"),
-                        concept="OperatingIncomeLossAlt",
-                    ),
-                )
-            if company == "Microsoft":
-                return _component_fact(
-                    company_name=MICROSOFT_NAME,
-                    ticker=MICROSOFT_TICKER,
-                    cik=MICROSOFT_CIK,
-                    metric=metric,
-                    value=MICROSOFT_REVENUE,
-                    start_date=PERIOD_START,
-                    end_date=PERIOD_END,
-                    accession_number=MICROSOFT_ACCESSION,
-                    concept=MICROSOFT_REVENUE_CONCEPT,
-                    source_url=MICROSOFT_SOURCE_URL,
-                )
-            if company == "Google":
-                return _component_fact(
-                    company_name=ALPHABET_NAME,
-                    ticker=ALPHABET_TICKER,
-                    cik=ALPHABET_CIK,
-                    metric=metric,
-                    value=(
-                        ALPHABET_OPERATING_INCOME
-                        if metric == "operating_income"
-                        else ALPHABET_REVENUE
-                    ),
-                    start_date=PERIOD_START,
-                    end_date=PERIOD_END,
-                    accession_number=ALPHABET_ACCESSION,
-                    concept=(
-                        ALPHABET_OPERATING_INCOME_CONCEPT
-                        if metric == "operating_income"
-                        else ALPHABET_REVENUE_CONCEPT
-                    ),
-                    source_url=ALPHABET_SOURCE_URL,
-                )
-            raise AssertionError(f"unexpected get_financials({company!r}, {metric!r})")
+                raise AmbiguousFactError("Supported concepts produced conflicting values")
+            return super().get_financials(company, metric)
 
     result = run_turn(
         MSFT_GOOG_OPERATING_MARGINS_QUERY,
