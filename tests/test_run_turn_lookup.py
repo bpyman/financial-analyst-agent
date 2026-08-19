@@ -16,12 +16,11 @@ GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
 )
 UNKNOWN_METRIC_QUERY = "What was Google's ROE based on their latest quarterly report?"
 UNKNOWN_COSTS_QUERY = "What was Google's costs based on their latest quarterly report?"
-GOOGLE_GROSS_PROFIT_QUERY = (
-    "What was Google's gross profit based on their latest quarterly report?"
-)
+GOOGLE_GROSS_PROFIT_QUERY = "What was Google's gross profit based on their latest quarterly report?"
 GOOGLE_OPERATING_MARGIN_QUERY = (
     "What was Google's operating margin based on their latest quarterly report?"
 )
+SHOPIFY_NET_MARGIN_QUERY = "Shopify net margin"
 UNRELATED_QUERY = "What is the weather in Atlanta?"
 EXXONMOBIL_NET_INCOME_QUERY = (
     "What was ExxonMobil's net income based on their latest quarterly report?"
@@ -60,10 +59,7 @@ FORM = "10-Q"
 ACCESSION = "0001652044-26-000048"
 TAXONOMY = "us-gaap"
 CONCEPT = "NetIncomeLoss"
-SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/1652044/"
-    "000165204426000048/goog-20260331.htm"
-)
+SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm"
 
 
 class _FakeCompleter:
@@ -101,9 +97,36 @@ class _UnknownMetricCompleter:
         return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="roe")
 
 
-class _FormulaCompleter:
+class _ShopifyNetMarginCompleter:
     def complete(self, query: str) -> SimpleNamespace:
-        return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="operating_margin")
+        if query != SHOPIFY_NET_MARGIN_QUERY:
+            raise AssertionError(f"unexpected query: {query!r}")
+        return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="net_margin")
+
+
+class _ComponentFacts:
+    def __init__(self, company: str, values: dict[str, Decimal]) -> None:
+        self._company = company
+        self._values = values
+
+    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        if company != self._company or metric not in self._values:
+            raise AssertionError(f"unexpected get_financials({company!r}, {metric!r})")
+        return SimpleNamespace(
+            company_name=company,
+            ticker="SHOP",
+            cik="0001594805",
+            metric=metric,
+            value=self._values[metric],
+            currency="USD",
+            start_date=PERIOD_START,
+            end_date=PERIOD_END,
+            form=FORM,
+            accession_number="0001594805-26-000012",
+            taxonomy=TAXONOMY,
+            concept=metric,
+            source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+        )
 
 
 class _ExplodingFacts:
@@ -224,14 +247,38 @@ def test_fixture_runtime_refuses_unknown_costs_without_inventing_net_income() ->
         assert metric in result.message
 
 
-def test_fixture_runtime_refuses_lookup_of_formula_metric() -> None:
-    result = run_turn(GOOGLE_OPERATING_MARGIN_QUERY, fixture_runtime())
-    assert result.renderer is RendererKind.REFUSE
-    assert result.table_rows == []
-    assert result.message is not None
-    assert "operating_margin" in result.message
-    for metric in ALLOWED_METRICS:
-        assert metric in result.message
+def test_run_turn_lookup_computes_shopify_net_margin() -> None:
+    net_income = Decimal("100000000")
+    revenue = Decimal("1000000000")
+    result = run_turn(
+        SHOPIFY_NET_MARGIN_QUERY,
+        Runtime(
+            completer=_ShopifyNetMarginCompleter(),
+            facts=_ComponentFacts("Shopify", {"net_income": net_income, "revenue": revenue}),
+        ),
+    )
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    assert result.message is None
+    assert len(result.table_rows) == 1
+    row = result.table_rows[0]
+    assert row.company_name == "Shopify"
+    assert row.metric == "net_margin"
+    assert row.value == net_income / revenue
+    assert row.start_date == PERIOD_START
+    assert row.end_date == PERIOD_END
+    components = {component.metric: component for component in row.components}
+    assert set(components) == {"net_income", "revenue"}
+    assert components["net_income"].value == net_income
+    assert components["revenue"].value == revenue
+    assert len(result.tool_traces) == 1
+    trace = result.tool_traces[0]
+    assert trace.tool == "compare_metrics"
+    assert trace.args == {"issuers": ["Shopify"], "metric": "net_margin"}
+    provenance_components = {item["metric"]: item for item in trace.provenance["components"]}
+    assert provenance_components["net_income"]["value"] == str(net_income)
+    assert provenance_components["revenue"]["value"] == str(revenue)
 
 
 def test_fixture_runtime_does_not_invent_net_income_for_unrelated_query() -> None:
@@ -248,19 +295,15 @@ def test_fixture_runtime_refuses_when_recorded_fact_missing_for_gross_profit() -
     assert result.message is not None
 
 
-def test_run_turn_refuses_formula_metric_from_completer_without_calling_facts() -> None:
-    result = run_turn(
-        GOOGLE_OPERATING_MARGIN_QUERY,
-        Runtime(
-            completer=_FormulaCompleter(),
-            facts=_ExplodingFacts(),
-        ),
-    )
-    assert result.renderer is RendererKind.REFUSE
-    assert result.table_rows == []
-    assert result.tool_traces == []
-    assert result.message is not None
-    assert "operating_margin" in result.message
+def test_fixture_runtime_lookup_computes_operating_margin() -> None:
+    result = run_turn(GOOGLE_OPERATING_MARGIN_QUERY, fixture_runtime())
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    assert result.message is None
+    row = result.table_rows[0]
+    assert row.metric == "operating_margin"
+    assert row.value is not None
+    assert row.components
 
 
 def _assert_successor_lookup(query: str) -> None:

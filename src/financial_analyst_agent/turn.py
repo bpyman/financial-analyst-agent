@@ -567,12 +567,10 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     )
 
 
-def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    issuers = list(plan.companies)
-    metric = plan.metric
+def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runtime) -> TurnResult:
     rows = compare_metrics(runtime.facts, issuers, metric)
     return TurnResult(
-        intent=Intent.COMPARE,
+        intent=intent,
         tool_traces=[
             ToolTrace(
                 tool="compare_metrics",
@@ -582,6 +580,7 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
                         {
                             "cik": row.cik,
                             "metric": component.metric,
+                            "value": str(component.value),
                             "accession_number": component.accession_number,
                             "concept": component.concept,
                             "start_date": component.start_date.isoformat(),
@@ -597,6 +596,10 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
         renderer=RendererKind.TABLE,
         table_rows=rows,
     )
+
+
+def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    return _metrics_turn(Intent.COMPARE, list(plan.companies), plan.metric, runtime)
 
 
 def _plan_with_metric(plan: Any, metric: str) -> Any:
@@ -648,8 +651,11 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         if metric not in REPORTED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
         return _rank_and_lookup_turn(plan, runtime)
-    if plan.intent is Intent.LOOKUP and metric not in REPORTED_METRICS:
-        return _refuse_unknown_metric(plan.intent, metric)
+    if plan.intent is Intent.LOOKUP:
+        if metric not in ALLOWED_METRICS:
+            return _refuse_unknown_metric(plan.intent, metric)
+        if metric in FORMULA_COMPONENTS:
+            return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
     args = {"company": plan.company, "metric": metric}
     try:
         fact = runtime.facts.get_financials(plan.company, metric)

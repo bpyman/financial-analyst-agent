@@ -32,6 +32,12 @@ def test_net_income_is_unique_catalog_name() -> None:
     assert resolved.metric == "net_income"
 
 
+def test_net_margin_is_unique_catalog_name() -> None:
+    resolved = resolve_metric_phrase("Shopify net margin")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "net_margin"
+
+
 def test_revenue_is_unique_catalog_name() -> None:
     resolved = resolve_metric_phrase("What was Google's revenue?")
     assert resolved.kind == "unique"

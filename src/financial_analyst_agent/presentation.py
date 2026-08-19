@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from financial_analyst_agent.turn import (
@@ -243,6 +243,16 @@ def present_turn(result: TurnResult) -> Presentation:
 def _fact_card(row: TableRow) -> QuarterlyFactCard:
     assert row.start_date is not None
     assert row.end_date is not None
+    form = row.form or ""
+    accession_number = row.accession_number or ""
+    concept = row.concept or ""
+    source_url = row.source_url or ""
+    if row.components and not concept:
+        concept = " / ".join(component.concept for component in row.components)
+        first = row.components[0]
+        form = form or first.form
+        accession_number = accession_number or first.accession_number
+        source_url = source_url or first.source_url
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,
@@ -252,10 +262,10 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
             "Latest standalone quarter · "
             f"{format_date(row.start_date)} – {format_date(row.end_date)}"
         ),
-        form=row.form or "",
-        accession_number=row.accession_number or "",
-        concept=row.concept or "",
-        source_url=row.source_url or "",
+        form=form,
+        accession_number=accession_number,
+        concept=concept,
+        source_url=source_url,
     )
 
 
@@ -299,7 +309,7 @@ def _trace_identity(args: dict[str, Any]) -> str:
     for key in ("company", "metric", "industry", "query", "topic"):
         value = args.get(key)
         if value is not None and value != "":
-            parts.append(str(value))
+            parts.append(_humanize_field(str(value)) if key == "metric" else str(value))
     issuers = args.get("issuers")
     if isinstance(issuers, list) and issuers:
         parts.append(", ".join(str(item) for item in issuers))
@@ -307,9 +317,17 @@ def _trace_identity(args: dict[str, Any]) -> str:
 
 
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    return tuple(
-        (_humanize_field(str(key)), _format_trace_value(value)) for key, value in payload.items()
-    )
+    fields: list[tuple[str, str]] = []
+    for key, value in payload.items():
+        label = _humanize_field(str(key))
+        if key == "components" and isinstance(value, list):
+            fields.append((label, _format_component_traces(value)))
+            continue
+        if key == "metric" and isinstance(value, str):
+            fields.append((label, _humanize_field(value)))
+            continue
+        fields.append((label, _format_trace_value(value)))
+    return tuple(fields)
 
 
 def _display_trace(trace: Any) -> DisplayTrace:
@@ -320,6 +338,48 @@ def _display_trace(trace: Any) -> DisplayTrace:
         inputs=_trace_fields(trace.args),
         outputs=_trace_fields(trace.provenance),
     )
+
+
+def _format_component_amount(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    if isinstance(value, Decimal):
+        return format_usd(value)
+    try:
+        return format_usd(Decimal(str(value)))
+    except InvalidOperation:
+        return str(value)
+
+
+def _format_component_traces(components: list[Any]) -> str:
+    blocks: list[str] = []
+    for item in components:
+        if not isinstance(item, dict):
+            blocks.append(f"- {_format_trace_value(item)}")
+            continue
+        metric = _humanize_field(str(item.get("metric") or "Component"))
+        amount = _format_component_amount(item.get("value"))
+        heading = f"- **{metric}**"
+        if amount:
+            heading = f"{heading} — {amount}"
+        lines = [heading]
+        for key, label in (
+            ("cik", "CIK"),
+            ("concept", "Concept"),
+            ("accession_number", "Accession"),
+        ):
+            raw = item.get(key)
+            if raw:
+                lines.append(f"  - {label}: `{raw}`")
+        start = item.get("start_date")
+        end = item.get("end_date")
+        if start and end:
+            lines.append(f"  - Period: {_format_trace_value(start)} – {_format_trace_value(end)}")
+        url = item.get("source_url")
+        if url:
+            lines.append(f"  - [Filing]({url})")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def _format_trace_value(value: Any) -> str:
@@ -352,6 +412,8 @@ def _format_trace_value(value: Any) -> str:
                 lines.append(f"{label}: {formatted}")
         return "\n".join(lines)
     if isinstance(value, list):
+        if value and all(not isinstance(item, (dict, list)) for item in value):
+            return ", ".join(_format_trace_value(item) for item in value)
         lines = []
         for item in value:
             item_lines = _format_trace_value(item).splitlines()

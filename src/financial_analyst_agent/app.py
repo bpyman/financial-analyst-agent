@@ -69,7 +69,11 @@ def _render_presentation(presented: Presentation) -> None:
 def _render_trace_group(title: str, fields: tuple[tuple[str, str], ...]) -> None:
     st.caption(title)
     for label, value in fields:
-        st.markdown(f"**{label}:** {value}")
+        if "\n" in value:
+            st.markdown(f"**{label}**")
+            st.markdown(value)
+        else:
+            st.markdown(f"**{label}:** {value}")
 
 
 def _render_fact_card(card: QuarterlyFactCard) -> None:

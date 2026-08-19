@@ -15,6 +15,7 @@ from financial_analyst_agent.presentation import (
     try_parse_datetime,
 )
 from financial_analyst_agent.turn import (
+    ComponentProvenance,
     Intent,
     NewsHit,
     RendererKind,
@@ -180,7 +181,7 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     trace = presented.traces[0]
     assert dict(trace.inputs) == {
         "Company": "Google",
-        "Metric": "net_income",
+        "Metric": "Net income",
     }
     outputs = dict(trace.outputs)
     assert outputs["Accession number"] == "0001652044-26-000048"
@@ -190,6 +191,59 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert "source_url" not in outputs
     assert all("(" not in label and "_" not in label for label, _ in trace.inputs)
     assert all("(" not in label and "_" not in label for label, _ in trace.outputs)
+
+
+def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Shopify Inc.",
+                ticker="SHOP",
+                cik="0001594805",
+                metric="net_margin",
+                value=Decimal("0.1"),
+                start_date=date(2026, 1, 1),
+                end_date=date(2026, 3, 31),
+                components=[
+                    ComponentProvenance(
+                        metric="net_income",
+                        value=Decimal("100"),
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 3, 31),
+                        form="10-Q",
+                        accession_number="0001594805-26-000012",
+                        taxonomy="us-gaap",
+                        concept="NetIncomeLoss",
+                        source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                    ),
+                    ComponentProvenance(
+                        metric="revenue",
+                        value=Decimal("1000"),
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 3, 31),
+                        form="10-Q",
+                        accession_number="0001594805-26-000012",
+                        taxonomy="us-gaap",
+                        concept="RevenueFromContractWithCustomerExcludingAssessedTax",
+                        source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                    ),
+                ],
+            )
+        ],
+    )
+    presented = present_turn(result)
+    assert presented.table is None
+    card = presented.fact_card
+    assert card is not None
+    assert card.metric_header == "Net margin"
+    assert card.amount == "10.0%"
+    assert card.form == "10-Q"
+    assert card.accession_number == "0001594805-26-000012"
+    assert card.concept == "NetIncomeLoss / RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert card.source_url.endswith("shop.htm")
 
 
 def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
@@ -351,6 +405,73 @@ def test_present_trace_formats_nested_news_hits_as_readable_lines() -> None:
         "- Title: Second hit\n"
         "  Url: https://example.com/second\n"
         "  Published: yesterday morning"
+    )
+
+
+def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[
+            ToolTrace(
+                tool="compare_metrics",
+                args={"issuers": ["Shopify"], "metric": "net_margin"},
+                provenance={
+                    "components": [
+                        {
+                            "cik": "0001594805",
+                            "metric": "net_income",
+                            "value": "100000000",
+                            "accession_number": "0001594805-26-000047",
+                            "concept": "NetIncomeLoss",
+                            "start_date": "2026-04-01",
+                            "end_date": "2026-06-30",
+                            "source_url": "https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                        },
+                        {
+                            "cik": "0001594805",
+                            "metric": "revenue",
+                            "value": "1000000000",
+                            "accession_number": "0001594805-26-000047",
+                            "concept": "Revenues",
+                            "start_date": "2026-04-01",
+                            "end_date": "2026-06-30",
+                            "source_url": "https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                        },
+                    ]
+                },
+            )
+        ],
+        table_rows=[
+            TableRow(
+                company_name="Shopify Inc.",
+                ticker="SHOP",
+                cik="0001594805",
+                metric="net_margin",
+                value=Decimal("0.1"),
+                start_date=date(2026, 4, 1),
+                end_date=date(2026, 6, 30),
+            )
+        ],
+    )
+    presented = present_turn(result)
+    trace = presented.traces[0]
+    assert dict(trace.inputs) == {"Issuers": "Shopify", "Metric": "Net margin"}
+    components = dict(trace.outputs)["Components"]
+    assert components == (
+        "- **Net income** — $100.00 M\n"
+        "  - CIK: `0001594805`\n"
+        "  - Concept: `NetIncomeLoss`\n"
+        "  - Accession: `0001594805-26-000047`\n"
+        "  - Period: Apr 1, 2026 – Jun 30, 2026\n"
+        "  - [Filing](https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)\n"
+        "\n"
+        "- **Revenue** — $1.00 B\n"
+        "  - CIK: `0001594805`\n"
+        "  - Concept: `Revenues`\n"
+        "  - Accession: `0001594805-26-000047`\n"
+        "  - Period: Apr 1, 2026 – Jun 30, 2026\n"
+        "  - [Filing](https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)"
     )
 
 

@@ -10,7 +10,7 @@ from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import DisplayTable
-from financial_analyst_agent.turn import Intent, RendererKind, TurnResult
+from financial_analyst_agent.turn import Intent, RendererKind, ToolTrace, TurnResult
 
 
 class _Sidebar:
@@ -314,3 +314,40 @@ def test_render_table_configures_source_url_as_filing_link(
     assert link_args == ()
     assert link_kwargs == {"display_text": "Filing"}
     assert fake_streamlit.dataframes[0][1]["column_config"] == {source_header: marker}
+
+
+def test_render_formula_trace_keeps_component_markdown_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    monkeypatch.setattr(app, "st", fake_streamlit)
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[
+            ToolTrace(
+                tool="compare_metrics",
+                args={"issuers": ["Shopify"], "metric": "net_margin"},
+                provenance={
+                    "components": [
+                        {
+                            "cik": "0001594805",
+                            "metric": "net_income",
+                            "value": "100000000",
+                            "accession_number": "0001594805-26-000047",
+                            "concept": "NetIncomeLoss",
+                            "start_date": "2026-04-01",
+                            "end_date": "2026-06-30",
+                            "source_url": "https://www.sec.gov/example",
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+
+    app.render_turn_result(result)
+
+    assert "**Components**" in fake_streamlit.markdowns
+    assert any("- **Net income**" in item for item in fake_streamlit.markdowns)
+    assert not any("**Components:**" in item for item in fake_streamlit.markdowns)
