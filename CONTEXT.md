@@ -23,3 +23,7 @@ _Avoid_: security, ticker, listing (unqualified)
 **Ineligible issuer**:
 An operating-company lookalike identified by CIK after security type and industry are not enough to tell it apart. It is not a snapshot member and cannot be looked up or compared.
 _Avoid_: blocklist entry, banned ticker
+
+**Quarterly fact**:
+A directly reported standalone-quarter amount from a 10-Q, with provenance.
+_Avoid_: TTM, derived quarter, restatement

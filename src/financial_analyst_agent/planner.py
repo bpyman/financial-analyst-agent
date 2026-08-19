@@ -145,6 +145,13 @@ class Plan(BaseModel):
         return None
 
 
+def openai_client_from_settings(settings: Settings) -> tuple[Any, str]:
+    api_key = settings.require_openai_api_key()
+    model = settings.require_openai_model()
+    base_url = settings.openai_base_url.strip() or None
+    return openai.OpenAI(api_key=api_key, base_url=base_url), model
+
+
 class OpenAIStructuredCompleter:
     """Calls OpenAI parse() with Plan as the constrained response schema."""
 
@@ -154,10 +161,7 @@ class OpenAIStructuredCompleter:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OpenAIStructuredCompleter":
-        api_key = settings.require_openai_api_key()
-        model = settings.require_openai_model()
-        base_url = settings.openai_base_url.strip() or None
-        return cls(openai.OpenAI(api_key=api_key, base_url=base_url), model)
+        return cls(*openai_client_from_settings(settings))
 
     def complete(self, query: str) -> Plan:
         try:

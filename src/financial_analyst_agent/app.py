@@ -64,10 +64,9 @@ def main() -> None:
             return
         st.session_state["result"] = result
 
-    cached_result: TurnResult | None = st.session_state.get("result")
-    if cached_result is None:
+    if "result" not in st.session_state:
         return
-    render_turn_result(cached_result)
+    render_turn_result(st.session_state["result"])
 
 
 if __name__ == "__main__":

@@ -11,9 +11,10 @@ import httpx
 import pytest
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.facts import FixtureFactLookup
+from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH, DemoCompleter
+from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.snapshot_builder import (
     companies_from_vendor_payloads,
     fetch_fmp_rows,
@@ -35,7 +36,7 @@ SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
 def _gold_rank_runtime() -> Runtime:
     return Runtime(
         completer=DemoCompleter(),
-        facts=FixtureFactLookup(),
+        facts=SecFactLookup(client=RecordedSECDataSource()),
         ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
     )
 

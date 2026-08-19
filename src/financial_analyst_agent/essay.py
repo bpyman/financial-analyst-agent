@@ -1,10 +1,9 @@
 """OpenAI essay completion for qualitative live turns."""
 
-from typing import Any, cast
-
-import openai
+from typing import Any
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.planner import openai_client_from_settings
 
 _EXPLAIN_INSTRUCTIONS = (
     "Write a concise financial-analyst essay that answers the user's question. "
@@ -25,10 +24,7 @@ class OpenAIEssayCompleter:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OpenAIEssayCompleter":
-        api_key = settings.require_openai_api_key()
-        model = settings.require_openai_model()
-        base_url = settings.openai_base_url.strip() or None
-        return cls(openai.OpenAI(api_key=api_key, base_url=base_url), model)
+        return cls(*openai_client_from_settings(settings))
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
         instructions = _EXPLAIN_INSTRUCTIONS
@@ -41,4 +37,4 @@ class OpenAIEssayCompleter:
             instructions=instructions,
             input=input_text,
         )
-        return cast(str, response.output_text)
+        return str(response.output_text)

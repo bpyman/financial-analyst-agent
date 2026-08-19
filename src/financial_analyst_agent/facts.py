@@ -5,11 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from financial_analyst_agent.domain.errors import ProviderError
-from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.providers.sec.company_facts import validate_companyfacts_response
 from financial_analyst_agent.providers.sec.submissions import validate_submissions_response
 from financial_analyst_agent.providers.sec.tickers import require_usable_company_tickers
-from financial_analyst_agent.sec_facts import SecFactLookup
 
 _RECORDING_PATH = Path(__file__).parent / "data" / "sec_fixture_recordings.json"
 
@@ -48,13 +46,3 @@ class RecordedSECDataSource:
                 details={"cik": cik, "status_code": 404},
             )
         return payload
-
-
-class FixtureFactLookup:
-    """Replay SEC responses offline while using the live parser and selector."""
-
-    def __init__(self, path: Path = _RECORDING_PATH) -> None:
-        self._lookup = SecFactLookup(client=RecordedSECDataSource(path))
-
-    def get_financials(self, company: str, metric: str) -> tuple[FinancialFact, ...]:
-        return self._lookup.get_financials(company, metric)

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.essay import OpenAIEssayCompleter
-from financial_analyst_agent.facts import FixtureFactLookup
+from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY, FixtureNewsSearch, TavilyNewsSearch
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
@@ -205,7 +205,7 @@ class DemoCompleter:
 def fixture_runtime() -> Runtime:
     return Runtime(
         completer=DemoCompleter(),
-        facts=FixtureFactLookup(),
+        facts=SecFactLookup(client=RecordedSECDataSource()),
         ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=FixtureNewsSearch(),
         essay=FixtureEssayCompleter(),
