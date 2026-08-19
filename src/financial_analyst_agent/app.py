@@ -94,6 +94,12 @@ def main() -> None:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
+    if (
+        "result" in st.session_state
+        and st.session_state.get("result_kill_switch") != kill_switch
+    ):
+        st.session_state.pop("result", None)
+        st.session_state.pop("result_kill_switch", None)
 
     with st.form("ask"):
         query = st.text_input("Ask a question", value=_GOLD_QUERY)
@@ -104,6 +110,8 @@ def main() -> None:
         if st.session_state.get("turn_in_flight"):
             st.info("A turn is already running.")
         else:
+            st.session_state.pop("result", None)
+            st.session_state.pop("result_kill_switch", None)
             st.session_state["turn_in_flight"] = True
             try:
                 with st.spinner("Running turn…"):
@@ -113,10 +121,13 @@ def main() -> None:
                     )
             except ConfigurationError as exc:
                 st.error(str(exc))
+            except Exception as exc:
+                st.error(str(exc))
+            else:
+                st.session_state["result"] = result
+                st.session_state["result_kill_switch"] = kill_switch
+            finally:
                 st.session_state["turn_in_flight"] = False
-                return
-            st.session_state["result"] = result
-            st.session_state["turn_in_flight"] = False
 
     if "result" not in st.session_state:
         return
