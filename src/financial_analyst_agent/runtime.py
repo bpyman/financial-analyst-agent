@@ -6,8 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
+from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.facts import FixtureFactLookup
-from financial_analyst_agent.news import FixtureNewsSearch, TavilyNewsSearch
+from financial_analyst_agent.news import FIXTURE_NEWS_QUERY, FixtureNewsSearch, TavilyNewsSearch
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
@@ -125,6 +127,7 @@ FIXTURE_EXPLAIN_ESSAY = (
     "Common use cases include clinical decision support, administrative coding, "
     "and patient outreach."
 )
+FIXTURE_EXPLAIN_QUERY = "How can AI disrupt healthcare?"
 
 
 class FixtureEssayCompleter:
@@ -132,13 +135,17 @@ class FixtureEssayCompleter:
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
         if not tool_json:
+            if query.strip().casefold() != FIXTURE_EXPLAIN_QUERY.casefold():
+                raise ProviderError("No recorded fixture essay for this prompt")
             return FIXTURE_EXPLAIN_ESSAY
+        if query.strip().casefold() != FIXTURE_NEWS_QUERY.casefold():
+            raise ProviderError("No recorded fixture news essay for this prompt")
         try:
             payload = json.loads(tool_json)
-        except json.JSONDecodeError:
-            return FIXTURE_EXPLAIN_ESSAY
+        except json.JSONDecodeError as exc:
+            raise ProviderError("Recorded fixture news input was invalid") from exc
         if not isinstance(payload, list):
-            return FIXTURE_EXPLAIN_ESSAY
+            raise ProviderError("Recorded fixture news input was not a list")
         sentences: list[str] = []
         for item in payload:
             if not isinstance(item, dict):
@@ -153,7 +160,7 @@ class FixtureEssayCompleter:
                 sentence = f"{sentence} ({published})"
             sentences.append(sentence)
         if not sentences:
-            return FIXTURE_EXPLAIN_ESSAY
+            raise ProviderError("Recorded fixture news input contained no usable hits")
         return " ".join(sentences)
 
 
@@ -212,7 +219,7 @@ def live_runtime(settings: Settings | None = None) -> Runtime:
         facts=SecFactLookup(resolved),
         ranking=SnapshotRanking.from_path(),
         news=TavilyNewsSearch(resolved),
-        essay=FixtureEssayCompleter(),
+        essay=OpenAIEssayCompleter.from_settings(resolved),
     )
 
 

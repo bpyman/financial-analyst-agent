@@ -13,6 +13,7 @@ from financial_analyst_agent.turn import (
 )
 
 NVIDIA_SUPPLY_QUERY = "What is going on with NVIDIA supply chain?"
+MICROSOFT_NEWS_QUERY = "What's going on with Microsoft?"
 FIXTURE_HIT = NewsHit(
     title="NVIDIA flags CoWoS supply constraints",
     url="https://example.test/nvidia-supply-chain",
@@ -203,3 +204,14 @@ def test_fixture_runtime_news_and_explain_uses_recorded_hits() -> None:
     assert trace.args["query"] == NVIDIA_SUPPLY_QUERY
     assert trace.args["topic"] == "news"
     assert trace.args["max_results"] == 5
+
+
+def test_fixture_runtime_refuses_news_without_matching_recording() -> None:
+    result = run_turn(MICROSOFT_NEWS_QUERY, fixture_runtime())
+
+    assert result.intent is Intent.NEWS_AND_EXPLAIN
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
+    assert result.citations == []
+    assert result.message is not None
+    assert "usable" in result.message.casefold()

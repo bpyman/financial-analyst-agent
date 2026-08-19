@@ -36688,17 +36688,6 @@
       "industry": "Banks - Regional"
     },
     {
-      "cik": "0002061379",
-      "name": "LightWave Acquisition Corp.",
-      "ticker": "LWACU",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "308552864",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001327607",
       "name": "First Western Financial, Inc.",
       "ticker": "MYFW",
@@ -40008,17 +39997,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Banks - Regional"
-    },
-    {
-      "cik": "0002076616",
-      "name": "Tailwind 2.0 Acquisition Corp. Unit",
-      "ticker": "TDWDU",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "180443080",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001705110",
@@ -44947,17 +44925,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Household & Personal Products"
-    },
-    {
-      "cik": "0002079106",
-      "name": "LaFayette Acquisition Corp. Rights",
-      "ticker": "LAFAR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "65913633",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001036044",
@@ -51615,17 +51582,6 @@
       "industry": "Agricultural Farm Products"
     },
     {
-      "cik": "0002043508",
-      "name": "Lake Superior Acquisition Corp. \u2013 Rights",
-      "ticker": "LKSPR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "11012010",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001863990",
       "name": "MultiSensor AI Holdings, Inc.",
       "ticker": "MSAI",
@@ -53881,17 +53837,6 @@
       "industry": "Software - Application"
     },
     {
-      "cik": "0002076427",
-      "name": "Galata Acquisition Corp. II",
-      "ticker": "LATAW",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "4831725",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0000832489",
       "name": "GeoVax Labs, Inc.",
       "ticker": "GOVX",
@@ -54165,17 +54110,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Biotechnology"
-    },
-    {
-      "cik": "0002067592",
-      "name": "McKinley Acquisition Corporation Rights",
-      "ticker": "MKLYR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "4450313",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0002024656",
@@ -54484,17 +54418,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Industrial - Distribution"
-    },
-    {
-      "cik": "0002086524",
-      "name": "K2 Capital Acquisition Corporation Rights",
-      "ticker": "KTWOR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "3812844",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000105744",
@@ -54849,17 +54772,6 @@
       "industry": "Paper, Lumber & Forest Products"
     },
     {
-      "cik": "0002053799",
-      "name": "Kochav Defense Acquisition Corp. Right",
-      "ticker": "KCHVR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "2969766",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001826376",
       "name": "Golden Sun Education Group Limited",
       "ticker": "GSUN",
@@ -55067,17 +54979,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - Specialty & Generic"
-    },
-    {
-      "cik": "0002028735",
-      "name": "Silver Pegasus Acquisition Corp Rights.",
-      "ticker": "SPEGR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "2645000",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001728328",
@@ -55353,17 +55254,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Communication Equipment"
-    },
-    {
-      "cik": "0002070887",
-      "name": "Crown Reserve Acquisition Corp. I Rights",
-      "ticker": "CRACR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "2291338",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0002024258",
@@ -56255,17 +56145,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Biotechnology"
-    },
-    {
-      "cik": "0002026767",
-      "name": "Calisa Acquisition Corp Right",
-      "ticker": "ALISR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "847677",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000946644",

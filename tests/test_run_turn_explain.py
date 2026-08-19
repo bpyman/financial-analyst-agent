@@ -13,6 +13,7 @@ from financial_analyst_agent.turn import (
 )
 
 AI_HEALTHCARE_QUERY = "How can AI disrupt healthcare?"
+AI_MINING_QUERY = "How can AI disrupt mining?"
 
 
 class _ExplainCompleter:
@@ -93,3 +94,12 @@ def test_fixture_runtime_explain_uses_injected_essay_completer() -> None:
     tools = [trace.tool for trace in result.tool_traces]
     assert "search_news" not in tools
 
+
+def test_fixture_runtime_refuses_explain_without_matching_recording() -> None:
+    result = run_turn(AI_MINING_QUERY, fixture_runtime())
+
+    assert result.intent is Intent.EXPLAIN
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
+    assert result.message is not None
+    assert "recorded" in result.message.casefold()

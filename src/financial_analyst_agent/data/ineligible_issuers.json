@@ -34,6 +34,17 @@
     {"cik": "0001370755", "ticker": "TCPC", "reason": "BDC"},
     {"cik": "0001580345", "ticker": "TPVG", "reason": "BDC"},
     {"cik": "0001508655", "ticker": "TSLX", "reason": "BDC"},
-    {"cik": "0001552198", "ticker": "WHF", "reason": "BDC"}
+    {"cik": "0001552198", "ticker": "WHF", "reason": "BDC"},
+    {"cik": "0002026767", "ticker": "ALISR", "reason": "SPAC right"},
+    {"cik": "0002028735", "ticker": "SPEGR", "reason": "SPAC right"},
+    {"cik": "0002043508", "ticker": "LKSPR", "reason": "SPAC right"},
+    {"cik": "0002053799", "ticker": "KCHVR", "reason": "SPAC right"},
+    {"cik": "0002061379", "ticker": "LWACU", "reason": "SPAC unit"},
+    {"cik": "0002067592", "ticker": "MKLYR", "reason": "SPAC right"},
+    {"cik": "0002070887", "ticker": "CRACR", "reason": "SPAC right"},
+    {"cik": "0002076427", "ticker": "LATAW", "reason": "SPAC warrant"},
+    {"cik": "0002076616", "ticker": "TDWDU", "reason": "SPAC unit"},
+    {"cik": "0002079106", "ticker": "LAFAR", "reason": "SPAC right"},
+    {"cik": "0002086524", "ticker": "KTWOR", "reason": "SPAC right"}
   ]
 }

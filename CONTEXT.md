@@ -1,15 +1,19 @@
 # Financial analyst agent
 
-A demo agent that looks up reported quarterly facts, ranks US exchange-listed operating companies from a dated freeze, and answers qualitative questions without inventing numbers.
+A demo agent that looks up reported quarterly facts for operating companies, ranks snapshot members from a dated freeze, and answers qualitative questions without inventing numbers.
 
 ## Language
 
 **Universe snapshot**:
-A dated freeze of US exchange-listed common shares of operating companies. Ranking reads this freeze; it does not rescreen the market on each question.
+A dated freeze of US exchange-listed common shares of operating companies. Ranking reads this freeze; it does not rescreen the market. Lookup does not require freeze presence. News does not use it.
 _Avoid_: live screener, universe, catalog
 
+**Snapshot member**:
+An operating company whose common share is present in this universe snapshot.
+_Avoid_: SEC filer, listed company, issuer
+
 **Operating company**:
-An issuer that runs a business, as opposed to a shell, SPAC, fund, BDC, or other financing vehicle.
+A company that runs a business, as opposed to a shell, SPAC, fund, BDC, or other financing vehicle.
 _Avoid_: issuer (unqualified), name, entity
 
 **Common share**:
@@ -17,5 +21,5 @@ The ordinary equity listing of an operating company, not a preferred, unit, warr
 _Avoid_: security, ticker, listing (unqualified)
 
 **Ineligible issuer**:
-An operating-company lookalike identified by CIK after security type and industry are not enough to tell it apart.
+An operating-company lookalike identified by CIK after security type and industry are not enough to tell it apart. It is not a snapshot member and cannot be looked up or compared.
 _Avoid_: blocklist entry, banned ticker

@@ -56,16 +56,18 @@ def main() -> None:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
 
     query = st.text_input("Question", value=_GOLD_QUERY)
-    if not st.button("Ask", type="primary") and "result" not in st.session_state:
-        return
+    if st.button("Ask", type="primary"):
+        try:
+            result = run_turn(query, runtime_for_kill_switch(enabled=kill_switch))
+        except ConfigurationError as exc:
+            st.error(str(exc))
+            return
+        st.session_state["result"] = result
 
-    try:
-        result = run_turn(query, runtime_for_kill_switch(enabled=kill_switch))
-    except ConfigurationError as exc:
-        st.error(str(exc))
+    cached_result: TurnResult | None = st.session_state.get("result")
+    if cached_result is None:
         return
-    st.session_state["result"] = result
-    render_turn_result(result)
+    render_turn_result(cached_result)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import ProviderError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.sec_facts import SecFactLookup, related_lookup_ciks
 from helpers import make_filing
@@ -200,3 +200,39 @@ def test_sec_fact_lookup_does_not_fallback_on_companyfacts_client_error() -> Non
     with pytest.raises(ProviderError) as exc_info:
         lookup.get_financials("ExxonMobil", "net_income")
     assert exc_info.value.details.get("status_code") == 400
+
+
+def test_sec_fact_lookup_converts_exhausted_companyfacts_404s_to_missing_fact() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/company_tickers.json"):
+            return httpx.Response(
+                200,
+                json={
+                    "0": {
+                        "cik_str": 2115436,
+                        "ticker": "XOM",
+                        "title": "ExxonMobil Holdings Corp",
+                    }
+                },
+            )
+        if path.endswith(f"/submissions/CIK{SUCCESSOR_CIK}.json"):
+            return httpx.Response(200, json=_submissions(SUCCESSOR_CIK, ACCESSION))
+        if "/companyfacts/" in path:
+            return httpx.Response(404, json={"error": "not found"})
+        return httpx.Response(404, json={"error": path})
+
+    settings = Settings(
+        sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        sec_max_requests_per_second=5.0,
+    )
+    client = SECClient(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    lookup = SecFactLookup(settings, client=client)
+
+    with pytest.raises(UnsupportedQuarterlyFactError) as exc_info:
+        lookup.get_financials("ExxonMobil", "net_income")
+
+    assert exc_info.value.details == {"metric": "net_income"}

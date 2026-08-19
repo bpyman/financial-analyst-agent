@@ -343,6 +343,56 @@ def test_run_turn_ranks_builder_snapshot_without_etfs_funds_or_duplicate_ciks() 
     assert [row.cik for row in result.table_rows].count("0000731766") == 1
 
 
+def test_snapshot_builder_drops_compact_nasdaq_unit_right_and_warrant_symbols() -> None:
+    snapshot = build_universe_snapshot(
+        (
+            _company(
+                cik="0002090000",
+                name="JPMorgan Chase & Co.",
+                ticker="JPM",
+                sector="Financial Services",
+                exchange="NASDAQ",
+                market_cap="800000000000",
+            ),
+            _company(
+                cik="0002090001",
+                name="Alpha Acquisition Corp.",
+                ticker="ABCDU",
+                sector="Financial Services",
+                exchange="NASDAQ",
+                market_cap="300000000",
+            ),
+            _company(
+                cik="0002090002",
+                name="Beta Acquisition Corp.",
+                ticker="EFGHR",
+                sector="Financial Services",
+                exchange="NASDAQ",
+                market_cap="200000000",
+            ),
+            _company(
+                cik="0002090003",
+                name="Gamma Acquisition Corp.",
+                ticker="IJKLW",
+                sector="Financial Services",
+                exchange="NASDAQ",
+                market_cap="100000000",
+            ),
+            _company(
+                cik="0002090004",
+                name="Arrow Operating Company",
+                ticker="ARROW",
+                sector="Financial Services",
+                exchange="NYSE",
+                market_cap="500000000",
+            ),
+        ),
+        as_of=datetime(2026, 8, 17, 16, 0, tzinfo=UTC),
+    )
+
+    assert [company.ticker for company in snapshot.companies] == ["JPM", "ARROW"]
+
+
 def test_run_turn_ranks_operating_finance_issuers_not_shells_or_conglomerate_vehicles() -> None:
     snapshot = build_universe_snapshot(
         (

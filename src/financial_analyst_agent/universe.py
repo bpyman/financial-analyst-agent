@@ -43,6 +43,7 @@ _NON_COMMON_TICKER = re.compile(
     r"(?:-P[A-Z]?|-U(?:N)?|-W(?:S|T)?|-R)$",
     re.IGNORECASE,
 )
+_COMPACT_NASDAQ_NON_COMMON_TICKER = re.compile(r"^[A-Z]{4}[URW]$", re.IGNORECASE)
 # FMP puts the instrument description in companyName; there is no securityType field.
 _INSTRUMENT_TITLE = re.compile(
     r"\bpfd\b|preferred\s+stock|perpetual\s+preferred|\bwarrants?\b|"
@@ -96,6 +97,11 @@ def _is_common_share(company: UniverseCompany) -> bool:
     if company.is_etf or company.is_fund:
         return False
     if _NON_COMMON_TICKER.search(company.ticker.strip()):
+        return False
+    compact_nasdaq_product = _COMPACT_NASDAQ_NON_COMMON_TICKER.fullmatch(
+        company.ticker.strip()
+    )
+    if company.exchange.upper().startswith("NASDAQ") and compact_nasdaq_product:
         return False
     return _INSTRUMENT_TITLE.search(company.name) is None
 

@@ -1,0 +1,104 @@
+{
+  "company_tickers": {
+    "0": {"cik_str": 1652044, "ticker": "GOOG", "title": "Alphabet Inc."},
+    "1": {"cik_str": 1652044, "ticker": "GOOGL", "title": "Alphabet Inc."},
+    "2": {"cik_str": 789019, "ticker": "MSFT", "title": "Microsoft Corporation"},
+    "3": {"cik_str": 59478, "ticker": "LLY", "title": "Eli Lilly and Company"},
+    "4": {"cik_str": 731766, "ticker": "UNH", "title": "UnitedHealth Group Incorporated"}
+  },
+  "submissions": {
+    "0001652044": {
+      "cik": 1652044,
+      "name": "Alphabet Inc.",
+      "tickers": ["GOOG", "GOOGL"],
+      "filings": {"recent": {
+        "form": ["10-Q"],
+        "accessionNumber": ["0001652044-26-000048"],
+        "filingDate": ["2026-04-30"],
+        "reportDate": ["2026-03-31"],
+        "primaryDocument": ["goog-20260331.htm"]
+      }}
+    },
+    "0000789019": {
+      "cik": 789019,
+      "name": "Microsoft Corporation",
+      "tickers": ["MSFT"],
+      "filings": {"recent": {
+        "form": ["10-Q"],
+        "accessionNumber": ["0001193125-26-191507"],
+        "filingDate": ["2026-04-29"],
+        "reportDate": ["2026-03-31"],
+        "primaryDocument": ["msft-20260331.htm"]
+      }}
+    },
+    "0000059478": {
+      "cik": 59478,
+      "name": "Eli Lilly and Company",
+      "tickers": ["LLY"],
+      "filings": {"recent": {
+        "form": ["10-Q"],
+        "accessionNumber": ["0000059478-26-000045"],
+        "filingDate": ["2026-04-30"],
+        "reportDate": ["2026-03-31"],
+        "primaryDocument": ["lly-20260331.htm"]
+      }}
+    },
+    "0000731766": {
+      "cik": 731766,
+      "name": "UnitedHealth Group Incorporated",
+      "tickers": ["UNH"],
+      "filings": {"recent": {
+        "form": ["10-Q"],
+        "accessionNumber": ["0000731766-26-000127"],
+        "filingDate": ["2026-04-21"],
+        "reportDate": ["2026-03-31"],
+        "primaryDocument": ["unh-20260331.htm"]
+      }}
+    }
+  },
+  "company_facts": {
+    "0001652044": {
+      "cik": 1652044,
+      "entityName": "Alphabet Inc.",
+      "facts": {"us-gaap": {
+        "NetIncomeLoss": {"units": {"USD": [
+          {"start": "2026-01-01", "end": "2026-03-31", "val": 62578000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
+        ]}},
+        "OperatingIncomeLoss": {"units": {"USD": [
+          {"start": "2026-01-01", "end": "2026-03-31", "val": 39696000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
+        ]}},
+        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+          {"start": "2026-01-01", "end": "2026-03-31", "val": 109896000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
+        ]}}
+      }}
+    },
+    "0000789019": {
+      "cik": 789019,
+      "entityName": "Microsoft Corporation",
+      "facts": {"us-gaap": {
+        "OperatingIncomeLoss": {"units": {"USD": [
+          {"start": "2025-07-01", "end": "2026-03-31", "val": 114634000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"},
+          {"start": "2026-01-01", "end": "2026-03-31", "val": 38398000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
+        ]}},
+        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+          {"start": "2025-07-01", "end": "2026-03-31", "val": 241832000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"},
+          {"start": "2026-01-01", "end": "2026-03-31", "val": 82886000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
+        ]}}
+      }}
+    },
+    "0000059478": {
+      "cik": 59478,
+      "entityName": "Eli Lilly and Company",
+      "facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": [
+        {"start": "2026-01-01", "end": "2026-03-31", "val": 7396000000, "accn": "0000059478-26-000045", "form": "10-Q", "filed": "2026-04-30"}
+      ]}}}}
+    },
+    "0000731766": {
+      "cik": 731766,
+      "entityName": "UnitedHealth Group Incorporated",
+      "facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": [
+        {"start": "2026-01-01", "end": "2026-03-31", "val": 6481000000, "accn": "0000731766-26-000127", "form": "10-Q", "filed": "2026-04-21"}
+      ]}}}}
+    }
+  }
+}

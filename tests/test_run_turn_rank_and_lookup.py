@@ -6,7 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
+from financial_analyst_agent.domain.errors import (
+    AmbiguousFactError,
+    FilingNotFoundError,
+    UnsupportedQuarterlyFactError,
+)
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_rank import (
@@ -21,24 +25,24 @@ HEALTHCARE_INCOME_QUERY = (
 )
 
 # Fixture-runtime gold literals (recorded 10-Q facts, not live SEC).
-PERIOD_START = date(2026, 4, 1)
-PERIOD_END = date(2026, 6, 30)
+PERIOD_START = date(2026, 1, 1)
+PERIOD_END = date(2026, 3, 31)
 FORM = "10-Q"
 TAXONOMY = "us-gaap"
 CONCEPT = "NetIncomeLoss"
 
-LLY_NET_INCOME = Decimal("2800000000")
-LLY_ACCESSION = "0000059478-26-000040"
+LLY_NET_INCOME = Decimal("7396000000")
+LLY_ACCESSION = "0000059478-26-000045"
 LLY_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/59478/"
-    "000005947826000040/lly-20260630.htm"
+    "000005947826000045/lly-20260331.htm"
 )
 
-UNH_NET_INCOME = Decimal("4200000000")
-UNH_ACCESSION = "0000731766-26-000055"
+UNH_NET_INCOME = Decimal("6481000000")
+UNH_ACCESSION = "0000731766-26-000127"
 UNH_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/731766/"
-    "000073176626000055/unh-20260630.htm"
+    "000073176626000127/unh-20260331.htm"
 )
 
 
@@ -130,6 +134,28 @@ def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:
     assert lookup_ciks == [cik for _name, _ticker, cik, _cap in HEALTHCARE_TOP_10]
 
 
+def test_run_turn_rank_and_lookup_keeps_good_rows_when_issuers_have_no_10_q() -> None:
+    class _Missing10QFacts(_CikOnlyFacts):
+        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+            if company == "0000059478":
+                return super().get_financials(company, metric)
+            raise FilingNotFoundError("No 10-Q or 10-Q/A filings found")
+
+    result = run_turn(
+        HEALTHCARE_INCOME_QUERY,
+        Runtime(
+            completer=_gold_rank_runtime().completer,
+            facts=_Missing10QFacts(),
+            ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
+        ),
+    )
+
+    assert len(result.table_rows) == 10
+    assert result.table_rows[0].value == LLY_NET_INCOME
+    assert result.table_rows[0].reason is None
+    assert all(row.reason == "missing_fact" for row in result.table_rows[1:])
+
+
 class _CikOnlyFacts:
     """Resolves recorded facts by ranking CIK only — a typed ticker list would miss."""
 
@@ -180,3 +206,25 @@ def _fact(
         concept=CONCEPT,
         source_url=source_url,
     )
+
+
+def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
+    class _AmbiguousLillyFacts(_CikOnlyFacts):
+        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+            if company == "0000059478":
+                raise AmbiguousFactError("Supported concepts produced conflicting values")
+            return super().get_financials(company, metric)
+
+    result = run_turn(
+        HEALTHCARE_INCOME_QUERY,
+        Runtime(
+            completer=_gold_rank_runtime().completer,
+            facts=_AmbiguousLillyFacts(),
+            ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
+        ),
+    )
+
+    lilly, unitedhealth, *remaining = result.table_rows
+    assert lilly.reason == "ambiguous_concept"
+    assert unitedhealth.value == UNH_NET_INCOME
+    assert all(row.reason == "missing_fact" for row in remaining)

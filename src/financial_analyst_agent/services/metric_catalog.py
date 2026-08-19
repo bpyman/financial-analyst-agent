@@ -22,7 +22,6 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     ],
     Metric.OPERATING_EXPENSES: [
         ("us-gaap", "OperatingExpenses"),
-        ("us-gaap", "CostsAndExpenses"),
     ],
     Metric.OPERATING_INCOME: [
         ("us-gaap", "OperatingIncomeLoss"),

@@ -13,6 +13,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    FilingNotFoundError,
     ProviderError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
@@ -55,15 +56,17 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "net_margin": ("net_income", "revenue"),
 }
 
-_LOOKUP_FAILURES = (
+_MISSING_FACT_FAILURES = (
     UnsupportedQuarterlyFactError,
-    AmbiguousFactError,
     AmbiguousCompanyError,
     CompanyNotFoundError,
+    FilingNotFoundError,
 )
+_LOOKUP_FAILURES = (AmbiguousFactError, *_MISSING_FACT_FAILURES)
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
+ZERO_DENOMINATOR = "zero_denominator"
 MODEL_ANALYSIS_BANNER = "model-analysis"
 SEARCH_NEWS_TOPIC = "news"
 SEARCH_NEWS_MAX_RESULTS = 5
@@ -172,7 +175,18 @@ def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if runtime.essay is None:
         raise RuntimeError("explain intent requires an essay completer")
     traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
-    essay = runtime.essay.complete_essay(plan.topic)
+    try:
+        essay = runtime.essay.complete_essay(plan.topic)
+    except ProviderError as exc:
+        traces[0] = traces[0].model_copy(
+            update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
+        )
+        return TurnResult(
+            intent=Intent.EXPLAIN,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
     extras = _numeral_lock_extras(
         essay, json.dumps([trace.model_dump(mode="json") for trace in traces])
     )
@@ -409,7 +423,18 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
                 _lookup_facts(facts.get_financials(issuer, component))
                 for component in component_names
             ]
-        except _LOOKUP_FAILURES:
+        except AmbiguousFactError:
+            rows.append(
+                TableRow(
+                    company_name=issuer,
+                    ticker="",
+                    cik="",
+                    metric=metric,
+                    reason=AMBIGUOUS_CONCEPT,
+                )
+            )
+            continue
+        except _MISSING_FACT_FAILURES:
             rows.append(
                 TableRow(
                     company_name=issuer,
@@ -454,6 +479,20 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
             )
             continue
         period_start, period_end = period
+        if metric in FORMULA_COMPONENTS and fetched[1].value == 0:
+            rows.append(
+                TableRow(
+                    company_name=identity.company_name,
+                    ticker=identity.ticker,
+                    cik=identity.cik,
+                    metric=metric,
+                    start_date=period_start,
+                    end_date=period_end,
+                    components=components,
+                    reason=ZERO_DENOMINATOR,
+                )
+            )
+            continue
         rows.append(
             TableRow(
                 company_name=identity.company_name,
@@ -521,7 +560,11 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         try:
             fetched = runtime.facts.get_financials(company.cik, metric)
             facts = _lookup_facts(fetched)
-        except _LOOKUP_FAILURES:
+        except AmbiguousFactError:
+            rows.append(_rank_and_lookup_row(company, index, metric, AMBIGUOUS_CONCEPT))
+            traces.append(ToolTrace(tool="get_financials", args=args))
+            continue
+        except _MISSING_FACT_FAILURES:
             rows.append(_rank_and_lookup_row(company, index, metric, MISSING_FACT))
             traces.append(ToolTrace(tool="get_financials", args=args))
             continue

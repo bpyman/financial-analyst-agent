@@ -206,6 +206,20 @@ def test_conflicting_concepts_raise_ambiguous_fact_error() -> None:
     assert len(details["concepts"]) == 2
 
 
+def test_operating_expenses_rejects_total_costs_concept() -> None:
+    facts = [make_fact(concept="CostsAndExpenses", value=Decimal("500"))]
+
+    with pytest.raises(UnsupportedQuarterlyFactError):
+        select_quarterly_fact(
+            facts,
+            FILING,
+            Metric.OPERATING_EXPENSES,
+            "USD",
+            source_url=SOURCE_URL,
+            **COMPANY,
+        )
+
+
 def test_duration_70_days_accepted() -> None:
     start = REPORT_END - timedelta(days=70)
     result = _select([make_fact(start_date=start, end_date=REPORT_END, value=Decimal("1"))])

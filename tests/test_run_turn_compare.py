@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
+from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import FixtureFactLookup
 from financial_analyst_agent.runtime import fixture_runtime
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
@@ -24,32 +24,32 @@ ALPHABET_TICKER = "GOOG"
 MICROSOFT_CIK = "0000789019"
 MICROSOFT_NAME = "Microsoft Corporation"
 MICROSOFT_TICKER = "MSFT"
-PERIOD_START = date(2026, 4, 1)
-PERIOD_END = date(2026, 6, 30)
+PERIOD_START = date(2026, 1, 1)
+PERIOD_END = date(2026, 3, 31)
 FORM = "10-Q"
 TAXONOMY = "us-gaap"
 
 # operating_margin = operating_income / revenue (Decimal, not LLM arithmetic)
-MICROSOFT_OPERATING_INCOME = Decimal("32000000000")
-MICROSOFT_REVENUE = Decimal("64000000000")
-MICROSOFT_OPERATING_MARGIN = Decimal("0.5")
-MICROSOFT_ACCESSION = "0000789019-26-000088"
+MICROSOFT_OPERATING_INCOME = Decimal("38398000000")
+MICROSOFT_REVENUE = Decimal("82886000000")
+MICROSOFT_OPERATING_MARGIN = MICROSOFT_OPERATING_INCOME / MICROSOFT_REVENUE
+MICROSOFT_ACCESSION = "0001193125-26-191507"
 MICROSOFT_OPERATING_INCOME_CONCEPT = "OperatingIncomeLoss"
-MICROSOFT_REVENUE_CONCEPT = "Revenues"
+MICROSOFT_REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 MICROSOFT_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/789019/"
-    "000078901926000088/msft-20260630.htm"
+    "000119312526191507/msft-20260331.htm"
 )
 
-ALPHABET_OPERATING_INCOME = Decimal("28000000000")
-ALPHABET_REVENUE = Decimal("80000000000")
-ALPHABET_OPERATING_MARGIN = Decimal("0.35")
-ALPHABET_ACCESSION = "0001652044-26-000071"
+ALPHABET_OPERATING_INCOME = Decimal("39696000000")
+ALPHABET_REVENUE = Decimal("109896000000")
+ALPHABET_OPERATING_MARGIN = ALPHABET_OPERATING_INCOME / ALPHABET_REVENUE
+ALPHABET_ACCESSION = "0001652044-26-000048"
 ALPHABET_OPERATING_INCOME_CONCEPT = "OperatingIncomeLoss"
 ALPHABET_REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 ALPHABET_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/1652044/"
-    "000165204426000071/goog-20260630.htm"
+    "000165204426000048/goog-20260331.htm"
 )
 
 
@@ -140,8 +140,8 @@ def _assert_operating_margin_components(
     assert sales.source_url == source_url
 
 
-GOOGLE_Q1_START = date(2026, 1, 1)
-GOOGLE_Q1_END = date(2026, 3, 31)
+GOOGLE_PRIOR_QUARTER_START = date(2025, 10, 1)
+GOOGLE_PRIOR_QUARTER_END = date(2025, 12, 31)
 
 
 class _CompareCompleter:
@@ -187,8 +187,8 @@ class _MismatchedPeriodFacts:
                 value=(
                     ALPHABET_OPERATING_INCOME if metric == "operating_income" else ALPHABET_REVENUE
                 ),
-                start_date=GOOGLE_Q1_START,
-                end_date=GOOGLE_Q1_END,
+                start_date=GOOGLE_PRIOR_QUARTER_START,
+                end_date=GOOGLE_PRIOR_QUARTER_END,
                 accession_number=ALPHABET_ACCESSION,
                 concept=(
                     ALPHABET_OPERATING_INCOME_CONCEPT
@@ -320,6 +320,67 @@ def test_run_turn_keeps_partial_compare_row_when_one_issuer_fact_is_missing() ->
     assert microsoft.value is None
     assert microsoft.reason == "missing_fact"
     assert alphabet.cik == ALPHABET_CIK
+    assert alphabet.value == ALPHABET_OPERATING_MARGIN
+    assert alphabet.reason is None
+
+
+def test_run_turn_preserves_ambiguous_fact_reason_in_partial_compare_row() -> None:
+    class _AmbiguousMicrosoftFacts(_MissingMicrosoftFacts):
+        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+            if company == "Microsoft":
+                raise AmbiguousFactError("Supported concepts produced conflicting values")
+            return super().get_financials(company, metric)
+
+    result = run_turn(
+        MSFT_GOOG_OPERATING_MARGINS_QUERY,
+        Runtime(completer=_CompareCompleter(), facts=_AmbiguousMicrosoftFacts()),
+    )
+
+    microsoft, alphabet = result.table_rows
+    assert microsoft.value is None
+    assert microsoft.reason == "ambiguous_concept"
+    assert alphabet.value == ALPHABET_OPERATING_MARGIN
+
+
+class _ZeroRevenueFacts(_MissingMicrosoftFacts):
+    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        if company == "Microsoft":
+            return _component_fact(
+                company_name=MICROSOFT_NAME,
+                ticker=MICROSOFT_TICKER,
+                cik=MICROSOFT_CIK,
+                metric=metric,
+                value=(
+                    MICROSOFT_OPERATING_INCOME
+                    if metric == "operating_income"
+                    else Decimal("0")
+                ),
+                start_date=PERIOD_START,
+                end_date=PERIOD_END,
+                accession_number=MICROSOFT_ACCESSION,
+                concept=(
+                    MICROSOFT_OPERATING_INCOME_CONCEPT
+                    if metric == "operating_income"
+                    else MICROSOFT_REVENUE_CONCEPT
+                ),
+                source_url=MICROSOFT_SOURCE_URL,
+            )
+        return super().get_financials(company, metric)
+
+
+def test_run_turn_keeps_partial_compare_row_when_revenue_is_zero() -> None:
+    result = run_turn(
+        MSFT_GOOG_OPERATING_MARGINS_QUERY,
+        Runtime(completer=_CompareCompleter(), facts=_ZeroRevenueFacts()),
+    )
+
+    microsoft, alphabet = result.table_rows
+    assert microsoft.value is None
+    assert microsoft.reason == "zero_denominator"
+    assert [component.metric for component in microsoft.components] == [
+        "operating_income",
+        "revenue",
+    ]
     assert alphabet.value == ALPHABET_OPERATING_MARGIN
     assert alphabet.reason is None
 

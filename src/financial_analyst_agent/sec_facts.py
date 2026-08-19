@@ -1,4 +1,6 @@
-"""Live SEC fact lookup: identity plus companyfacts selection."""
+"""SEC fact lookup over an injectable live or recorded data source."""
+
+from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import (
@@ -22,6 +24,18 @@ from financial_analyst_agent.services.metric_catalog import parse_metric
 _SUPPORTED_CURRENCY = "USD"
 
 
+class SECDataSource(Protocol):
+    """Provider boundary shared by live EDGAR and offline recordings."""
+
+    def get_company_tickers(self) -> dict[str, Any]: ...
+
+    def get_submissions(self, cik: str) -> dict[str, Any]: ...
+
+    def get_company_facts(self, cik: str) -> dict[str, Any]: ...
+
+    def close(self) -> None: ...
+
+
 def related_lookup_ciks(resolved_cik: str, filings: list[Filing]) -> tuple[str, ...]:
     """Ticker-map CIK first, then a distinct accession-prefix filer if present."""
     ordered = [resolved_cik]
@@ -37,11 +51,21 @@ def related_lookup_ciks(resolved_cik: str, filings: list[Filing]) -> tuple[str, 
 
 
 class SecFactLookup:
-    """Live EDGAR lookup behind the same get_financials port as the fixture adapter."""
+    """SEC XBRL lookup behind the application's get_financials port."""
 
-    def __init__(self, settings: Settings, client: SECClient | None = None) -> None:
-        self._client = client or SECClient(settings)
-        self._owns_client = client is None
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        client: SECDataSource | None = None,
+    ) -> None:
+        if client is not None:
+            self._client: SECDataSource = client
+            self._owns_client = False
+            return
+        if settings is None:
+            raise TypeError("settings are required when no SEC data source is provided")
+        self._client = SECClient(settings)
+        self._owns_client = True
 
     def close(self) -> None:
         if self._owns_client:
@@ -88,7 +112,10 @@ class SecFactLookup:
         if last_unsupported is not None:
             raise last_unsupported
         if last_missing is not None:
-            raise last_missing
+            raise UnsupportedQuarterlyFactError(
+                "No SEC companyfacts response exists for the issuer",
+                details={"metric": parsed_metric.value},
+            ) from last_missing
         raise UnsupportedQuarterlyFactError(
             "No directly reported standalone-quarter fact exists for metric",
             details={"metric": parsed_metric.value},

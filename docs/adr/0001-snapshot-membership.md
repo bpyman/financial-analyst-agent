@@ -1,6 +1,6 @@
 # Universe snapshot membership is structural, plus a CIK blocklist
 
-Ranking membership is the common share of an operating company: vendor `isEtf`/`isFund`, NYSE/NASDAQ product-suffix tickers, instrument tokens in the listing title, and the FMP industries `Shell Companies` and `Financial - Conglomerates`. Asset Management stays eligible because it mixes operators (BlackRock) with BDCs. Residual non-operators that share an industry with operators are listed by CIK in `src/financial_analyst_agent/data/ineligible_issuers.json`. Future ranking leaks append a CIK there; they do not change these rules.
+Ranking membership is the common share of an operating company: vendor `isEtf`/`isFund`, NYSE/NASDAQ product-suffix tickers, instrument tokens in the listing title, and the FMP industries `Shell Companies` and `Financial - Conglomerates`. Asset Management stays eligible because it mixes operators (BlackRock) with BDCs. Residual non-operators that share an industry with operators are listed by CIK in `src/financial_analyst_agent/data/ineligible_issuers.json`. Future ranking or lookup leaks append a CIK there; they do not change these rules. Lookup and compare apply these same rules without requiring freeze presence; see ADR 0002.
 
 ## Considered Options
 

@@ -22,13 +22,15 @@ FIXTURE_NEWS_HITS: tuple[NewsHit, ...] = (
         published="2026-08-10",
     ),
 )
+FIXTURE_NEWS_QUERY = "What is going on with NVIDIA supply chain?"
 
 
 class FixtureNewsSearch:
     """Recorded Tavily-shaped hits so news_and_explain stays offline."""
 
     def search_news(self, query: str) -> list[NewsHit]:
-        del query
+        if query.strip().casefold() != FIXTURE_NEWS_QUERY.casefold():
+            return []
         return list(FIXTURE_NEWS_HITS)
 
 
@@ -93,7 +95,7 @@ class TavilyNewsSearch:
             )
             response.raise_for_status()
             payload = response.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             raise ProviderError("Tavily search failed", details={"query": query}) from exc
         if not isinstance(payload, dict):
             raise ProviderError("Tavily search returned a non-object payload")

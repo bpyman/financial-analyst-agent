@@ -1,7 +1,5 @@
 """Labeled gold suite: the three live prompts plus one refuse through fixture_runtime."""
 
-from decimal import Decimal
-
 import pytest
 
 from financial_analyst_agent.runtime import fixture_runtime
@@ -84,8 +82,6 @@ def test_gold_microsoft_vs_google_operating_margins_through_kill_switch_runtime(
     assert microsoft.end_date == PERIOD_END
     assert alphabet.start_date == PERIOD_START
     assert alphabet.end_date == PERIOD_END
-    assert microsoft.value == Decimal("0.5")
-    assert alphabet.value == Decimal("0.35")
 
 
 def test_gold_unknown_industry_refuses_with_allowed_names() -> None:

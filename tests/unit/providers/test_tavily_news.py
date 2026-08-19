@@ -1,6 +1,11 @@
 """Tavily Search mapping. Extract/map/crawl are not used."""
 
-from financial_analyst_agent.news import hits_from_tavily_payload
+import httpx
+import pytest
+
+from financial_analyst_agent.config import Settings
+from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.news import TavilyNewsSearch, hits_from_tavily_payload
 from financial_analyst_agent.turn import SEARCH_NEWS_MAX_RESULTS
 
 
@@ -39,3 +44,17 @@ def test_hits_from_tavily_payload_caps_at_max_results() -> None:
     }
     hits = hits_from_tavily_payload(payload)
     assert len(hits) == SEARCH_NEWS_MAX_RESULTS
+
+
+def test_tavily_news_wraps_invalid_json_as_provider_failure() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=b"not-json", request=request)
+        )
+    )
+    search = TavilyNewsSearch(Settings(tavily_api_key="test-key"), client=client)
+
+    with pytest.raises(ProviderError) as exc_info:
+        search.search_news("NVIDIA supply chain")
+
+    assert exc_info.value.details == {"query": "NVIDIA supply chain"}
