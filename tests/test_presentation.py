@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from financial_analyst_agent.presentation import (
@@ -61,7 +61,7 @@ def test_format_date_has_no_leading_zero() -> None:
 
 
 def test_format_datetime_utc_drops_seconds() -> None:
-    stamp = datetime(2026, 8, 17, 16, 0, 0, tzinfo=timezone.utc)
+    stamp = datetime(2026, 8, 17, 16, 0, 0, tzinfo=UTC)
     assert format_datetime_utc(stamp) == "Aug 17, 2026, 4:00 PM UTC"
 
 

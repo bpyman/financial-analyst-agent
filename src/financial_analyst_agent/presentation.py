@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -88,8 +88,8 @@ def format_date(value: date) -> str:
 
 
 def format_datetime_utc(value: datetime) -> str:
-    aware = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    utc = aware.astimezone(timezone.utc)
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    utc = aware.astimezone(UTC)
     hour12 = utc.hour % 12 or 12
     suffix = "AM" if utc.hour < 12 else "PM"
     return f"{format_date(utc.date())}, {hour12}:{utc.minute:02d} {suffix} UTC"
@@ -126,7 +126,7 @@ def try_parse_datetime(raw: str) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
