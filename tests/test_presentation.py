@@ -172,10 +172,7 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert card.ticker == "GOOG"
     assert card.metric_header == "Net income"
     assert card.amount == "$62.58 B"
-    assert (
-        card.period_label
-        == "Latest standalone quarter · Jan 1, 2026 – Mar 31, 2026"
-    )
+    assert card.period_label == "Latest standalone quarter · Jan 1, 2026 – Mar 31, 2026"
     assert card.form == "10-Q"
     assert card.accession_number == "0001652044-26-000048"
     assert card.concept == "NetIncomeLoss"
@@ -231,9 +228,7 @@ def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
     value_index = table.keys.index("value")
     assert table.rows[0][rank_index] == "1"
     assert table.rows[0][value_index] == "$800.00 B"
-    assert presented.banners == (
-        "Universe snapshot as of Aug 17, 2026, 4:00 PM UTC",
-    )
+    assert presented.banners == ("Universe snapshot as of Aug 17, 2026, 4:00 PM UTC",)
 
 
 def test_present_compare_formats_percent_and_keeps_reason() -> None:
@@ -370,6 +365,20 @@ def test_present_refuse_keeps_message() -> None:
     assert presented.message is not None
     assert "AI" in presented.message
     assert presented.table is None
+
+
+def test_present_clarify_lists_humanized_candidates() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.CLARIFY,
+        candidates=("gross_profit", "operating_income", "net_income"),
+        tool_traces=[],
+    )
+    presented = present_turn(result)
+    assert presented.candidates == ("Gross profit", "Operating income", "Net income")
+    assert presented.table is None
+    assert presented.fact_card is None
+    assert presented.message is None
 
 
 def test_metric_legend_lists_closed_catalog() -> None:

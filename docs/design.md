@@ -13,6 +13,7 @@ flowchart LR
   R --> Table[Table + provenance]
   R --> Essay[Essay + numeral lock]
   R --> Refuse[Refuse + allowed list]
+  R --> Clarify[Clarify + colliding names]
 ```
 
 **User → intent → MCP tools → table vs essay.** Streamlit is the only audience window: query, intent chip, tool cards, answer. FastMCP HTTP exposes the same five tools the turn uses in-process. The graph does not depend on stdio subprocesses.
@@ -30,7 +31,7 @@ One user prompt maps to one intent. Composition is inside `rank_and_lookup` and 
 
 ## Reliability locks (ADRs)
 
-These are the assumptions to defend in Q&A. Snapshot membership is recorded in [ADR 0001](adr/0001-snapshot-membership.md).
+These are the assumptions to defend in Q&A. Snapshot membership is recorded in [ADR 0001](adr/0001-snapshot-membership.md). Ambiguous metric phrases are [ADR 0004](adr/0004-ambiguous-metric-clarify.md).
 
 1. **XBRL primary.** Latest-quarter facts come from SEC companyfacts, not a 10-Q PDF parse, FMP ratios, or edgartools. Standalone quarterly duration (about 70–110 days). No YTD subtraction, no derived Q4. Ambiguous concepts refuse rather than picking silently. Decimal, not float.
 
@@ -50,14 +51,14 @@ These are the assumptions to defend in Q&A. Snapshot membership is recorded in [
 
 The fixture kill-switch swaps every adapter for recorded ones and still calls `run_turn`. Streamlit uses one renderer for both paths. If the kill-switch is on, say so out loud — do not present a cassette as live EDGAR.
 
-Reported metrics: `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`. Formulas: `gross_margin`, `operating_margin`, `net_margin`. Unknown metric → refuse with that list.
+Reported metrics: `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`. Formulas: `gross_margin`, `operating_margin`, `net_margin`. Unique phrase or alias → proceed. Ambiguous metric → clarify pane (humanized candidates only, no tools). Unknown metric → refuse with the full list. The phrase is taken from the question, not from the planner’s slug.
 
 ## Demo script (25 minutes)
 
 Walk this diagram, then the three live prompts, then one refuse:
 
 1. *What was Google's net income based on their latest quarterly report?* — lookup, 10-Q fact, accession and source URL.
-2. *What are the top 10 healthcare companies and the reported income for each?* — rank-and-lookup; CIKs from ranking state; partial row if a fact is missing.
+2. *What are the top 10 healthcare companies and the net income for each?* — rank-and-lookup; CIKs from ranking state; partial row if a fact is missing.
 3. *Compare Microsoft and Google operating margins* — Decimal formula, period-aligned, one Alphabet row.
 4. *What are the top 10 companies in AI?* — refuse with allowed industry names.
 
@@ -69,5 +70,5 @@ How to run: see the README. Gold: `uv run pytest -m gold` (offline, fixture runt
 
 - PDF as a verify-against-XBRL fallback with warnings, not a second source of truth.
 - Vendor TTM as a labeled column beside the 10-Q fact.
-- Broader catalog review (balance sheet / instant ratios) once the gold set stays green.
+- Broader catalog review (balance sheet / instant ratios) once the gold set stays green. Grow the metric phrase table with that catalog; do not infer collisions from leftover stems.
 - Banks/software aliases only if snapshot membership actually differs from the parent sector.

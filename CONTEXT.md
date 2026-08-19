@@ -27,3 +27,11 @@ _Avoid_: blocklist entry, banned ticker
 **Quarterly fact**:
 A directly reported standalone-quarter amount from a 10-Q, with provenance.
 _Avoid_: TTM, derived quarter, restatement
+
+**Ambiguous metric**:
+A user metric phrase that matches more than one name in the closed catalog.
+_Avoid_: metric collision, unknown metric
+
+**Unknown metric**:
+A user metric phrase that names nothing in the closed catalog.
+_Avoid_: ambiguous metric

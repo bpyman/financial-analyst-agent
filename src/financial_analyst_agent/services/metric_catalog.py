@@ -1,7 +1,11 @@
 """Closed metric enum to XBRL concept candidate mapping."""
 
+import re
+from dataclasses import dataclass
+from typing import Literal
+
 from financial_analyst_agent.domain.enums import Metric
-from financial_analyst_agent.domain.errors import AmbiguousMetricError
+from financial_analyst_agent.domain.errors import UnknownMetricError
 
 METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     Metric.NET_INCOME: [
@@ -28,6 +32,15 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     ],
 }
 
+MetricPhraseKind = Literal["unique", "ambiguous", "unknown"]
+
+
+@dataclass(frozen=True)
+class MetricPhraseResolution:
+    kind: MetricPhraseKind
+    metric: str | None = None
+    candidates: tuple[str, ...] = ()
+
 
 def get_concept_candidates(metric: Metric) -> list[tuple[str, str]]:
     """Return ordered (taxonomy, concept) candidates for a validated metric."""
@@ -40,7 +53,102 @@ def parse_metric(term: str) -> Metric:
     try:
         return Metric(normalized)
     except ValueError:
-        raise AmbiguousMetricError(
+        raise UnknownMetricError(
             f"Unknown metric '{term}'",
             details={"term": term, "allowed": [metric.value for metric in Metric]},
         ) from None
+
+
+_UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
+    ("cost of goods and services", "cost_of_revenue"),
+    ("cost of goods sold", "cost_of_revenue"),
+    ("cost of sales", "cost_of_revenue"),
+    ("cost of revenue", "cost_of_revenue"),
+    ("cost_of_revenue", "cost_of_revenue"),
+    ("cogs", "cost_of_revenue"),
+    ("operating expenses", "operating_expenses"),
+    ("operating_expenses", "operating_expenses"),
+    ("operating costs", "operating_expenses"),
+    ("opex", "operating_expenses"),
+    ("operating profit margin", "operating_margin"),
+    ("operating income", "operating_income"),
+    ("operating_income", "operating_income"),
+    ("operating profit", "operating_income"),
+    ("operating earnings", "operating_income"),
+    ("ebit", "operating_income"),
+    ("operating margin", "operating_margin"),
+    ("operating_margin", "operating_margin"),
+    ("operating margins", "operating_margin"),
+    ("ebit margin", "operating_margin"),
+    ("gross profit margin", "gross_margin"),
+    ("gross profit", "gross_profit"),
+    ("gross_profit", "gross_profit"),
+    ("gross margin", "gross_margin"),
+    ("gross_margin", "gross_margin"),
+    ("gross margins", "gross_margin"),
+    ("net profit margin", "net_margin"),
+    ("net income", "net_income"),
+    ("net_income", "net_income"),
+    ("net profit", "net_income"),
+    ("net earnings", "net_income"),
+    ("earnings", "net_income"),
+    ("bottom line", "net_income"),
+    ("net margin", "net_margin"),
+    ("net_margin", "net_margin"),
+    ("net margins", "net_margin"),
+    ("net sales", "revenue"),
+    ("sales", "revenue"),
+    ("revenue", "revenue"),
+)
+
+_AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("profit margin", ("gross_margin", "operating_margin", "net_margin")),
+    ("profit", ("gross_profit", "operating_income", "net_income")),
+    ("income", ("net_income", "operating_income")),
+    ("margin", ("gross_margin", "operating_margin", "net_margin")),
+    ("gross", ("gross_profit", "gross_margin")),
+    ("net", ("net_income", "net_margin")),
+)
+
+
+def _phrase_spans(query: str, phrase: str) -> list[tuple[int, int]]:
+    return [
+        (match.start(), match.end()) for match in re.finditer(rf"\b{re.escape(phrase)}\b", query)
+    ]
+
+
+def _nonoverlapping_unique_matches(query: str) -> list[tuple[int, int, str]]:
+    found: list[tuple[int, int, str]] = []
+    for phrase, metric in _UNIQUE_PHRASES:
+        for start, end in _phrase_spans(query, phrase):
+            found.append((start, end, metric))
+    found.sort(key=lambda item: (item[0] - item[1], item[0]))
+    accepted: list[tuple[int, int, str]] = []
+    for start, end, metric in found:
+        if any(
+            not (end <= other_start or start >= other_end) for other_start, other_end, _ in accepted
+        ):
+            continue
+        accepted.append((start, end, metric))
+    accepted.sort(key=lambda item: item[0])
+    return accepted
+
+
+def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
+    """Classify a metric phrase in the user question."""
+    normalized = query.casefold()
+    unique_matches = _nonoverlapping_unique_matches(normalized)
+    unique_metrics = list(dict.fromkeys(metric for _start, _end, metric in unique_matches))
+    if len(unique_metrics) > 1:
+        return MetricPhraseResolution(kind="ambiguous", candidates=tuple(unique_metrics))
+    if len(unique_metrics) == 1:
+        return MetricPhraseResolution(kind="unique", metric=unique_metrics[0])
+
+    ambiguous_matches: list[tuple[int, int, tuple[str, ...]]] = []
+    for phrase, candidates in _AMBIGUOUS_PHRASES:
+        for start, end in _phrase_spans(normalized, phrase):
+            ambiguous_matches.append((start, end, candidates))
+    if not ambiguous_matches:
+        return MetricPhraseResolution(kind="unknown")
+    ambiguous_matches.sort(key=lambda item: (item[0] - item[1], item[0]))
+    return MetricPhraseResolution(kind="ambiguous", candidates=ambiguous_matches[0][2])

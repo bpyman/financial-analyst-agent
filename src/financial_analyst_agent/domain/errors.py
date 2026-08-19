@@ -26,8 +26,8 @@ class FilingNotFoundError(FinancialAnalystError):
     code = "filing_not_found"
 
 
-class AmbiguousMetricError(FinancialAnalystError):
-    code = "ambiguous_metric"
+class UnknownMetricError(FinancialAnalystError):
+    code = "unknown_metric"
 
 
 class ProviderError(FinancialAnalystError):

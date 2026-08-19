@@ -199,6 +199,7 @@ class Presentation:
     table: DisplayTable | None
     essay: str | None
     message: str | None
+    candidates: tuple[str, ...]
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -234,7 +235,8 @@ def present_turn(result: TurnResult) -> Presentation:
         fact_card=fact_card,
         table=table,
         essay=result.essay,
-        message=result.message,
+        message=result.message if result.renderer is not RendererKind.CLARIFY else None,
+        candidates=tuple(_humanize_field(name) for name in result.candidates),
     )
 
 
@@ -262,11 +264,7 @@ def _cell_empty(value: Any) -> bool:
 
 
 def _display_table(rows: list[TableRow]) -> DisplayTable:
-    keys = [
-        key
-        for key in _TABLE_KEYS
-        if any(not _cell_empty(getattr(row, key)) for row in rows)
-    ]
+    keys = [key for key in _TABLE_KEYS if any(not _cell_empty(getattr(row, key)) for row in rows)]
     headers = tuple(format_field_name(key) for key in keys)
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
     return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered)
@@ -310,8 +308,7 @@ def _trace_identity(args: dict[str, Any]) -> str:
 
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple(
-        (_humanize_field(str(key)), _format_trace_value(value))
-        for key, value in payload.items()
+        (_humanize_field(str(key)), _format_trace_value(value)) for key, value in payload.items()
     )
 
 

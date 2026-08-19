@@ -17,11 +17,11 @@ class FactsPort(Protocol):
 ```
 
 - `company`: unresolved name, ticker, or 10-digit CIK. Callers never pass a resolved `Company`. Google → Alphabet stays inside identity (`providers/sec/aliases.py`).
-- `metric`: one of `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`. Unknown string → `AmbiguousMetricError` (existing `parse_metric`).
+- `metric`: one of `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`. Unknown string → `UnknownMetricError` (existing `parse_metric`).
 - Result: one USD **quarterly fact** (`FinancialFact`): Decimal, `directly_reported=True`, duration 70–110 days, newest `report_date`, `10-Q/A` before `10-Q`, provenance on the object (`accession_number`, `concept`, `taxonomy`, `start_date`/`end_date`, `source_url`, `cik`, `ticker`, `company_name`).
 - Construction: inject the SEC adapter only (`SECClient` live, `RecordedSECDataSource` cassette). No `close`, `resolve`, or `related_lookup_ciks` on this interface.
 
-Errors that may leave the module: `CompanyNotFoundError`, `AmbiguousCompanyError`, `AmbiguousMetricError`, `AmbiguousFactError`, `UnsupportedQuarterlyFactError`, `ProviderError`.
+Errors that may leave the module: `CompanyNotFoundError`, `AmbiguousCompanyError`, `UnknownMetricError`, `AmbiguousFactError`, `UnsupportedQuarterlyFactError`, `ProviderError`.
 
 `FilingNotFoundError` stays internal (selector/filing code may still raise it). At this seam it becomes `UnsupportedQuarterlyFactError`. `AmbiguousFactError` is never swallowed by related-CIK fallback.
 

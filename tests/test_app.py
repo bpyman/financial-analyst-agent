@@ -33,6 +33,7 @@ class _Streamlit:
         self._button_values = iter(button_values)
         self.page_config: dict[str, Any] = {}
         self.errors: list[str] = []
+        self.infos: list[str] = []
         self.dataframes: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         self.link_columns: list[tuple[tuple[Any, ...], dict[str, Any], object]] = []
         self.column_config = SimpleNamespace(LinkColumn=self._link_column)
@@ -71,7 +72,8 @@ class _Streamlit:
         self.errors.append(str(args[0]))
 
     def info(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        if args:
+            self.infos.append(str(args[0]))
 
     def dataframe(self, *args: Any, **kwargs: Any) -> None:
         self.dataframes.append((args, kwargs))
@@ -274,6 +276,25 @@ def test_main_cleans_up_non_configuration_failure(
     assert fake_streamlit.errors == ["Turn failed: provider failed"]
 
 
+def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_streamlit = _Streamlit()
+    monkeypatch.setattr(app, "st", fake_streamlit)
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=("gross_profit", "operating_income", "net_income"),
+    )
+
+    app.render_turn_result(result)
+
+    assert fake_streamlit.errors == []
+    assert fake_streamlit.infos == ["Ambiguous metric. Retype one of these names."]
+    assert "- Gross profit" in fake_streamlit.markdowns
+    assert "- Operating income" in fake_streamlit.markdowns
+    assert "- Net income" in fake_streamlit.markdowns
+
+
 def test_render_table_configures_source_url_as_filing_link(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -292,6 +313,4 @@ def test_render_table_configures_source_url_as_filing_link(
     link_args, link_kwargs, marker = fake_streamlit.link_columns[0]
     assert link_args == ()
     assert link_kwargs == {"display_text": "Filing"}
-    assert fake_streamlit.dataframes[0][1]["column_config"] == {
-        source_header: marker
-    }
+    assert fake_streamlit.dataframes[0][1]["column_config"] == {source_header: marker}

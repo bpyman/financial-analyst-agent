@@ -152,8 +152,13 @@ def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
     intent: Intent,
 ) -> None:
     runtime = replace(_gold_rank_runtime(), completer=_MissingIndustryCompleter(intent))
+    query = (
+        "rank companies by net income"
+        if intent is Intent.RANK_AND_LOOKUP
+        else "rank companies"
+    )
 
-    result = run_turn("rank companies", runtime)
+    result = run_turn(query, runtime)
 
     assert result.intent is intent
     assert result.renderer is RendererKind.REFUSE

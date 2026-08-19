@@ -38,7 +38,11 @@ def _render_presentation(presented: Presentation) -> None:
         _render_fact_card(presented.fact_card)
     if presented.table is not None:
         _render_table(presented.table)
-    if presented.message is not None:
+    if presented.candidates:
+        st.info("Ambiguous metric. Retype one of these names.")
+        for name in presented.candidates:
+            st.markdown(f"- {name}")
+    elif presented.message is not None:
         st.error(presented.message)
     if presented.essay is not None:
         st.markdown(presented.essay)
@@ -77,24 +81,19 @@ def _render_fact_card(card: QuarterlyFactCard) -> None:
     )
     st.caption(card.period_label)
     filing = f"[Filing]({card.source_url})" if card.source_url else ""
-    st.markdown(
-        f"`{card.form}` · `{card.accession_number}` · `{card.concept}` · {filing}"
-    )
+    st.markdown(f"`{card.form}` · `{card.accession_number}` · `{card.concept}` · {filing}")
 
 
 def _render_table(table: DisplayTable) -> None:
     records = [
-        {header: row[index] for index, header in enumerate(table.headers)}
-        for row in table.rows
+        {header: row[index] for index, header in enumerate(table.headers)} for row in table.rows
     ]
     source_header = format_field_name("source_url")
     if source_header in table.headers:
         st.dataframe(
             records,
             width="stretch",
-            column_config={
-                source_header: st.column_config.LinkColumn(display_text="Filing")
-            },
+            column_config={source_header: st.column_config.LinkColumn(display_text="Filing")},
         )
     else:
         st.dataframe(records, width="stretch")
@@ -134,10 +133,7 @@ def main() -> None:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
-    if (
-        "result" in st.session_state
-        and st.session_state.get("result_kill_switch") != kill_switch
-    ):
+    if "result" in st.session_state and st.session_state.get("result_kill_switch") != kill_switch:
         st.session_state.pop("result", None)
         st.session_state.pop("result_kill_switch", None)
 

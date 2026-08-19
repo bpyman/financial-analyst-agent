@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from types import SimpleNamespace
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from financial_analyst_agent.domain.errors import (
 )
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
+from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 
 class Intent(StrEnum):
@@ -34,6 +36,7 @@ class RendererKind(StrEnum):
     TABLE = "table"
     ESSAY = "essay"
     REFUSE = "refuse"
+    CLARIFY = "clarify"
 
 
 REPORTED_METRICS: tuple[str, ...] = (
@@ -159,14 +162,13 @@ class TurnResult(BaseModel):
     message: str | None = None
     essay: str | None = None
     citations: list[NewsHit] = Field(default_factory=list)
+    candidates: tuple[str, ...] = ()
 
 
 def _numeral_lock_extras(essay: str, tool_json: str) -> list[str]:
     allowed = set(_NUMERIC_TOKEN.findall(tool_json))
     return list(
-        dict.fromkeys(
-            token for token in _NUMERIC_TOKEN.findall(essay) if token not in allowed
-        )
+        dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(essay) if token not in allowed)
     )
 
 
@@ -246,9 +248,7 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
                 )
             ],
             renderer=RendererKind.REFUSE,
-            message=(
-                "News search is unavailable. Refusing rather than using training data."
-            ),
+            message=("News search is unavailable. Refusing rather than using training data."),
         )
     traces = [
         ToolTrace(
@@ -437,10 +437,7 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            fetched = [
-                facts.get_financials(issuer, component)
-                for component in component_names
-            ]
+            fetched = [facts.get_financials(issuer, component) for component in component_names]
         except _LOOKUP_FAILURES as exc:
             rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
             continue
@@ -488,9 +485,7 @@ def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[T
                 components=components,
             )
         )
-    comparable_periods = {
-        (row.start_date, row.end_date) for row in rows if row.value is not None
-    }
+    comparable_periods = {(row.start_date, row.end_date) for row in rows if row.value is not None}
     if len(comparable_periods) > 1:
         rows = [
             row.model_copy(update={"value": None, "reason": PERIOD_MISMATCH})
@@ -543,9 +538,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         try:
             fact = runtime.facts.get_financials(company.cik, metric)
         except _LOOKUP_FAILURES as exc:
-            rows.append(
-                _rank_and_lookup_row(company, index, metric, _partial_lookup_reason(exc))
-            )
+            rows.append(_rank_and_lookup_row(company, index, metric, _partial_lookup_reason(exc)))
             traces.append(ToolTrace(tool="get_financials", args=args))
             continue
         rows.append(
@@ -606,27 +599,60 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
     )
 
 
+def _plan_with_metric(plan: Any, metric: str) -> Any:
+    return SimpleNamespace(
+        intent=plan.intent,
+        company=getattr(plan, "company", None),
+        companies=list(getattr(plan, "companies", []) or []),
+        metric=metric,
+        industry=getattr(plan, "industry", None),
+        limit=getattr(plan, "limit", 10),
+        topic=getattr(plan, "topic", None),
+    )
+
+
+def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
+    return TurnResult(
+        intent=intent,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=candidates,
+    )
+
+
 def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
         return _explain_turn(plan, runtime)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
         return _news_and_explain_turn(query, runtime)
-    if plan.intent is Intent.COMPARE:
-        if plan.metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, plan.metric)
-        return _compare_turn(plan, runtime)
     if plan.intent is Intent.RANK:
         return _rank_turn(plan, runtime)
+    resolved = resolve_metric_phrase(query)
+    if resolved.kind == "ambiguous":
+        return _clarify_metric(plan.intent, resolved.candidates)
+    if resolved.kind == "unknown":
+        fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
+        term = fallback if fallback not in ALLOWED_METRICS else "unknown"
+        return _refuse_unknown_metric(plan.intent, term)
+    if resolved.kind == "unique" and resolved.metric is not None:
+        metric = resolved.metric
+    else:
+        metric = str(plan.metric or "")
+    plan = _plan_with_metric(plan, metric)
+    if plan.intent is Intent.COMPARE:
+        if metric not in ALLOWED_METRICS:
+            return _refuse_unknown_metric(plan.intent, metric)
+        return _compare_turn(plan, runtime)
     if plan.intent is Intent.RANK_AND_LOOKUP:
-        if plan.metric not in REPORTED_METRICS:
-            return _refuse_unknown_metric(plan.intent, plan.metric)
+        if metric not in REPORTED_METRICS:
+            return _refuse_unknown_metric(plan.intent, metric)
         return _rank_and_lookup_turn(plan, runtime)
-    if plan.intent is Intent.LOOKUP and plan.metric not in REPORTED_METRICS:
-        return _refuse_unknown_metric(plan.intent, plan.metric)
-    args = {"company": plan.company, "metric": plan.metric}
+    if plan.intent is Intent.LOOKUP and metric not in REPORTED_METRICS:
+        return _refuse_unknown_metric(plan.intent, metric)
+    args = {"company": plan.company, "metric": metric}
     try:
-        fact = runtime.facts.get_financials(plan.company, plan.metric)
+        fact = runtime.facts.get_financials(plan.company, metric)
     except _LOOKUP_FAILURES as exc:
         return TurnResult(
             intent=plan.intent,

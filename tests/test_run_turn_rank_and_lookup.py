@@ -1,4 +1,4 @@
-"""Gold: top 10 healthcare and reported income for each through run_turn."""
+"""Gold: top 10 healthcare and net income for each through run_turn."""
 
 from datetime import date
 from decimal import Decimal
@@ -19,9 +19,7 @@ from test_run_turn_rank import (
     _gold_rank_runtime,
 )
 
-HEALTHCARE_INCOME_QUERY = (
-    "What are the top 10 healthcare companies and the reported income for each?"
-)
+HEALTHCARE_INCOME_QUERY = "What are the top 10 healthcare companies and the net income for each?"
 
 # Fixture-runtime gold literals (recorded 10-Q facts, not live SEC).
 PERIOD_START = date(2026, 1, 1)
@@ -32,16 +30,12 @@ CONCEPT = "NetIncomeLoss"
 
 LLY_NET_INCOME = Decimal("7396000000")
 LLY_ACCESSION = "0000059478-26-000045"
-LLY_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/59478/"
-    "000005947826000045/lly-20260331.htm"
-)
+LLY_SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/59478/000005947826000045/lly-20260331.htm"
 
 UNH_NET_INCOME = Decimal("6481000000")
 UNH_ACCESSION = "0000731766-26-000127"
 UNH_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/731766/"
-    "000073176626000127/unh-20260331.htm"
+    "https://www.sec.gov/Archives/edgar/data/731766/000073176626000127/unh-20260331.htm"
 )
 
 
@@ -126,9 +120,7 @@ def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:
     assert tickers == [ticker for _name, ticker, _cik, _cap in HEALTHCARE_TOP_10]
     assert "AAPL" not in tickers
     lookup_ciks = [
-        trace.args["company"]
-        for trace in result.tool_traces
-        if trace.tool == "get_financials"
+        trace.args["company"] for trace in result.tool_traces if trace.tool == "get_financials"
     ]
     assert lookup_ciks == [cik for _name, _ticker, cik, _cap in HEALTHCARE_TOP_10]
 
