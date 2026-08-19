@@ -279,6 +279,24 @@ def test_present_news_keeps_unparseable_published() -> None:
     assert presented.fact_card is None
 
 
+def test_present_news_formats_date_only_published() -> None:
+    result = TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="Supply chain remains tight.",
+        citations=[
+            NewsHit(
+                title="Hit",
+                url="https://example.com/n",
+                published="2026-01-01",
+            )
+        ],
+        tool_traces=[ToolTrace(tool="search_news", args={"query": "NVIDIA"})],
+    )
+    presented = present_turn(result)
+    assert presented.citations[0].published == "Jan 1, 2026"
+
+
 def test_present_refuse_keeps_message() -> None:
     result = TurnResult(
         intent=Intent.RANK,

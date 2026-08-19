@@ -335,6 +335,5 @@ def _format_trace_value(value: Any) -> str:
 def _display_citation(hit: Any) -> DisplayCitation:
     published = hit.published
     if published:
-        parsed = try_parse_datetime(published)
-        published = format_datetime_utc(parsed) if parsed is not None else published
+        published = _format_trace_value(published)
     return DisplayCitation(title=hit.title, url=hit.url, published=published)
