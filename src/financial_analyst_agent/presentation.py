@@ -323,12 +323,26 @@ def _format_trace_value(value: Any) -> str:
             return value
         return format_date(as_date)
     if isinstance(value, dict):
-        return "; ".join(
-            f"{format_field_name(str(key))}: {_format_trace_value(item)}"
-            for key, item in value.items()
-        )
+        lines: list[str] = []
+        for key, item in value.items():
+            label = format_field_name(str(key))
+            formatted = _format_trace_value(item)
+            if isinstance(item, (dict, list)):
+                lines.append(f"{label}:")
+                lines.extend(f"  {line}" for line in formatted.splitlines())
+            else:
+                lines.append(f"{label}: {formatted}")
+        return "\n".join(lines)
     if isinstance(value, list):
-        return ", ".join(_format_trace_value(item) for item in value)
+        lines = []
+        for item in value:
+            item_lines = _format_trace_value(item).splitlines()
+            if not item_lines:
+                lines.append("- ")
+                continue
+            lines.append(f"- {item_lines[0]}")
+            lines.extend(f"  {line}" for line in item_lines[1:])
+        return "\n".join(lines)
     return str(value)
 
 

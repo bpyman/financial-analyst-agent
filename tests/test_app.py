@@ -9,6 +9,7 @@ import pytest
 from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
 from financial_analyst_agent.domain.errors import ConfigurationError
+from financial_analyst_agent.presentation import DisplayTable
 from financial_analyst_agent.turn import Intent, RendererKind, TurnResult
 
 
@@ -32,6 +33,9 @@ class _Streamlit:
         self._button_values = iter(button_values)
         self.page_config: dict[str, Any] = {}
         self.errors: list[str] = []
+        self.dataframes: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        self.link_columns: list[tuple[tuple[Any, ...], dict[str, Any], object]] = []
+        self.column_config = SimpleNamespace(LinkColumn=self._link_column)
 
     def __enter__(self) -> "_Streamlit":
         return self
@@ -61,7 +65,12 @@ class _Streamlit:
         return None
 
     def dataframe(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        self.dataframes.append((args, kwargs))
+
+    def _link_column(self, *args: Any, **kwargs: Any) -> object:
+        marker = object()
+        self.link_columns.append((args, kwargs, marker))
+        return marker
 
     @contextmanager
     def form(self, *args: Any, **kwargs: Any):
@@ -240,4 +249,27 @@ def test_main_cleans_up_non_configuration_failure(
     assert rendered == []
     assert "result" not in fake_streamlit.session_state
     assert fake_streamlit.session_state["turn_in_flight"] is False
-    assert fake_streamlit.errors == ["provider failed"]
+    assert fake_streamlit.errors == ["Turn failed: provider failed"]
+
+
+def test_render_table_configures_source_url_as_filing_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    source_header = "source_url (Source URL)"
+    table = DisplayTable(
+        headers=("company_name (Company)", source_header),
+        keys=("company_name", "source_url"),
+        rows=(("Alphabet Inc.", "https://www.sec.gov/example"),),
+    )
+    monkeypatch.setattr(app, "st", fake_streamlit)
+
+    app._render_table(table)
+
+    assert len(fake_streamlit.link_columns) == 1
+    link_args, link_kwargs, marker = fake_streamlit.link_columns[0]
+    assert link_args == ()
+    assert link_kwargs == {"display_text": "Filing"}
+    assert fake_streamlit.dataframes[0][1]["column_config"] == {
+        source_header: marker
+    }

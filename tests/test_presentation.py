@@ -27,6 +27,11 @@ def test_format_usd_billions_half_up() -> None:
     assert format_usd(Decimal("112193000000")) == "$112.19 B"
 
 
+def test_format_usd_compact_tie_rounds_half_up() -> None:
+    assert format_usd(Decimal("1005000")) == "$1.01 M"
+    assert format_usd(Decimal("112195000000")) == "$112.20 B"
+
+
 def test_format_usd_alphabet_net_income() -> None:
     assert format_usd(Decimal("62578000000")) == "$62.58 B"
 
@@ -66,13 +71,17 @@ def test_format_datetime_utc_drops_seconds() -> None:
 
 
 def test_format_datetime_utc_converts_offset_and_drops_microseconds() -> None:
-    stamp = datetime.fromisoformat("2026-08-18T09:10:30.074615+00:00")
+    stamp = datetime.fromisoformat("2026-08-18T05:10:30.074615-04:00")
     assert format_datetime_utc(stamp) == "Aug 18, 2026, 9:10 AM UTC"
 
 
 def test_format_percent_one_decimal_half_up() -> None:
     ratio = Decimal("38398000000") / Decimal("82886000000")
     assert format_percent(ratio) == "46.3%"
+
+
+def test_format_percent_tie_rounds_half_up() -> None:
+    assert format_percent(Decimal("0.46350")) == "46.4%"
 
 
 def test_format_field_name_domain_first() -> None:
@@ -295,6 +304,45 @@ def test_present_news_formats_date_only_published() -> None:
     )
     presented = present_turn(result)
     assert presented.citations[0].published == "Jan 1, 2026"
+
+
+def test_present_trace_formats_nested_news_hits_as_readable_lines() -> None:
+    result = TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="Supply chain remains tight.",
+        tool_traces=[
+            ToolTrace(
+                tool="search_news",
+                args={"query": "NVIDIA"},
+                provenance={
+                    "hits": [
+                        {
+                            "title": "First hit",
+                            "url": "https://example.com/first",
+                            "published": "2026-01-01",
+                        },
+                        {
+                            "title": "Second hit",
+                            "url": "https://example.com/second",
+                            "published": "yesterday morning",
+                        },
+                    ]
+                },
+            )
+        ],
+    )
+
+    hits = dict(present_turn(result).traces[0].fields)["hits (Hits)"]
+
+    assert hits == (
+        "- title (Title): First hit\n"
+        "  url (Url): https://example.com/first\n"
+        "  published (Published): Jan 1, 2026\n"
+        "- title (Title): Second hit\n"
+        "  url (Url): https://example.com/second\n"
+        "  published (Published): yesterday morning"
+    )
 
 
 def test_present_refuse_keeps_message() -> None:

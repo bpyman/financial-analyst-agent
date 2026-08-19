@@ -9,6 +9,7 @@ from financial_analyst_agent.presentation import (
     DisplayTable,
     Presentation,
     QuarterlyFactCard,
+    format_field_name,
     metric_legend,
     present_turn,
 )
@@ -66,7 +67,17 @@ def _render_table(table: DisplayTable) -> None:
         {header: row[index] for index, header in enumerate(table.headers)}
         for row in table.rows
     ]
-    st.dataframe(records, width="stretch")
+    source_header = format_field_name("source_url")
+    if source_header in table.headers:
+        st.dataframe(
+            records,
+            width="stretch",
+            column_config={
+                source_header: st.column_config.LinkColumn(display_text="Filing")
+            },
+        )
+    else:
+        st.dataframe(records, width="stretch")
 
 
 def main() -> None:
@@ -122,7 +133,7 @@ def main() -> None:
             except ConfigurationError as exc:
                 st.error(str(exc))
             except Exception as exc:
-                st.error(str(exc))
+                st.error(f"Turn failed: {exc}")
             else:
                 st.session_state["result"] = result
                 st.session_state["result_kill_switch"] = kill_switch
