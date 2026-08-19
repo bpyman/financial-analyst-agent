@@ -10,7 +10,7 @@ from financial_analyst_agent.presentation import (
     Presentation,
     QuarterlyFactCard,
     format_field_name,
-    metric_legend,
+    metric_groups,
     present_turn,
 )
 from financial_analyst_agent.runtime import runtime_for_kill_switch
@@ -28,7 +28,7 @@ def render_turn_result(result: TurnResult) -> None:
 
 
 def _render_presentation(presented: Presentation) -> None:
-    st.markdown(f"**Intent:** `{presented.intent}`")
+    st.badge(presented.intent, color="blue")
     for banner in presented.banners:
         st.info(banner)
     for hit in presented.citations:
@@ -80,22 +80,31 @@ def _render_table(table: DisplayTable) -> None:
         st.dataframe(records, width="stretch")
 
 
+def _render_metric_catalog() -> None:
+    with st.container(border=True, gap="small"):
+        st.caption("Supported metrics (SEC EDGAR)")
+        columns = st.columns(len(metric_groups()))
+        for column, (title, names) in zip(columns, metric_groups(), strict=True):
+            with column:
+                st.caption(title)
+                st.markdown("  \n".join(f":gray[{name}]" for name in names))
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Financial analyst agent",
+        page_icon=":material/query_stats:",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
-    title_col, status_col = st.columns([6, 1])
-    with title_col:
-        st.title("Financial analyst agent")
     settings = get_settings()
     kill_switch = st.sidebar.toggle(
         "Fixture kill-switch",
         value=settings.app_mode is AppMode.FIXTURE,
         help="Recorded adapters. Announce this if you use it.",
     )
-    with status_col:
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.title("Financial analyst agent")
         ui.badge(
             "Fixture" if kill_switch else "Live",
             variant="destructive" if kill_switch else "default",
@@ -115,7 +124,7 @@ def main() -> None:
     with st.form("ask"):
         query = st.text_input("Ask a question", value=_GOLD_QUERY)
         submitted = st.form_submit_button("Ask", type="primary")
-    st.caption(" · ".join(metric_legend()))
+    _render_metric_catalog()
 
     if submitted:
         if st.session_state.get("turn_in_flight"):

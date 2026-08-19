@@ -9,6 +9,7 @@ from financial_analyst_agent.presentation import (
     format_percent,
     format_reason,
     format_usd,
+    metric_groups,
     metric_legend,
     present_turn,
     try_parse_datetime,
@@ -360,6 +361,15 @@ def test_present_refuse_keeps_message() -> None:
 
 def test_metric_legend_lists_closed_catalog() -> None:
     legend = metric_legend()
-    assert legend[0] == "revenue (Revenue)"
-    assert "operating_margin (Operating margin)" in legend
+    assert legend[0] == "Revenue"
+    assert "Cost of revenue" in legend
+    assert "Operating margin" in legend
+    assert all("(" not in name and "_" not in name for name in legend)
     assert len(legend) == 9
+
+
+def test_metric_groups_split_reported_from_margins() -> None:
+    groups = dict(metric_groups())
+    assert groups["Reported"][0] == "Revenue"
+    assert "Net income" in groups["Reported"]
+    assert groups["Margins"] == ("Gross margin", "Operating margin", "Net margin")

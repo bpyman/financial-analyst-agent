@@ -36,6 +36,7 @@ class _Streamlit:
         self.dataframes: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         self.link_columns: list[tuple[tuple[Any, ...], dict[str, Any], object]] = []
         self.column_config = SimpleNamespace(LinkColumn=self._link_column)
+        self.markdowns: list[str] = []
 
     def __enter__(self) -> "_Streamlit":
         return self
@@ -53,9 +54,17 @@ class _Streamlit:
         return None
 
     def caption(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        if args:
+            self.markdowns.append(str(args[0]))
 
     def markdown(self, *args: Any, **kwargs: Any) -> None:
+        if args:
+            self.markdowns.append(str(args[0]))
+
+    def space(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    def badge(self, *args: Any, **kwargs: Any) -> None:
         return None
 
     def error(self, *args: Any, **kwargs: Any) -> None:
@@ -94,7 +103,12 @@ class _Streamlit:
         yield None
 
     def columns(self, spec: Any) -> list[Any]:
-        return [self, self]
+        count = spec if isinstance(spec, int) else len(spec)
+        return [self for _ in range(count)]
+
+    @contextmanager
+    def container(self, *args: Any, **kwargs: Any):
+        yield self
 
 
 def test_main_runs_only_on_submit_and_renders_cached_result(
@@ -135,6 +149,14 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     assert fake_streamlit.page_config.get("initial_sidebar_state") == "collapsed"
     assert calls == ["What was Google's net income?"]
     assert rendered == [result, result]
+    catalog = "\n".join(fake_streamlit.markdowns)
+    assert "Supported metrics (SEC EDGAR)" in catalog
+    assert "Reported" in catalog
+    assert "Margins" in catalog
+    assert ":gray[Revenue]" in catalog
+    assert ":gray[Gross margin]" in catalog
+    assert "revenue (Revenue)" not in catalog
+    assert "cost_of_revenue" not in catalog
 
 
 def test_main_clears_cached_result_when_runtime_mode_changes(

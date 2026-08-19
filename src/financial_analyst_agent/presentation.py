@@ -7,6 +7,7 @@ from typing import Any
 
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
+    REPORTED_METRICS,
     Intent,
     RendererKind,
     TableRow,
@@ -95,11 +96,15 @@ def format_datetime_utc(value: datetime) -> str:
     return f"{format_date(utc.date())}, {hour12}:{utc.minute:02d} {suffix} UTC"
 
 
-def format_field_name(key: str) -> str:
+def _humanize_field(key: str) -> str:
     label = _FIELD_LABELS.get(key)
     if label is None:
-        label = " ".join(part.capitalize() for part in key.split("_"))
-    return f"{key} ({label})"
+        return " ".join(part.capitalize() for part in key.split("_"))
+    return label
+
+
+def format_field_name(key: str) -> str:
+    return f"{key} ({_humanize_field(key)})"
 
 
 def format_reason(reason: str) -> str:
@@ -196,7 +201,14 @@ class Presentation:
 
 
 def metric_legend() -> tuple[str, ...]:
-    return tuple(format_field_name(metric) for metric in ALLOWED_METRICS)
+    return tuple(_humanize_field(metric) for metric in ALLOWED_METRICS)
+
+
+def metric_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return (
+        ("Reported", tuple(_humanize_field(metric) for metric in REPORTED_METRICS)),
+        ("Margins", tuple(_humanize_field(metric) for metric in FORMULA_METRICS)),
+    )
 
 
 def present_turn(result: TurnResult) -> Presentation:
