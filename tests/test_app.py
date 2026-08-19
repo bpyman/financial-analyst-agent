@@ -1,5 +1,6 @@
 """Streamlit submission and cached-result behavior."""
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,9 +21,16 @@ class _Streamlit:
         self.sidebar = _Sidebar()
         self.session_state: dict[str, object] = {}
         self._button_values = iter((True, False))
+        self.page_config: dict[str, Any] = {}
+
+    def __enter__(self) -> "_Streamlit":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        return None
 
     def set_page_config(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        self.page_config = kwargs
 
     def title(self, *args: Any, **kwargs: Any) -> None:
         return None
@@ -33,14 +41,41 @@ class _Streamlit:
     def caption(self, *args: Any, **kwargs: Any) -> None:
         return None
 
-    def text_input(self, *args: Any, **kwargs: Any) -> str:
-        return "What was Google's net income?"
-
-    def button(self, *args: Any, **kwargs: Any) -> bool:
-        return next(self._button_values)
+    def markdown(self, *args: Any, **kwargs: Any) -> None:
+        return None
 
     def error(self, *args: Any, **kwargs: Any) -> None:
         return None
+
+    def info(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    def dataframe(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    @contextmanager
+    def form(self, *args: Any, **kwargs: Any):
+        yield None
+
+    def text_input(self, *args: Any, **kwargs: Any) -> str:
+        return "What was Google's net income?"
+
+    def form_submit_button(self, *args: Any, **kwargs: Any) -> bool:
+        return next(self._button_values)
+
+    def button(self, *args: Any, **kwargs: Any) -> bool:
+        raise AssertionError("Ask must use st.form_submit_button, not st.button")
+
+    @contextmanager
+    def spinner(self, *args: Any, **kwargs: Any):
+        yield None
+
+    @contextmanager
+    def expander(self, *args: Any, **kwargs: Any):
+        yield None
+
+    def columns(self, spec: Any) -> list[Any]:
+        return [self, self]
 
 
 def test_main_runs_only_on_submit_and_renders_cached_result(
@@ -58,6 +93,11 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     monkeypatch.setattr(app, "st", fake_streamlit)
     monkeypatch.setattr(
         app,
+        "ui",
+        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
+    )
+    monkeypatch.setattr(
+        app,
         "get_settings",
         lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
     )
@@ -73,5 +113,6 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     app.main()
     app.main()
 
+    assert fake_streamlit.page_config.get("initial_sidebar_state") == "collapsed"
     assert calls == ["What was Google's net income?"]
     assert rendered == [result, result]

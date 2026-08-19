@@ -1,11 +1,19 @@
 """One Streamlit window: query, intent chip, tool cards, answer."""
 
 import streamlit as st
+import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
 from financial_analyst_agent.config import AppMode, get_settings
 from financial_analyst_agent.domain.errors import ConfigurationError
+from financial_analyst_agent.presentation import (
+    DisplayTable,
+    Presentation,
+    QuarterlyFactCard,
+    metric_legend,
+    present_turn,
+)
 from financial_analyst_agent.runtime import runtime_for_kill_switch
-from financial_analyst_agent.turn import RendererKind, TurnResult, run_turn
+from financial_analyst_agent.turn import TurnResult, run_turn
 
 _GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
 KILL_SWITCH_BANNER = (
@@ -15,54 +23,100 @@ KILL_SWITCH_BANNER = (
 
 
 def render_turn_result(result: TurnResult) -> None:
-    st.markdown(f"**Intent:** `{result.intent}`")
+    _render_presentation(present_turn(result))
 
-    for banner in result.banners:
+
+def _render_presentation(presented: Presentation) -> None:
+    st.markdown(f"**Intent:** `{presented.intent}`")
+    for banner in presented.banners:
         st.info(banner)
-
-    for hit in result.citations:
+    for hit in presented.citations:
         published = f" ({hit.published})" if hit.published else ""
         st.markdown(f"- [{hit.title}]({hit.url}){published}")
+    if presented.fact_card is not None:
+        _render_fact_card(presented.fact_card)
+    if presented.table is not None:
+        _render_table(presented.table)
+    if presented.message is not None:
+        st.error(presented.message)
+    if presented.essay is not None:
+        st.markdown(presented.essay)
+    for trace in presented.traces:
+        with st.expander(trace.header, expanded=False):
+            for label, value in trace.fields:
+                st.markdown(f"**{label}:** {value}")
 
-    for trace in result.tool_traces:
-        with st.expander(f"Tool: {trace.tool}", expanded=True):
-            st.json({"args": trace.args, "provenance": trace.provenance})
 
-    if result.renderer is RendererKind.REFUSE:
-        st.error(result.message)
-        return
-    if result.renderer is RendererKind.ESSAY:
-        st.markdown(result.essay)
-        return
-    if result.renderer is RendererKind.TABLE:
-        st.dataframe(
-            [row.model_dump(mode="json") for row in result.table_rows],
-            use_container_width=True,
-        )
+def _render_fact_card(card: QuarterlyFactCard) -> None:
+    ui.metric_card(
+        label=card.metric_header,
+        value=card.amount,
+        description=f"{card.company_name} · {card.ticker}",
+        key="lookup-fact",
+    )
+    st.caption(card.period_label)
+    filing = f"[Filing]({card.source_url})" if card.source_url else ""
+    st.markdown(
+        f"`{card.form}` · `{card.accession_number}` · `{card.concept}` · {filing}"
+    )
+
+
+def _render_table(table: DisplayTable) -> None:
+    records = [
+        {header: row[index] for index, header in enumerate(table.headers)}
+        for row in table.rows
+    ]
+    st.dataframe(records, width="stretch")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Financial analyst agent", layout="wide")
-    st.title("Financial analyst agent")
+    st.set_page_config(
+        page_title="Financial analyst agent",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+    title_col, status_col = st.columns([6, 1])
+    with title_col:
+        st.title("Financial analyst agent")
     settings = get_settings()
     kill_switch = st.sidebar.toggle(
         "Fixture kill-switch",
         value=settings.app_mode is AppMode.FIXTURE,
         help="Recorded adapters. Announce this if you use it.",
     )
+    with status_col:
+        ui.badge(
+            "Fixture" if kill_switch else "Live",
+            variant="destructive" if kill_switch else "default",
+            key="runtime-status",
+        )
     if kill_switch:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
 
-    query = st.text_input("Question", value=_GOLD_QUERY)
-    if st.button("Ask", type="primary"):
-        try:
-            result = run_turn(query, runtime_for_kill_switch(enabled=kill_switch))
-        except ConfigurationError as exc:
-            st.error(str(exc))
-            return
-        st.session_state["result"] = result
+    with st.form("ask"):
+        query = st.text_input("Ask a question", value=_GOLD_QUERY)
+        submitted = st.form_submit_button("Ask", type="primary")
+    st.caption(" · ".join(metric_legend()))
+
+    if submitted:
+        if st.session_state.get("turn_in_flight"):
+            st.info("A turn is already running.")
+        else:
+            st.session_state["turn_in_flight"] = True
+            try:
+                with st.spinner("Running turn…"):
+                    result = run_turn(
+                        query,
+                        runtime_for_kill_switch(enabled=kill_switch),
+                    )
+            except ConfigurationError as exc:
+                st.error(str(exc))
+                st.session_state["turn_in_flight"] = False
+                return
+            st.session_state["result"] = result
+            st.session_state["turn_in_flight"] = False
 
     if "result" not in st.session_state:
         return

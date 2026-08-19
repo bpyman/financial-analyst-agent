@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
     "streamlit>=1.61.1",
+    "streamlit-shadcn-ui>=1.0.0",
 ]
 
 [dependency-groups]

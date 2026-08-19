@@ -1,0 +1,19 @@
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "dark"
+primaryColor = "#3b82f6"
+backgroundColor = "#0b0d10"
+secondaryBackgroundColor = "#181a1f"
+textColor = "#e8eaed"
+borderColor = "#2a2e35"
+linkColor = "#3b82f6"
+redColor = "#ef4444"
+greenColor = "#22c55e"
+baseRadius = "none"
+buttonRadius = "none"
+showWidgetBorder = true
+dataframeHeaderBackgroundColor = "#12141a"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
