@@ -5,7 +5,7 @@ A demo agent that looks up reported quarterly facts for operating companies, ran
 ## Language
 
 **Universe snapshot**:
-A dated freeze of US exchange-listed common shares of operating companies. Ranking reads this freeze; it does not rescreen the market. Lookup does not require freeze presence. News does not use it.
+A dated freeze of US exchange-listed common shares of operating companies. Ranking reads this freeze; it does not rescreen the market. Lookup of a quarterly fact does not require freeze presence. Lookup of a snapshot metric (`market_cap`) does. News does not use it.
 _Avoid_: live screener, universe, catalog
 
 **Snapshot member**:

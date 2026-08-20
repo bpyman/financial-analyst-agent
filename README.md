@@ -19,9 +19,11 @@ uv run streamlit run src/financial_analyst_agent/app.py
 
 Live default. Scripted prompts:
 
-1. What was Google's net income based on their latest quarterly report?
-2. What are the top 10 healthcare companies and the net income for each?
-3. Compare Microsoft and Google operating margins
+1. Microsoft pre-tax income
+2. TSLA vs GM revenue
+3. Top 10 tech companies R&D spend
+
+Backup (needs fresh Tavily): *Effects of recent Strait of Hormuz closures on Exxon*
 
 Refuse rehearsal: *What are the top 10 companies in AI?*
 

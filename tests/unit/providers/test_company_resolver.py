@@ -66,3 +66,16 @@ def test_resolve_apple_without_inc_is_not_hospitality() -> None:
 def test_resolve_short_prefix_of_apple_is_ambiguous() -> None:
     with pytest.raises(AmbiguousCompanyError):
         resolve_company("Appl", _tickers_payload())
+
+
+def test_resolve_falls_through_when_alias_target_title_differs() -> None:
+    payload = {
+        "0": {
+            "cik_str": 789019,
+            "ticker": "MSFT",
+            "title": "Microsoft Corporation",
+        }
+    }
+    company = resolve_company("Microsoft", payload)
+    assert company.cik == "0000789019"
+    assert company.tickers == ["MSFT"]

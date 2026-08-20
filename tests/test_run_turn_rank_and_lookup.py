@@ -4,8 +4,6 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-import pytest
-
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     UnsupportedQuarterlyFactError,
@@ -47,7 +45,6 @@ UNH_PERIOD_END = date(2025, 12, 31)
 REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
-@pytest.mark.gold
 def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None:
     result = run_turn(HEALTHCARE_INCOME_QUERY, _gold_rank_runtime())
 
@@ -342,3 +339,27 @@ class _CikMarginFacts(_CikOnlyFacts):
             start_date=income.start_date,
             end_date=income.end_date,
         )
+
+
+HEALTHCARE_MARKET_CAP_QUERY = (
+    "What are the top 10 healthcare companies and the market cap for each?"
+)
+
+
+def test_run_turn_rank_and_lookup_uses_snapshot_market_caps() -> None:
+    result = run_turn(HEALTHCARE_MARKET_CAP_QUERY, _gold_rank_runtime())
+
+    assert result.intent is Intent.RANK_AND_LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    assert result.tool_traces[0].tool == "rank_companies"
+    assert [trace.tool for trace in result.tool_traces[1:]] == []
+    assert len(result.table_rows) == 10
+    for index, (name, ticker, cik, market_cap) in enumerate(HEALTHCARE_TOP_10, start=1):
+        row = result.table_rows[index - 1]
+        assert row.rank == index
+        assert row.company_name == name
+        assert row.ticker == ticker
+        assert row.cik == cik
+        assert row.metric == "market_cap"
+        assert row.value == market_cap
+        assert row.start_date is None

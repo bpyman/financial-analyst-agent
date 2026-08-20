@@ -4,11 +4,15 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-import pytest
-
 from financial_analyst_agent.domain.errors import AmbiguousFactError
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
-from financial_analyst_agent.runtime import DemoCompleter, build_runtime, fixture_runtime
+from financial_analyst_agent.ranking import SnapshotRanking
+from financial_analyst_agent.runtime import (
+    FIXTURE_UNIVERSE_SNAPSHOT_PATH,
+    DemoCompleter,
+    build_runtime,
+    fixture_runtime,
+)
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, Runtime, run_turn
 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
@@ -196,7 +200,6 @@ def test_run_turn_returns_lookup_table_for_google_latest_quarter_net_income() ->
     assert row.source_url == SOURCE_URL
 
 
-@pytest.mark.gold
 def test_run_turn_resolves_google_and_selects_standalone_quarter() -> None:
     result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, fixture_runtime())
 
@@ -395,3 +398,60 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
     assert result.tool_traces == []
     assert result.message is not None
     assert "appl" in result.message.casefold() or "multiple" in result.message.casefold()
+
+
+GOOGLE_MARKET_CAP_QUERY = "What was Google's market cap?"
+SHOPIFY_MARKET_CAP_QUERY = "What was Shopify's market cap?"
+ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("2200000000000")
+SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
+
+
+class _ShopifyMarketCapCompleter:
+    def complete(self, query: str) -> SimpleNamespace:
+        if query != SHOPIFY_MARKET_CAP_QUERY:
+            raise AssertionError(f"unexpected query: {query!r}")
+        return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="market_cap")
+
+
+class _NoFacts:
+    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        raise AssertionError("snapshot metrics must not call get_financials")
+
+
+def test_run_turn_lookup_google_market_cap_from_snapshot() -> None:
+    result = run_turn(GOOGLE_MARKET_CAP_QUERY, fixture_runtime())
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    assert result.banners == [f"Universe snapshot as of {SNAPSHOT_AS_OF}"]
+    assert len(result.table_rows) == 1
+    row = result.table_rows[0]
+    assert row.company_name == ALPHABET_NAME
+    assert row.ticker == ALPHABET_TICKER
+    assert row.cik == ALPHABET_CIK
+    assert row.metric == "market_cap"
+    assert row.value == ALPHABET_SNAPSHOT_MARKET_CAP
+    assert row.currency == "USD"
+    assert row.start_date is None
+    assert row.form is None
+    assert result.tool_traces[0].tool == "compare_metrics"
+    assert result.tool_traces[0].args == {"issuers": ["Google"], "metric": "market_cap"}
+    assert result.tool_traces[0].provenance["snapshot_as_of"] == SNAPSHOT_AS_OF
+
+
+def test_run_turn_lookup_market_cap_refuses_when_not_in_snapshot() -> None:
+    result = run_turn(
+        SHOPIFY_MARKET_CAP_QUERY,
+        Runtime(
+            completer=_ShopifyMarketCapCompleter(),
+            facts=_NoFacts(),
+            ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+        ),
+    )
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.REFUSE
+    assert result.table_rows == []
+    assert result.tool_traces == []
+    assert result.message is not None
+    assert "shopify" in result.message.casefold()

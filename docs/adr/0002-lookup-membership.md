@@ -14,3 +14,5 @@ Ares Capital is excluded because it is a BDC, not an operating company. It is on
 ## Consequences
 
 Lookup identity is SEC, not the FMP vendor row ADR 0001’s `isEtf`/`isFund` and industry filters run on. A name already in the freeze has been judged. A name not in the freeze is judged with what SEC identity can see — ticker suffix, listing-title tokens, and the ineligible CIK list. A residual BDC not yet on that list can leak into lookup until its CIK is appended; that does not change the rules.
+
+Snapshot metrics (`market_cap`) are an exception: the number lives on the freeze, so lookup requires freeze presence. XBRL reported facts and formulas still do not.

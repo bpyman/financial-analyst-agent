@@ -61,7 +61,8 @@ FORMULA_METRICS: tuple[str, ...] = (
     "effective_tax_rate",
     "interest_coverage",
 )
-ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS
+SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap",)
+ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS + SNAPSHOT_METRICS
 PERCENT_FORMULAS: tuple[str, ...] = (
     "gross_margin",
     "operating_margin",
@@ -114,6 +115,12 @@ class FactsPort(Protocol):
 
 class RankingPort(Protocol):
     def rank_companies(self, industry: str, limit: int) -> Any: ...
+
+    def lookup_member(self, company: str) -> Any: ...
+
+    def snapshot_as_of(self) -> str: ...
+
+    def snapshot_source(self) -> str: ...
 
 
 class NewsPort(Protocol):
@@ -589,6 +596,9 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     ]
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
+        if metric in SNAPSHOT_METRICS:
+            rows.append(_snapshot_row(company, metric, rank=index))
+            continue
         if metric in FORMULA_COMPONENTS:
             partial = _metrics_turn(Intent.RANK_AND_LOOKUP, [company.cik], metric, runtime)
             rows.append(_with_rank_identity(partial.table_rows[0], company, index))
@@ -629,6 +639,8 @@ def _compare_components_provenance(rows: list[TableRow]) -> dict[str, Any]:
 
 
 def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runtime) -> TurnResult:
+    if metric in SNAPSHOT_METRICS:
+        return _snapshot_metrics_turn(intent, issuers, metric, runtime)
     rows = compare_metrics(runtime.facts, issuers, metric)
     return TurnResult(
         intent=intent,
@@ -641,6 +653,73 @@ def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runt
         ],
         renderer=RendererKind.TABLE,
         table_rows=rows,
+    )
+
+
+def _snapshot_row(member: Any, metric: str, **kwargs: Any) -> TableRow:
+    return TableRow(
+        company_name=member.name,
+        ticker=member.ticker,
+        cik=member.cik,
+        metric=metric,
+        value=getattr(member, metric),
+        currency="USD",
+        **kwargs,
+    )
+
+
+def snapshot_compare_rows(
+    ranking: RankingPort, issuers: list[str], metric: str
+) -> list[TableRow]:
+    rows: list[TableRow] = []
+    seen_ciks: set[str] = set()
+    for issuer in issuers:
+        try:
+            member = ranking.lookup_member(issuer)
+        except (CompanyNotFoundError, AmbiguousCompanyError):
+            rows.append(_compare_unresolved_row(issuer, metric, MISSING_FACT))
+            continue
+        if member.cik in seen_ciks:
+            continue
+        seen_ciks.add(member.cik)
+        rows.append(_snapshot_row(member, metric))
+    return rows
+
+
+def _snapshot_metrics_turn(
+    intent: Intent, issuers: list[str], metric: str, runtime: Runtime
+) -> TurnResult:
+    if runtime.ranking is None:
+        raise RuntimeError(f"{intent.value} snapshot metric requires a ranking adapter")
+    if intent is Intent.LOOKUP and len(issuers) == 1:
+        try:
+            member = runtime.ranking.lookup_member(issuers[0])
+        except (CompanyNotFoundError, AmbiguousCompanyError) as exc:
+            return TurnResult(
+                intent=intent,
+                tool_traces=[],
+                renderer=RendererKind.REFUSE,
+                message=str(exc),
+            )
+        rows = [_snapshot_row(member, metric)]
+    else:
+        rows = snapshot_compare_rows(runtime.ranking, issuers, metric)
+    as_of = runtime.ranking.snapshot_as_of()
+    return TurnResult(
+        intent=intent,
+        tool_traces=[
+            ToolTrace(
+                tool="compare_metrics",
+                args={"issuers": issuers, "metric": metric},
+                provenance={
+                    "snapshot_as_of": as_of,
+                    "source": runtime.ranking.snapshot_source(),
+                },
+            )
+        ],
+        renderer=RendererKind.TABLE,
+        table_rows=rows,
+        banners=[f"Universe snapshot as of {as_of}"],
     )
 
 
@@ -702,6 +781,8 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             return _refuse_unknown_metric(plan.intent, metric)
         if metric in FORMULA_COMPONENTS:
             return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
+        if metric in SNAPSHOT_METRICS:
+            return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
     args = {"company": plan.company, "metric": metric}
     try:
         fact = runtime.facts.get_financials(plan.company, metric)

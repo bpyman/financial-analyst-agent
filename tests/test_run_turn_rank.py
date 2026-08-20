@@ -169,7 +169,6 @@ def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
         assert industry in result.message.casefold()
 
 
-@pytest.mark.gold
 def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
     result = run_turn(UNKNOWN_INDUSTRY_QUERY, _gold_rank_runtime())
 

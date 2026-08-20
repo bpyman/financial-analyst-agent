@@ -4,8 +4,6 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-import pytest
-
 from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import fixture_runtime
@@ -54,7 +52,6 @@ ALPHABET_SOURCE_URL = (
 )
 
 
-@pytest.mark.gold
 def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margins() -> None:
     result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, fixture_runtime())
 
@@ -419,3 +416,30 @@ def test_run_turn_refuses_unknown_compare_ratio_with_allowed_list() -> None:
     assert "roe" in result.message.casefold()
     for metric in ALLOWED_METRICS:
         assert metric in result.message
+
+
+MSFT_GOOG_MARKET_CAP_QUERY = "compare Microsoft and Google market cap"
+MICROSOFT_SNAPSHOT_MARKET_CAP = Decimal("3100000000000")
+ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("2200000000000")
+
+
+def test_run_turn_compare_snapshot_market_caps() -> None:
+    result = run_turn(MSFT_GOOG_MARKET_CAP_QUERY, fixture_runtime())
+
+    assert result.intent is Intent.COMPARE
+    assert result.renderer is RendererKind.TABLE
+    microsoft, alphabet = result.table_rows
+    assert microsoft.company_name == MICROSOFT_NAME
+    assert microsoft.ticker == MICROSOFT_TICKER
+    assert microsoft.cik == MICROSOFT_CIK
+    assert microsoft.metric == "market_cap"
+    assert microsoft.value == MICROSOFT_SNAPSHOT_MARKET_CAP
+    assert microsoft.start_date is None
+    assert alphabet.company_name == ALPHABET_NAME
+    assert alphabet.ticker == ALPHABET_TICKER
+    assert alphabet.value == ALPHABET_SNAPSHOT_MARKET_CAP
+    assert result.tool_traces[0].tool == "compare_metrics"
+    assert result.tool_traces[0].args == {
+        "issuers": ["Microsoft", "Google"],
+        "metric": "market_cap",
+    }

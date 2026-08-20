@@ -139,6 +139,12 @@ def test_rd_abbreviation_is_unique_research_and_development() -> None:
     assert resolved.metric == "research_and_development"
 
 
+def test_rd_spend_is_unique_research_and_development() -> None:
+    resolved = resolve_metric_phrase("Top 10 tech companies R&D spend")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "research_and_development"
+
+
 def test_sga_abbreviation_is_unique() -> None:
     resolved = resolve_metric_phrase("What was Google's SG&A?")
     assert resolved.kind == "unique"
@@ -191,6 +197,17 @@ def test_interest_coverage_is_unique() -> None:
     resolved = resolve_metric_phrase("What was Google's interest coverage?")
     assert resolved.kind == "unique"
     assert resolved.metric == "interest_coverage"
+
+
+def test_market_cap_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's market cap?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "market_cap"
+
+
+def test_market_alone_is_unknown() -> None:
+    resolved = resolve_metric_phrase("What was Google's market?")
+    assert resolved.kind == "unknown"
 
 
 @pytest.mark.parametrize("metric", ALLOWED_METRICS)

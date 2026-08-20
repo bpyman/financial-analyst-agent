@@ -15,14 +15,14 @@ from financial_analyst_agent.turn import (
 
 FIXTURE_NEWS_HITS: tuple[NewsHit, ...] = (
     NewsHit(
-        title="NVIDIA flags CoWoS supply constraints",
-        url="https://example.test/nvidia-supply-chain",
-        snippet="Lead times remain extended after $12.3B of data-center demand.",
+        title="Hormuz closures slow crude loadings",
+        url="https://example.test/hormuz-exxon",
+        snippet="ExxonMobil cited $1.2B of delayed loadings after the strait closures.",
         score=0.91,
-        published="2026-08-10",
+        published="2026-08-18",
     ),
 )
-FIXTURE_NEWS_QUERY = "What is going on with NVIDIA supply chain?"
+FIXTURE_NEWS_QUERY = "Effects of recent Strait of Hormuz closures on Exxon"
 
 
 class FixtureNewsSearch:

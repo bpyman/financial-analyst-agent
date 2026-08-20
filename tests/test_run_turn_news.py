@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.runtime import fixture_runtime
 from financial_analyst_agent.turn import (
     Intent,
@@ -255,19 +256,20 @@ def test_run_turn_news_and_explain_drops_hits_missing_title_or_url() -> None:
 
 
 def test_fixture_runtime_news_and_explain_uses_recorded_hits() -> None:
-    result = run_turn(NVIDIA_SUPPLY_QUERY, fixture_runtime())
+    result = run_turn(FIXTURE_NEWS_QUERY, fixture_runtime())
 
     assert result.intent is Intent.NEWS_AND_EXPLAIN
     assert result.renderer is RendererKind.ESSAY
     assert result.essay is not None
     assert result.essay.strip()
-    assert "CoWoS" in result.essay
+    assert "Hormuz" in result.essay
+    assert "$1.2B" in result.essay
     assert result.numeral_lock_extras == []
     assert result.citations
     assert all(hit.title and hit.url for hit in result.citations)
     trace = result.tool_traces[0]
     assert trace.tool == "search_news"
-    assert trace.args["query"] == NVIDIA_SUPPLY_QUERY
+    assert trace.args["query"] == FIXTURE_NEWS_QUERY
     assert trace.args["topic"] == "news"
     assert trace.args["max_results"] == 5
 

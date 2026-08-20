@@ -4,7 +4,7 @@ from fastmcp import FastMCP
 
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.runtime import build_runtime
-from financial_analyst_agent.turn import ALLOWED_METRICS
+from financial_analyst_agent.turn import ALLOWED_METRICS, SNAPSHOT_METRICS, snapshot_compare_rows
 from financial_analyst_agent.turn import compare_metrics as compare_metric_rows
 
 mcp = FastMCP("financial-analyst")
@@ -26,7 +26,13 @@ def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
     if metric not in ALLOWED_METRICS:
         allowed = ", ".join(ALLOWED_METRICS)
         raise ValueError(f"Unknown metric {metric!r}. Allowed: {allowed}")
-    rows = compare_metric_rows(build_runtime().facts, issuers, metric)
+    runtime = build_runtime()
+    if metric in SNAPSHOT_METRICS:
+        if runtime.ranking is None:
+            raise RuntimeError("ranking adapter is not configured")
+        rows = snapshot_compare_rows(runtime.ranking, issuers, metric)
+    else:
+        rows = compare_metric_rows(runtime.facts, issuers, metric)
     return {"rows": [row.model_dump(mode="json") for row in rows]}
 
 

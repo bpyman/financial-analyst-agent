@@ -29,6 +29,8 @@ _REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
     ("interest expense", "interest_expense"),
     ("income tax", "income_tax_expense"),
     ("pretax income", "pretax_income"),
+    ("pre-tax income", "pretax_income"),
+    ("r&d spend", "research_and_development"),
     ("net income", "net_income"),
     ("revenue", "revenue"),
     ("income", "net_income"),
@@ -41,6 +43,7 @@ _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
     ("sg&a ratio", "sga_ratio"),
     ("effective tax rate", "effective_tax_rate"),
     ("interest coverage", "interest_coverage"),
+    ("market cap", "market_cap"),
 )
 _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("microsoft", "Microsoft"),
@@ -49,6 +52,10 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("google", "Google"),
     ("googl", "Google"),
     ("goog", "Google"),
+    ("tesla", "Tesla"),
+    ("tsla", "Tesla"),
+    ("general motors", "GM"),
+    ("gm", "GM"),
 )
 
 
@@ -126,6 +133,8 @@ def _metric_from_query(normalized: str) -> str:
 
 
 def _is_news_query(normalized: str) -> bool:
+    if "hormuz" in normalized:
+        return True
     if "supply chain" in normalized or "supply-chain" in normalized:
         return True
     return re.search(r"what(?:['’]?s| is) going on", normalized) is not None
@@ -183,7 +192,7 @@ class DemoCompleter:
             return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
         if _is_news_query(normalized):
             return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=query)
-        if "compare" in normalized:
+        if "compare" in normalized or re.search(r"\bvs\b", normalized):
             return SimpleNamespace(
                 intent=Intent.COMPARE,
                 companies=_companies_from_query(normalized),

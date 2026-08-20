@@ -3,8 +3,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from financial_analyst_agent.domain.errors import UnknownIndustryError
+from financial_analyst_agent.domain.errors import CompanyNotFoundError, UnknownIndustryError
+from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.universe import (
     UniverseCompany,
     UniverseSnapshot,
@@ -58,6 +60,38 @@ class SnapshotRanking:
             sector=sector,
             companies=tuple(selected),
         )
+
+    def snapshot_as_of(self) -> str:
+        return _format_as_of(self._snapshot.as_of)
+
+    def snapshot_source(self) -> str:
+        return self._snapshot.source
+
+    def lookup_member(self, company: str) -> UniverseCompany:
+        resolved = resolve_company(company, self._operating_ticker_payload())
+        listings = [
+            row
+            for row in self._snapshot.companies
+            if row.cik == resolved.cik and is_common_operating_listing(row)
+        ]
+        if not listings:
+            raise CompanyNotFoundError(
+                f"Company not found for query '{company}'",
+                details={"query": company},
+            )
+        return preferred_listing(listings)
+
+    def _operating_ticker_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        for index, company in enumerate(self._snapshot.companies):
+            if not is_common_operating_listing(company):
+                continue
+            payload[str(index)] = {
+                "ticker": company.ticker,
+                "title": company.name,
+                "cik_str": int(company.cik),
+            }
+        return payload
 
 
 def _format_as_of(value: datetime) -> str:

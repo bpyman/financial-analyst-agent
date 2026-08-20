@@ -102,6 +102,7 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("research_and_development", "research_and_development"),
     ("r&d to sales", "rd_to_sales"),
     ("rd to sales", "rd_to_sales"),
+    ("r&d spend", "research_and_development"),
     ("r&d intensity", "rd_to_sales"),
     ("rd_to_sales", "rd_to_sales"),
     ("r&d", "research_and_development"),
@@ -155,6 +156,10 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("net sales", "revenue"),
     ("sales", "revenue"),
     ("revenue", "revenue"),
+    ("market capitalization", "market_cap"),
+    ("market cap", "market_cap"),
+    ("market_cap", "market_cap"),
+    ("mkt cap", "market_cap"),
 )
 
 _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (

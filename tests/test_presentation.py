@@ -613,16 +613,18 @@ def test_metric_legend_lists_closed_catalog() -> None:
     assert "Operating margin" in legend
     assert "R&D to sales" in legend
     assert "Interest coverage" in legend
+    assert "Market cap" in legend
     assert all("(" not in name and "_" not in name for name in legend)
-    assert len(legend) == 18
+    assert len(legend) == 19
 
 
 def test_metric_groups_split_reported_from_calculated() -> None:
     groups = dict(metric_groups())
-    assert groups["Reported"][0] == "Revenue"
-    assert "Net income" in groups["Reported"]
-    assert "Research and development" in groups["Reported"]
-    assert "Pretax income" in groups["Reported"]
+    assert groups["Reported (SEC EDGAR)"][0] == "Revenue"
+    assert "Net income" in groups["Reported (SEC EDGAR)"]
+    assert "Research and development" in groups["Reported (SEC EDGAR)"]
+    assert "Pretax income" in groups["Reported (SEC EDGAR)"]
+    assert "Reported" not in groups
     assert "Margins" not in groups
     assert groups["Calculated"] == (
         "Gross margin",
@@ -633,3 +635,4 @@ def test_metric_groups_split_reported_from_calculated() -> None:
         "Effective tax rate",
         "Interest coverage",
     )
+    assert groups["Daily snapshot (FMP)"] == ("Market cap",)

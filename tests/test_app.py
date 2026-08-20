@@ -2,6 +2,7 @@
 
 import re
 from contextlib import contextmanager
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -11,7 +12,14 @@ from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import DisplayTable
-from financial_analyst_agent.turn import Intent, NewsHit, RendererKind, ToolTrace, TurnResult
+from financial_analyst_agent.turn import (
+    Intent,
+    NewsHit,
+    RendererKind,
+    TableRow,
+    ToolTrace,
+    TurnResult,
+)
 
 
 class _Sidebar:
@@ -37,10 +45,15 @@ class _Streamlit:
         self.infos: list[str] = []
         self.dataframes: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         self.link_columns: list[tuple[tuple[Any, ...], dict[str, Any], object]] = []
-        self.column_config = SimpleNamespace(LinkColumn=self._link_column)
+        self.number_columns: list[tuple[tuple[Any, ...], dict[str, Any], object]] = []
+        self.column_config = SimpleNamespace(
+            LinkColumn=self._link_column,
+            NumberColumn=self._number_column,
+        )
         self.markdowns: list[str] = []
         self.column_specs: list[tuple[Any, dict[str, Any]]] = []
         self.containers: list[dict[str, Any]] = []
+        self.expanders: list[tuple[str, bool]] = []
         self.spaces: list[object] = []
         self.htmls: list[str] = []
 
@@ -93,6 +106,11 @@ class _Streamlit:
         self.link_columns.append((args, kwargs, marker))
         return marker
 
+    def _number_column(self, *args: Any, **kwargs: Any) -> object:
+        marker = object()
+        self.number_columns.append((args, kwargs, marker))
+        return marker
+
     @contextmanager
     def form(self, *args: Any, **kwargs: Any):
         yield None
@@ -112,6 +130,9 @@ class _Streamlit:
 
     @contextmanager
     def expander(self, *args: Any, **kwargs: Any):
+        label = str(args[0]) if args else str(kwargs.get("label", ""))
+        expanded = bool(kwargs.get("expanded", False))
+        self.expanders.append((label, expanded))
         yield None
 
     def columns(self, spec: Any, **kwargs: Any) -> list[Any]:
@@ -164,12 +185,41 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     assert calls == ["What was Google's net income?"]
     assert rendered == [result, result]
     catalog = "\n".join(fake_streamlit.markdowns)
-    assert "Supported metrics (SEC EDGAR)" in catalog
-    assert "Reported" in catalog
+    assert fake_streamlit.expanders == [
+        ("What you can ask", False),
+        ("Supported metrics", False),
+    ] * 2
+    capabilities = (
+        "Look up quarterly 10-Q financial facts or market cap for any "
+        "operating publicly-listed US company",
+        "Compare companies on metrics, rank by market cap, or combine "
+        "rank and lookup",
+        "Access and analyze relevant financial news linked to specific companies",
+        "Answer general queries and provide qualitative industry analysis",
+    )
+    for sentence in capabilities:
+        assert sentence in catalog
+        assert f"{sentence}." not in catalog
+    examples = (
+        "What was Microsoft's latest quarterly revenue?",
+        "What is Apple's market cap?",
+        "Compare Eli Lilly and Merck net margins",
+        "What are the top 10 tech companies and R&D spend for each?",
+        "What's going on with Eli Lilly's obesity drugs?",
+        "How could AI change bank underwriting?",
+    )
+    for example in examples:
+        assert example in catalog
+        assert f"`{example}`" not in catalog
+    assert "Compare Microsoft and Google gross margins" not in catalog
+    assert "What are the top 10 companies in technology?" not in catalog
+    assert "Reported (SEC EDGAR)" in catalog
+    assert "Daily snapshot (FMP)" in catalog
     assert "Calculated" in catalog
     assert "Margins" not in catalog
     assert ":gray[Revenue]" in catalog
     assert ":gray[Gross margin]" in catalog
+    assert ":gray[Market cap]" in catalog
     assert "revenue (Revenue)" not in catalog
     assert "cost_of_revenue" not in catalog
 
@@ -327,6 +377,58 @@ def test_render_table_configures_source_url_as_filing_link(
     assert link_args == ()
     assert link_kwargs == {"display_text": "Filing"}
     assert fake_streamlit.dataframes[0][1]["column_config"] == {source_header: marker}
+
+
+def test_render_table_passes_metric_values_as_numbers_for_sorting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
+    app.render_turn_result(
+        TurnResult(
+            intent=Intent.RANK_AND_LOOKUP,
+            renderer=RendererKind.TABLE,
+            tool_traces=[],
+            table_rows=[
+                TableRow(
+                    company_name="Microsoft Corporation",
+                    ticker="MSFT",
+                    cik="0000789019",
+                    metric="research_and_development",
+                    rank=3,
+                    value=Decimal("8920000000"),
+                    currency="USD",
+                ),
+                TableRow(
+                    company_name="Apple Inc.",
+                    ticker="AAPL",
+                    cik="0000320193",
+                    metric="research_and_development",
+                    rank=2,
+                    value=Decimal("11730000000"),
+                    currency="USD",
+                ),
+                TableRow(
+                    company_name="Advanced Micro Devices, Inc.",
+                    ticker="AMD",
+                    cik="0000002488",
+                    metric="research_and_development",
+                    rank=8,
+                    value=Decimal("2530000000"),
+                    currency="USD",
+                ),
+            ],
+        )
+    )
+
+    records = fake_streamlit.dataframes[0][0][0]
+    values = [row["Value"] for row in records]
+    assert all(isinstance(value, (int, float)) for value in values)
+    assert sorted(values, reverse=True) == [
+        11_730_000_000.0,
+        8_920_000_000.0,
+        2_530_000_000.0,
+    ]
 
 
 _GOOGLE_LOOKUP_PROVENANCE = {

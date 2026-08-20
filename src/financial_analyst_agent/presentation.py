@@ -11,6 +11,7 @@ from financial_analyst_agent.turn import (
     FORMULA_METRICS,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
+    SNAPSHOT_METRICS,
     Intent,
     RendererKind,
     TableRow,
@@ -190,6 +191,7 @@ class DisplayTable:
     headers: tuple[str, ...]
     keys: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
+    numbers: tuple[tuple[int | float | None, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -226,8 +228,15 @@ def metric_legend() -> tuple[str, ...]:
 
 def metric_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
     return (
-        ("Reported", tuple(_humanize_field(metric) for metric in REPORTED_METRICS)),
+        (
+            "Reported (SEC EDGAR)",
+            tuple(_humanize_field(metric) for metric in REPORTED_METRICS),
+        ),
         ("Calculated", tuple(_humanize_field(metric) for metric in FORMULA_METRICS)),
+        (
+            "Daily snapshot (FMP)",
+            tuple(_humanize_field(metric) for metric in SNAPSHOT_METRICS),
+        ),
     )
 
 
@@ -293,11 +302,20 @@ def _cell_empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
+def _numeric_cell(row: TableRow, key: str) -> int | float | None:
+    if key == "rank":
+        return row.rank
+    if key == "value" and row.value is not None:
+        return float(row.value)
+    return None
+
+
 def _display_table(rows: list[TableRow]) -> DisplayTable:
     keys = [key for key in _TABLE_KEYS if any(not _cell_empty(getattr(row, key)) for row in rows)]
     headers = tuple(format_field_name(key) for key in keys)
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
-    return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered)
+    numbers = tuple(tuple(_numeric_cell(row, key) for key in keys) for row in rows)
+    return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered, numbers=numbers)
 
 
 def _format_cell(row: TableRow, key: str) -> str:
