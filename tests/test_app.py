@@ -1,5 +1,6 @@
 """Streamlit submission and cached-result behavior."""
 
+import re
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
@@ -41,6 +42,7 @@ class _Streamlit:
         self.column_specs: list[tuple[Any, dict[str, Any]]] = []
         self.containers: list[dict[str, Any]] = []
         self.spaces: list[object] = []
+        self.htmls: list[str] = []
 
     def __enter__(self) -> "_Streamlit":
         return self
@@ -64,6 +66,10 @@ class _Streamlit:
     def markdown(self, *args: Any, **kwargs: Any) -> None:
         if args:
             self.markdowns.append(str(args[0]))
+
+    def html(self, *args: Any, **kwargs: Any) -> None:
+        if args:
+            self.htmls.append(str(args[0]))
 
     def space(self, *args: Any, **kwargs: Any) -> None:
         size = args[0] if args else kwargs.get("size", "small")
@@ -322,126 +328,111 @@ def test_render_table_configures_source_url_as_filing_link(
     assert fake_streamlit.dataframes[0][1]["column_config"] == {source_header: marker}
 
 
-def test_render_lookup_trace_uses_query_and_result_provenance_captions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake_streamlit = _Streamlit()
-    monkeypatch.setattr(app, "st", fake_streamlit)
-    monkeypatch.setattr(
-        app,
-        "ui",
-        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
-    )
-    result = TurnResult(
+_GOOGLE_LOOKUP_PROVENANCE = {
+    "form": "10-Q",
+    "accession_number": "0001652044-26-000048",
+    "taxonomy": "us-gaap",
+    "concept": "NetIncomeLoss",
+    "source_url": (
+        "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm"
+    ),
+    "start_date": "2026-01-01",
+    "end_date": "2026-03-31",
+    "source": "sec_xbrl",
+}
+
+
+def _google_lookup_trace_result() -> TurnResult:
+    return TurnResult(
         intent=Intent.LOOKUP,
         renderer=RendererKind.TABLE,
         tool_traces=[
             ToolTrace(
                 tool="get_financials",
                 args={"company": "Google", "metric": "net_income"},
-                provenance={
-                    "form": "10-Q",
-                    "accession_number": "0001652044-26-000048",
-                    "taxonomy": "us-gaap",
-                    "concept": "NetIncomeLoss",
-                    "source_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm",
-                    "start_date": "2026-01-01",
-                    "end_date": "2026-03-31",
-                    "source": "sec_xbrl",
-                },
+                provenance=_GOOGLE_LOOKUP_PROVENANCE,
             )
         ],
         table_rows=[],
     )
 
-    app.render_turn_result(result)
+
+def _patch_render_streamlit(monkeypatch: pytest.MonkeyPatch, fake_streamlit: _Streamlit) -> None:
+    monkeypatch.setattr(app, "st", fake_streamlit)
+    monkeypatch.setattr(
+        app,
+        "ui",
+        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
+    )
+
+
+def _trace_output(fake_streamlit: _Streamlit) -> str:
+    return "\n".join([*fake_streamlit.markdowns, *fake_streamlit.htmls])
+
+
+def test_render_lookup_trace_uses_query_and_result_provenance_captions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
+
+    app.render_turn_result(_google_lookup_trace_result())
+    output = _trace_output(fake_streamlit)
 
     assert "Query" in fake_streamlit.markdowns
     assert "Result Provenance" in fake_streamlit.markdowns
-    assert "Results Provenance" not in fake_streamlit.markdowns
-    assert "Query fields" not in fake_streamlit.markdowns
-    assert "Inputs" not in fake_streamlit.markdowns
-    assert "Outputs" not in fake_streamlit.markdowns
-    assert "**Company:** Google" not in fake_streamlit.markdowns
-    assert "**Company**" in fake_streamlit.markdowns
-    assert "Google" in fake_streamlit.markdowns
-    assert "**Metric**" in fake_streamlit.markdowns
-    assert "**Accession number**" in fake_streamlit.markdowns
-    assert "0001652044-26-000048" in fake_streamlit.markdowns
-    assert "`0001652044-26-000048`" not in fake_streamlit.markdowns
-    assert "**Start date**" in fake_streamlit.markdowns
-    assert "**End date**" in fake_streamlit.markdowns
-    assert not any("Period:" in item for item in fake_streamlit.markdowns)
-    assert "**Form**" in fake_streamlit.markdowns
-    assert "10-Q" in fake_streamlit.markdowns
-    assert "**Taxonomy**" in fake_streamlit.markdowns
-    assert "us-gaap" in fake_streamlit.markdowns
-    assert "**Source**" in fake_streamlit.markdowns
-    assert "SEC EDGAR" in fake_streamlit.markdowns
-    assert "sec_xbrl" not in fake_streamlit.markdowns
-    assert "**Source URL**" in fake_streamlit.markdowns
-    assert any(
-        "[www.sec.gov/…/goog-20260331.htm](https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm)"
-        in item
-        for item in fake_streamlit.markdowns
-    )
-    assert not any("[Filing](" in item for item in fake_streamlit.markdowns)
+    assert "Results Provenance" not in output
+    assert "Query fields" not in output
+    assert "Inputs" not in output
+    assert "Outputs" not in output
+    assert "**Company:** Google" not in output
+    assert "<strong>Company</strong>" in output
+    assert "Google" in output
+    assert "<strong>Metric</strong>" in output
+    assert "<strong>Accession number</strong>" in output
+    assert "0001652044-26-000048" in output
+    assert "`0001652044-26-000048`" not in output
+    assert "<strong>Start date</strong>" in output
+    assert "<strong>End date</strong>" in output
+    assert "Period:" not in output
+    assert "<strong>Form</strong>" in output
+    assert "10-Q" in output
+    assert "<strong>Taxonomy</strong>" in output
+    assert "us-gaap" in output
+    assert "<strong>Source</strong>" in output
+    assert "SEC EDGAR" in output
+    assert "sec_xbrl" not in output
+    assert "<strong>Source URL</strong>" in output
+    assert (
+        '<a href="https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm">'
+        "www.sec.gov/…/goog-20260331.htm</a>"
+    ) in output
+    assert "[Filing](" not in output
 
 
 def test_render_trace_fields_keep_compact_label_value_gap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_streamlit = _Streamlit()
-    monkeypatch.setattr(app, "st", fake_streamlit)
-    monkeypatch.setattr(
-        app,
-        "ui",
-        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
-    )
-    result = TurnResult(
-        intent=Intent.LOOKUP,
-        renderer=RendererKind.TABLE,
-        tool_traces=[
-            ToolTrace(
-                tool="get_financials",
-                args={"company": "Google", "metric": "net_income"},
-                provenance={
-                    "form": "10-Q",
-                    "accession_number": "0001652044-26-000048",
-                    "taxonomy": "us-gaap",
-                    "concept": "NetIncomeLoss",
-                    "source_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm",
-                    "start_date": "2026-01-01",
-                    "end_date": "2026-03-31",
-                    "source": "sec_xbrl",
-                },
-            )
-        ],
-        table_rows=[],
-    )
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
 
-    app.render_turn_result(result)
+    app.render_turn_result(_google_lookup_trace_result())
 
     assert (0.38, 0.62) not in [spec for spec, _kwargs in fake_streamlit.column_specs]
-    compact_rows = [
-        kwargs
+    assert not any(
+        kwargs.get("horizontal") is True and kwargs.get("gap") == "xsmall"
         for kwargs in fake_streamlit.containers
-        if kwargs.get("horizontal") is True and kwargs.get("gap") == "xsmall"
+    )
+    grids = [item for item in fake_streamlit.htmls if "grid-template-columns:" in item]
+    assert grids
+    widths = [
+        int(match.group(1))
+        for item in grids
+        for match in [re.search(r"grid-template-columns:(\d+)px", item)]
+        if match
     ]
-    assert compact_rows
-    tight_stacks = [
-        kwargs
-        for kwargs in fake_streamlit.containers
-        if not kwargs.get("horizontal") and kwargs.get("gap") == "xxsmall"
-    ]
-    assert tight_stacks
-    label_widths = [
-        kwargs["width"]
-        for kwargs in fake_streamlit.containers
-        if isinstance(kwargs.get("width"), int)
-    ]
-    assert label_widths
-    assert all(72 <= width <= 180 for width in label_widths)
+    assert widths
+    assert all(72 <= width <= 180 for width in widths)
 
 
 def test_render_formula_trace_uses_lookup_provenance_rows(
@@ -491,41 +482,37 @@ def test_render_formula_trace_uses_lookup_provenance_rows(
     )
 
     app.render_turn_result(result)
+    output = _trace_output(fake_streamlit)
 
     assert "Result Provenance" in fake_streamlit.markdowns
-    assert "**Net income**" in fake_streamlit.markdowns
-    assert "$100.00 M" in fake_streamlit.markdowns
-    assert "**Net income — $100.00 M**" not in fake_streamlit.markdowns
-    assert "**Components**" not in fake_streamlit.markdowns
-    assert "**CIK**" not in fake_streamlit.markdowns
-    assert fake_streamlit.markdowns.index("**Net income**") < fake_streamlit.markdowns.index(
-        "**Concept**"
-    )
-    concept_at = fake_streamlit.markdowns.index("**Concept**")
-    form_at = fake_streamlit.markdowns.index("**Form**")
-    assert concept_at < form_at
-    assert "**Form**" in fake_streamlit.markdowns
-    assert "**Accession number**" in fake_streamlit.markdowns
-    assert "**Taxonomy**" in fake_streamlit.markdowns
-    assert "**Concept**" in fake_streamlit.markdowns
-    assert "**Start date**" in fake_streamlit.markdowns
-    assert "**End date**" in fake_streamlit.markdowns
-    assert "**Source**" in fake_streamlit.markdowns
-    assert "SEC EDGAR" in fake_streamlit.markdowns
-    assert "**Source URL**" in fake_streamlit.markdowns
-    assert "`0001594805`" not in fake_streamlit.markdowns
-    assert "`NetIncomeLoss`" not in fake_streamlit.markdowns
-    assert not any("[Filing](" in item for item in fake_streamlit.markdowns)
-    assert any("[www.sec.gov/…/shop.htm](" in item for item in fake_streamlit.markdowns)
-    assert "**Revenue**" in fake_streamlit.markdowns
-    assert "$1.00 B" in fake_streamlit.markdowns
+    assert "<strong>Net income</strong>" in output
+    assert "$100.00 M" in output
+    assert "**Net income — $100.00 M**" not in output
+    assert "**Components**" not in output
+    assert "<strong>CIK</strong>" not in output
+    assert output.index("<strong>Net income</strong>") < output.index("<strong>Concept</strong>")
+    assert output.index("<strong>Concept</strong>") < output.index("<strong>Form</strong>")
+    assert "<strong>Form</strong>" in output
+    assert "<strong>Accession number</strong>" in output
+    assert "<strong>Taxonomy</strong>" in output
+    assert "<strong>Concept</strong>" in output
+    assert "<strong>Start date</strong>" in output
+    assert "<strong>End date</strong>" in output
+    assert "<strong>Source</strong>" in output
+    assert "SEC EDGAR" in output
+    assert "<strong>Source URL</strong>" in output
+    assert "`0001594805`" not in output
+    assert "`NetIncomeLoss`" not in output
+    assert "[Filing](" not in output
+    assert (
+        '<a href="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm">'
+        "www.sec.gov/…/shop.htm</a>"
+    ) in output
+    assert "<strong>Revenue</strong>" in output
+    assert "$1.00 B" in output
     assert "medium" in fake_streamlit.spaces
-    tight_stacks = [
-        kwargs
-        for kwargs in fake_streamlit.containers
-        if not kwargs.get("horizontal") and kwargs.get("gap") == "xxsmall"
-    ]
-    assert len(tight_stacks) >= 2
+    grids = [item for item in fake_streamlit.htmls if "grid-template-columns:" in item]
+    assert len(grids) >= 2
 
 
 def test_render_news_citations_are_numbered(monkeypatch: pytest.MonkeyPatch) -> None:

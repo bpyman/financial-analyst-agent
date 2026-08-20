@@ -132,7 +132,7 @@ class ComponentProvenance(BaseModel):
     taxonomy: str
     concept: str
     source_url: str
-    source: str | None = None
+    source: str
 
 
 class TableRow(BaseModel):
@@ -320,21 +320,22 @@ def _table_row_from_fact(fact: Any) -> TableRow:
     )
 
 
-def _lookup_provenance(fact: Any) -> dict[str, Any]:
+def _fact_source_kind(fact: Any) -> str:
     source = getattr(fact, "source", None)
-    source_kind = getattr(source, "value", source)
-    payload: dict[str, Any] = {
+    return str(source) if source else "sec_xbrl"
+
+
+def _lookup_provenance(fact: Any) -> dict[str, Any]:
+    return {
         "form": fact.form,
         "accession_number": fact.accession_number,
         "taxonomy": fact.taxonomy,
         "concept": fact.concept,
         "start_date": fact.start_date.isoformat(),
         "end_date": fact.end_date.isoformat(),
+        "source": _fact_source_kind(fact),
         "source_url": fact.source_url,
     }
-    if source_kind:
-        payload["source"] = str(source_kind)
-    return payload
 
 
 def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
@@ -399,8 +400,6 @@ def _component_metrics(metric: str) -> tuple[str, ...]:
 
 
 def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
-    source = getattr(fact, "source", None)
-    source_kind = getattr(source, "value", source)
     return ComponentProvenance(
         metric=metric,
         value=fact.value,
@@ -411,7 +410,7 @@ def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
-        source=str(source_kind) if source_kind else None,
+        source=_fact_source_kind(fact),
     )
 
 
@@ -531,6 +530,17 @@ def _rank_and_lookup_row(company: Any, index: int, metric: str, reason: str) -> 
     )
 
 
+def _with_rank_identity(row: TableRow, company: Any, index: int) -> TableRow:
+    return row.model_copy(
+        update={
+            "company_name": company.name,
+            "ticker": company.ticker,
+            "cik": company.cik,
+            "rank": index,
+        }
+    )
+
+
 def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if runtime.ranking is None:
         raise RuntimeError("rank_and_lookup intent requires a ranking adapter")
@@ -559,23 +569,9 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
         if metric in FORMULA_COMPONENTS:
-            computed = compare_metrics(runtime.facts, [company.cik], metric)
-            row = computed[0].model_copy(
-                update={
-                    "company_name": company.name,
-                    "ticker": company.ticker,
-                    "cik": company.cik,
-                    "rank": index,
-                }
-            )
-            rows.append(row)
-            traces.append(
-                ToolTrace(
-                    tool="compare_metrics",
-                    args={"issuers": [company.cik], "metric": metric},
-                    provenance=_compare_components_provenance([row]),
-                )
-            )
+            partial = _metrics_turn(Intent.RANK_AND_LOOKUP, [company.cik], metric, runtime)
+            rows.append(_with_rank_identity(partial.table_rows[0], company, index))
+            traces.extend(partial.tool_traces)
             continue
         args = {"company": company.cik, "metric": metric}
         try:
@@ -584,16 +580,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
             rows.append(_rank_and_lookup_row(company, index, metric, _partial_lookup_reason(exc)))
             traces.append(ToolTrace(tool="get_financials", args=args))
             continue
-        rows.append(
-            _table_row_from_fact(fact).model_copy(
-                update={
-                    "company_name": company.name,
-                    "ticker": company.ticker,
-                    "cik": company.cik,
-                    "rank": index,
-                }
-            )
-        )
+        rows.append(_with_rank_identity(_table_row_from_fact(fact), company, index))
         traces.append(
             ToolTrace(
                 tool="get_financials",
@@ -613,19 +600,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
 def _compare_components_provenance(rows: list[TableRow]) -> dict[str, Any]:
     return {
         "components": [
-            {
-                "cik": row.cik,
-                "metric": component.metric,
-                "value": str(component.value),
-                "form": component.form,
-                "taxonomy": component.taxonomy,
-                "source": component.source,
-                "accession_number": component.accession_number,
-                "concept": component.concept,
-                "start_date": component.start_date.isoformat(),
-                "end_date": component.end_date.isoformat(),
-                "source_url": component.source_url,
-            }
+            {"cik": row.cik, **component.model_dump(mode="json")}
             for row in rows
             for component in row.components
         ]

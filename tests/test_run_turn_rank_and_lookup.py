@@ -307,56 +307,38 @@ class _RankAndLookupNetMarginCompleter:
         )
 
 
-class _CikMarginFacts:
-    """Net income and revenue per ranking CIK; issuers keep different fiscal calendars."""
+class _CikMarginFacts(_CikOnlyFacts):
+    """Adds revenue facts; UNH uses a different fiscal calendar than Lilly."""
 
     def get_financials(self, company: str, metric: str) -> SimpleNamespace:
-        if company == "0000059478":
-            if metric == "net_income":
-                return _fact(
-                    "Eli Lilly and Company",
-                    "LLY",
-                    "0000059478",
-                    LLY_NET_INCOME,
-                    LLY_ACCESSION,
-                    LLY_SOURCE_URL,
-                )
-            if metric == "revenue":
-                return _fact(
-                    "Eli Lilly and Company",
-                    "LLY",
-                    "0000059478",
-                    LLY_REVENUE,
-                    LLY_ACCESSION,
-                    LLY_SOURCE_URL,
-                    metric="revenue",
-                    concept=REVENUE_CONCEPT,
-                )
+        income = super().get_financials(company, "net_income")
         if company == "0000731766":
-            if metric == "net_income":
-                return _fact(
-                    "UnitedHealth Group Incorporated",
-                    "UNH",
-                    "0000731766",
-                    UNH_NET_INCOME,
-                    UNH_ACCESSION,
-                    UNH_SOURCE_URL,
-                    start_date=UNH_PERIOD_START,
-                    end_date=UNH_PERIOD_END,
-                )
-            if metric == "revenue":
-                return _fact(
-                    "UnitedHealth Group Incorporated",
-                    "UNH",
-                    "0000731766",
-                    UNH_REVENUE,
-                    UNH_ACCESSION,
-                    UNH_SOURCE_URL,
-                    metric="revenue",
-                    concept=REVENUE_CONCEPT,
-                    start_date=UNH_PERIOD_START,
-                    end_date=UNH_PERIOD_END,
-                )
-        raise UnsupportedQuarterlyFactError(
-            "No directly reported standalone-quarter fact exists for metric"
+            income = _fact(
+                income.company_name,
+                income.ticker,
+                income.cik,
+                income.value,
+                income.accession_number,
+                income.source_url,
+                start_date=UNH_PERIOD_START,
+                end_date=UNH_PERIOD_END,
+            )
+        if metric == "net_income":
+            return income
+        if metric != "revenue":
+            raise UnsupportedQuarterlyFactError(
+                "No directly reported standalone-quarter fact exists for metric"
+            )
+        amount = LLY_REVENUE if company == "0000059478" else UNH_REVENUE
+        return _fact(
+            income.company_name,
+            income.ticker,
+            income.cik,
+            amount,
+            income.accession_number,
+            income.source_url,
+            metric="revenue",
+            concept=REVENUE_CONCEPT,
+            start_date=income.start_date,
+            end_date=income.end_date,
         )

@@ -325,25 +325,6 @@ def _trace_identity(args: dict[str, Any]) -> str:
 _SOURCE_LABELS = {
     "sec_xbrl": "SEC EDGAR",
 }
-_FILING_FIELD_ORDER = (
-    "form",
-    "accession_number",
-    "taxonomy",
-    "concept",
-    "start_date",
-    "end_date",
-    "source",
-    "source_url",
-)
-_FILING_TRACE_KEYS = frozenset(_FILING_FIELD_ORDER)
-
-
-def _is_filing_provenance(payload: dict[str, Any]) -> bool:
-    return (
-        "accession_number" in payload
-        and "components" not in payload
-        and "hits" not in payload
-    )
 
 
 def _truncate_url(url: str, max_len: int = 48) -> str:
@@ -379,7 +360,7 @@ def _append_trace_field(
         fields.append((label, f"[{_truncate_url(url)}]({url})"))
         return
     if key == "source" and value:
-        raw = value.value if hasattr(value, "value") else str(value)
+        raw = str(value)
         fields.append((label, _SOURCE_LABELS.get(raw, raw)))
         return
     fields.append((label, _format_trace_value(value)))
@@ -387,12 +368,6 @@ def _append_trace_field(
 
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     fields: list[tuple[str, str]] = []
-    if _is_filing_provenance(payload):
-        ordered = [key for key in _FILING_FIELD_ORDER if key in payload]
-        ordered.extend(key for key in payload if key not in _FILING_TRACE_KEYS)
-        for key in ordered:
-            _append_trace_field(fields, str(key), payload[key])
-        return tuple(fields)
     for key, value in payload.items():
         _append_trace_field(fields, str(key), value)
     return tuple(fields)

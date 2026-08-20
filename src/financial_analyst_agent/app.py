@@ -1,5 +1,8 @@
 """One Streamlit window: query, intent chip, tool cards, answer."""
 
+import html
+import re
+
 import streamlit as st
 import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
@@ -17,6 +20,7 @@ from financial_analyst_agent.runtime import runtime_for_kill_switch
 from financial_analyst_agent.turn import TurnResult, run_turn
 
 _GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
+_MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
 KILL_SWITCH_BANNER = (
     "KILL-SWITCH ON — fixture runtime (recorded facts, not live EDGAR). "
     "Say this out loud. Do not present a cassette as live."
@@ -75,59 +79,51 @@ def _render_trace_group(title: str, fields: tuple[tuple[str, str], ...]) -> None
     st.caption(title)
     labeled = tuple(label for label, value in fields if value and "\n" not in value)
     label_width = _trace_label_width(labeled) if labeled else 72
-    for kind, items in _trace_field_clusters(fields):
-        if kind == "space":
-            st.space("medium")
-            continue
-        if kind == "block":
-            for label, value in items:
-                if label:
-                    st.markdown(f"**{label}**")
-                st.markdown(value)
-            continue
-        if kind == "heading":
-            for label, _value in items:
-                st.markdown(f"**{label}**")
-            continue
-        with st.container(gap="xxsmall"):
-            for label, value in items:
-                _render_trace_row(label, value, label_width)
-
-
-def _trace_field_clusters(
-    fields: tuple[tuple[str, str], ...],
-) -> list[tuple[str, list[tuple[str, str]]]]:
-    clusters: list[tuple[str, list[tuple[str, str]]]] = []
     rows: list[tuple[str, str]] = []
 
     def flush_rows() -> None:
         if rows:
-            clusters.append(("rows", list(rows)))
+            st.html(_trace_rows_html(rows, label_width))
             rows.clear()
 
     for label, value in fields:
         if "\n" in value:
             flush_rows()
-            clusters.append(("block", [(label, value)]))
+            if label:
+                st.markdown(f"**{label}**")
+            st.markdown(value)
             continue
         if not value:
             flush_rows()
-            if label:
-                clusters.append(("heading", [(label, value)]))
-            else:
-                clusters.append(("space", []))
+            if not label:
+                st.space("medium")
             continue
         rows.append((label, value))
     flush_rows()
-    return clusters
 
 
-def _render_trace_row(label: str, value: str, label_width: int) -> None:
-    row = st.container(horizontal=True, gap="xsmall", vertical_alignment="center")
-    with row:
-        with st.container(width=label_width):
-            st.markdown(f"**{label}**")
-        st.markdown(value)
+def _html_trace_value(value: str) -> str:
+    match = _MD_LINK.fullmatch(value)
+    if match is None:
+        return html.escape(value)
+    text, url = match.groups()
+    return f'<a href="{html.escape(url, quote=True)}">{html.escape(text)}</a>'
+
+
+def _trace_rows_html(items: list[tuple[str, str]], label_width: int) -> str:
+    cells = "".join(
+        "<div>"
+        f"<strong>{html.escape(label)}</strong>"
+        "</div>"
+        f"<div>{_html_trace_value(value)}</div>"
+        for label, value in items
+    )
+    return (
+        '<div style="display:grid;'
+        f"grid-template-columns:{label_width}px 1fr;"
+        'column-gap:0.5rem;row-gap:0.15rem;align-items:center">'
+        f"{cells}</div>"
+    )
 
 
 def _render_fact_card(card: QuarterlyFactCard) -> None:

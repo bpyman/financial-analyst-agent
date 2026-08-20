@@ -230,6 +230,7 @@ def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
                         taxonomy="us-gaap",
                         concept="NetIncomeLoss",
                         source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                        source="sec_xbrl",
                     ),
                     ComponentProvenance(
                         metric="revenue",
@@ -241,6 +242,7 @@ def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
                         taxonomy="us-gaap",
                         concept="RevenueFromContractWithCustomerExcludingAssessedTax",
                         source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+                        source="sec_xbrl",
                     ),
                 ],
             )
