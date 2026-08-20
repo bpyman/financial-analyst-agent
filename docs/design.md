@@ -1,316 +1,207 @@
-# Financial analyst agent — system design
+# Financial analyst agent
 
-## Executive summary
+> **System design:** constrained model planning, deterministic financial tools, and
+> provenance-first answers.
 
-The financial analyst agent answers natural-language questions about quarterly financials,
-company rankings, comparisons, and current events. It uses a language model to understand the
-question, but it does not trust the model to select financial facts, perform arithmetic, choose
-ranking members, or rewrite sourced numbers.
-
-The design separates those responsibilities:
-
-- A **typed planner** maps the question to one of six supported workflows.
-- A **deterministic executor** decides which tools run and how their outputs are composed.
-- **Provider adapters** retrieve SEC filings, a dated ranking snapshot, news, or model analysis.
-- A **typed result** carries values, provenance, failures, and rendering instructions to the UI.
-
-The central design principle is **constrained agency**: use the model where language
-understanding helps, and deterministic code where correctness and auditability matter.
-
-## Goals and scope
-
-The system is designed to:
-
-1. Retrieve directly reported quarterly facts with enough provenance to verify them in EDGAR.
-2. Compare companies using aligned periods and deterministic formulas.
-3. Rank operating companies from a reproducible market snapshot.
-4. Compose ranking and fact lookup without asking the model to generate a constituent list.
-5. Answer qualitative and current-event questions without presenting unsupported numbers.
-6. Make routing, tool calls, data sources, and failures visible in one audience window.
-
-This proof of concept is not a general-purpose research agent. It intentionally excludes open
-tool loops, arbitrary financial metrics, PDF-first extraction, global market coverage,
-authentication, durable conversation memory, and production deployment concerns.
+The agent answers questions about quarterly financials, company comparisons, market rankings,
+and current events. A language model interprets the question, but deterministic code owns
+financial facts, arithmetic, company identity, ranking membership, and the final display of
+numbers.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    U[User question] --> UI[Streamlit]
-    UI --> RT["run_turn(query, runtime)"]
-    RT --> P[Typed planner]
-    P --> I{Closed intent}
+    Q["1 · User question"] --> P["2 · Planner<br/>picks one closed intent"]
+    P --> E["3 · Executor<br/>runs a fixed workflow"]
 
-    I -->|lookup / compare / rank-and-lookup| G{Metric phrase gate}
-    G -->|ambiguous| C[Clarify — no tools]
-    G -->|unknown| RF[Refuse — allowed metrics]
-    G -->|supported| X[Deterministic executor]
+    E -->|"lookup · compare · rank<br/>rank-and-lookup"| ST
+    E -->|"explain · news-and-explain"| QT
+    E -.->|"ambiguous / unknown"| CL["Clarify or refuse<br/>no tools"]
 
-    I -->|rank| X
-    I -->|explain / news-and-explain| X
+    subgraph ST["Structured tools"]
+        direction LR
+        F["get_financials"]
+        C["compare_metrics"]
+        K["rank_companies"]
+    end
 
-    X --> T1[Financial facts and formulas]
-    X --> T2[Snapshot ranking]
-    X --> T3[News search]
-    X --> T4[Essay generation]
+    subgraph QT["Qualitative tools"]
+        direction LR
+        N["search_news"]
+        X["explain_topic"]
+    end
 
-    T1 --> SEC[SEC EDGAR companyfacts]
-    T2 --> FMP[Dated FMP snapshot]
-    T3 --> TV[Tavily]
-    T4 --> LLM[OpenAI]
+    ST --> R["4 · Typed TurnResult"]
+    QT --> R
+    CL --> R
+    R --> O["5 · Table · Essay · Clarify · Refuse"]
 
-    T1 --> TR[Typed TurnResult]
-    T2 --> TR
-    T3 --> TR
-    T4 --> TR
-    C --> TR
-    RF --> TR
+    MCP["FastMCP HTTP"] .-> ST
+    MCP -.-> QT
 
-    TR --> R{Renderer}
-    R --> ST[Structured table + provenance]
-    R --> ES[Grounded essay + safeguards]
-    R --> ER[Clarification or refusal]
-
-    MCP[FastMCP HTTP] -. exposes the same tool capabilities .-> T1
-    MCP -.-> T2
-    MCP -.-> T3
-    MCP -.-> T4
+    classDef step fill:#eaf2ff,stroke:#2563eb,color:#172554,stroke-width:1.5px
+    classDef tool fill:#ecfdf5,stroke:#059669,color:#064e3b
+    classDef edge fill:#f8fafc,stroke:#64748b,color:#0f172a
+    class Q,P,E,R,O step
+    class F,C,K,N,X tool
+    class CL,MCP edge
 ```
 
-### Request flow
+### Request lifecycle
 
-1. **The user submits one question.** Streamlit sends it to
-   `run_turn(query, runtime)`, the single application interface.
-2. **The planner selects a closed intent.** It returns structured data rather than executable
-   instructions. Supported intents are lookup, compare, rank, rank-and-lookup, explain, and
-   news-and-explain.
-3. **Structured financial questions pass through the metric phrase gate.** The metric is
-   resolved from the original user question, not trusted from the planner. An ambiguous phrase
-   asks the user to clarify; an unsupported phrase refuses before a data tool runs.
-4. **The executor runs a fixed workflow.** Simple intents call one capability. Composed intents
-   have explicit code paths: rank-and-lookup carries ranked CIKs into fact lookup, while
-   news-and-explain passes search results into essay generation.
-5. **Tools return typed data with provenance.** Financial facts include period, filing,
-   accession, taxonomy, concept, and source URL. Rankings include snapshot time and source.
-6. **`TurnResult` carries the complete outcome.** It contains the selected intent, ordered tool
-   traces, table rows or essay text, banners, citations, and typed failure details.
-7. **The renderer displays data without reinterpretation.** Financial answers become tables or
-   fact cards built directly from tool fields. Essays are visibly labeled and checked before
-   display.
+1. **Plan** — an OpenAI structured response selects one of six supported intents:
+   lookup, compare, rank, rank-and-lookup, explain, or news-and-explain.
+2. **Guard** — structured financial requests resolve the metric from the user's original
+   wording. Ambiguous input asks for clarification; unsupported input refuses before data access.
+3. **Execute** — code selects a fixed workflow. Multi-tool composition is explicit rather than
+   chosen by an open-ended model loop.
+4. **Collect evidence** — tools return typed values with filing, period, identity, snapshot, or
+   citation provenance.
+5. **Render** — a typed `TurnResult` becomes a table, grounded essay, clarification, or refusal.
+   Financial values are never rewritten by the model.
 
-## Component responsibilities
+## System boundaries
 
-### Streamlit audience window
+### Streamlit — audience layer
 
-Streamlit is deliberately thin. It collects the question and displays:
+Collects a question and displays runtime status, intent, answer, provenance, and expandable tool
+traces. It contains no financial business logic.
 
-- the selected intent;
-- live or fixture runtime status;
-- the answer;
-- source and filing details; and
-- expandable tool traces with inputs and provenance.
+### `run_turn(query, runtime)` — application boundary
 
-The UI does not contain business logic. It renders the presentation derived from `TurnResult`.
+Coordinates planning, validation, execution, and result construction. Streamlit, tests, and
+fixture mode all call this interface.
 
-### Application orchestrator
+### Planner — language boundary
 
-`run_turn` owns the product behavior. It coordinates planning, input validation, execution, and
-result construction. Streamlit, offline tests, and the fixture kill-switch all call this same
-interface, which prevents separate demo and test implementations from drifting.
+Selects a typed intent and extracts entities. It cannot invent workflows, choose ranked
+constituents, calculate values, or resolve an ambiguous metric.
 
-### Planner
+### Executor and tools — correctness boundary
 
-The planner uses a structured model response to select an intent and extract entities such as
-company names and industries. Its authority is deliberately limited:
+Own company resolution, fact selection, ranking, comparisons, formulas, news retrieval, and
+workflow composition. Company identity is carried as SEC CIK rather than model-generated ticker
+text.
 
-- it cannot invent a new workflow;
-- it cannot choose ranking constituents;
-- it cannot select the final metric when the user's phrase is ambiguous; and
-- it does not calculate or render financial values.
+### Runtime adapters — provider boundary
 
-### Deterministic tools
+Connect the application to SEC EDGAR, a packaged FMP snapshot, Tavily, and OpenAI. Recorded
+adapters provide the same contracts in fixture mode.
 
-The application exposes five capabilities:
+### `TurnResult` — presentation boundary
 
-- `get_financials` retrieves one directly reported quarterly fact;
-- `compare_metrics` compares a reported metric or computes an approved formula;
-- `rank_companies` ranks snapshot members by market capitalization;
-- `search_news` retrieves current-event evidence; and
-- `explain_topic` produces labeled qualitative analysis.
-
-Company identity resolution lives inside the data tools. User-facing names and tickers resolve
-to SEC CIKs, which remain the stable identity between ranking and filing lookup.
-
-### Provider adapters
-
-`Runtime` injects adapters for planning, financial facts, ranking, news, and essay generation.
-Live mode uses SEC EDGAR, the packaged FMP snapshot, Tavily, and OpenAI. Fixture mode replaces
-those adapters with recorded implementations while keeping the application and presentation
-paths unchanged.
-
-### FastMCP boundary
-
-FastMCP exposes the same five capabilities over local HTTP. This makes the tool contract usable
-by another MCP client without forcing the interview application to depend on an HTTP hop or
-stdio child process. In-process execution keeps the demo reliable; MCP remains a real service
-boundary rather than a second implementation.
+Carries intent, ordered traces, values, provenance, citations, failures, and renderer choice.
+This keeps provider output and presentation decoupled without losing audit information.
 
 ## Key design decisions
 
-### 1. Closed workflows instead of an open agent loop
+### 1. Constrained agency
 
-**Decision:** one question maps to one of six intents, and code owns multi-tool composition.
+**Decision:** use a closed intent set and deterministic executors instead of an open ReAct loop.
 
-**Why:** the important workflows are known, and mistakes can change financial meaning. A fixed
-executor is easier to test, observe, and reason about than a model choosing arbitrary tool
-sequences.
+**Why:** the workflows are known and mistakes can change financial meaning. The model interprets
+language; code controls tool order and data flow. For rank-and-lookup, ranked CIKs pass directly
+into fact lookup—the model never generates the constituent list.
 
-**Trade-off:** adding a new workflow requires code and tests. The system gives up some flexibility
-in exchange for predictable behavior.
+**Trade-off:** new workflows require code and tests, but existing behavior remains predictable
+and inspectable.
 
-### 2. One application seam with injected adapters
+### 2. One application interface, replaceable adapters
 
-**Decision:** UI, tests, and fixture mode call `run_turn(query, runtime)`.
+**Decision:** all entry points call `run_turn(query, runtime)`, with providers injected through
+`Runtime`.
 
-**Why:** product behavior can be tested independently of Streamlit and external providers.
-Adapters make network dependencies replaceable without changing orchestration.
+**Why:** application behavior can be tested independently of Streamlit and external services.
+Live and recorded providers can change without creating separate execution paths.
 
-**Trade-off:** `run_turn` is a high-value module that must stay cohesive as workflows grow. A
-larger product would likely split intent executors behind the same public contract.
+**Trade-off:** `run_turn` is a critical module and must be kept cohesive as the product grows.
 
-### 3. SEC XBRL is the source of quarterly facts
+### 3. SEC XBRL as the quarterly source of truth
 
-**Decision:** directly reported standalone-quarter facts come from SEC companyfacts, not a PDF
-parser, vendor ratios, or model extraction.
+**Decision:** retrieve directly reported standalone-quarter facts from SEC companyfacts.
 
-**Why:** XBRL provides structured values, periods, units, forms, accessions, and concepts. The
-selector can enforce an approximately 70–110 day 10-Q duration and preserve verifiable
-provenance.
+**Why:** XBRL includes values, units, periods, forms, accessions, taxonomies, and concepts. That
+supports deterministic selection and a verifiable EDGAR link. The selector does not derive
+quarters from year-to-date values or silently choose an ambiguous concept.
 
-The selector does not derive a quarter by subtracting year-to-date values, does not manufacture
-Q4, and does not silently choose between genuinely ambiguous candidates. If no supported
-standalone fact exists, the system returns a typed failure.
-
-**Trade-off:** issuer taxonomy variation still requires a reviewed concept catalog. PDF parsing
-could later verify or supplement XBRL, but it should carry warnings rather than silently become
-an equal source of truth.
+**Trade-off:** issuer taxonomy differences require a reviewed concept catalog. PDF parsing is a
+future verification fallback, not an equal source of truth.
 
 See [ADR 0003](adr/0003-quarterly-fact-module.md).
 
-### 4. Financial math is deterministic and period-aware
+### 4. Deterministic math and reproducible ranking
 
-**Decision:** approved formulas are implemented as `Decimal` division of named components.
+**Decision:** formulas use `Decimal` and period-aligned components; rankings use a dated
+membership snapshot.
 
-**Why:** the model should not perform arithmetic or decide whether two periods are comparable.
-Formula components must have the same start and end dates, and zero denominators are handled
-explicitly. `Decimal` avoids binary floating-point artifacts.
+**Why:** the model should not calculate ratios or decide whether periods are comparable. A dated
+snapshot also keeps market membership stable during a demo and across tests. Non-operating
+listings are excluded, and multiple share classes collapse to one CIK.
 
-**Trade-off:** only cataloged formulas are available. Expanding the formula set requires explicit
-component definitions and tests.
-
-### 5. Ranking uses a dated membership snapshot
-
-**Decision:** ranking reads a checked-in snapshot of US exchange-listed common shares of
-operating companies.
-
-**Why:** a fixed membership set makes results reproducible and prevents a live screener from
-changing between requests or failing during the demonstration. ETFs, funds, SPACs, BDCs, notes,
-preferreds, shells, and known residual non-operating issuers are excluded. Multiple share
-classes collapse to one CIK.
-
-The snapshot timestamp is part of the result. The system does not claim global or complete public
-company coverage. Quarterly filing lookup remains independent of snapshot membership; only
-snapshot-sourced metrics such as market capitalization require snapshot presence.
-
-**Trade-off:** ranking is stable but not real-time. Production would schedule versioned snapshot
-builds and define a freshness service-level objective.
+**Trade-off:** formulas are limited to the reviewed catalog, and ranking is reproducible rather
+than real-time. The snapshot timestamp is always part of the result.
 
 See [ADR 0001](adr/0001-snapshot-membership.md) and
 [ADR 0002](adr/0002-lookup-membership.md).
 
-### 6. Ambiguity and unsupported scope are product states
+### 5. Provenance-first output and explicit failure
 
-**Decision:** ambiguous metric phrases clarify; unknown metrics and industries refuse.
+**Decision:** structured answers render directly from typed tool output. Ambiguity, missing data,
+and unsupported scope remain visible product states.
 
-**Why:** phrases such as “income,” “profit,” and “margin” can map to multiple valid financial
-concepts. Guessing creates a plausible but semantically wrong answer. Clarification lists only
-the matching supported names and calls no tools. Refusal shows the allowed catalog.
+**Why:** generated prose could round or rewrite a correct number. Tables preserve values and
+their filing or snapshot provenance. Partial results keep valid rows while marking failures.
+Ambiguous metric phrases clarify without running tools; unknown metrics and industries refuse.
 
-**Trade-off:** the user may need to rephrase a question that a less constrained assistant would
-attempt. The extra interaction protects correctness.
+Qualitative essays are separated from financial tables. Current-event essays use returned news
+hits and citations; a numeral lock rejects numeric tokens absent from the supplied evidence.
+
+**Trade-off:** responses are more conservative and sometimes require the user to rephrase.
 
 See [ADR 0004](adr/0004-ambiguous-metric-clarify.md).
 
-### 7. Structured numbers bypass generative rendering
+### 6. Real MCP boundary without a fragile demo dependency
 
-**Decision:** lookup, compare, and ranking answers are rendered directly from typed tool output.
+**Decision:** FastMCP exposes the five tool capabilities over HTTP, while the app may call the
+same contracts in-process.
 
-**Why:** a generated paragraph could round, omit, or rewrite a correct value. Typed rendering
-keeps values and provenance together from provider to screen.
+**Why:** MCP is a genuine integration boundary, but the interview path does not depend on a
+stdio child process or unnecessary network hop. The five capabilities are financial lookup,
+comparison, ranking, news search, and qualitative explanation.
 
-Qualitative essays are handled separately. General explanations are labeled as model analysis.
-Current-event essays are generated only from returned news hits and show citations. A numeral
-lock rejects numeric tokens that were not present in the tool input supplied to the essay.
+**Trade-off:** the POC does not demonstrate distributed deployment. The contracts are ready for
+it without imposing that operational cost on the demo.
 
-**Trade-off:** structured answers are less conversational, and the numeral lock is intentionally
-conservative. Both are acceptable costs for visible grounding.
+## Reliability model
 
-### 8. Fixture mode replaces providers, not application logic
+The system prefers an explicit failure to a plausible but unsupported answer:
 
-**Decision:** the kill-switch swaps the complete runtime for recorded adapters.
+- missing facts produce partial rows rather than fabricated values;
+- ambiguous XBRL candidates stop instead of being selected silently;
+- mismatched periods and zero denominators do not compute;
+- unknown companies, metrics, or industries return bounded errors;
+- empty news results refuse instead of falling back to model memory; and
+- provider failures can be demonstrated through a clearly labeled fixture runtime.
 
-**Why:** the demonstration can survive network or provider failure while exercising the same
-planner contract, executor, result model, and renderer. Gold tests use this path offline.
+Fixture mode replaces providers—not orchestration or presentation. It proves deterministic
+application behavior, not live data freshness, and must be disclosed when used.
 
-**Trade-off:** fixtures prove deterministic application behavior, not provider freshness. The UI
-labels fixture mode prominently, and the presenter must state when recorded data is in use.
+## Verification and production path
 
-## Reliability and failure behavior
+The default test suite is offline and asserts behavior at `run_turn`: intent, tool order, values,
+periods, provenance, partial failures, citations, and renderer choice. Gold tests replay the demo
+workflows through fixture mode. Separate network-marked tests cover live OpenAI, SEC, and Tavily
+integrations.
 
-The system prefers an explicit partial result or refusal to an unsupported value.
+Production evolution would add:
 
-- **Missing fact:** keep valid rows and mark the affected company with a typed reason.
-- **Ambiguous XBRL candidate:** stop rather than select one silently.
-- **Period mismatch:** do not compute a ratio or imply comparability.
-- **Zero denominator:** return a typed non-compute result.
-- **Unknown company, metric, or industry:** return a clear bounded failure.
-- **No usable news:** refuse instead of falling back to model memory.
-- **Provider error:** surface the failure; fixture mode is an explicit operational fallback.
+1. provider caching, retries, rate limits, and observability;
+2. scheduled, versioned snapshots with freshness monitoring;
+3. routing and fact-selection evaluation sets;
+4. authentication, authorization, and audit logging;
+5. durable workflow state where human approval is valuable; and
+6. PDF verification with explicit disagreement handling.
 
-Every successful structured result carries its source context. Financial facts retain filing and
-concept provenance, while ranking and market-cap values retain snapshot provenance.
-
-## Testing strategy
-
-The default test suite is offline. Tests focus on externally visible behavior at `run_turn`:
-
-- selected intent and tool order;
-- returned values and periods;
-- filing and snapshot provenance;
-- clarification and refusal behavior;
-- partial-result reasons;
-- grounded essay citations and numeral-lock behavior; and
-- identical presentation semantics in live and fixture runtimes.
-
-Focused provider tests cover company resolution, SEC fact selection, snapshot filtering, and news
-normalization. Gold tests replay the interview workflows through fixture mode. Separate
-network-marked tests verify live OpenAI, SEC, and Tavily integrations without making CI depend on
-external services.
-
-## Current limits and production evolution
-
-This design is a reliable proof of concept, not a complete production platform. The next
-production steps would be:
-
-1. Cache SEC responses by CIK and accession and add provider-specific retries, timeouts, and
-   rate-limit handling.
-2. Build versioned ranking snapshots on a schedule, with freshness monitoring and rollback.
-3. Add routing and fact-selection evaluation sets based on real analyst questions.
-4. Add authentication, authorization, audit logging, and tenant-aware data controls.
-5. Introduce durable workflow state and human approval only for workflows that need it.
-6. Add PDF verification with explicit disagreement handling.
-7. Expand the metric catalog gradually, with ambiguity and provenance tests for every addition.
-
-The architecture is intended to preserve the same trust boundary as it evolves: models interpret
-language and synthesize supported evidence; deterministic components own financial facts,
-identity, membership, arithmetic, and the final presentation of numbers.
+The trust boundary should remain unchanged as the system grows: **models interpret language and
+synthesize supplied evidence; deterministic components own financial truth.**
