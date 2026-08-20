@@ -11,7 +11,10 @@ _EXPLAIN_INSTRUCTIONS = (
 )
 _NEWS_INSTRUCTIONS = (
     "Write a concise financial-analyst brief using only the supplied news tool JSON. "
-    "Do not introduce facts or numeric tokens that are absent from that JSON."
+    "Cite sources only as [n], where n is the 1-based index of an object in that JSON array. "
+    "Do not write (n), n., [1, 2], or [1-3]. "
+    "Do not introduce facts or numeric tokens that are absent from that JSON, "
+    "except those [n] markers."
 )
 
 

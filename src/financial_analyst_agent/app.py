@@ -33,7 +33,7 @@ def _render_presentation(presented: Presentation) -> None:
         st.info(banner)
     for hit in presented.citations:
         published = f" ({hit.published})" if hit.published else ""
-        st.markdown(f"- [{hit.title}]({hit.url}){published}")
+        st.markdown(f"[{hit.index}] [{hit.title}]({hit.url}){published}")
     if presented.fact_card is not None:
         _render_fact_card(presented.fact_card)
     if presented.table is not None:

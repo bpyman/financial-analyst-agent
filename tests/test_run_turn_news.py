@@ -159,6 +159,26 @@ class _InventedDollarEssay:
         return "NVIDIA will ship $29.8B of extra GPUs next quarter."
 
 
+class _BracketCiteEssay:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        return "Packaging remains tight [1] after $12.3B of data-center demand."
+
+
+class _BareIndexEssay:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        return "Source 1 and source 2 and source 3 flag CoWoS constraints after $12.3B of demand."
+
+
+class _OutOfRangeCiteEssay:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        return "See [6] after $12.3B of data-center demand."
+
+
+class _CombinedCiteEssay:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        return "See [1, 2] after $12.3B of data-center demand."
+
+
 def test_run_turn_news_and_explain_allows_hit_numbers_but_locks_novel_dollars() -> None:
     result = run_turn(
         NVIDIA_SUPPLY_QUERY,
@@ -170,6 +190,52 @@ def test_run_turn_news_and_explain_allows_hit_numbers_but_locks_novel_dollars() 
     assert result.essay is None
     assert result.numeral_lock_extras
     assert any("29.8" in extra for extra in result.numeral_lock_extras)
+
+
+def test_run_turn_news_allows_bracket_citation_to_a_hit() -> None:
+    result = run_turn(
+        NVIDIA_SUPPLY_QUERY,
+        _news_runtime(_FixtureNews(), _BracketCiteEssay()),
+    )
+
+    assert result.renderer is RendererKind.ESSAY
+    assert result.essay is not None
+    assert "[1]" in result.essay
+    assert result.numeral_lock_extras == []
+
+
+def test_run_turn_news_refuses_bare_citation_numbers() -> None:
+    result = run_turn(
+        NVIDIA_SUPPLY_QUERY,
+        _news_runtime(_FixtureNews(), _BareIndexEssay()),
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
+    assert "1" in result.numeral_lock_extras
+    assert "2" in result.numeral_lock_extras
+    assert "3" in result.numeral_lock_extras
+
+
+def test_run_turn_news_refuses_out_of_range_citation() -> None:
+    result = run_turn(
+        NVIDIA_SUPPLY_QUERY,
+        _news_runtime(_FixtureNews(), _OutOfRangeCiteEssay()),
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
+    assert any(extra == "6" for extra in result.numeral_lock_extras)
+
+
+def test_run_turn_news_refuses_combined_citation_markers() -> None:
+    result = run_turn(
+        NVIDIA_SUPPLY_QUERY,
+        _news_runtime(_FixtureNews(), _CombinedCiteEssay()),
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert result.essay is None
 
 
 class _MixedNews:

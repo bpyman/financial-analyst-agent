@@ -10,7 +10,7 @@ from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import DisplayTable
-from financial_analyst_agent.turn import Intent, RendererKind, ToolTrace, TurnResult
+from financial_analyst_agent.turn import Intent, NewsHit, RendererKind, ToolTrace, TurnResult
 
 
 class _Sidebar:
@@ -299,9 +299,9 @@ def test_render_table_configures_source_url_as_filing_link(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_streamlit = _Streamlit()
-    source_header = "source_url (Source URL)"
+    source_header = "Source URL"
     table = DisplayTable(
-        headers=("company_name (Company)", source_header),
+        headers=("Company", source_header),
         keys=("company_name", "source_url"),
         rows=(("Alphabet Inc.", "https://www.sec.gov/example"),),
     )
@@ -351,3 +351,24 @@ def test_render_formula_trace_keeps_component_markdown_blocks(
     assert "**Components**" in fake_streamlit.markdowns
     assert any("- **Net income**" in item for item in fake_streamlit.markdowns)
     assert not any("**Components:**" in item for item in fake_streamlit.markdowns)
+
+
+def test_render_news_citations_are_numbered(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_streamlit = _Streamlit()
+    monkeypatch.setattr(app, "st", fake_streamlit)
+    result = TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="Packaging remains tight [1].",
+        citations=[
+            NewsHit(title="First hit", url="https://example.com/first", published="Jan 1, 2026"),
+            NewsHit(title="Second hit", url="https://example.com/second"),
+        ],
+        tool_traces=[],
+    )
+
+    app.render_turn_result(result)
+
+    assert "[1] [First hit](https://example.com/first) (Jan 1, 2026)" in fake_streamlit.markdowns
+    assert "[2] [Second hit](https://example.com/second)" in fake_streamlit.markdowns
+    assert not any(item.startswith("- [") for item in fake_streamlit.markdowns)

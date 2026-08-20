@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     tavily_base_url: str = "https://api.tavily.com"
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-2024-11-20"
+    openai_model: str = "gpt-5.6-terra"
     openai_base_url: str = ""
     app_mode: AppMode = AppMode.LIVE
 

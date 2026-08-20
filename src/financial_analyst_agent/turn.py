@@ -76,6 +76,7 @@ SEARCH_NEWS_TIME_RANGE = "week"
 _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
+_CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 
 
 class Completer(Protocol):
@@ -165,10 +166,22 @@ class TurnResult(BaseModel):
     candidates: tuple[str, ...] = ()
 
 
-def _numeral_lock_extras(essay: str, tool_json: str) -> list[str]:
+def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
+    def replace(match: re.Match[str]) -> str:
+        raw = match.group(1)
+        index = int(raw)
+        if raw == str(index) and 1 <= index <= hit_count:
+            return ""
+        return match.group(0)
+
+    return _CITE_MARKER.sub(replace, essay)
+
+
+def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
+    scanned = _strip_valid_citation_markers(essay, hit_count)
     allowed = set(_NUMERIC_TOKEN.findall(tool_json))
     return list(
-        dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(essay) if token not in allowed)
+        dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(scanned) if token not in allowed)
     )
 
 
@@ -266,7 +279,7 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
         )
     tool_json = _hits_json(hits)
     essay = runtime.essay.complete_essay(query, tool_json)
-    extras = _numeral_lock_extras(essay, tool_json)
+    extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
     if extras:
         invented = ", ".join(extras)
         return TurnResult(

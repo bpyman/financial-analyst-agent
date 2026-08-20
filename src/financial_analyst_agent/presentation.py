@@ -104,7 +104,7 @@ def _humanize_field(key: str) -> str:
 
 
 def format_field_name(key: str) -> str:
-    return f"{key} ({_humanize_field(key)})"
+    return _humanize_field(key)
 
 
 def format_reason(reason: str) -> str:
@@ -136,11 +136,11 @@ def try_parse_datetime(raw: str) -> datetime | None:
 
 
 _TABLE_KEYS = (
+    "rank",
     "company_name",
     "ticker",
     "cik",
     "metric",
-    "rank",
     "value",
     "currency",
     "start_date",
@@ -184,6 +184,7 @@ class DisplayTrace:
 
 @dataclass(frozen=True)
 class DisplayCitation:
+    index: int
     title: str
     url: str
     published: str | None
@@ -231,7 +232,9 @@ def present_turn(result: TurnResult) -> Presentation:
         intent=result.intent.value,
         banners=tuple(_format_banner(banner) for banner in result.banners),
         traces=tuple(_display_trace(trace) for trace in result.tool_traces),
-        citations=tuple(_display_citation(hit) for hit in result.citations),
+        citations=tuple(
+            _display_citation(index, hit) for index, hit in enumerate(result.citations, start=1)
+        ),
         fact_card=fact_card,
         table=table,
         essay=result.essay,
@@ -286,6 +289,8 @@ def _format_cell(row: TableRow, key: str) -> str:
         return ""
     if key == "value":
         return format_metric_value(row.metric, value)
+    if key == "metric":
+        return _humanize_field(str(value))
     if key in {"start_date", "end_date"}:
         return format_date(value)
     if key == "reason":
@@ -322,6 +327,9 @@ def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
         label = _humanize_field(str(key))
         if key == "components" and isinstance(value, list):
             fields.append((label, _format_component_traces(value)))
+            continue
+        if key == "hits" and isinstance(value, list):
+            fields.append((label, _format_hit_traces(value)))
             continue
         if key == "metric" and isinstance(value, str):
             fields.append((label, _humanize_field(value)))
@@ -382,6 +390,82 @@ def _format_component_traces(components: list[Any]) -> str:
     return "\n\n".join(blocks)
 
 
+_SNIPPET_DISPLAY_LIMIT = 280
+_HIT_KNOWN_KEYS = frozenset({"title", "url", "snippet", "score", "published"})
+_HIT_HIDDEN_KEYS = frozenset({"raw_content", "content", "favicon", "images"})
+_MARKDOWN_ESCAPE = str.maketrans(
+    {
+        "\\": "\\\\",
+        "`": "\\`",
+        "*": "\\*",
+        "_": "\\_",
+        "{": "\\{",
+        "}": "\\}",
+        "[": "\\[",
+        "]": "\\]",
+        "(": "\\(",
+        ")": "\\)",
+        "#": "\\#",
+        "!": "\\!",
+        "|": "\\|",
+        "$": "\\$",
+    }
+)
+
+
+def _escape_markdown(text: str) -> str:
+    return text.translate(_MARKDOWN_ESCAPE)
+
+
+def _format_hit_snippet(value: Any) -> str:
+    text = " ".join(str(value).split())
+    if len(text) > _SNIPPET_DISPLAY_LIMIT:
+        text = text[: _SNIPPET_DISPLAY_LIMIT - 1].rstrip() + "…"
+    return _escape_markdown(text)
+
+
+def _format_hit_score(value: Any) -> str:
+    if isinstance(value, bool):
+        return _escape_markdown(str(value))
+    if isinstance(value, (int, float)):
+        return f"{float(value):.2f}"
+    try:
+        return f"{float(str(value).strip()):.2f}"
+    except ValueError:
+        return _escape_markdown(str(value))
+
+
+def _format_hit_traces(hits: list[Any]) -> str:
+    blocks: list[str] = []
+    for index, item in enumerate(hits, start=1):
+        if not isinstance(item, dict):
+            blocks.append(f"- **[{index}]** {_escape_markdown(_format_trace_value(item))}")
+            continue
+        title = _escape_markdown(str(item.get("title") or f"Hit {index}"))
+        url = str(item.get("url") or "").strip()
+        heading = f"- **[{index}]** [{title}]({url})" if url else f"- **[{index}]** {title}"
+        lines = [heading]
+        score = item.get("score")
+        if score is not None and score != "":
+            lines.append(f"  - Score: `{_format_hit_score(score)}`")
+        published = item.get("published")
+        if published:
+            lines.append(f"  - Published: {_format_trace_value(published)}")
+        for key, value in item.items():
+            if key in _HIT_KNOWN_KEYS or key in _HIT_HIDDEN_KEYS:
+                continue
+            if value is None or value == "" or isinstance(value, (dict, list)):
+                continue
+            lines.append(
+                f"  - {_humanize_field(str(key))}: {_escape_markdown(_format_trace_value(value))}"
+            )
+        snippet = item.get("snippet")
+        if snippet:
+            lines.append(f"  - Snippet: {_format_hit_snippet(snippet)}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def _format_trace_value(value: Any) -> str:
     if isinstance(value, datetime):
         return format_datetime_utc(value)
@@ -426,8 +510,8 @@ def _format_trace_value(value: Any) -> str:
     return str(value)
 
 
-def _display_citation(hit: Any) -> DisplayCitation:
+def _display_citation(index: int, hit: Any) -> DisplayCitation:
     published = hit.published
     if published:
         published = _format_trace_value(published)
-    return DisplayCitation(title=hit.title, url=hit.url, published=published)
+    return DisplayCitation(index=index, title=hit.title, url=hit.url, published=published)

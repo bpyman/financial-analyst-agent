@@ -13,7 +13,7 @@ from financial_analyst_agent.runtime import DemoCompleter, fixture_runtime, live
 from financial_analyst_agent.turn import Intent, run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
-_MODEL = "gpt-4o-2024-11-20"
+_MODEL = "gpt-5.6-terra"
 _CLOSED_INTENTS = {intent.value for intent in Intent}
 
 

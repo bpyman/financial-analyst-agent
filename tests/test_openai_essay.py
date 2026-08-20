@@ -10,7 +10,7 @@ from financial_analyst_agent.config import Settings
 from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.runtime import live_runtime
 
-_MODEL = "gpt-4o-2024-11-20"
+_MODEL = "gpt-5.6-terra"
 _MINING_QUERY = "How can AI disrupt mining?"
 _MINING_ESSAY = "AI can improve ore sorting and predictive maintenance in mining."
 _NEWS_QUERY = "What is going on with NVIDIA's supply chain?"
@@ -65,3 +65,6 @@ def test_openai_news_essay_receives_query_and_tool_json() -> None:
     instructions = client.calls[0]["instructions"].casefold()
     assert "only" in instructions
     assert "news tool json" in instructions
+    assert "[n]" in client.calls[0]["instructions"]
+    assert "1-based" in instructions
+    assert "[1, 2]" in client.calls[0]["instructions"]

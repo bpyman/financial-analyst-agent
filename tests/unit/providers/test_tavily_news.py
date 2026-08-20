@@ -35,6 +35,23 @@ def test_hits_from_tavily_payload_keeps_title_url_and_drops_unusable() -> None:
     assert hits[0].score == 0.9
 
 
+def test_hits_from_tavily_payload_coerces_string_score() -> None:
+    hits = hits_from_tavily_payload(
+        {
+            "results": [
+                {
+                    "title": "NVIDIA supply chain",
+                    "url": "https://example.test/nvda",
+                    "content": "Lead times after $12.3B of demand.",
+                    "score": "0.87",
+                    "published_date": "2026-08-10",
+                }
+            ]
+        }
+    )
+    assert hits[0].score == pytest.approx(0.87)
+
+
 def test_hits_from_tavily_payload_caps_at_max_results() -> None:
     payload = {
         "results": [

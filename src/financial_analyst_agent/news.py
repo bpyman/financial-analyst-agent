@@ -34,6 +34,17 @@ class FixtureNewsSearch:
         return list(FIXTURE_NEWS_HITS)
 
 
+def _parse_tavily_score(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
 def hits_from_tavily_payload(payload: dict[str, Any]) -> list[NewsHit]:
     """Map Tavily Search JSON to usable hits. Extract/map/crawl are not used."""
     hits: list[NewsHit] = []
@@ -46,13 +57,12 @@ def hits_from_tavily_payload(payload: dict[str, Any]) -> list[NewsHit]:
             continue
         published = item.get("published_date") or item.get("published")
         published_text = str(published).strip() if published else None
-        score = item.get("score")
         hits.append(
             NewsHit(
                 title=title,
                 url=url,
                 snippet=str(item.get("content") or item.get("snippet") or ""),
-                score=float(score) if isinstance(score, (int, float)) else None,
+                score=_parse_tavily_score(item.get("score")),
                 published=published_text or None,
             )
         )

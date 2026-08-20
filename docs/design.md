@@ -47,7 +47,7 @@ These are the assumptions to defend in Q&A. Snapshot membership is recorded in [
 
 ## Runtime
 
-`run_turn` takes a runtime of adapters: fact lookup, snapshot ranking, news, structured completer, essay completer. Live adapters talk to SEC, the packaged freeze, Tavily, and OpenAI structured outputs (`gpt-4o-2024-11-20`). Missing `OPENAI_API_KEY` is a configuration error, not a regex planner.
+`run_turn` takes a runtime of adapters: fact lookup, snapshot ranking, news, structured completer, essay completer. Live adapters talk to SEC, the packaged freeze, Tavily, and OpenAI structured outputs (`gpt-5.6-terra`). Missing `OPENAI_API_KEY` is a configuration error, not a regex planner.
 
 The fixture kill-switch swaps every adapter for recorded ones and still calls `run_turn`. Streamlit uses one renderer for both paths. If the kill-switch is on, say so out loud — do not present a cassette as live EDGAR.
 

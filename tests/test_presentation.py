@@ -86,10 +86,11 @@ def test_format_percent_tie_rounds_half_up() -> None:
     assert format_percent(Decimal("0.46350")) == "46.4%"
 
 
-def test_format_field_name_domain_first() -> None:
-    assert format_field_name("company_name") == "company_name (Company)"
-    assert format_field_name("cik") == "cik (CIK)"
-    assert format_field_name("net_income") == "net_income (Net income)"
+def test_format_field_name_is_human_readable() -> None:
+    assert format_field_name("company_name") == "Company"
+    assert format_field_name("cik") == "CIK"
+    assert format_field_name("net_income") == "Net income"
+    assert format_field_name("rank") == "Rank"
 
 
 def test_format_reason_domain_first() -> None:
@@ -277,11 +278,23 @@ def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
     assert "rank" in table.keys
     assert "form" not in table.keys
     assert "reason" not in table.keys
-    assert table.headers[0] == "company_name (Company)"
+    assert table.keys[0] == "rank"
+    assert table.headers == (
+        "Rank",
+        "Company",
+        "Ticker",
+        "CIK",
+        "Metric",
+        "Value",
+        "Currency",
+    )
+    assert all("(" not in header and "_" not in header for header in table.headers)
     rank_index = table.keys.index("rank")
     value_index = table.keys.index("value")
+    metric_index = table.keys.index("metric")
     assert table.rows[0][rank_index] == "1"
     assert table.rows[0][value_index] == "$800.00 B"
+    assert table.rows[0][metric_index] == "Market cap"
     assert presented.banners == ("Universe snapshot as of Aug 17, 2026, 4:00 PM UTC",)
 
 
@@ -345,6 +358,7 @@ def test_present_news_keeps_unparseable_published() -> None:
         tool_traces=[ToolTrace(tool="search_news", args={"query": "NVIDIA"})],
     )
     presented = present_turn(result)
+    assert presented.citations[0].index == 1
     assert presented.citations[0].published == "yesterday morning"
     assert presented.essay == "Supply chain remains tight."
     assert presented.table is None
@@ -366,6 +380,7 @@ def test_present_news_formats_date_only_published() -> None:
         tool_traces=[ToolTrace(tool="search_news", args={"query": "NVIDIA"})],
     )
     presented = present_turn(result)
+    assert presented.citations[0].index == 1
     assert presented.citations[0].published == "Jan 1, 2026"
 
 
@@ -383,11 +398,14 @@ def test_present_trace_formats_nested_news_hits_as_readable_lines() -> None:
                         {
                             "title": "First hit",
                             "url": "https://example.com/first",
+                            "snippet": "Lead times after $12.3B of demand.",
+                            "score": 0.91,
                             "published": "2026-01-01",
                         },
                         {
                             "title": "Second hit",
                             "url": "https://example.com/second",
+                            "snippet": "# Go to frontpage\n**The Register**",
                             "published": "yesterday morning",
                         },
                     ]
@@ -399,13 +417,56 @@ def test_present_trace_formats_nested_news_hits_as_readable_lines() -> None:
     hits = dict(present_turn(result).traces[0].outputs)["Hits"]
 
     assert hits == (
-        "- Title: First hit\n"
-        "  Url: https://example.com/first\n"
-        "  Published: Jan 1, 2026\n"
-        "- Title: Second hit\n"
-        "  Url: https://example.com/second\n"
-        "  Published: yesterday morning"
+        "- **[1]** [First hit](https://example.com/first)\n"
+        "  - Score: `0.91`\n"
+        "  - Published: Jan 1, 2026\n"
+        "  - Snippet: Lead times after \\$12.3B of demand.\n"
+        "\n"
+        "- **[2]** [Second hit](https://example.com/second)\n"
+        "  - Published: yesterday morning\n"
+        "  - Snippet: \\# Go to frontpage \\*\\*The Register\\*\\*"
     )
+    assert "\\# Go to frontpage" in hits
+    assert "\\*\\*The Register\\*\\*" in hits
+
+
+def test_present_trace_keeps_extra_news_hit_fields() -> None:
+    result = TurnResult(
+        intent=Intent.NEWS_AND_EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="Supply chain remains tight.",
+        tool_traces=[
+            ToolTrace(
+                tool="search_news",
+                args={"query": "NVIDIA"},
+                provenance={
+                    "hits": [
+                        {
+                            "title": "First hit",
+                            "url": "https://example.com/first",
+                            "snippet": "Lead times.",
+                            "score": 0.91,
+                            "published": "2026-01-01",
+                            "source": "The Register",
+                            "raw_content": "Go to frontpage. Logo, The Register",
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+
+    hits = dict(present_turn(result).traces[0].outputs)["Hits"]
+
+    assert hits == (
+        "- **[1]** [First hit](https://example.com/first)\n"
+        "  - Score: `0.91`\n"
+        "  - Published: Jan 1, 2026\n"
+        "  - Source: The Register\n"
+        "  - Snippet: Lead times."
+    )
+    assert "raw_content" not in hits.casefold()
+    assert "Go to frontpage" not in hits
 
 
 def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None:
