@@ -30,6 +30,29 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     Metric.OPERATING_INCOME: [
         ("us-gaap", "OperatingIncomeLoss"),
     ],
+    Metric.RESEARCH_AND_DEVELOPMENT: [
+        ("us-gaap", "ResearchAndDevelopmentExpense"),
+    ],
+    Metric.SELLING_GENERAL_AND_ADMINISTRATIVE: [
+        ("us-gaap", "SellingGeneralAndAdministrativeExpense"),
+    ],
+    Metric.INTEREST_EXPENSE: [
+        ("us-gaap", "InterestExpense"),
+        ("us-gaap", "InterestExpenseDebt"),
+    ],
+    Metric.INCOME_TAX_EXPENSE: [
+        ("us-gaap", "IncomeTaxExpenseBenefit"),
+        ("us-gaap", "IncomeTaxExpenseBenefitContinuingOperations"),
+    ],
+    Metric.PRETAX_INCOME: [
+        (
+            "us-gaap",
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"
+            "ExtraordinaryItemsNoncontrollingInterest",
+        ),
+        ("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"),
+        ("us-gaap", "PretaxIncomeLoss"),
+    ],
 }
 
 MetricPhraseKind = Literal["unique", "ambiguous", "unknown"]
@@ -66,6 +89,22 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("cost of revenue", "cost_of_revenue"),
     ("cost_of_revenue", "cost_of_revenue"),
     ("cogs", "cost_of_revenue"),
+    ("selling general and administrative", "selling_general_and_administrative"),
+    ("selling, general and administrative", "selling_general_and_administrative"),
+    ("selling_general_and_administrative", "selling_general_and_administrative"),
+    ("sg&a ratio", "sga_ratio"),
+    ("sga ratio", "sga_ratio"),
+    ("sga_ratio", "sga_ratio"),
+    ("sg&a", "selling_general_and_administrative"),
+    ("sga", "selling_general_and_administrative"),
+    ("research and development to sales", "rd_to_sales"),
+    ("research and development", "research_and_development"),
+    ("research_and_development", "research_and_development"),
+    ("r&d to sales", "rd_to_sales"),
+    ("rd to sales", "rd_to_sales"),
+    ("r&d intensity", "rd_to_sales"),
+    ("rd_to_sales", "rd_to_sales"),
+    ("r&d", "research_and_development"),
     ("operating expenses", "operating_expenses"),
     ("operating_expenses", "operating_expenses"),
     ("operating costs", "operating_expenses"),
@@ -86,6 +125,23 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("gross margin", "gross_margin"),
     ("gross_margin", "gross_margin"),
     ("gross margins", "gross_margin"),
+    ("effective tax rate", "effective_tax_rate"),
+    ("effective_tax_rate", "effective_tax_rate"),
+    ("tax rate", "effective_tax_rate"),
+    ("income tax expense", "income_tax_expense"),
+    ("income_tax_expense", "income_tax_expense"),
+    ("tax expense", "income_tax_expense"),
+    ("income tax", "income_tax_expense"),
+    ("interest coverage ratio", "interest_coverage"),
+    ("interest coverage", "interest_coverage"),
+    ("interest_coverage", "interest_coverage"),
+    ("interest expense", "interest_expense"),
+    ("interest_expense", "interest_expense"),
+    ("interest costs", "interest_expense"),
+    ("income before tax", "pretax_income"),
+    ("pre-tax income", "pretax_income"),
+    ("pretax income", "pretax_income"),
+    ("pretax_income", "pretax_income"),
     ("net profit margin", "net_margin"),
     ("net income", "net_income"),
     ("net_income", "net_income"),
@@ -108,6 +164,8 @@ _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("margin", ("gross_margin", "operating_margin", "net_margin")),
     ("gross", ("gross_profit", "gross_margin")),
     ("net", ("net_income", "net_margin")),
+    ("interest", ("interest_expense", "interest_coverage")),
+    ("tax", ("income_tax_expense", "effective_tax_rate")),
 )
 
 

@@ -22,7 +22,7 @@ def get_financials(company: str, metric: str) -> dict[str, object]:
 
 @mcp.tool()
 def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
-    """Compare a reported metric or allowed margin formula across issuers."""
+    """Compare a reported metric or allowed formula across issuers."""
     if metric not in ALLOWED_METRICS:
         allowed = ", ".join(ALLOWED_METRICS)
         raise ValueError(f"Unknown metric {metric!r}. Allowed: {allowed}")

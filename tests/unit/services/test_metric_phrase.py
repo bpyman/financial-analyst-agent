@@ -2,6 +2,7 @@ import pytest
 
 from financial_analyst_agent.domain.errors import UnknownMetricError
 from financial_analyst_agent.services.metric_catalog import parse_metric, resolve_metric_phrase
+from financial_analyst_agent.turn import ALLOWED_METRICS
 
 
 def test_profit_is_ambiguous_among_profit_concepts() -> None:
@@ -124,6 +125,79 @@ def test_operating_margins_plural_is_unique_operating_margin() -> None:
     resolved = resolve_metric_phrase("Compare Microsoft and Google operating margins")
     assert resolved.kind == "unique"
     assert resolved.metric == "operating_margin"
+
+
+def test_research_and_development_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's research and development?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "research_and_development"
+
+
+def test_rd_abbreviation_is_unique_research_and_development() -> None:
+    resolved = resolve_metric_phrase("What was Google's R&D?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "research_and_development"
+
+
+def test_sga_abbreviation_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's SG&A?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "selling_general_and_administrative"
+
+
+def test_interest_expense_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's interest expense?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "interest_expense"
+
+
+def test_interest_alone_is_ambiguous() -> None:
+    resolved = resolve_metric_phrase("What was Google's interest?")
+    assert resolved.kind == "ambiguous"
+    assert resolved.candidates == ("interest_expense", "interest_coverage")
+
+
+def test_income_tax_is_unique_tax_expense() -> None:
+    resolved = resolve_metric_phrase("What was Google's income tax?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "income_tax_expense"
+
+
+def test_tax_alone_is_ambiguous() -> None:
+    resolved = resolve_metric_phrase("What was Google's tax?")
+    assert resolved.kind == "ambiguous"
+    assert resolved.candidates == ("income_tax_expense", "effective_tax_rate")
+
+
+def test_pretax_income_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's pretax income?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "pretax_income"
+
+
+def test_rd_to_sales_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's R&D to sales?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "rd_to_sales"
+
+
+def test_effective_tax_rate_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's effective tax rate?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "effective_tax_rate"
+
+
+def test_interest_coverage_is_unique() -> None:
+    resolved = resolve_metric_phrase("What was Google's interest coverage?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == "interest_coverage"
+
+
+@pytest.mark.parametrize("metric", ALLOWED_METRICS)
+def test_catalog_slug_is_unique(metric: str) -> None:
+    resolved = resolve_metric_phrase(f"What was Google's {metric}?")
+    assert resolved.kind == "unique"
+    assert resolved.metric == metric
 
 
 def test_parse_metric_unknown_raises_unknown_metric_error() -> None:

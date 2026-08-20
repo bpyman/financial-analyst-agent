@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
+    FORMULA_METRICS,
+    PERCENT_FORMULAS,
     REPORTED_METRICS,
     Intent,
     RendererKind,
@@ -35,8 +37,6 @@ _MILLION = Decimal("1000000")
 _CENTS = Decimal("0.01")
 _TENTH = Decimal("0.1")
 
-FORMULA_METRICS = ("gross_margin", "operating_margin", "net_margin")
-
 _REASON_LABELS = {
     "missing_fact": "Missing fact",
     "period_mismatch": "Period mismatch",
@@ -56,9 +56,18 @@ _FIELD_LABELS = {
     "operating_expenses": "Operating expenses",
     "operating_income": "Operating income",
     "net_income": "Net income",
+    "research_and_development": "Research and development",
+    "selling_general_and_administrative": "Selling, general and administrative",
+    "interest_expense": "Interest expense",
+    "income_tax_expense": "Income tax expense",
+    "pretax_income": "Pretax income",
     "gross_margin": "Gross margin",
     "operating_margin": "Operating margin",
     "net_margin": "Net margin",
+    "rd_to_sales": "R&D to sales",
+    "sga_ratio": "SG&A ratio",
+    "effective_tax_rate": "Effective tax rate",
+    "interest_coverage": "Interest coverage",
 }
 
 
@@ -83,6 +92,11 @@ def format_usd(value: Decimal) -> str:
 def format_percent(ratio: Decimal) -> str:
     percent = (ratio * Decimal("100")).quantize(_TENTH, rounding=ROUND_HALF_UP)
     return f"{percent:.1f}%"
+
+
+def format_multiple(ratio: Decimal) -> str:
+    scaled = ratio.quantize(_TENTH, rounding=ROUND_HALF_UP)
+    return f"{scaled:.1f}x"
 
 
 def format_date(value: date) -> str:
@@ -118,7 +132,9 @@ def format_reason(reason: str) -> str:
 def format_metric_value(metric: str, value: Decimal | None) -> str:
     if value is None:
         return ""
-    if metric in FORMULA_METRICS:
+    if metric == "interest_coverage":
+        return format_multiple(value)
+    if metric in PERCENT_FORMULAS:
         return format_percent(value)
     return format_usd(value)
 
@@ -211,7 +227,7 @@ def metric_legend() -> tuple[str, ...]:
 def metric_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
     return (
         ("Reported", tuple(_humanize_field(metric) for metric in REPORTED_METRICS)),
-        ("Margins", tuple(_humanize_field(metric) for metric in FORMULA_METRICS)),
+        ("Calculated", tuple(_humanize_field(metric) for metric in FORMULA_METRICS)),
     )
 
 

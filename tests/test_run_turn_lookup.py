@@ -9,7 +9,7 @@ import pytest
 from financial_analyst_agent.domain.errors import AmbiguousFactError
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.runtime import DemoCompleter, build_runtime, fixture_runtime
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, Runtime, run_turn
 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
     "What was Google's net income based on their latest quarterly report?"
@@ -21,6 +21,7 @@ GOOGLE_OPERATING_MARGIN_QUERY = (
     "What was Google's operating margin based on their latest quarterly report?"
 )
 SHOPIFY_NET_MARGIN_QUERY = "Shopify net margin"
+SHOPIFY_RD_TO_SALES_QUERY = "Shopify R&D to sales"
 UNRELATED_QUERY = "What is the weather in Atlanta?"
 EXXONMOBIL_NET_INCOME_QUERY = (
     "What was ExxonMobil's net income based on their latest quarterly report?"
@@ -36,17 +37,6 @@ SUCCESSOR_TICKERS = {
 }
 
 # Closed catalog from the PRD: reported facts plus allowed formulas.
-ALLOWED_METRICS = (
-    "revenue",
-    "cost_of_revenue",
-    "gross_profit",
-    "operating_expenses",
-    "operating_income",
-    "net_income",
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
-)
 
 # Fixture-runtime gold literals (recorded Alphabet quarterly fact, not live SEC).
 ALPHABET_CIK = "0001652044"
@@ -103,6 +93,13 @@ class _ShopifyNetMarginCompleter:
         if query != SHOPIFY_NET_MARGIN_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="net_margin")
+
+
+class _ShopifyRdToSalesCompleter:
+    def complete(self, query: str) -> SimpleNamespace:
+        if query != SHOPIFY_RD_TO_SALES_QUERY:
+            raise AssertionError(f"unexpected query: {query!r}")
+        return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="rd_to_sales")
 
 
 class _ComponentFacts:
@@ -287,6 +284,30 @@ def test_run_turn_lookup_computes_shopify_net_margin() -> None:
     assert provenance_components["net_income"]["form"] == FORM
     assert provenance_components["net_income"]["taxonomy"] == TAXONOMY
     assert provenance_components["net_income"]["source"] == "sec_xbrl"
+
+
+def test_run_turn_lookup_computes_shopify_rd_to_sales() -> None:
+    research = Decimal("120000000")
+    revenue = Decimal("1000000000")
+    result = run_turn(
+        SHOPIFY_RD_TO_SALES_QUERY,
+        Runtime(
+            completer=_ShopifyRdToSalesCompleter(),
+            facts=_ComponentFacts(
+                "Shopify",
+                {"research_and_development": research, "revenue": revenue},
+            ),
+        ),
+    )
+
+    assert result.intent is Intent.LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    row = result.table_rows[0]
+    assert row.metric == "rd_to_sales"
+    assert row.value == research / revenue
+    components = {component.metric: component for component in row.components}
+    assert set(components) == {"research_and_development", "revenue"}
+    assert result.tool_traces[0].args == {"issuers": ["Shopify"], "metric": "rd_to_sales"}
 
 
 def test_fixture_runtime_does_not_invent_net_income_for_unrelated_query() -> None:

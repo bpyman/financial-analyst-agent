@@ -35,7 +35,7 @@ These are the assumptions to defend in Q&A. Snapshot membership is recorded in [
 
 1. **XBRL primary.** Latest-quarter facts come from SEC companyfacts, not a 10-Q PDF parse, FMP ratios, or edgartools. Standalone quarterly duration (about 70–110 days). No YTD subtraction, no derived Q4. Ambiguous concepts refuse rather than picking silently. Decimal, not float.
 
-2. **No LLM math.** Operating / gross / net margin is Decimal division of named components. Compare requires the same period start/end or the row is non-compute (`period_mismatch`). Partial rows keep the good company.
+2. **No LLM math.** Catalog formulas (margins, R&D to sales, SG&A ratio, effective tax rate, interest coverage) are Decimal division of named components. Compare requires the same period start/end or the row is non-compute (`period_mismatch`). Partial rows keep the good company.
 
 3. **Closed industry aliases.** Ranking membership is a dated freeze of US exchange-listed operating companies. `finance` / `healthcare` / `technology` map through a closed table. “AI” is not an industry — unknown strings refuse with the allowed names. ETFs, funds, preferreds, and residual non-operators (CIK blocklist) are out. Share classes collapse to one CIK (GOOG/GOOGL → Alphabet once).
 

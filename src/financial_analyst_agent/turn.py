@@ -46,17 +46,38 @@ REPORTED_METRICS: tuple[str, ...] = (
     "operating_expenses",
     "operating_income",
     "net_income",
+    "research_and_development",
+    "selling_general_and_administrative",
+    "interest_expense",
+    "income_tax_expense",
+    "pretax_income",
 )
 FORMULA_METRICS: tuple[str, ...] = (
     "gross_margin",
     "operating_margin",
     "net_margin",
+    "rd_to_sales",
+    "sga_ratio",
+    "effective_tax_rate",
+    "interest_coverage",
 )
 ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS
+PERCENT_FORMULAS: tuple[str, ...] = (
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "rd_to_sales",
+    "sga_ratio",
+    "effective_tax_rate",
+)
 FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "gross_margin": ("gross_profit", "revenue"),
     "operating_margin": ("operating_income", "revenue"),
     "net_margin": ("net_income", "revenue"),
+    "rd_to_sales": ("research_and_development", "revenue"),
+    "sga_ratio": ("selling_general_and_administrative", "revenue"),
+    "effective_tax_rate": ("income_tax_expense", "pretax_income"),
+    "interest_coverage": ("operating_income", "interest_expense"),
 }
 
 _LOOKUP_FAILURES = (

@@ -24,6 +24,11 @@ _REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
     ("operating expenses", "operating_expenses"),
     ("operating income", "operating_income"),
     ("gross profit", "gross_profit"),
+    ("research and development", "research_and_development"),
+    ("selling general and administrative", "selling_general_and_administrative"),
+    ("interest expense", "interest_expense"),
+    ("income tax", "income_tax_expense"),
+    ("pretax income", "pretax_income"),
     ("net income", "net_income"),
     ("revenue", "revenue"),
     ("income", "net_income"),
@@ -32,6 +37,10 @@ _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
     ("operating margin", "operating_margin"),
     ("gross margin", "gross_margin"),
     ("net margin", "net_margin"),
+    ("r&d to sales", "rd_to_sales"),
+    ("sg&a ratio", "sga_ratio"),
+    ("effective tax rate", "effective_tax_rate"),
+    ("interest coverage", "interest_coverage"),
 )
 _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("microsoft", "Microsoft"),

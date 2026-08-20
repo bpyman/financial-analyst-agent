@@ -86,6 +86,11 @@ def test_format_percent_tie_rounds_half_up() -> None:
     assert format_percent(Decimal("0.46350")) == "46.4%"
 
 
+def test_format_metric_value_formats_interest_coverage_as_multiple() -> None:
+    assert format_metric_value("interest_coverage", Decimal("12.46")) == "12.5x"
+    assert format_metric_value("rd_to_sales", Decimal("0.123")) == "12.3%"
+
+
 def test_format_field_name_is_human_readable() -> None:
     assert format_field_name("company_name") == "Company"
     assert format_field_name("cik") == "CIK"
@@ -606,12 +611,25 @@ def test_metric_legend_lists_closed_catalog() -> None:
     assert legend[0] == "Revenue"
     assert "Cost of revenue" in legend
     assert "Operating margin" in legend
+    assert "R&D to sales" in legend
+    assert "Interest coverage" in legend
     assert all("(" not in name and "_" not in name for name in legend)
-    assert len(legend) == 9
+    assert len(legend) == 18
 
 
-def test_metric_groups_split_reported_from_margins() -> None:
+def test_metric_groups_split_reported_from_calculated() -> None:
     groups = dict(metric_groups())
     assert groups["Reported"][0] == "Revenue"
     assert "Net income" in groups["Reported"]
-    assert groups["Margins"] == ("Gross margin", "Operating margin", "Net margin")
+    assert "Research and development" in groups["Reported"]
+    assert "Pretax income" in groups["Reported"]
+    assert "Margins" not in groups
+    assert groups["Calculated"] == (
+        "Gross margin",
+        "Operating margin",
+        "Net margin",
+        "R&D to sales",
+        "SG&A ratio",
+        "Effective tax rate",
+        "Interest coverage",
+    )

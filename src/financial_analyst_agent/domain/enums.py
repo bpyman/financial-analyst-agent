@@ -12,6 +12,11 @@ class Metric(StrEnum):
     OPERATING_EXPENSES = "operating_expenses"
     OPERATING_INCOME = "operating_income"
     NET_INCOME = "net_income"
+    RESEARCH_AND_DEVELOPMENT = "research_and_development"
+    SELLING_GENERAL_AND_ADMINISTRATIVE = "selling_general_and_administrative"
+    INTEREST_EXPENSE = "interest_expense"
+    INCOME_TAX_EXPENSE = "income_tax_expense"
+    PRETAX_INCOME = "pretax_income"
 
 
 class FormType(StrEnum):

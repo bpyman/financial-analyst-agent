@@ -166,7 +166,8 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     catalog = "\n".join(fake_streamlit.markdowns)
     assert "Supported metrics (SEC EDGAR)" in catalog
     assert "Reported" in catalog
-    assert "Margins" in catalog
+    assert "Calculated" in catalog
+    assert "Margins" not in catalog
     assert ":gray[Revenue]" in catalog
     assert ":gray[Gross margin]" in catalog
     assert "revenue (Revenue)" not in catalog

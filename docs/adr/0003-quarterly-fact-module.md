@@ -17,7 +17,7 @@ class FactsPort(Protocol):
 ```
 
 - `company`: unresolved name, ticker, or 10-digit CIK. Callers never pass a resolved `Company`. Google → Alphabet stays inside identity (`providers/sec/aliases.py`).
-- `metric`: one of `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`. Unknown string → `UnknownMetricError` (existing `parse_metric`).
+- `metric`: one of `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`, `research_and_development`, `selling_general_and_administrative`, `interest_expense`, `income_tax_expense`, `pretax_income`. Unknown string → `UnknownMetricError` (existing `parse_metric`).
 - Result: one USD **quarterly fact** (`FinancialFact`): Decimal, `directly_reported=True`, duration 70–110 days, newest `report_date`, `10-Q/A` before `10-Q`, provenance on the object (`accession_number`, `concept`, `taxonomy`, `start_date`/`end_date`, `source_url`, `cik`, `ticker`, `company_name`).
 - Construction: inject the SEC adapter only (`SECClient` live, `RecordedSECDataSource` cassette). No `close`, `resolve`, or `related_lookup_ciks` on this interface.
 
