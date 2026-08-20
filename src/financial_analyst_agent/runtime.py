@@ -13,7 +13,7 @@ from financial_analyst_agent.news import FIXTURE_NEWS_QUERY, FixtureNewsSearch, 
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import REPORTED_METRICS, Intent, Runtime
+from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
@@ -183,7 +183,7 @@ class DemoCompleter:
         if re.search(r"\btop\b", normalized):
             industry = _industry_from_query(normalized)
             limit = _limit_from_query(normalized)
-            if metric in REPORTED_METRICS:
+            if metric in ALLOWED_METRICS:
                 return SimpleNamespace(
                     intent=Intent.RANK_AND_LOOKUP,
                     industry=industry,

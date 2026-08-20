@@ -51,8 +51,8 @@ def _render_presentation(presented: Presentation) -> None:
             groups = [
                 (title, fields)
                 for title, fields in (
-                    ("Inputs", trace.inputs),
-                    ("Outputs", trace.outputs),
+                    ("Query", trace.inputs),
+                    ("Result Provenance", trace.outputs),
                 )
                 if fields
             ]
@@ -66,14 +66,68 @@ def _render_presentation(presented: Presentation) -> None:
                     _render_trace_group(title, fields)
 
 
+def _trace_label_width(labels: tuple[str, ...]) -> int:
+    longest = max(len(label) for label in labels)
+    return min(180, max(72, longest * 9 + 24))
+
+
 def _render_trace_group(title: str, fields: tuple[tuple[str, str], ...]) -> None:
     st.caption(title)
+    labeled = tuple(label for label, value in fields if value and "\n" not in value)
+    label_width = _trace_label_width(labeled) if labeled else 72
+    for kind, items in _trace_field_clusters(fields):
+        if kind == "space":
+            st.space("medium")
+            continue
+        if kind == "block":
+            for label, value in items:
+                if label:
+                    st.markdown(f"**{label}**")
+                st.markdown(value)
+            continue
+        if kind == "heading":
+            for label, _value in items:
+                st.markdown(f"**{label}**")
+            continue
+        with st.container(gap="xxsmall"):
+            for label, value in items:
+                _render_trace_row(label, value, label_width)
+
+
+def _trace_field_clusters(
+    fields: tuple[tuple[str, str], ...],
+) -> list[tuple[str, list[tuple[str, str]]]]:
+    clusters: list[tuple[str, list[tuple[str, str]]]] = []
+    rows: list[tuple[str, str]] = []
+
+    def flush_rows() -> None:
+        if rows:
+            clusters.append(("rows", list(rows)))
+            rows.clear()
+
     for label, value in fields:
         if "\n" in value:
+            flush_rows()
+            clusters.append(("block", [(label, value)]))
+            continue
+        if not value:
+            flush_rows()
+            if label:
+                clusters.append(("heading", [(label, value)]))
+            else:
+                clusters.append(("space", []))
+            continue
+        rows.append((label, value))
+    flush_rows()
+    return clusters
+
+
+def _render_trace_row(label: str, value: str, label_width: int) -> None:
+    row = st.container(horizontal=True, gap="xsmall", vertical_alignment="center")
+    with row:
+        with st.container(width=label_width):
             st.markdown(f"**{label}**")
-            st.markdown(value)
-        else:
-            st.markdown(f"**{label}:** {value}")
+        st.markdown(value)
 
 
 def _render_fact_card(card: QuarterlyFactCard) -> None:

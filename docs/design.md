@@ -23,7 +23,7 @@ flowchart LR
 | `lookup` | `get_financials` | table |
 | `compare` | `compare_metrics` | table |
 | `rank` | `rank_companies` | table |
-| `rank_and_lookup` | `rank_companies`, then `get_financials` on ranking CIKs | table |
+| `rank_and_lookup` | `rank_companies`, then `get_financials` or per-CIK `compare_metrics` on ranking CIKs | table |
 | `explain` | `explain_topic` | essay + `model-analysis` banner |
 | `news_and_explain` | `search_news`, then essay on those hits | essay + citations |
 

@@ -132,6 +132,7 @@ class ComponentProvenance(BaseModel):
     taxonomy: str
     concept: str
     source_url: str
+    source: str | None = None
 
 
 class TableRow(BaseModel):
@@ -320,13 +321,20 @@ def _table_row_from_fact(fact: Any) -> TableRow:
 
 
 def _lookup_provenance(fact: Any) -> dict[str, Any]:
-    return {
+    source = getattr(fact, "source", None)
+    source_kind = getattr(source, "value", source)
+    payload: dict[str, Any] = {
+        "form": fact.form,
         "accession_number": fact.accession_number,
+        "taxonomy": fact.taxonomy,
         "concept": fact.concept,
-        "source_url": fact.source_url,
         "start_date": fact.start_date.isoformat(),
         "end_date": fact.end_date.isoformat(),
+        "source_url": fact.source_url,
     }
+    if source_kind:
+        payload["source"] = str(source_kind)
+    return payload
 
 
 def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
@@ -391,6 +399,8 @@ def _component_metrics(metric: str) -> tuple[str, ...]:
 
 
 def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
+    source = getattr(fact, "source", None)
+    source_kind = getattr(source, "value", source)
     return ComponentProvenance(
         metric=metric,
         value=fact.value,
@@ -401,6 +411,7 @@ def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
+        source=str(source_kind) if source_kind else None,
     )
 
 
@@ -547,6 +558,25 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     ]
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
+        if metric in FORMULA_COMPONENTS:
+            computed = compare_metrics(runtime.facts, [company.cik], metric)
+            row = computed[0].model_copy(
+                update={
+                    "company_name": company.name,
+                    "ticker": company.ticker,
+                    "cik": company.cik,
+                    "rank": index,
+                }
+            )
+            rows.append(row)
+            traces.append(
+                ToolTrace(
+                    tool="compare_metrics",
+                    args={"issuers": [company.cik], "metric": metric},
+                    provenance=_compare_components_provenance([row]),
+                )
+            )
+            continue
         args = {"company": company.cik, "metric": metric}
         try:
             fact = runtime.facts.get_financials(company.cik, metric)
@@ -580,6 +610,28 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     )
 
 
+def _compare_components_provenance(rows: list[TableRow]) -> dict[str, Any]:
+    return {
+        "components": [
+            {
+                "cik": row.cik,
+                "metric": component.metric,
+                "value": str(component.value),
+                "form": component.form,
+                "taxonomy": component.taxonomy,
+                "source": component.source,
+                "accession_number": component.accession_number,
+                "concept": component.concept,
+                "start_date": component.start_date.isoformat(),
+                "end_date": component.end_date.isoformat(),
+                "source_url": component.source_url,
+            }
+            for row in rows
+            for component in row.components
+        ]
+    }
+
+
 def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runtime) -> TurnResult:
     rows = compare_metrics(runtime.facts, issuers, metric)
     return TurnResult(
@@ -588,22 +640,7 @@ def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runt
             ToolTrace(
                 tool="compare_metrics",
                 args={"issuers": issuers, "metric": metric},
-                provenance={
-                    "components": [
-                        {
-                            "cik": row.cik,
-                            "metric": component.metric,
-                            "value": str(component.value),
-                            "accession_number": component.accession_number,
-                            "concept": component.concept,
-                            "start_date": component.start_date.isoformat(),
-                            "end_date": component.end_date.isoformat(),
-                            "source_url": component.source_url,
-                        }
-                        for row in rows
-                        for component in row.components
-                    ]
-                },
+                provenance=_compare_components_provenance(rows),
             )
         ],
         renderer=RendererKind.TABLE,
@@ -661,7 +698,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             return _refuse_unknown_metric(plan.intent, metric)
         return _compare_turn(plan, runtime)
     if plan.intent is Intent.RANK_AND_LOOKUP:
-        if metric not in REPORTED_METRICS:
+        if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
         return _rank_and_lookup_turn(plan, runtime)
     if plan.intent is Intent.LOOKUP:

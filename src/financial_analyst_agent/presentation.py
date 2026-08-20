@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
+from urllib.parse import urlparse
 
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
@@ -321,20 +322,79 @@ def _trace_identity(args: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+_SOURCE_LABELS = {
+    "sec_xbrl": "SEC EDGAR",
+}
+_FILING_FIELD_ORDER = (
+    "form",
+    "accession_number",
+    "taxonomy",
+    "concept",
+    "start_date",
+    "end_date",
+    "source",
+    "source_url",
+)
+_FILING_TRACE_KEYS = frozenset(_FILING_FIELD_ORDER)
+
+
+def _is_filing_provenance(payload: dict[str, Any]) -> bool:
+    return (
+        "accession_number" in payload
+        and "components" not in payload
+        and "hits" not in payload
+    )
+
+
+def _truncate_url(url: str, max_len: int = 48) -> str:
+    if len(url) <= max_len:
+        return url
+    parsed = urlparse(url)
+    name = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    if parsed.netloc and name:
+        compact = f"{parsed.netloc}/…/{name}"
+        if len(compact) < len(url):
+            return compact
+    keep = max(max_len - 1, 1)
+    head = max(keep // 2, 1)
+    tail = max(keep - head, 1)
+    return f"{url[:head]}…{url[-tail:]}"
+
+
+def _append_trace_field(
+    fields: list[tuple[str, str]], key: str, value: Any
+) -> None:
+    label = _humanize_field(str(key))
+    if key == "components" and isinstance(value, list):
+        _append_component_fields(fields, value)
+        return
+    if key == "hits" and isinstance(value, list):
+        fields.append((label, _format_hit_traces(value)))
+        return
+    if key == "metric" and isinstance(value, str):
+        fields.append((label, _humanize_field(value)))
+        return
+    if key == "source_url" and value:
+        url = str(value)
+        fields.append((label, f"[{_truncate_url(url)}]({url})"))
+        return
+    if key == "source" and value:
+        raw = value.value if hasattr(value, "value") else str(value)
+        fields.append((label, _SOURCE_LABELS.get(raw, raw)))
+        return
+    fields.append((label, _format_trace_value(value)))
+
+
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     fields: list[tuple[str, str]] = []
+    if _is_filing_provenance(payload):
+        ordered = [key for key in _FILING_FIELD_ORDER if key in payload]
+        ordered.extend(key for key in payload if key not in _FILING_TRACE_KEYS)
+        for key in ordered:
+            _append_trace_field(fields, str(key), payload[key])
+        return tuple(fields)
     for key, value in payload.items():
-        label = _humanize_field(str(key))
-        if key == "components" and isinstance(value, list):
-            fields.append((label, _format_component_traces(value)))
-            continue
-        if key == "hits" and isinstance(value, list):
-            fields.append((label, _format_hit_traces(value)))
-            continue
-        if key == "metric" and isinstance(value, str):
-            fields.append((label, _humanize_field(value)))
-            continue
-        fields.append((label, _format_trace_value(value)))
+        _append_trace_field(fields, str(key), value)
     return tuple(fields)
 
 
@@ -359,35 +419,31 @@ def _format_component_amount(value: Any) -> str:
         return str(value)
 
 
-def _format_component_traces(components: list[Any]) -> str:
-    blocks: list[str] = []
-    for item in components:
+_COMPONENT_FIELD_ORDER = (
+    "concept",
+    "taxonomy",
+    "accession_number",
+    "form",
+    "start_date",
+    "end_date",
+    "source",
+    "source_url",
+)
+
+
+def _append_component_fields(fields: list[tuple[str, str]], components: list[Any]) -> None:
+    for index, item in enumerate(components):
         if not isinstance(item, dict):
-            blocks.append(f"- {_format_trace_value(item)}")
+            fields.append(("", _format_trace_value(item)))
             continue
+        if index:
+            fields.append(("", ""))
         metric = _humanize_field(str(item.get("metric") or "Component"))
-        amount = _format_component_amount(item.get("value"))
-        heading = f"- **{metric}**"
-        if amount:
-            heading = f"{heading} — {amount}"
-        lines = [heading]
-        for key, label in (
-            ("cik", "CIK"),
-            ("concept", "Concept"),
-            ("accession_number", "Accession"),
-        ):
+        fields.append((metric, _format_component_amount(item.get("value"))))
+        for key in _COMPONENT_FIELD_ORDER:
             raw = item.get(key)
             if raw:
-                lines.append(f"  - {label}: `{raw}`")
-        start = item.get("start_date")
-        end = item.get("end_date")
-        if start and end:
-            lines.append(f"  - Period: {_format_trace_value(start)} – {_format_trace_value(end)}")
-        url = item.get("source_url")
-        if url:
-            lines.append(f"  - [Filing]({url})")
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
+                _append_trace_field(fields, key, raw)
 
 
 _SNIPPET_DISPLAY_LIMIT = 280

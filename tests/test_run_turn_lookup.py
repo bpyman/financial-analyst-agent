@@ -87,6 +87,7 @@ class _FixtureFacts:
             taxonomy=TAXONOMY,
             concept=CONCEPT,
             source_url=SOURCE_URL,
+            source="sec_xbrl",
         )
 
 
@@ -126,6 +127,7 @@ class _ComponentFacts:
             taxonomy=TAXONOMY,
             concept=metric,
             source_url="https://www.sec.gov/Archives/edgar/data/1594805/shop.htm",
+            source="sec_xbrl",
         )
 
 
@@ -174,6 +176,9 @@ def test_run_turn_returns_lookup_table_for_google_latest_quarter_net_income() ->
     assert trace.args == {"company": "Google", "metric": "net_income"}
     assert trace.provenance["accession_number"] == ACCESSION
     assert trace.provenance["concept"] == CONCEPT
+    assert trace.provenance["form"] == FORM
+    assert trace.provenance["taxonomy"] == TAXONOMY
+    assert trace.provenance["source"] == "sec_xbrl"
     assert trace.provenance["source_url"] == SOURCE_URL
     assert trace.provenance["start_date"] == PERIOD_START.isoformat()
     assert trace.provenance["end_date"] == PERIOD_END.isoformat()
@@ -279,6 +284,9 @@ def test_run_turn_lookup_computes_shopify_net_margin() -> None:
     provenance_components = {item["metric"]: item for item in trace.provenance["components"]}
     assert provenance_components["net_income"]["value"] == str(net_income)
     assert provenance_components["revenue"]["value"] == str(revenue)
+    assert provenance_components["net_income"]["form"] == FORM
+    assert provenance_components["net_income"]["taxonomy"] == TAXONOMY
+    assert provenance_components["net_income"]["source"] == "sec_xbrl"
 
 
 def test_fixture_runtime_does_not_invent_net_income_for_unrelated_query() -> None:

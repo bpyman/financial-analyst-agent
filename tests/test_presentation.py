@@ -136,11 +136,14 @@ def _lookup_result() -> TurnResult:
                 tool="get_financials",
                 args={"company": "Google", "metric": "net_income"},
                 provenance={
+                    "form": "10-Q",
                     "accession_number": "0001652044-26-000048",
+                    "taxonomy": "us-gaap",
                     "concept": "NetIncomeLoss",
                     "source_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm",
                     "start_date": "2026-01-01",
                     "end_date": "2026-03-31",
+                    "source": "sec_xbrl",
                 },
             )
         ],
@@ -184,12 +187,20 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
         "Company": "Google",
         "Metric": "Net income",
     }
-    outputs = dict(trace.outputs)
-    assert outputs["Accession number"] == "0001652044-26-000048"
-    assert outputs["Concept"] == "NetIncomeLoss"
-    assert outputs["Start date"] == "Jan 1, 2026"
-    assert outputs["End date"] == "Mar 31, 2026"
-    assert "source_url" not in outputs
+    assert dict(trace.outputs) == {
+        "Form": "10-Q",
+        "Accession number": "0001652044-26-000048",
+        "Taxonomy": "us-gaap",
+        "Concept": "NetIncomeLoss",
+        "Start date": "Jan 1, 2026",
+        "End date": "Mar 31, 2026",
+        "Source": "SEC EDGAR",
+        "Source URL": (
+            "[www.sec.gov/…/goog-20260331.htm]"
+            "(https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm)"
+        ),
+    }
+    assert "`0001652044-26-000048`" not in dict(trace.outputs)["Accession number"]
     assert all("(" not in label and "_" not in label for label, _ in trace.inputs)
     assert all("(" not in label and "_" not in label for label, _ in trace.outputs)
 
@@ -469,7 +480,7 @@ def test_present_trace_keeps_extra_news_hit_fields() -> None:
     assert "Go to frontpage" not in hits
 
 
-def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None:
+def test_present_formula_trace_lists_each_component_as_provenance_rows() -> None:
     result = TurnResult(
         intent=Intent.LOOKUP,
         renderer=RendererKind.TABLE,
@@ -483,6 +494,9 @@ def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None
                             "cik": "0001594805",
                             "metric": "net_income",
                             "value": "100000000",
+                            "form": "10-Q",
+                            "taxonomy": "us-gaap",
+                            "source": "sec_xbrl",
                             "accession_number": "0001594805-26-000047",
                             "concept": "NetIncomeLoss",
                             "start_date": "2026-04-01",
@@ -493,6 +507,9 @@ def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None
                             "cik": "0001594805",
                             "metric": "revenue",
                             "value": "1000000000",
+                            "form": "10-Q",
+                            "taxonomy": "us-gaap",
+                            "source": "sec_xbrl",
                             "accession_number": "0001594805-26-000047",
                             "concept": "Revenues",
                             "start_date": "2026-04-01",
@@ -518,22 +535,41 @@ def test_present_formula_trace_lists_each_component_as_nested_markdown() -> None
     presented = present_turn(result)
     trace = presented.traces[0]
     assert dict(trace.inputs) == {"Issuers": "Shopify", "Metric": "Net margin"}
-    components = dict(trace.outputs)["Components"]
-    assert components == (
-        "- **Net income** — $100.00 M\n"
-        "  - CIK: `0001594805`\n"
-        "  - Concept: `NetIncomeLoss`\n"
-        "  - Accession: `0001594805-26-000047`\n"
-        "  - Period: Apr 1, 2026 – Jun 30, 2026\n"
-        "  - [Filing](https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)\n"
-        "\n"
-        "- **Revenue** — $1.00 B\n"
-        "  - CIK: `0001594805`\n"
-        "  - Concept: `Revenues`\n"
-        "  - Accession: `0001594805-26-000047`\n"
-        "  - Period: Apr 1, 2026 – Jun 30, 2026\n"
-        "  - [Filing](https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)"
+    assert trace.outputs == (
+        ("Net income", "$100.00 M"),
+        ("Concept", "NetIncomeLoss"),
+        ("Taxonomy", "us-gaap"),
+        ("Accession number", "0001594805-26-000047"),
+        ("Form", "10-Q"),
+        ("Start date", "Apr 1, 2026"),
+        ("End date", "Jun 30, 2026"),
+        ("Source", "SEC EDGAR"),
+        (
+            "Source URL",
+            "[www.sec.gov/…/shop.htm]"
+            "(https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)",
+        ),
+        ("", ""),
+        ("Revenue", "$1.00 B"),
+        ("Concept", "Revenues"),
+        ("Taxonomy", "us-gaap"),
+        ("Accession number", "0001594805-26-000047"),
+        ("Form", "10-Q"),
+        ("Start date", "Apr 1, 2026"),
+        ("End date", "Jun 30, 2026"),
+        ("Source", "SEC EDGAR"),
+        (
+            "Source URL",
+            "[www.sec.gov/…/shop.htm]"
+            "(https://www.sec.gov/Archives/edgar/data/1594805/shop.htm)",
+        ),
     )
+    labels = [label for label, _value in trace.outputs if label]
+    assert labels[0] == "Net income"
+    assert "Form" in labels
+    assert labels.index("Net income") < labels.index("Form")
+    assert "CIK" not in labels
+    assert all("`" not in value for _label, value in trace.outputs)
 
 
 def test_present_refuse_keeps_message() -> None:

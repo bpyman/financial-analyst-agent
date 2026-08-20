@@ -20,6 +20,9 @@ from test_run_turn_rank import (
 )
 
 HEALTHCARE_INCOME_QUERY = "What are the top 10 healthcare companies and the net income for each?"
+HEALTHCARE_NET_MARGINS_QUERY = (
+    "What are the top 10 healthcare companies and the net margins of each?"
+)
 
 # Fixture-runtime gold literals (recorded 10-Q facts, not live SEC).
 PERIOD_START = date(2026, 1, 1)
@@ -29,14 +32,19 @@ TAXONOMY = "us-gaap"
 CONCEPT = "NetIncomeLoss"
 
 LLY_NET_INCOME = Decimal("7396000000")
+LLY_REVENUE = Decimal("73960000000")
 LLY_ACCESSION = "0000059478-26-000045"
 LLY_SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/59478/000005947826000045/lly-20260331.htm"
 
 UNH_NET_INCOME = Decimal("6481000000")
+UNH_REVENUE = Decimal("64810000000")
 UNH_ACCESSION = "0000731766-26-000127"
 UNH_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/731766/000073176626000127/unh-20260331.htm"
 )
+UNH_PERIOD_START = date(2025, 10, 1)
+UNH_PERIOD_END = date(2025, 12, 31)
+REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
 @pytest.mark.gold
@@ -181,21 +189,27 @@ def _fact(
     value: Decimal,
     accession: str,
     source_url: str,
+    *,
+    metric: str = "net_income",
+    concept: str = CONCEPT,
+    start_date: date = PERIOD_START,
+    end_date: date = PERIOD_END,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         company_name=name,
         ticker=ticker,
         cik=cik,
-        metric="net_income",
+        metric=metric,
         value=value,
         currency="USD",
-        start_date=PERIOD_START,
-        end_date=PERIOD_END,
+        start_date=start_date,
+        end_date=end_date,
         form=FORM,
         accession_number=accession,
         taxonomy=TAXONOMY,
-        concept=CONCEPT,
+        concept=concept,
         source_url=source_url,
+        source="sec_xbrl",
     )
 
 
@@ -219,3 +233,130 @@ def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
     assert lilly.reason == "ambiguous_concept"
     assert unitedhealth.value == UNH_NET_INCOME
     assert all(row.reason == "missing_fact" for row in remaining)
+
+
+def test_run_turn_rank_and_lookup_computes_net_margin_per_ranked_issuer() -> None:
+    result = run_turn(
+        HEALTHCARE_NET_MARGINS_QUERY,
+        Runtime(
+            completer=_RankAndLookupNetMarginCompleter(),
+            facts=_CikMarginFacts(),
+            ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
+        ),
+    )
+
+    assert result.intent is Intent.RANK_AND_LOOKUP
+    assert result.renderer is RendererKind.TABLE
+    assert result.message is None
+    assert result.tool_traces[0].tool == "rank_companies"
+    lookup_traces = result.tool_traces[1:]
+    assert [trace.tool for trace in lookup_traces] == ["compare_metrics"] * 10
+    assert [trace.args for trace in lookup_traces] == [
+        {"issuers": [cik], "metric": "net_margin"}
+        for _name, _ticker, cik, _cap in HEALTHCARE_TOP_10
+    ]
+
+    assert len(result.table_rows) == 10
+    lilly, unitedhealth, *remaining = result.table_rows
+    assert lilly.rank == 1
+    assert lilly.ticker == "LLY"
+    assert lilly.cik == "0000059478"
+    assert lilly.metric == "net_margin"
+    assert lilly.value == LLY_NET_INCOME / LLY_REVENUE
+    assert lilly.start_date == PERIOD_START
+    assert lilly.end_date == PERIOD_END
+    assert lilly.reason is None
+    components = {component.metric: component for component in lilly.components}
+    assert components["net_income"].value == LLY_NET_INCOME
+    assert components["revenue"].value == LLY_REVENUE
+    assert components["net_income"].form == FORM
+    assert components["net_income"].taxonomy == TAXONOMY
+    assert components["net_income"].source == "sec_xbrl"
+
+    assert unitedhealth.ticker == "UNH"
+    assert unitedhealth.value == UNH_NET_INCOME / UNH_REVENUE
+    assert unitedhealth.start_date == UNH_PERIOD_START
+    assert unitedhealth.end_date == UNH_PERIOD_END
+    assert unitedhealth.reason is None
+
+    lilly_trace = lookup_traces[0]
+    provenance = {item["metric"]: item for item in lilly_trace.provenance["components"]}
+    assert provenance["net_income"]["value"] == str(LLY_NET_INCOME)
+    assert provenance["revenue"]["value"] == str(LLY_REVENUE)
+    assert provenance["net_income"]["form"] == FORM
+    assert provenance["net_income"]["taxonomy"] == TAXONOMY
+    assert provenance["net_income"]["source"] == "sec_xbrl"
+    assert provenance["net_income"]["cik"] == "0000059478"
+
+    for row in remaining:
+        assert row.metric == "net_margin"
+        assert row.value is None
+        assert row.reason == "missing_fact"
+        assert row.ticker in {ticker for _name, ticker, _cik, _cap in HEALTHCARE_TOP_10}
+
+
+class _RankAndLookupNetMarginCompleter:
+    def complete(self, query: str) -> SimpleNamespace:
+        if query != HEALTHCARE_NET_MARGINS_QUERY:
+            raise AssertionError(f"unexpected query: {query!r}")
+        return SimpleNamespace(
+            intent=Intent.RANK_AND_LOOKUP,
+            industry="healthcare",
+            limit=10,
+            metric="net_margin",
+        )
+
+
+class _CikMarginFacts:
+    """Net income and revenue per ranking CIK; issuers keep different fiscal calendars."""
+
+    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        if company == "0000059478":
+            if metric == "net_income":
+                return _fact(
+                    "Eli Lilly and Company",
+                    "LLY",
+                    "0000059478",
+                    LLY_NET_INCOME,
+                    LLY_ACCESSION,
+                    LLY_SOURCE_URL,
+                )
+            if metric == "revenue":
+                return _fact(
+                    "Eli Lilly and Company",
+                    "LLY",
+                    "0000059478",
+                    LLY_REVENUE,
+                    LLY_ACCESSION,
+                    LLY_SOURCE_URL,
+                    metric="revenue",
+                    concept=REVENUE_CONCEPT,
+                )
+        if company == "0000731766":
+            if metric == "net_income":
+                return _fact(
+                    "UnitedHealth Group Incorporated",
+                    "UNH",
+                    "0000731766",
+                    UNH_NET_INCOME,
+                    UNH_ACCESSION,
+                    UNH_SOURCE_URL,
+                    start_date=UNH_PERIOD_START,
+                    end_date=UNH_PERIOD_END,
+                )
+            if metric == "revenue":
+                return _fact(
+                    "UnitedHealth Group Incorporated",
+                    "UNH",
+                    "0000731766",
+                    UNH_REVENUE,
+                    UNH_ACCESSION,
+                    UNH_SOURCE_URL,
+                    metric="revenue",
+                    concept=REVENUE_CONCEPT,
+                    start_date=UNH_PERIOD_START,
+                    end_date=UNH_PERIOD_END,
+                )
+        raise UnsupportedQuarterlyFactError(
+            "No directly reported standalone-quarter fact exists for metric"
+        )
