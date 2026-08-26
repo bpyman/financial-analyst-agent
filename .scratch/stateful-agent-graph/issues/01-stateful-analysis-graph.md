@@ -1,6 +1,6 @@
 # 01 — Stateful analysis graph
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 ## Problem Statement
 
@@ -249,3 +249,7 @@ The persisted, patchable analysis spec is confirmed as the canonical representat
 The known hazard of a patch-based interface is scoping a follow-up wrongly. "Add Apple" is unambiguous; "compare to last year" is not. An ambiguous patch must clarify rather than guess, and `extend` versus `replace` is a decision the system can now get wrong in a way one-shot turns could not. That belongs in the first round of conversation-seam tests, not in a later hardening pass.
 
 The deterministic core is already the right shape for this. The runtime ports, the fact selector, the formula path, the ranking adapter, the numeral lock, and the presentation mapping all survive the redesign untouched. What changes is what sits above them.
+
+## Answer
+
+Shipped as tickets 02–15 on `cursor/stateful-analysis-graph-tickets`. The conversation seam, patchable analysis spec, multi-metric and multi-period composition, resumable clarification, thread evidence, concurrent dispatch, and the exploratory research lane are in the application. `run_turn` remains the gold-test wrapper.
