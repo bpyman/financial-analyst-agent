@@ -68,3 +68,22 @@ def test_openai_news_essay_receives_query_and_tool_json() -> None:
     assert "[n]" in client.calls[0]["instructions"]
     assert "1-based" in instructions
     assert "[1, 2]" in client.calls[0]["instructions"]
+
+
+def test_openai_explain_with_analysis_json_does_not_use_news_instructions() -> None:
+    client = _FakeOpenAIClient()
+    completer = OpenAIEssayCompleter(client, _MODEL)
+    analysis_json = (
+        '[{"company_name":"Apple Inc.","metric":"revenue","value":"100"}]'
+    )
+
+    completer.complete_essay("How could AI change bank underwriting?", analysis_json)
+
+    instructions = client.calls[0]["instructions"].casefold()
+    assert "news tool json" not in instructions
+    assert "bank underwriting" in client.calls[0]["input"].casefold()
+    assert "News tool JSON" not in client.calls[0]["input"]
+    assert "do not include numeric tokens" not in instructions
+    assert "analysis json" in client.calls[0]["input"].casefold() or (
+        "100" in client.calls[0]["input"]
+    )

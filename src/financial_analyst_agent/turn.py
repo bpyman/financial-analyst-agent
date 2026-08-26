@@ -1,15 +1,49 @@
-"""Application seam: run_turn(query, runtime) → TurnResult."""
+"""Application seam: run_turn(query, runtime) → TurnResult.
+
+Contracts (ports, Runtime, result models, enums, metric constants) live in
+``contracts``; this module keeps the workflow implementations and re-exports
+every public name callers already import from here.
+
+``run_turn`` is a compatibility wrapper over an ephemeral conversation thread.
+New multi-turn behaviour is asserted at ``run_conversation_turn``.
+"""
 
 import json
 import re
-from dataclasses import dataclass
 from datetime import date
-from enum import StrEnum
 from types import SimpleNamespace
-from typing import Any, Protocol
+from typing import Any
 
-from pydantic import BaseModel, Field
-
+from financial_analyst_agent.contracts import (
+    ALLOWED_METRICS,
+    AMBIGUOUS_CONCEPT,
+    EXPLORATORY_RESEARCH_BANNER,
+    FORMULA_COMPONENTS,
+    FORMULA_METRICS,
+    MISSING_FACT,
+    MODEL_ANALYSIS_BANNER,
+    PERCENT_FORMULAS,
+    PERIOD_MISMATCH,
+    REPORTED_METRICS,
+    SEARCH_NEWS_MAX_RESULTS,
+    SEARCH_NEWS_TIME_RANGE,
+    SEARCH_NEWS_TOPIC,
+    SNAPSHOT_METRICS,
+    ZERO_DENOMINATOR,
+    Completer,
+    ComponentProvenance,
+    EssayCompleter,
+    FactsPort,
+    Intent,
+    NewsHit,
+    NewsPort,
+    RankingPort,
+    RendererKind,
+    Runtime,
+    TableRow,
+    ToolTrace,
+    TurnResult,
+)
 from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
@@ -18,68 +52,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FinancialFact
-from financial_analyst_agent.domain.serialization import DecimalStr
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
-
-
-class Intent(StrEnum):
-    LOOKUP = "lookup"
-    COMPARE = "compare"
-    RANK = "rank"
-    RANK_AND_LOOKUP = "rank_and_lookup"
-    EXPLAIN = "explain"
-    NEWS_AND_EXPLAIN = "news_and_explain"
-
-
-class RendererKind(StrEnum):
-    TABLE = "table"
-    ESSAY = "essay"
-    REFUSE = "refuse"
-    CLARIFY = "clarify"
-
-
-REPORTED_METRICS: tuple[str, ...] = (
-    "revenue",
-    "cost_of_revenue",
-    "gross_profit",
-    "operating_expenses",
-    "operating_income",
-    "net_income",
-    "research_and_development",
-    "selling_general_and_administrative",
-    "interest_expense",
-    "income_tax_expense",
-    "pretax_income",
-)
-FORMULA_METRICS: tuple[str, ...] = (
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
-    "rd_to_sales",
-    "sga_ratio",
-    "effective_tax_rate",
-    "interest_coverage",
-)
-SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap",)
-ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS + SNAPSHOT_METRICS
-PERCENT_FORMULAS: tuple[str, ...] = (
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
-    "rd_to_sales",
-    "sga_ratio",
-    "effective_tax_rate",
-)
-FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
-    "gross_margin": ("gross_profit", "revenue"),
-    "operating_margin": ("operating_income", "revenue"),
-    "net_margin": ("net_income", "revenue"),
-    "rd_to_sales": ("research_and_development", "revenue"),
-    "sga_ratio": ("selling_general_and_administrative", "revenue"),
-    "effective_tax_rate": ("income_tax_expense", "pretax_income"),
-    "interest_coverage": ("operating_income", "interest_expense"),
-}
 
 _LOOKUP_FAILURES = (
     AmbiguousFactError,
@@ -87,113 +60,45 @@ _LOOKUP_FAILURES = (
     AmbiguousCompanyError,
     CompanyNotFoundError,
 )
-PERIOD_MISMATCH = "period_mismatch"
-MISSING_FACT = "missing_fact"
-AMBIGUOUS_CONCEPT = "ambiguous_concept"
-ZERO_DENOMINATOR = "zero_denominator"
-MODEL_ANALYSIS_BANNER = "model-analysis"
-SEARCH_NEWS_TOPIC = "news"
-SEARCH_NEWS_MAX_RESULTS = 5
-SEARCH_NEWS_TIME_RANGE = "week"
 _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 
-
-class Completer(Protocol):
-    def complete(self, query: str) -> Any: ...
-
-
-class EssayCompleter(Protocol):
-    def complete_essay(self, query: str, tool_json: str = "") -> str: ...
-
-
-class FactsPort(Protocol):
-    def get_financials(self, company: str, metric: str) -> FinancialFact: ...
-
-
-class RankingPort(Protocol):
-    def rank_companies(self, industry: str, limit: int) -> Any: ...
-
-    def lookup_member(self, company: str) -> Any: ...
-
-    def snapshot_as_of(self) -> str: ...
-
-    def snapshot_source(self) -> str: ...
-
-
-class NewsPort(Protocol):
-    def search_news(self, query: str) -> list["NewsHit"]: ...
-
-
-@dataclass(frozen=True)
-class Runtime:
-    completer: Completer
-    facts: FactsPort
-    ranking: RankingPort | None = None
-    news: NewsPort | None = None
-    essay: EssayCompleter | None = None
-
-
-class NewsHit(BaseModel):
-    title: str
-    url: str
-    snippet: str = ""
-    score: float | None = None
-    published: str | None = None
-
-
-class ToolTrace(BaseModel):
-    tool: str
-    args: dict[str, Any]
-    provenance: dict[str, Any] = Field(default_factory=dict)
-
-
-class ComponentProvenance(BaseModel):
-    metric: str
-    value: DecimalStr
-    start_date: date
-    end_date: date
-    form: str
-    accession_number: str
-    taxonomy: str
-    concept: str
-    source_url: str
-    source: str
-
-
-class TableRow(BaseModel):
-    company_name: str
-    ticker: str
-    cik: str
-    metric: str
-    rank: int | None = None
-    value: DecimalStr | None = None
-    currency: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
-    form: str | None = None
-    accession_number: str | None = None
-    taxonomy: str | None = None
-    concept: str | None = None
-    source_url: str | None = None
-    components: list[ComponentProvenance] = Field(default_factory=list)
-    reason: str | None = None
-
-
-class TurnResult(BaseModel):
-    intent: Intent
-    tool_traces: list[ToolTrace]
-    renderer: RendererKind
-    table_rows: list[TableRow] = Field(default_factory=list)
-    banners: list[str] = Field(default_factory=list)
-    numeral_lock_extras: list[str] = Field(default_factory=list)
-    message: str | None = None
-    essay: str | None = None
-    citations: list[NewsHit] = Field(default_factory=list)
-    candidates: tuple[str, ...] = ()
-
+__all__ = [
+    "ALLOWED_METRICS",
+    "AMBIGUOUS_CONCEPT",
+    "EXPLORATORY_RESEARCH_BANNER",
+    "FORMULA_COMPONENTS",
+    "FORMULA_METRICS",
+    "MISSING_FACT",
+    "MODEL_ANALYSIS_BANNER",
+    "PERCENT_FORMULAS",
+    "PERIOD_MISMATCH",
+    "REPORTED_METRICS",
+    "SEARCH_NEWS_MAX_RESULTS",
+    "SEARCH_NEWS_TIME_RANGE",
+    "SEARCH_NEWS_TOPIC",
+    "SNAPSHOT_METRICS",
+    "ZERO_DENOMINATOR",
+    "Completer",
+    "ComponentProvenance",
+    "EssayCompleter",
+    "FactsPort",
+    "Intent",
+    "NewsHit",
+    "NewsPort",
+    "RankingPort",
+    "RendererKind",
+    "Runtime",
+    "TableRow",
+    "ToolTrace",
+    "TurnResult",
+    "compare_metrics",
+    "execute_turn",
+    "run_turn",
+    "snapshot_compare_rows",
+]
 
 def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     def replace(match: re.Match[str]) -> str:
@@ -214,12 +119,14 @@ def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> l
     )
 
 
-def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
+def _explain_turn(
+    plan: Any, runtime: Runtime, *, grounding_json: str = ""
+) -> TurnResult:
     if runtime.essay is None:
         raise RuntimeError("explain intent requires an essay completer")
     traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
     try:
-        essay = runtime.essay.complete_essay(plan.topic)
+        essay = runtime.essay.complete_essay(plan.topic, grounding_json)
     except ProviderError as exc:
         traces[0] = traces[0].model_copy(
             update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
@@ -230,9 +137,10 @@ def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
-    extras = _numeral_lock_extras(
-        essay, json.dumps([trace.model_dump(mode="json") for trace in traces])
+    lock_json = grounding_json or json.dumps(
+        [trace.model_dump(mode="json") for trace in traces]
     )
+    extras = _numeral_lock_extras(essay, lock_json)
     if extras:
         invented = ", ".join(extras)
         return TurnResult(
@@ -325,6 +233,68 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
         renderer=RendererKind.ESSAY,
         citations=hits,
         essay=essay,
+    )
+
+
+def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Cited research draft via the constrained news wrapper; never structured rows."""
+    if runtime.news is None:
+        raise RuntimeError("exploratory_research intent requires a news adapter")
+    if runtime.essay is None:
+        raise RuntimeError("exploratory_research intent requires an essay completer")
+    search_args = _search_news_args(query)
+    try:
+        hits = _usable_news_hits(runtime.news.search_news(query))
+    except ProviderError as exc:
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=[
+                ToolTrace(
+                    tool="search_news",
+                    args=search_args,
+                    provenance={
+                        "error": {"code": exc.code, "message": str(exc)},
+                    },
+                )
+            ],
+            renderer=RendererKind.REFUSE,
+            message=("News search is unavailable. Refusing rather than using training data."),
+        )
+    traces = [
+        ToolTrace(
+            tool="search_news",
+            args=search_args,
+            provenance={"hits": [hit.model_dump(mode="json") for hit in hits]},
+        )
+    ]
+    if not hits:
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="No usable news hits for this query. Refusing rather than using training data.",
+        )
+    tool_json = _hits_json(hits)
+    essay = runtime.essay.complete_essay(query, tool_json)
+    extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
+    if extras:
+        invented = ", ".join(extras)
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            citations=hits,
+            numeral_lock_extras=extras,
+            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+        )
+    return TurnResult(
+        intent=Intent.EXPLORATORY_RESEARCH,
+        tool_traces=traces,
+        renderer=RendererKind.ESSAY,
+        banners=[EXPLORATORY_RESEARCH_BANNER],
+        citations=hits,
+        essay=essay,
+        table_rows=[],
     )
 
 
@@ -481,14 +451,28 @@ def _compare_row(identity: Any, metric: str, **kwargs: Any) -> TableRow:
     )
 
 
-def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[TableRow]:
+def compare_metrics(
+    facts: FactsPort,
+    issuers: list[str],
+    metric: str,
+    *,
+    report_date: date | None = None,
+) -> list[TableRow]:
     """Resolve issuers, fetch formula components, and period-align Decimal results."""
     component_names = _component_metrics(metric)
     rows: list[TableRow] = []
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            fetched = [facts.get_financials(issuer, component) for component in component_names]
+            if report_date is None:
+                fetched = [
+                    facts.get_financials(issuer, component) for component in component_names
+                ]
+            else:
+                fetched = [
+                    facts.get_financials(issuer, component, report_date=report_date)
+                    for component in component_names
+                ]
         except _LOOKUP_FAILURES as exc:
             rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
             continue
@@ -638,16 +622,26 @@ def _compare_components_provenance(rows: list[TableRow]) -> dict[str, Any]:
     }
 
 
-def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runtime) -> TurnResult:
+def _metrics_turn(
+    intent: Intent,
+    issuers: list[str],
+    metric: str,
+    runtime: Runtime,
+    *,
+    report_date: date | None = None,
+) -> TurnResult:
     if metric in SNAPSHOT_METRICS:
         return _snapshot_metrics_turn(intent, issuers, metric, runtime)
-    rows = compare_metrics(runtime.facts, issuers, metric)
+    rows = compare_metrics(runtime.facts, issuers, metric, report_date=report_date)
+    args: dict[str, Any] = {"issuers": issuers, "metric": metric}
+    if report_date is not None:
+        args["report_date"] = report_date.isoformat()
     return TurnResult(
         intent=intent,
         tool_traces=[
             ToolTrace(
                 tool="compare_metrics",
-                args={"issuers": issuers, "metric": metric},
+                args=args,
                 provenance=_compare_components_provenance(rows),
             )
         ],
@@ -724,7 +718,50 @@ def _snapshot_metrics_turn(
 
 
 def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    return _metrics_turn(Intent.COMPARE, list(plan.companies), plan.metric, runtime)
+    report_date = getattr(plan, "report_date", None)
+    return _metrics_turn(
+        Intent.COMPARE, list(plan.companies), plan.metric, runtime, report_date=report_date
+    )
+
+
+def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    metric = plan.metric
+    report_date = getattr(plan, "report_date", None)
+    if metric in FORMULA_COMPONENTS:
+        return _metrics_turn(
+            Intent.LOOKUP, [plan.company], metric, runtime, report_date=report_date
+        )
+    if metric in SNAPSHOT_METRICS:
+        return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
+    args: dict[str, Any] = {"company": plan.company, "metric": metric}
+    if report_date is not None:
+        args["report_date"] = report_date.isoformat()
+    try:
+        if report_date is None:
+            fact = runtime.facts.get_financials(plan.company, metric)
+        else:
+            fact = runtime.facts.get_financials(
+                plan.company, metric, report_date=report_date
+            )
+    except _LOOKUP_FAILURES as exc:
+        return TurnResult(
+            intent=Intent.LOOKUP,
+            tool_traces=[],
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    return TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[
+            ToolTrace(
+                tool="get_financials",
+                args=args,
+                provenance=_lookup_provenance(fact),
+            )
+        ],
+        renderer=RendererKind.TABLE,
+        table_rows=[_table_row_from_fact(fact)],
+    )
 
 
 def _plan_with_metric(plan: Any, metric: str) -> Any:
@@ -748,14 +785,23 @@ def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
     )
 
 
-def run_turn(query: str, runtime: Runtime) -> TurnResult:
+def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
+    from financial_analyst_agent.graph import run_workflow_turn
+
+    return run_workflow_turn(plan, runtime, query=query)
+
+
+def execute_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Plan and run one one-shot analysis. Run state is not returned or persisted."""
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
-        return _explain_turn(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
-        return _news_and_explain_turn(query, runtime)
+        return _run_workflow(plan, runtime, query=query)
+    if plan.intent is Intent.EXPLORATORY_RESEARCH:
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.RANK:
-        return _rank_turn(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     resolved = resolve_metric_phrase(query)
     if resolved.kind == "ambiguous":
         return _clarify_metric(plan.intent, resolved.candidates)
@@ -763,6 +809,10 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
         term = fallback if fallback not in ALLOWED_METRICS else "unknown"
         return _refuse_unknown_metric(plan.intent, term)
+    if resolved.kind == "unique" and len(resolved.metrics) > 1:
+        # One-shot execute_turn still clarifies; multi-metric composition runs
+        # through run_spec_turn on the conversation seam (ticket 09).
+        return _clarify_metric(plan.intent, resolved.metrics)
     if resolved.kind == "unique" and resolved.metric is not None:
         metric = resolved.metric
     else:
@@ -771,37 +821,26 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.COMPARE:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _compare_turn(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.RANK_AND_LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _rank_and_lookup_turn(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        if metric in FORMULA_COMPONENTS:
-            return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-        if metric in SNAPSHOT_METRICS:
-            return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-    args = {"company": plan.company, "metric": metric}
-    try:
-        fact = runtime.facts.get_financials(plan.company, metric)
-    except _LOOKUP_FAILURES as exc:
-        return TurnResult(
-            intent=plan.intent,
-            tool_traces=[],
-            renderer=RendererKind.REFUSE,
-            message=str(exc),
-        )
-    return TurnResult(
-        intent=plan.intent,
-        tool_traces=[
-            ToolTrace(
-                tool="get_financials",
-                args=args,
-                provenance=_lookup_provenance(fact),
-            )
-        ],
-        renderer=RendererKind.TABLE,
-        table_rows=[_table_row_from_fact(fact)],
-    )
+        return _run_workflow(plan, runtime, query=query)
+    raise ValueError(f"unsupported intent: {plan.intent!r}")
+
+
+def run_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Compatibility wrapper: one ephemeral conversation thread → TurnResult."""
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.thread_store import EphemeralThreadStore
+
+    return run_conversation_turn(
+        "ephemeral",
+        query,
+        runtime,
+        store=EphemeralThreadStore(),
+    ).result

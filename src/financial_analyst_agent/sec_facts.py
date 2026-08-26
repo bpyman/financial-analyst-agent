@@ -1,5 +1,6 @@
 """SEC fact lookup over an injectable live or recorded data source."""
 
+from datetime import date
 from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
@@ -36,11 +37,16 @@ class SECDataSource(Protocol):
     def close(self) -> None: ...
 
 
-def _related_lookup_ciks(resolved_cik: str, filings: list[Filing]) -> tuple[str, ...]:
+def _related_lookup_ciks(
+    resolved_cik: str,
+    filings: list[Filing],
+    *,
+    report_date: date | None = None,
+) -> tuple[str, ...]:
     """Ticker-map CIK first, then a distinct accession-prefix filer if present."""
     ordered = [resolved_cik]
     try:
-        candidates = get_candidate_filings(filings)
+        candidates = get_candidate_filings(filings, report_date=report_date)
     except FilingNotFoundError:
         return tuple(ordered)
     for filing in candidates:
@@ -104,7 +110,13 @@ class SecFactLookup:
         self._company_facts_by_cik[cik] = payload
         return payload
 
-    def get_financials(self, company: str, metric: str) -> FinancialFact:
+    def get_financials(
+        self,
+        company: str,
+        metric: str,
+        *,
+        report_date: date | None = None,
+    ) -> FinancialFact:
         parsed_metric = parse_metric(metric)
         tickers_payload = self._cached_company_tickers()
         resolved = resolve_company(company, tickers_payload)
@@ -113,7 +125,7 @@ class SecFactLookup:
         filings = parse_submissions(submissions_payload)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
-        for cik in _related_lookup_ciks(resolved.cik, filings):
+        for cik in _related_lookup_ciks(resolved.cik, filings, report_date=report_date):
             try:
                 company_facts_payload = self._cached_company_facts(cik)
             except ProviderError as exc:
@@ -139,6 +151,7 @@ class SecFactLookup:
                     ticker,
                     cik,
                     source_url_for_filing,
+                    report_date=report_date,
                 )
             except (UnsupportedQuarterlyFactError, FilingNotFoundError) as exc:
                 last_unsupported = exc
@@ -160,3 +173,13 @@ class SecFactLookup:
             "No directly reported standalone-quarter fact exists for metric",
             details={"metric": parsed_metric.value},
         )
+
+    def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
+        """Newest-first distinct quarterly report dates for a company."""
+        from financial_analyst_agent.services.filing_selector import list_quarterly_report_dates
+
+        tickers_payload = self._cached_company_tickers()
+        resolved = resolve_company(company, tickers_payload)
+        submissions_payload = self._cached_submissions(resolved.cik)
+        filings = parse_submissions(submissions_payload)
+        return tuple(list_quarterly_report_dates(filings, limit=limit))

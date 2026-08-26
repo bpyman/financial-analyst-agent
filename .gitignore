@@ -42,3 +42,6 @@ Thumbs.db
 
 # Local git worktrees
 .worktrees/
+
+# Ralph loop prompt (rewritten each iteration)
+.scratch/.ralph-run.md

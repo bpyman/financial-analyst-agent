@@ -1,60 +1,61 @@
 # ISSUES
 
-Read PRD.md and progress.txt.
-Local issue files from 'issues/' are provided at start of context.  Parse them to understand the open issues.
-If all ready-for-agent tasks are complete, output <promise>NO MORE TASKS</promise>.
+Read `prd.md`, `progress.txt`, and `CONTEXT.md`. Tracker conventions live in `docs/agents/issue-tracker.md`. An issue **index** (path, status, blockers) is provided above. Open the chosen ticket file on disk; do not expect full bodies in this prompt.
+
+A ticket is **actionable** when all of these hold:
+
+- `Status:` is `ready-for-agent` (a missing Status counts as ready-for-agent when the file is still in `issues/`, not `issues/done/`)
+- it is on the **frontier**: every ticket in `Blocked by:` is `Status: resolved` or lives under `issues/done/` — confirm on disk if the index is ambiguous
+- it is an implementation ticket (`**What to build:**` is present). A parent spec (user stories / implementation decisions, no What to build) stays put while numbered implementation tickets exist
+
+Among the frontier, lowest number in that feature wins, then the priority order below.
+
+If nothing is actionable, output <promise>NO MORE TASKS</promise> and stop.
 
 # TASK SELECTION
 
-Pick the next task.  Prioritize tasks in this order:
+Pick one ticket, in this order:
 
 1. Critical bugfixes
-2. Development infrastructure (required tests, types, dev scripts)
-3. Tracer bullets for new features
-
-Tracer bullets are small slices of functionality that go through all layers of the system, allowing you to test and validate your approach early.  This helps in identifying potential issues and ensure that the overall architecture is sound before investing significant time in development.
-
-TL;DR - build a tiny, end-to-end slice of the feature first, then expand it out.
-
+2. Development infrastructure (tests, types, seams the next tracer needs)
+3. Tracer bullets — a thin vertical slice through every layer, demoable on its own
 4. Polish and quick wins
 5. Refactors
 
 # EXPLORATION
 
-Explore the repo.
+Read the chosen ticket, any spec it names, `CONTEXT.md`, and the ADRs it cites. Then the code. Name things with the glossary in `CONTEXT.md`.
 
 # IMPLEMENTATION
 
-Use /tdd to complete the task.
+Follow the TDD skill: red, then green, at the seams the ticket names. One ticket only.
 
 # FEEDBACK LOOPS
 
-Before committing, run the feedback loops:
+Before committing, from the repo root:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
+- `uv run pytest`
+- `uv run ruff check src tests`
+- `uv run mypy`
+
+All three must pass. Default tests stay offline (`pytest` already excludes `network`).
 
 # COMMIT
 
-Make a git commit.  The commit message must include:
+Commit this ticket's work. The message says why, then:
 
-1. Include key decisions made
-2. Include files changed
-3. Blockers or notes for next interation
+1. Key decisions
+2. Files changed
+3. Blockers or notes for the next iteration
 
-# THE ISSUE
+# CLOSE THE TICKET
 
-After completing each task, append to progress.txt:
-- Task completed and PRD item reference
-- Key decisions made and reasoning
-- Files changed
-- Any blockers or notes for next iteration
-Keep entries concise. This file helps future iterations skip exploration.
+Append a dated entry to `progress.txt`: ticket path, key decisions, files changed, blockers / next.
 
-If the task is complete, move the issue file to `issues/done/`.
+If the ticket is done: set `Status: resolved` and append `## Answer` with what shipped.
 
-If the task is not complete, add a note to the issue file with what was done.
+If the ticket is not done: append `## Comments` with what changed and what remains; leave `Status: ready-for-agent`.
 
 # FINAL RULES
 
-ONLY WORK ON A SINGLE TASK.
+Work a single ticket.

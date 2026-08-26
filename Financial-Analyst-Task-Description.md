@@ -1,5 +1,7 @@
 # Financial Analyst Task Description
 
+> Original interview brief. The session was 20 August 2026, 5 p.m. ET; it went well. There is no remaining deadline. This file is kept as the source brief, not as a schedule.
+
 Hi Blake,
 
 Thanks for confirming the time. I’ve sent out the meeting invite.

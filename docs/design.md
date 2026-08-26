@@ -61,6 +61,10 @@ flowchart TB
 5. **Render** — a typed `TurnResult` becomes a table, grounded essay, clarification, or refusal.
    Financial values are never rewritten by the model.
 
+The diagram and lifecycle above describe the shipped one-shot path. The next architecture is a
+persisted conversation thread carrying a patchable analysis spec; see
+[ADR 0005](adr/0005-stateful-analysis-graph.md). The trust boundary is identical in both.
+
 ## System boundaries
 
 ### Streamlit — audience layer
@@ -107,6 +111,10 @@ into fact lookup—the model never generates the constituent list.
 **Trade-off:** new workflows require code and tests, but existing behavior remains predictable
 and inspectable.
 
+**Revision:** [ADR 0005](adr/0005-stateful-analysis-graph.md) keeps constrained agency and drops
+the one-prompt-one-intent rule. Composition moves into a typed analysis spec the model may patch
+but not resolve. An open ReAct loop over the number path stays rejected.
+
 ### 2. One application interface, replaceable adapters
 
 **Decision:** all entry points call `run_turn(query, runtime)`, with providers injected through
@@ -116,6 +124,10 @@ and inspectable.
 Live and recorded providers can change without creating separate execution paths.
 
 **Trade-off:** `run_turn` is a critical module and must be kept cohesive as the product grows.
+
+**Revision:** ADR 0005 adds a conversation seam (thread, message, runtime) above `run_turn`, which
+becomes a compatibility wrapper over an ephemeral single-message thread. `Runtime` and its ports
+are unchanged.
 
 ### 3. SEC XBRL as the quarterly source of truth
 
@@ -159,14 +171,16 @@ hits and citations; a numeral lock rejects numeric tokens absent from the suppli
 
 **Trade-off:** responses are more conservative and sometimes require the user to rephrase.
 
-See [ADR 0004](adr/0004-ambiguous-metric-clarify.md).
+See [ADR 0004](adr/0004-ambiguous-metric-clarify.md), whose clarify mechanism becomes a resumable
+interrupt under [ADR 0005](adr/0005-stateful-analysis-graph.md): the analyst answers the one open
+question and the pending analysis continues. The candidate set is still the closed catalog.
 
 ### 6. Real MCP boundary without a fragile demo dependency
 
 **Decision:** FastMCP exposes the five tool capabilities over HTTP, while the app may call the
 same contracts in-process.
 
-**Why:** MCP is a genuine integration boundary, but the interview path does not depend on a
+**Why:** MCP is a genuine integration boundary, but the live Streamlit path does not depend on a
 stdio child process or unnecessary network hop. The five capabilities are financial lookup,
 comparison, ranking, news search, and qualitative explanation.
 

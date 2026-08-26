@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
+# Repeat Ralph until NO MORE TASKS or the iteration cap.
+# Usage: bash ralph/afk.sh <iterations> [feature-slug]
 set -eo pipefail
 
+# shellcheck source=lib.sh
+source "$(dirname "$0")/lib.sh"
+ralph_cd_root
+
 if [ -z "${1:-}" ]; then
-  echo "Usage: $0 <iterations>"
+  echo "Usage: $0 <iterations> [feature-slug]"
   exit 1
 fi
+
+iterations="$1"
+feature="${2:-}"
 
 # Extract only new streaming text, excluding Cursor's duplicate flush events.
 stream_text='
@@ -24,22 +33,15 @@ final_result='
   | .result // empty
 '
 
-for ((i=1; i<=$1; i++)); do
+for ((i=1; i<=iterations; i++)); do
   tmpfile=$(mktemp)
   trap 'rm -f "$tmpfile"' EXIT
 
-  commits=$(git log -n 5 \
-    --format="%H%n%ad%n%B---" \
-    --date=short 2>/dev/null || echo "No commits found")
-
-  issues=$(cat issues/*.md 2>/dev/null || echo "No issues found")
+  commits=$(ralph_recent_commits)
+  issues=$(ralph_collect_issues "$feature")
   prompt=$(cat ralph/prompt.md)
 
-  agent --print \
-    --force \
-    --output-format stream-json \
-    --stream-partial-output \
-    "Previous commits:
+  ralph_run_agent "Previous commits:
 
 $commits
 

@@ -1,6 +1,6 @@
 # Quarterly fact module: one call, one fact
 
-Lookup, compare, and rank-and-lookup all need the latest standalone 10-Q number for a name and one reported metric. Today that path returns a tuple and leaves related-CIK / 404 / cache wiring in `SecFactLookup` for callers to interpret. The deepened module’s interface is `get_financials(company: str, metric: str) -> FinancialFact`. Implement after the Thursday demo. Do not fold in ADR 0002 membership; that is a different seam in front of this module.
+Lookup, compare, and rank-and-lookup all need the latest standalone 10-Q number for a name and one reported metric. Today that path returns a tuple and leaves related-CIK / 404 / cache wiring in `SecFactLookup` for callers to interpret. The deepened module’s interface is `get_financials(company: str, metric: str) -> FinancialFact`. Not required for the interview POC that shipped 20 August 2026; remaining deepening is unscheduled. Do not fold in ADR 0002 membership; that is a different seam in front of this module.
 
 ## Locked
 

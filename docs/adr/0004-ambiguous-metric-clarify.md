@@ -1,5 +1,7 @@
 # Ambiguous metric phrases clarify; they do not fetch
 
+> **Revised by [ADR 0005](0005-stateful-analysis-graph.md):** the candidate-set rule and the phrase table below stand unchanged. What changes is the mechanism — clarify is no longer a dead end. On a conversation thread it is an `interrupt` holding a pending analysis spec, so answering the one open question resumes the planned work instead of requiring a retype. The "hold a pending plan" option below was rejected on a one-shot premise that no longer holds.
+
 A metric phrase is taken from the **user question**, not from `plan.metric`. Longest closed-table span wins (word boundaries). An exact catalog name or unique alias may run tools. An **ambiguous metric** returns `RendererKind.CLARIFY` with only those humanized names, no tools, same planned intent; the analyst retypes. An **unknown metric** still refuses with the full catalog. `parse_metric` unknown strings become `UnknownMetricError` — that error is not the clarify path. Gold prompt 2 says **net income**; the interview brief’s “reported income” is left ambiguous on purpose. The phrase table grows when the catalog grows; it is not inferred from stems (`operating` is not a metric). Trusting the planner’s slug was rejected: the model will guess `net_income` for “income” and skip the pane.
 
 ## Phrase table
@@ -13,7 +15,7 @@ Two unique catalog names in one question are also an ambiguous metric (those nam
 ## Considered Options
 
 - **LLM writes a clarifying question** — rejected: the catalog owns the candidate set.
-- **Hold a pending plan / chips** — rejected: `run_turn` stays one-shot; no multi-turn memory.
+- **Hold a pending plan / chips** — rejected *at the time*: `run_turn` was one-shot with no multi-turn state. Superseded by ADR 0005, which persists the analysis spec on a thread and resumes it after the answer. Chips remain rejected; the analyst still retypes the metric, not clicks it.
 - **Match `plan.metric` only** — rejected: live OpenAI resolves collisions silently.
 - **Alias `reported income` → net income** — rejected: operating income is also reported.
 - **Treat `operating` as ambiguous** — rejected: the word appears in non-metric questions.

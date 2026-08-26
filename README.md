@@ -1,6 +1,6 @@
 # Financial analyst agent
 
-Thursday interview POC: one Streamlit window, closed intents, SEC XBRL facts, snapshot ranking, and labeled essays that cannot invent numbers.
+Portfolio project that started as a 20 August 2026 interview POC (that session went well; there is no remaining deadline). One Streamlit window, closed intents, SEC XBRL facts, snapshot ranking, and labeled essays that cannot invent numbers.
 
 The system design (diagram + ADRs) is [`docs/design.md`](docs/design.md).
 
@@ -14,7 +14,7 @@ copy .env.example .env
 Fill `OPENAI_API_KEY`, `SEC_USER_AGENT`, and `TAVILY_API_KEY` in `.env`. Then:
 
 ```text
-uv run streamlit run src/financial_analyst_agent/app.py
+uv run python -m streamlit run src/financial_analyst_agent/app.py
 ```
 
 Live default. Scripted prompts:

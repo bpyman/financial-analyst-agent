@@ -91,6 +91,159 @@ def _quarterly_net_income_facts(cik: str, accession: str) -> dict[str, object]:
     }
 
 
+def _submissions_two_quarters(cik: str) -> dict[str, object]:
+    return {
+        "cik": int(cik),
+        "name": "Exxon Mobil Corporation",
+        "tickers": ["XOM"],
+        "filings": {
+            "recent": {
+                "form": ["10-Q", "10-Q"],
+                "accessionNumber": ["0000034088-26-000093", "0000034088-26-000050"],
+                "filingDate": ["2026-08-03", "2026-05-05"],
+                "reportDate": ["2026-06-30", "2026-03-31"],
+                "primaryDocument": ["xom-20260630.htm", "xom-20260331.htm"],
+            }
+        },
+    }
+
+
+def _two_quarter_net_income_facts(cik: str) -> dict[str, object]:
+    return {
+        "cik": int(cik),
+        "entityName": "Exxon Mobil Corporation",
+        "facts": {
+            "us-gaap": {
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2026-04-01",
+                                "end": "2026-06-30",
+                                "val": 14525000000,
+                                "accn": "0000034088-26-000093",
+                                "form": "10-Q",
+                                "filed": "2026-08-03",
+                            },
+                            {
+                                "start": "2026-01-01",
+                                "end": "2026-03-31",
+                                "val": 7713000000,
+                                "accn": "0000034088-26-000050",
+                                "form": "10-Q",
+                                "filed": "2026-05-05",
+                            },
+                        ]
+                    }
+                }
+            }
+        },
+    }
+
+
+def test_sec_fact_lookup_named_report_date_returns_that_quarter() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/company_tickers.json"):
+            return httpx.Response(
+                200,
+                json={
+                    "0": {
+                        "cik_str": 34088,
+                        "ticker": "XOM",
+                        "title": "Exxon Mobil Corporation",
+                    }
+                },
+            )
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=_submissions_two_quarters(PREDECESSOR_CIK))
+        if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=_two_quarter_net_income_facts(PREDECESSOR_CIK))
+        return httpx.Response(404, json={"error": path})
+
+    settings = Settings(
+        sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        sec_max_requests_per_second=5.0,
+    )
+    client = SECClient(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    lookup = SecFactLookup(settings, client=client)
+    fact = lookup.get_financials(
+        "XOM",
+        "net_income",
+        report_date=date(2026, 3, 31),
+    )
+    assert fact.value == Decimal("7713000000")
+    assert fact.end_date == date(2026, 3, 31)
+    assert fact.accession_number == "0000034088-26-000050"
+
+
+def test_sec_fact_lookup_named_report_date_missing_does_not_use_latest() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/company_tickers.json"):
+            return httpx.Response(
+                200,
+                json={
+                    "0": {
+                        "cik_str": 34088,
+                        "ticker": "XOM",
+                        "title": "Exxon Mobil Corporation",
+                    }
+                },
+            )
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=_submissions_two_quarters(PREDECESSOR_CIK))
+        if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=_two_quarter_net_income_facts(PREDECESSOR_CIK))
+        return httpx.Response(404, json={"error": path})
+
+    settings = Settings(
+        sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        sec_max_requests_per_second=5.0,
+    )
+    client = SECClient(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    lookup = SecFactLookup(settings, client=client)
+    with pytest.raises(UnsupportedQuarterlyFactError) as exc_info:
+        lookup.get_financials("XOM", "net_income", report_date=date(2025, 12, 31))
+    assert "2025-12-31" in str(exc_info.value.details.get("report_date", ""))
+
+
+
+def _empty_facts(cik: str) -> dict[str, object]:
+    return {"cik": int(cik), "entityName": "Exxon Mobil Corporation", "facts": {"us-gaap": {}}}
+
+
+def _quarterly_net_income_facts(cik: str, accession: str) -> dict[str, object]:
+    return {
+        "cik": int(cik),
+        "entityName": "Exxon Mobil Corporation",
+        "facts": {
+            "us-gaap": {
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            {
+                                "start": "2026-04-01",
+                                "end": "2026-06-30",
+                                "val": 14525000000,
+                                "accn": accession,
+                                "form": "10-Q",
+                                "filed": "2026-08-03",
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+    }
+
+
 def test_sec_fact_lookup_uses_accession_filer_when_successor_has_no_quarter() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path

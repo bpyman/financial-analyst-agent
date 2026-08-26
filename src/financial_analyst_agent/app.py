@@ -1,12 +1,16 @@
-"""One Streamlit window: query, intent chip, tool cards, answer."""
+"""One Streamlit window: multi-turn thread, tool cards, answers."""
+
+from __future__ import annotations
 
 import html
 import re
+from pathlib import Path
 
 import streamlit as st
 import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
 from financial_analyst_agent.config import AppMode, get_settings
+from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import (
     DisplayTable,
@@ -17,10 +21,12 @@ from financial_analyst_agent.presentation import (
     present_turn,
 )
 from financial_analyst_agent.runtime import runtime_for_kill_switch
-from financial_analyst_agent.turn import TurnResult, run_turn
+from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
+from financial_analyst_agent.turn import TurnResult
 
 _GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
 _MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
+_DEFAULT_THREAD_ID = "local"
 _CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Look up quarterly 10-Q financial facts or market cap for any "
@@ -45,6 +51,15 @@ _CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "Answer general queries and provide qualitative industry analysis",
         ("How could AI change bank underwriting?",),
     ),
+    (
+        "Stay on the same thread to extend the current analysis, or start a new one",
+        (
+            "add Apple",
+            "now add operating margin",
+            "make that the last four quarters",
+            "show year-over-year",
+        ),
+    ),
 )
 KILL_SWITCH_BANNER = (
     "KILL-SWITCH ON — fixture runtime (recorded facts, not live EDGAR). "
@@ -52,11 +67,16 @@ KILL_SWITCH_BANNER = (
 )
 
 
-def render_turn_result(result: TurnResult) -> None:
-    _render_presentation(present_turn(result))
+def thread_store_root() -> Path:
+    """Durable local root for conversation threads (no database server)."""
+    return Path(".cache") / "threads"
 
 
-def _render_presentation(presented: Presentation) -> None:
+def render_turn_result(result: TurnResult, *, turn_index: int = 0) -> None:
+    _render_presentation(present_turn(result), turn_index=turn_index)
+
+
+def _render_presentation(presented: Presentation, *, turn_index: int = 0) -> None:
     st.badge(presented.intent, color="blue")
     for banner in presented.banners:
         st.info(banner)
@@ -64,11 +84,14 @@ def _render_presentation(presented: Presentation) -> None:
         published = f" ({hit.published})" if hit.published else ""
         st.markdown(f"[{hit.index}] [{hit.title}]({hit.url}){published}")
     if presented.fact_card is not None:
-        _render_fact_card(presented.fact_card)
+        _render_fact_card(presented.fact_card, turn_index=turn_index)
     if presented.table is not None:
         _render_table(presented.table)
     if presented.candidates:
-        st.info("Ambiguous metric. Retype one of these names.")
+        if tuple(c.casefold() for c in presented.candidates) == ("extend", "replace"):
+            st.info("Ambiguous follow-up scope. Retype extend or replace.")
+        else:
+            st.info("Ambiguous metric. Retype one of these names.")
         for name in presented.candidates:
             st.markdown(f"- {name}")
     elif presented.message is not None:
@@ -151,12 +174,12 @@ def _trace_rows_html(items: list[tuple[str, str]], label_width: int) -> str:
     )
 
 
-def _render_fact_card(card: QuarterlyFactCard) -> None:
+def _render_fact_card(card: QuarterlyFactCard, *, turn_index: int = 0) -> None:
     ui.metric_card(
         label=card.metric_header,
         value=card.amount,
         description=f"{card.company_name} · {card.ticker}",
-        key="lookup-fact",
+        key=f"lookup-fact-{turn_index}",
     )
     st.caption(card.period_label)
     filing = f"[Filing]({card.source_url})" if card.source_url else ""
@@ -228,6 +251,46 @@ def _render_metric_catalog() -> None:
                 st.markdown("  \n".join(f":gray[{name}]" for name in names))
 
 
+def _history_pairs(state: ThreadState, store: LocalThreadStore) -> list[tuple[str, TurnResult]]:
+    pairs: list[tuple[str, TurnResult]] = []
+    results = store.resolve_results(state)
+    for message, result in zip(state.messages, results, strict=False):
+        pairs.append((message.content, result))
+    return pairs
+
+
+def _ensure_thread_and_history(store: LocalThreadStore, kill_switch: bool) -> None:
+    if "thread_id" not in st.session_state:
+        st.session_state["thread_id"] = _DEFAULT_THREAD_ID
+    if "history" in st.session_state:
+        return
+    state = store.load(st.session_state["thread_id"])
+    if state is None or not state.evidence_refs:
+        st.session_state["history"] = []
+        return
+    st.session_state["history"] = _history_pairs(state, store)
+    st.session_state["history_kill_switch"] = kill_switch
+
+
+def _start_over(store: LocalThreadStore) -> None:
+    thread_id = str(st.session_state.get("thread_id") or _DEFAULT_THREAD_ID)
+    store.clear(thread_id)
+    st.session_state["thread_id"] = thread_id
+    st.session_state["history"] = []
+    st.session_state.pop("history_kill_switch", None)
+    st.session_state.pop("turn_in_flight", None)
+
+
+def _render_history() -> None:
+    history: list[tuple[str, TurnResult]] = list(st.session_state.get("history") or [])
+    with st.container(height="stretch", autoscroll=True):
+        for index, (message, result) in enumerate(history):
+            with st.chat_message("user"):
+                st.markdown(message)
+            with st.chat_message("assistant"):
+                render_turn_result(result, turn_index=index)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Financial analyst agent",
@@ -248,46 +311,70 @@ def main() -> None:
             variant="destructive" if kill_switch else "default",
             key="runtime-status",
         )
+        start_over = st.button("Start over", icon=":material/refresh:")
     if kill_switch:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
-    if "result" in st.session_state and st.session_state.get("result_kill_switch") != kill_switch:
-        st.session_state.pop("result", None)
-        st.session_state.pop("result_kill_switch", None)
 
-    with st.form("ask"):
-        query = st.text_input("Ask a question", value=_GOLD_QUERY)
-        submitted = st.form_submit_button("Ask", type="primary")
+    store = LocalThreadStore(thread_store_root())
+    if start_over:
+        _start_over(store)
+        st.rerun()
+    _ensure_thread_and_history(store, kill_switch)
+
+    if (
+        st.session_state.get("history")
+        and st.session_state.get("history_kill_switch") != kill_switch
+    ):
+        st.session_state["history"] = []
+        st.session_state.pop("history_kill_switch", None)
+
     _render_capabilities()
     _render_metric_catalog()
 
-    if submitted:
+    with st.bottom:
+        query = st.chat_input(_GOLD_QUERY, submit_mode="disable")
+    if query and query.strip():
         if st.session_state.get("turn_in_flight"):
             st.info("A turn is already running.")
         else:
-            st.session_state.pop("result", None)
-            st.session_state.pop("result_kill_switch", None)
             st.session_state["turn_in_flight"] = True
             try:
-                with st.spinner("Running turn…"):
-                    result = run_turn(
-                        query,
-                        runtime_for_kill_switch(enabled=kill_switch),
+                progress = st.progress(0, text="Running analysis…")
+
+                def _on_progress(done: int, total: int) -> None:
+                    fraction = 0.0 if total <= 0 else done / total
+                    progress.progress(
+                        fraction,
+                        text=f"Completed {done} of {total} cells…",
                     )
+
+                turn = run_conversation_turn(
+                    st.session_state["thread_id"],
+                    query.strip(),
+                    runtime_for_kill_switch(enabled=kill_switch),
+                    store=store,
+                    on_progress=_on_progress,
+                )
+                progress.progress(1.0, text="Analysis complete.")
             except ConfigurationError as exc:
                 st.error(str(exc))
             except Exception as exc:
                 st.error(f"Turn failed: {exc}")
             else:
-                st.session_state["result"] = result
-                st.session_state["result_kill_switch"] = kill_switch
+                st.session_state["history"] = list(
+                    zip(
+                        (m.content for m in turn.messages),
+                        turn.results,
+                        strict=False,
+                    )
+                )
+                st.session_state["history_kill_switch"] = kill_switch
             finally:
                 st.session_state["turn_in_flight"] = False
 
-    if "result" not in st.session_state:
-        return
-    render_turn_result(st.session_state["result"])
+    _render_history()
 
 
 if __name__ == "__main__":

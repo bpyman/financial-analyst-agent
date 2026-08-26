@@ -1,5 +1,358 @@
 # Progress
 
+## 2026-08-25 — 15 Exploratory research lane
+
+Task completed: `.scratch/stateful-agent-graph/issues/15-exploratory-research-lane.md`
+
+Key decisions:
+- Intent.EXPLORATORY_RESEARCH is a closed workflow; parent routes to a
+  one-node exploratory subgraph (constrained news only).
+- Successful drafts banner exploratory-research (not model-analysis),
+  carry citations, keep table_rows empty, and numeral-lock against hits.
+- Conversation seam treats exploratory like other qualitative turns
+  (no analysis spec); planner + DemoCompleter select it from the closed set.
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py`
+- `src/financial_analyst_agent/{turn,planner,runtime,news}.py`
+- `src/financial_analyst_agent/graph/{__init__,exploratory,spec_turn}.py`
+- `tests/unit/test_exploratory_research.py`
+- `.scratch/stateful-agent-graph/issues/15-exploratory-research-lane.md`
+- `progress.txt`
+
+Blockers / next:
+- Parent spec 01 stays ready-for-agent until remaining implementation
+  tickets land (all numbered implementation tickets 02–15 are resolved).
+
+## 2026-08-25 — 14 Resumable clarification on the thread
+
+Task completed: `.scratch/stateful-agent-graph/issues/14-resumable-clarification.md`
+
+Key decisions:
+- ThreadState.pending_clarification holds the proposed SpecPatch plus
+  colliding candidates; clarify still runs no providers.
+- A unique candidate answer resumes the held patch; unrelated messages
+  discard it with an explicit banner.
+- SpecPatch.mode may be None: ambiguous extend/replace clarifies with
+  candidates ("extend", "replace") instead of guessing.
+
+Files changed:
+- `src/financial_analyst_agent/{conversation,thread_store,app}.py`
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `tests/unit/test_resumable_clarification.py`
+- `tests/unit/test_conversation_seam.py`
+- `.scratch/stateful-agent-graph/issues/14-resumable-clarification.md`
+- `progress.txt`
+
+Blockers / next:
+- 15 (exploratory research lane) remains open and unblocked.
+- Parent spec 01 stays ready-for-agent until remaining implementation
+  tickets land.
+
+## 2026-08-25 — 13 Evidence on the thread, referenced not copied
+
+Task completed: `.scratch/stateful-agent-graph/issues/13-thread-evidence-store.md`
+
+Key decisions:
+- Per-thread EvidenceStore holds facts/news/results by id; ThreadState
+  keeps only evidence_refs + last_result_ref (no inline table copies).
+- EvidenceCachedFacts reuses prior cells on follow-ups; reused turns get
+  the "Reused thread evidence" banner (run-state hits stay unlabelled).
+- Qualitative turns receive prior analysis JSON as grounding for numeral
+  lock; subgraphs still do not read conversation history.
+
+Files changed:
+- `src/financial_analyst_agent/evidence_store.py`
+- `src/financial_analyst_agent/{thread_store,conversation,app,turn}.py`
+- `src/financial_analyst_agent/graph/{__init__,explain}.py`
+- `tests/unit/test_thread_evidence.py`
+- `tests/unit/test_{conversation_seam,contracts_import,concurrent_dispatch}.py`
+- `tests/test_{app,run_turn_explain}.py`
+- `.scratch/stateful-agent-graph/issues/13-thread-evidence-store.md`
+- `progress.txt`
+
+Blockers / next:
+- 14 (resumable clarification) and 15 (exploratory) remain open and
+  unblocked.
+
+## 2026-08-25 — 12 Concurrent dispatch and visible progress
+
+Task completed: `.scratch/stateful-agent-graph/issues/12-concurrent-dispatch-progress.md`
+
+Key decisions:
+- dispatch_compiled_tasks fans out cells on a bounded ThreadPoolExecutor
+  (default 8); merge order stays compile order.
+- Cell exceptions become typed partials; missing-fact isolation preserved.
+- on_progress(done, total) on the conversation seam; Streamlit uses
+  st.progress instead of an indefinite spinner.
+
+Files changed:
+- `src/financial_analyst_agent/graph/spec_turn.py`
+- `src/financial_analyst_agent/{conversation,app}.py`
+- `tests/unit/test_concurrent_dispatch.py`
+- `tests/test_app.py`
+- `.scratch/stateful-agent-graph/issues/12-concurrent-dispatch-progress.md`
+- `progress.txt`
+
+Blockers / next:
+- 13 (evidence store), 14 (resumable clarification), 15 (exploratory)
+  remain open and unblocked.
+
+## 2026-08-25 — 11 Multi-period analysis and across-period comparison
+
+Task completed: `.scratch/stateful-agent-graph/issues/11-multi-period-operations.md`
+
+Key decisions:
+- PeriodSelection.last_n_quarters + report_dates fans out compile_tasks;
+  extend set_periods keeps companies/metrics/operations.
+- across_periods (window count >= 2) adds sequential and YoY Decimal
+  change rows; levels stay; mismatch/zero-denom/missing stay typed.
+- Named-period across-company compare uses report_date on existing
+  compare/lookup paths.
+
+Files changed:
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `src/financial_analyst_agent/{contracts,turn,sec_facts}.py`
+- `src/financial_analyst_agent/services/filing_selector.py`
+- `tests/unit/test_{multi_period,analysis_spec,multi_metric}.py`
+- `tests/unit/services/test_filing_selector.py`
+- `.scratch/stateful-agent-graph/issues/11-multi-period-operations.md`
+- `progress.txt`
+
+Blockers / next:
+- 12 (concurrent dispatch) unblocked on 11; 13, 14, 15 remain open.
+
+## 2026-08-25 — 10 Period-addressable quarterly facts
+
+Task completed: `.scratch/stateful-agent-graph/issues/10-period-addressable-facts.md`
+
+Key decisions:
+- Named quarter = optional `report_date` on filing/fact selection and
+  `FactsPort.get_financials`; omit for unchanged latest-quarter path.
+- Missing named period is a typed filing failure, never a neighbour.
+- Analysis-spec period windows remain ticket 11.
+
+Files changed:
+- `src/financial_analyst_agent/services/{filing_selector,fact_selector}.py`
+- `src/financial_analyst_agent/{contracts,sec_facts}.py`
+- `tests/unit/services/test_{filing_selector,fact_selector}.py`
+- `tests/unit/providers/test_sec_facts.py`
+- `.scratch/stateful-agent-graph/issues/10-period-addressable-facts.md`
+- `progress.txt`
+
+Blockers / next:
+- 11 (multi-period) unblocked on 09+10; 12 still waits on 11;
+  13, 14, 15 remain independently unblocked.
+
+## 2026-08-25 — 09 Multi-metric composition
+
+Task completed: `.scratch/stateful-agent-graph/issues/09-multi-metric-composition.md`
+
+Key decisions:
+- Several unique metric phrases bind into the spec; cells compile as one
+  independent task per metric and merge into one table.
+- Partial missing cells keep typed reasons; unsupported operations
+  (e.g. across_periods) refuse before providers.
+- Add/remove metric follow-ups keep companies; single-metric paths unchanged.
+
+Files changed:
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_{analysis_spec,multi_metric}.py`
+- `.scratch/stateful-agent-graph/issues/09-multi-metric-composition.md`
+- `progress.txt`
+
+Blockers / next:
+- 11 (multi-period) unblocked on 09+10 once 10 lands; 13 (evidence store)
+  unblocked on 09; 10 and 14 and 15 remain independently unblocked.
+
+## 2026-08-25 — 08 Analysis spec and patch resolution
+
+
+Task completed: `.scratch/stateful-agent-graph/issues/08-analysis-spec-patch.md`
+
+Key decisions:
+- Thread quantitative state is a resolved AnalysisSpec; turns propose SpecPatch
+  (or a Plan lifted to replace-mode) that deterministic code applies.
+- Metric binding stays on analyst wording; ranked constituents come from the
+  ranking port (model-typed company lists ignored); invalid patches refuse
+  before fact providers.
+- ConversationTurn exposes analysis_spec + proposed_patch; only the resolved
+  spec is persisted (proposed patch is run-state). Qualitative turns clear it.
+
+Files changed:
+- `src/financial_analyst_agent/graph/analysis_spec.py` (new)
+- `src/financial_analyst_agent/graph/spec_turn.py` (new)
+- `src/financial_analyst_agent/conversation.py`
+- `src/financial_analyst_agent/thread_store.py`
+- `tests/unit/test_analysis_spec.py` (new)
+- `tests/unit/test_conversation_spec.py` (new)
+- `tests/unit/test_conversation_seam.py`
+- `tests/unit/test_contracts_import.py`
+- `.scratch/stateful-agent-graph/issues/08-analysis-spec-patch.md`
+
+Blockers / next:
+- 09 (multi-metric composition) and 14 (resumable clarification) are unblocked
+  on 08; 15 remains unblocked for the exploratory lane; 10 remains independently
+  unblocked for period-addressable facts.
+
+## 2026-08-25 — 07 Multi-turn audience window
+
+Task completed: `.scratch/stateful-agent-graph/issues/07-multi-turn-window.md`
+
+Key decisions:
+- Window owns stable thread id `local` and calls `run_conversation_turn`
+  with `LocalThreadStore` under `.cache/threads`.
+- Thread state persists `results` alongside analyst `messages` so history
+  survives refresh/restart; ConversationTurn exposes the same tuple.
+- History renders prior Q&A in-window; kill-switch still only swaps adapters
+  and clears displayed history when the mode flips; failed turns keep priors.
+
+Files changed:
+- `src/financial_analyst_agent/app.py`
+- `src/financial_analyst_agent/conversation.py`
+- `src/financial_analyst_agent/thread_store.py`
+- `tests/test_app.py`
+- `tests/unit/test_conversation_seam.py`
+- `.scratch/stateful-agent-graph/issues/07-multi-turn-window.md`
+
+Blockers / next:
+- 08 (analysis spec patch) and 15 (exploratory lane) remain unblocked on 06;
+  10 remains independently unblocked for period-addressable facts.
+
+## 2026-08-25 — 06 Conversation seam on a persisted thread
+
+Task completed: `.scratch/stateful-agent-graph/issues/06-conversation-seam-thread.md`
+
+Key decisions:
+- Public seam is `run_conversation_turn(thread_id, message, runtime, store=…)`;
+  thread state is messages + last_result only (no run state).
+- `LocalThreadStore` writes JSON under a directory (swappable via `ThreadStore`);
+  tests use a real temporary root, not mocks.
+- `run_turn` wraps an ephemeral in-process thread and still returns `TurnResult`;
+  one-shot planning/workflows live in `execute_turn`.
+
+Files changed:
+- `src/financial_analyst_agent/conversation.py` (new)
+- `src/financial_analyst_agent/thread_store.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_conversation_seam.py` (new)
+- `tests/unit/test_contracts_import.py`
+- `.scratch/stateful-agent-graph/issues/06-conversation-seam-thread.md`
+
+Blockers / next:
+- 07 (multi-turn window) and 08 (analysis spec patch) are unblocked on the
+  conversation seam; 10 remains independently unblocked for period-addressable
+  facts; 15 (exploratory lane) is also unblocked by 06.
+
+## 2026-08-25 — 05 Graph qualitative workflows
+
+Task completed: `.scratch/stateful-agent-graph/issues/05-graph-qualitative-workflows.md`
+
+Key decisions:
+- Qualitative explanation and current events are separate one-node subgraphs
+  (`run_qualitative_explanation`, `run_current_events`) with typed request→result
+  interfaces; neither reads conversation history.
+- Parent graph routes all six closed intents through `run_workflow_turn`;
+  `run_structured_turn` stays as a thin alias for structured callers.
+- `run_turn` delegates explain and news-and-explain via the graph; pre-graph
+  direct helper calls are gone. Trust behaviour stays in the turn helpers.
+
+Files changed:
+- `src/financial_analyst_agent/graph/__init__.py`
+- `src/financial_analyst_agent/graph/explain.py` (new)
+- `src/financial_analyst_agent/graph/news.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_qualitative_graph.py` (new)
+- `.scratch/stateful-agent-graph/issues/05-graph-qualitative-workflows.md`
+
+Blockers / next:
+- Issue 06 (conversation seam / thread) is unblocked on the six-workflow graph;
+  10 remains independently unblocked for period-addressable facts.
+
+## 2026-08-25 — 04 Graph structured workflows
+
+Task completed: `.scratch/stateful-agent-graph/issues/04-graph-structured-workflows.md`
+
+Key decisions:
+- Add LangGraph; parent graph routes the closed structured intents to four nodes that call existing turn helpers.
+- Extract `_lookup_turn` so lookup joins compare/rank/rank-and-lookup on the graph path.
+- `run_turn` still plans and resolves metrics; it delegates only the four structured intents via `run_structured_turn`.
+- Explain and news-and-explain stay off-graph until ticket 05. No tests assert graph internals.
+
+Files changed:
+- `pyproject.toml`, `uv.lock` (langgraph)
+- `src/financial_analyst_agent/graph/__init__.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_structured_graph.py` (new)
+- `.scratch/stateful-agent-graph/issues/04-graph-structured-workflows.md`
+
+Blockers / next:
+- Issue 05 (qualitative workflows on the graph) is unblocked; 10 remains independently unblocked on period-addressable facts.
+
+## 2026-08-25 — 03 Per-phrase metric resolution
+
+Task completed: `.scratch/stateful-agent-graph/issues/03-per-phrase-metric-resolution.md`
+
+Key decisions:
+- Add `resolve_metric_phrases` so each non-overlapping unique or ambiguous span is classified on its own, left to right.
+- Drop the "two unique catalog names ⇒ ambiguous" rule; several distinct catalog metrics resolve in order.
+- Keep scanning for ambiguous phrases outside unique spans so "revenue and profit" still surfaces the profit candidate set.
+- `resolve_metric_phrase` stays the one-shot adapter: prefer any ambiguous phrase for clarify; single unique proceeds; multi-unique returns `kind="unique"` with `metrics`.
+- Until ticket 09, `run_turn` clarifies on multi-unique so the seam does not silently pick a planner slug or the first phrase.
+
+Files changed:
+- `src/financial_analyst_agent/services/metric_catalog.py`
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/services/test_metric_phrase.py`
+- `.scratch/stateful-agent-graph/issues/03-per-phrase-metric-resolution.md`
+
+Blockers / next:
+- Issue 09 (multi-metric composition) can consume ordered unique metrics once 08 lands; issue 04 remains the next unblocked structured-graph tracer.
+
+## 2026-08-25 — Interview done; no deadline
+
+The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
+
+## 2026-08-25 — 02 Split turn contracts
+
+Task completed: `.scratch/stateful-agent-graph/issues/02-split-turn-contracts.md`
+
+Key decisions:
+- Put ports, `Runtime`, result models, enums, and metric/news constants in `contracts.py` so a future graph package can import them without loading workflow code.
+- Keep `turn.py` as the application seam: workflows + `run_turn`, re-exporting every prior public name so no caller import changes.
+- Partial-row reason codes and search-news constants travel with the contracts because they are part of the typed result surface.
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_contracts_import.py` (new)
+- `.scratch/stateful-agent-graph/issues/02-split-turn-contracts.md`
+
+Blockers / next:
+- Issue 03 (per-phrase metric resolution) and issue 04 (graph structured workflows, blocked by 02) are both unblocked on the contracts seam.
+- Do not move `compare_metrics` / `snapshot_compare_rows` into contracts; they remain workflow helpers re-exported from `turn`.
+
+## 2026-08-25 — Stateful analysis graph spec + ADR 0005
+
+Spec written: `.scratch/stateful-agent-graph/issues/01-stateful-analysis-graph.md` (ready-for-agent). No code yet.
+
+Key decisions:
+- Redesign around a persisted conversation thread whose durable centre is a typed, patchable analysis spec. The model proposes a spec patch; deterministic code resolves, validates against the closed catalogs, compiles tasks, and dispatches to a workflow subgraph. Confirmed as the canonical representation of the current quantitative question.
+- Flexibility comes from spec dimensions (companies × metrics × periods × operations), not model autonomy. New metric = catalog entry; new comparison = spec operation; new capability = subgraph. No new intents.
+- One new public seam: thread id + message + runtime → conversation turn. `run_turn` becomes a compatibility wrapper over an ephemeral thread so gold and per-intent tests stay green, unchanged, for the whole migration. `Runtime`, ports, and the presentation mapping are untouched.
+- Trust boundary unchanged: SEC XBRL facts, `Decimal` formulas, snapshot-derived constituents, CIK identity inside tools, numeral lock. Exploratory lane is labelled, cited, read-only, and cannot emit structured rows.
+- Clarify becomes a resumable interrupt holding a pending analysis. ADR 0004's one-shot rejection of a pending plan is superseded; its phrase table and candidate-set rule survive.
+
+Files changed:
+- `docs/adr/0005-stateful-analysis-graph.md` (new), `docs/adr/0004-ambiguous-metric-clarify.md`
+- `prd.md`, `docs/design.md`, `CONTEXT.md`
+- `.scratch/stateful-agent-graph/issues/01-stateful-analysis-graph.md`
+
+Blockers / next:
+- Migration step 1 (graph as private implementation of today's six workflows, `run_turn` and gold unchanged) is unblocked. Split the spec into tickets before starting.
+- Watch `extend` vs `replace` mis-scoping on follow-ups; cover it in the first conversation-seam tests.
+
 ## 2026-08-17 — 03 Snapshot rank E2E (PRD US 18–24, 32–33, 38, 49)
 
 Task completed: `.scratch/financial-analyst-agent/issues/done/03-snapshot-rank-e2e.md`

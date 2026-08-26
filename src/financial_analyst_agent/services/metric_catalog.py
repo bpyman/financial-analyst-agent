@@ -62,6 +62,7 @@ MetricPhraseKind = Literal["unique", "ambiguous", "unknown"]
 class MetricPhraseResolution:
     kind: MetricPhraseKind
     metric: str | None = None
+    metrics: tuple[str, ...] = ()
     candidates: tuple[str, ...] = ()
 
 
@@ -197,21 +198,64 @@ def _nonoverlapping_unique_matches(query: str) -> list[tuple[int, int, str]]:
     return accepted
 
 
-def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
-    """Classify a metric phrase in the user question."""
+def _spans_overlap(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:
+    return any(
+        not (end <= other_start or start >= other_end) for other_start, other_end in occupied
+    )
+
+
+def _nonoverlapping_ambiguous_matches(
+    query: str, occupied: list[tuple[int, int]]
+) -> list[tuple[int, int, tuple[str, ...]]]:
+    found: list[tuple[int, int, tuple[str, ...]]] = []
+    for phrase, candidates in _AMBIGUOUS_PHRASES:
+        for start, end in _phrase_spans(query, phrase):
+            if _spans_overlap(start, end, occupied):
+                continue
+            found.append((start, end, candidates))
+    found.sort(key=lambda item: (item[0] - item[1], item[0]))
+    accepted: list[tuple[int, int, tuple[str, ...]]] = []
+    accepted_spans: list[tuple[int, int]] = []
+    for start, end, candidates in found:
+        if _spans_overlap(start, end, accepted_spans):
+            continue
+        accepted.append((start, end, candidates))
+        accepted_spans.append((start, end))
+    accepted.sort(key=lambda item: item[0])
+    return accepted
+
+
+def resolve_metric_phrases(query: str) -> tuple[MetricPhraseResolution, ...]:
+    """Classify each metric phrase in the user question, left to right."""
     normalized = query.casefold()
     unique_matches = _nonoverlapping_unique_matches(normalized)
-    unique_metrics = list(dict.fromkeys(metric for _start, _end, metric in unique_matches))
-    if len(unique_metrics) > 1:
-        return MetricPhraseResolution(kind="ambiguous", candidates=tuple(unique_metrics))
-    if len(unique_metrics) == 1:
-        return MetricPhraseResolution(kind="unique", metric=unique_metrics[0])
+    occupied = [(start, end) for start, end, _metric in unique_matches]
+    ambiguous_matches = _nonoverlapping_ambiguous_matches(normalized, occupied)
 
-    ambiguous_matches: list[tuple[int, int, tuple[str, ...]]] = []
-    for phrase, candidates in _AMBIGUOUS_PHRASES:
-        for start, end in _phrase_spans(normalized, phrase):
-            ambiguous_matches.append((start, end, candidates))
-    if not ambiguous_matches:
+    ordered: list[tuple[int, MetricPhraseResolution]] = [
+        (start, MetricPhraseResolution(kind="unique", metric=metric, metrics=(metric,)))
+        for start, _end, metric in unique_matches
+    ]
+    ordered.extend(
+        (start, MetricPhraseResolution(kind="ambiguous", candidates=candidates))
+        for start, _end, candidates in ambiguous_matches
+    )
+    ordered.sort(key=lambda item: item[0])
+    return tuple(resolution for _start, resolution in ordered)
+
+
+def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
+    """Classify metric phrases for the one-shot turn seam."""
+    phrases = resolve_metric_phrases(query)
+    if not phrases:
         return MetricPhraseResolution(kind="unknown")
-    ambiguous_matches.sort(key=lambda item: (item[0] - item[1], item[0]))
-    return MetricPhraseResolution(kind="ambiguous", candidates=ambiguous_matches[0][2])
+    for phrase in phrases:
+        if phrase.kind == "ambiguous":
+            return phrase
+    uniques = [phrase for phrase in phrases if phrase.kind == "unique"]
+    if len(uniques) == 1:
+        return uniques[0]
+    if len(uniques) > 1:
+        metrics = tuple(phrase.metric for phrase in uniques if phrase.metric is not None)
+        return MetricPhraseResolution(kind="unique", metrics=metrics)
+    return MetricPhraseResolution(kind="unknown")

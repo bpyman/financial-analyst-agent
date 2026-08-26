@@ -35,3 +35,23 @@ _Avoid_: metric collision, unknown metric
 **Unknown metric**:
 A user metric phrase that names nothing in the closed catalog.
 _Avoid_: ambiguous metric
+
+**Conversation thread**:
+One analyst investigation, identified and persisted. It carries the analysis spec, any pending clarification, the last result, and evidence references. Threads do not share state.
+_Avoid_: session, chat, conversation history, memory
+
+**Analysis spec**:
+The typed, resolved statement of the analyst's current quantitative question: companies or constituents, closed-catalog metrics, period selection, operations, and requested presentation. Resolved means CIKs and catalog slugs, so it can execute. It is the thing a follow-up edits.
+_Avoid_: query, plan, intent, request
+
+**Spec patch**:
+The model's proposed edit to an analysis spec — additions, removals, replacements, and whether this turn extends or replaces the current analysis. Deterministic code resolves and validates it; a patch is never executed as given.
+_Avoid_: plan, tool call, spec (unqualified)
+
+**Pending clarification**:
+An analysis spec held on a thread, awaiting the analyst's answer to one open question. Nothing has been fetched. Answering resumes it; asking something unrelated discards it.
+_Avoid_: clarify pane, pending plan, interrupt
+
+**Exploratory research**:
+A labelled, cited, read-only answer for questions that no analysis spec expresses. It cannot produce reported facts, structured rows, or computed values.
+_Avoid_: analysis, essay, explain

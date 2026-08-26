@@ -1,5 +1,7 @@
 # Technical interview Q&A
 
+> Archive. The interview was 20 August 2026, 5 p.m. ET, and went well. There is no remaining deadline; the project continues as a portfolio piece. These answers remain useful for explaining the design.
+
 Answer with the first paragraph, then add the bullets only if the interviewer wants depth.
 
 ## Architecture and agent design
