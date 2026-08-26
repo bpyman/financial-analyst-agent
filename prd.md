@@ -1,16 +1,18 @@
 Status: ready-for-agent
 
-# Financial analyst agent (Thursday POC)
+# Financial analyst agent
+
+The 20 August 2026 interview is done and went well. There is no remaining deadline. This repo continues as a portfolio project (fun, not time-boxed). The stories and decisions below are the interview POC that shipped; interview-only kill-order and “before Thursday” language is historical. Architectural locks (no LLM math, no YTD subtraction, closed intents, XBRL as quarterly truth) still stand unless a later ADR replaces them.
 
 ## Problem Statement
 
-I have a one-hour technical interview on Thursday. I need a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
+The original brief was a one-hour technical interview on Thursday 20 August 2026: a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
 
-I also need the demo to look like a well-designed agent (typed graph, MCP tools, visible traces), while remaining reliable: numbers must come from real filings and a real ranking snapshot, not from the model. A prior attempt (v1) proved the XBRL fact path but was too narrow (toy universe, no UI, no graph/MCP, no comparisons or news). This repo is empty; I need the v2 POC I already locked in grilling.
+The demo still needs to look like a well-designed agent (typed graph, MCP tools, visible traces), while remaining reliable: numbers must come from real filings and a real ranking snapshot, not from the model. A prior attempt (v1) proved the XBRL fact path but was too narrow (toy universe, no UI, no graph/MCP, no comparisons or news). This repo is the v2 POC locked in grilling.
 
 ## Solution
 
-A local Streamlit app that sends each question through one interface, `run_turn`. A typed planner picks a closed intent. Deterministic tools (served over local MCP HTTP, also callable in-process) fetch SEC quarterly facts, rank from a dated universe snapshot, compare period-aligned metrics, search news via Tavily, or write a labeled essay. Structured questions render as tables with provenance. Essays cannot invent numbers. The interviewer sees intent, tool cards, and the answer in one window. A 2–4 page design doc with one diagram is the other deliverable.
+A local Streamlit app that sends each question through one interface, `run_turn`. A typed planner picks a closed intent. Deterministic tools (served over local MCP HTTP, also callable in-process) fetch SEC quarterly facts, rank from a dated universe snapshot, compare period-aligned metrics, search news via Tavily, or write a labeled essay. Structured questions render as tables with provenance. Essays cannot invent numbers. The UI shows intent, tool cards, and the answer in one window. A 2–4 page design doc with one diagram is the other original deliverable.
 
 Live APIs are the default; a fixture kill-switch uses the same renderer if the network fails.
 
@@ -40,7 +42,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 20. As an analyst, I want ranking membership to come from a dated universe snapshot of US exchange-listed operating companies, so that “top 10” is reproducible and not a live screener surprise.
 21. As an analyst, I want ETFs and funds excluded from that snapshot, so that a healthcare ranking is companies, not products.
 22. As an analyst, I want the snapshot timestamp visible, so that I know I am looking at a freeze, not “all public companies on earth.”
-23. As Blake, I want a build script that can regenerate the snapshot from FMP sector membership and batch caps, so that I can refresh the morning of the interview without changing demo code.
+23. As Blake, I want a build script that can regenerate the snapshot from FMP sector membership and batch caps, so that I can refresh the freeze without changing demo code.
 24. As Rohit, I want ranking to still work if a sector has fewer than 10 operating companies after filters, so that the UI tells me it returned what exists rather than padding.
 25. As an analyst, I want qualitative industry/AI questions answered as a labeled model essay with no retrieval, so that think-pieces are possible without pretending they were cited.
 26. As an analyst, I want named-company current-event questions to run news-and-explain, so that “what’s going on with NVIDIA” is grounded in search hits.
@@ -54,10 +56,10 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 34. As Blake, I want Streamlit to be the only audience window, so that I do not split attention across Studio or Inspector.
 35. As Blake, I want a fixture/replay kill-switch that uses the same renderer, so that a network failure does not kill the 25 minutes.
 36. As Blake, I want to say out loud when the kill-switch is on, so that I do not pretend a cassette is live EDGAR.
-37. As Blake, I want gold coverage of the demo script prompts, so that I do not discover a wrong Microsoft/Tesla/Apple number in the interview.
+37. As Blake, I want gold coverage of the demo script prompts, so that I do not discover a wrong Microsoft/Tesla/Apple number in a live demo.
 38. As a developer, I want `run_turn` to accept a runtime of adapters (facts, snapshot ranking, news, LLM completer), so that tests and the kill-switch do not require live SEC/FMP/Tavily/OpenAI.
 39. As a developer, I want MCP HTTP to expose the same five tools the graph uses, so that the design deliverable (tools as a service boundary) is real, not slideware.
-40. As a developer, I want the graph to call those tools without depending on stdio subprocesses, so that Thursday does not die on a hung MCP child process.
+40. As a developer, I want the graph to call those tools without depending on stdio subprocesses, so that a hung MCP child process cannot take down the app.
 41. As a developer, I want to port v1’s SEC fact selector rather than rewrite XBRL selection, so that directly-reported quarterly duration rules stay intact.
 42. As a developer, I want Decimal — not float — for money and ratios, so that provenance-carrying math does not pick up binary junk.
 43. As a developer, I want YTD subtraction and Q4 derivation to remain forbidden, so that missing standalone quarters refuse instead of being invented.
@@ -77,34 +79,34 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 57. As an analyst, I want lookup of a company that has no standalone quarterly fact to error clearly, so that I do not get a silently derived quarter.
 58. As Blake, I want the three live prompts rehearsed against live APIs the same day, so that kill-switch remains a fallback rather than the plan.
 59. As a developer, I want gold tests to replay recorded MCP/tool results, so that CI does not need network.
-60. As Blake, if time slips, I want news and UI chrome to die before XBRL correctness, snapshot top-N, the composed healthcare prompt, and on-screen provenance, so that the interview still shows a reliable system.
+60. As Blake, if a slice has to shrink, I want news and UI chrome to die before XBRL correctness, snapshot top-N, the composed healthcare prompt, and on-screen provenance, so that a demo still shows a reliable system.
 
 ## Implementation Decisions
 
-- **Primary seam:** one application interface, `run_turn(query, runtime) → TurnResult`. Streamlit, tests, and the fixture kill-switch all call this. FastMCP HTTP, LangGraph internals, Tavily, FMP, and SEC HTTP are adapters behind it, not additional feature seams.
+- **Primary seam:** one application interface, `run_turn(query, runtime) → TurnResult`. Streamlit, tests, and the fixture kill-switch all call this. FastMCP HTTP, LangGraph internals, Tavily, FMP, and SEC HTTP are adapters behind it, not additional feature seams. *(ADR 0005 adds one conversation seam above this — thread id + message + runtime. `run_turn` stays as a compatibility wrapper and remains the gold-test surface.)*
 - **Runtime adapters:** fact lookup (SEC XBRL, ported from v1), ranking over a checked-in universe snapshot (optional live cap refresh must not change membership), news search (Tavily behind the news tool), LLM completer (structured intent plus essay). Fixture runtime swaps all of these for recorded adapters.
-- **Closed intents:** `lookup` | `compare` | `rank` | `rank_and_lookup` | `explain` | `news_and_explain`. The planner may only emit this enum (plus parameters). No open ReAct. One user prompt maps to one intent; composition is inside `rank_and_lookup` and `news_and_explain`, not by the model chaining tools.
+- **Closed intents:** `lookup` | `compare` | `rank` | `rank_and_lookup` | `explain` | `news_and_explain`. The planner may only emit this enum (plus parameters). No open ReAct. One user prompt maps to one intent; composition is inside `rank_and_lookup` and `news_and_explain`, not by the model chaining tools. *(ADR 0005 supersedes the one-prompt-one-intent rule: composition moves into a patchable analysis spec over companies × metrics × periods × operations. "No open ReAct" on the number path stands.)*
 - **TurnResult (decision shape from grilling):** intent; ordered tool traces (tool name, args, provenance/source ids); renderer kind (`table` | `essay` | `refuse` | `clarify`); table rows or essay text; banners (`model-analysis` and/or news citations); numeral-lock extras if any (must be empty on success). Clarify lists colliding humanized metric names only; it is not `st.error` and it does not call tools.
-- **Five MCP tools:** `rank_companies`, `get_financials`, `compare_metrics`, `explain_topic`, `search_news`. Identity resolution is inside those tools. Local FastMCP over HTTP; the Thursday graph uses the same tool implementations in-process or over that HTTP — not stdio as the only path. A second MCP client (Inspector/Cursor) is design-optional, not a live requirement.
+- **Five MCP tools:** `rank_companies`, `get_financials`, `compare_metrics`, `explain_topic`, `search_news`. Identity resolution is inside those tools. Local FastMCP over HTTP; the app uses the same tool implementations in-process or over that HTTP — not stdio as the only path. A second MCP client (Inspector/Cursor) is design-optional, not a live requirement.
 - **Port v1 fact engine:** companyfacts JSON, submissions, ticker/CIK identity, 70–110 day standalone quarterly duration, accession + end date + form + unit filters, `AmbiguousFactError` rather than picking silently, Decimal money, no YTD subtraction. Expand the reported metric catalog; do not replace the selector with edgartools or FMP statements.
 - **Reported metrics:** `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`, `research_and_development`, `selling_general_and_administrative`, `interest_expense`, `income_tax_expense`, `pretax_income`. **Formulas:** `gross_margin`, `operating_margin`, `net_margin`, `rd_to_sales`, `sga_ratio`, `effective_tax_rate` as Decimal division of named components; `interest_coverage` as operating income over interest expense. **Snapshot metrics:** `market_cap` from the dated FMP universe freeze (not a 10-Q fact; freeze presence is required). Metric phrases are a closed table on the user question (ADR 0004): unique name/alias → proceed; ambiguous metric → clarify pane; unknown metric → refuse with the full list. No balance-sheet/instant ratios in this PRD. The phrase table may grow when the catalog grows.
 - **`compare_metrics`:** one tool; issuers list + metric or formula; resolve to CIKs; fetch components; same `start`/`end` or do not compute; partial rows with typed reasons; share-class consolidation (one row per CIK).
 - **`rank_and_lookup`:** executor runs rank, then batched `get_financials` on CIKs taken from ranking state. The LLM never types the constituent list.
 - **`news_and_explain`:** executor runs `search_news(query)` then the essay renderer on those hits only. `explain` never calls Tavily. Named-company current events without usable hits → refuse, not a memory essay.
-- **`search_news`:** Tavily Search with `topic=news`, week or month time range, max 5 results; drop hits missing title or URL; return title, URL, snippet, score, published time if present. Do not expose extract/crawl. Do not use FMP ticker-only news as the search tool. Do not use keyless DuckDuckGo as the Thursday backend.
+- **`search_news`:** Tavily Search with `topic=news`, week or month time range, max 5 results; drop hits missing title or URL; return title, URL, snippet, score, published time if present. Do not expose extract/crawl. Do not use FMP ticker-only news as the search tool. Do not use keyless DuckDuckGo as the live search backend.
 - **Universe snapshot:** offline build from FMP sector/industry membership + batch market caps; drop ETFs/funds; consolidate share classes by CIK; write a dated snapshot the app reads. Membership does not change during a demo turn. Closed alias table maps finance/healthcare/technology and canonical FMP sector names; banks/software only if membership differs from the parent. “AI” is not an industry.
 - **Ranking scope:** US exchange-listed operating companies in the snapshot. Do not claim global or complete coverage of all public companies.
 - **Renderers:** lookup/compare/rank/rank-and-lookup always table (or refuse/partial table/clarify). Ambiguous metric → clarify pane, same intent, no tools. explain → essay with model-analysis banner and numeral lock. news-and-explain → essay with citations from hits and numeral lock (news JSON tokens are allowed). Never mix unsourced dollars into a bannered essay.
 - **LLM:** official OpenAI structured outputs for intent (same family as v1). Essay generation is a second structured/plain completion that is then numeral-locked. Missing OpenAI config is a typed configuration error, not a regex planner.
 - **UI:** one Streamlit page — query, intent chip, tool cards, answer. Kill-switch toggles fixture runtime. Gold set is not shown as a second product UI.
 - **Design deliverable:** 2–4 page doc + one diagram (user → intent → MCP tools → structured vs essay renderer) + ADR list of the locks above. This is audience material, separate from this PRD.
-- **Kill order if time slips:** extra polish, then news, then UI chrome. Last to die: correct XBRL, correct snapshot top-N, composed healthcare prompt, provenance on screen.
+- **Kill order if a slice has to shrink:** extra polish, then news, then UI chrome. Last to die: correct XBRL, correct snapshot top-N, composed healthcare prompt, provenance on screen.
 - **Sibling prior art:** v1 at the adjacent `financial-analyst-agent` repo is the source of the fact engine and of test style (offline default, network-marked live tests, captured SEC fixtures). Do not treat v1’s closed four-name universe, missing UI, or “no LangGraph/MCP/PDF” non-goals as v2 constraints except where this PRD restates them (PDF still out; MCP/graph now in).
 
 ## Testing Decisions
 
 - **Good tests** assert `run_turn` external behavior: given a query and a runtime, the TurnResult intent, traces, renderer, payload values, provenance fields, banners, and refuses. They do not assert LangGraph node names, MCP wire JSON, Streamlit widget state, or Tavily HTTP.
-- **The one feature seam is `run_turn`.** Gold tests (must be green before Thursday):
+- **The one feature seam is `run_turn`.** *(ADR 0005: new multi-turn behaviour is asserted at the conversation seam; these gold tests stay on `run_turn` with no assertion changes.)* Gold tests (original interview script; keep green):
   1. Microsoft pre-tax income — `lookup`; 10-Q `pretax_income` value and provenance from the fact adapter; table renderer.
   2. TSLA vs GM revenue — `compare`; two issuers on a reported line; same period or explicit `period_mismatch`.
   3. Top 10 tech companies R&D spend — `rank_and_lookup`; CIKs from ranking state; `research_and_development` per row; snapshot membership, not a live screener; partial row if a fact is missing.
@@ -117,21 +119,21 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 
 ## Out of Scope
 
-- PDF / 10-Q document parse (later fallback with warnings only; not Thursday).
+- PDF / 10-Q document parse (later fallback with warnings only; not in the original interview POC).
 - FMP ratios or edgartools as the source of quarterly facts or live compare margins.
 - Global listings; claiming a complete catalog of all public companies.
 - Open/LLM industry mapping; SIC-from-EDGAR as the rank taxonomy.
 - Balance-sheet and instant metrics (current ratio, D/E, ROE); cash-flow extras unless leftover after the gold set is green.
 - YTD subtraction, Q4 derivation, shares×price market cap.
 - LangGraph Studio as the audience view; Claude Desktop as a required second client; stdio-only MCP.
-- Authentication, cloud deploy, multi-turn memory, streaming-as-a-product.
+- Authentication, cloud deploy, streaming-as-a-product. Multi-turn thread state is now in scope per ADR 0005 (persisted analysis spec, resumable clarification); cross-thread long-term memory and personalization stay out.
 - Rewriting the v1 XBRL selector from scratch.
 - Extra analyst tools (peers, 10-K vs 10-Q, filing full-text search) beyond the five tools and six intents above.
 - Tavily extract/map/crawl, keyless DuckDuckGo, or a second search vendor.
 
 ## Further Notes
 
-- Interview: Thursday 20 August 2026, 5 p.m. ET; ~25 minutes on the solution, then Q&A. Live script: Microsoft pre-tax income → TSLA vs GM revenue → top 10 tech R&D spend. Hormuz/Exxon news is backup only if refreshed the same day. Disruption essay remains a backup. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
+- Interview: completed Thursday 20 August 2026, 5 p.m. ET; went well. Original session was ~25 minutes on the solution, then Q&A. There is no remaining deadline; this is a portfolio project. Live script from that session: Microsoft pre-tax income → TSLA vs GM revenue → top 10 tech R&D spend. Hormuz/Exxon news was backup only if refreshed the same day. Disruption essay remains a backup. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
 - v2 folder is the presentation repo; v1 remains the fact-engine donor. Do not require v1 to stay running as an HTTP backend.
-- No `CONTEXT.md` exists yet; this PRD’s vocabulary (intent, `run_turn`, TurnResult, universe snapshot, numeral lock, rank-and-lookup, news-and-explain) is the working glossary until `/domain-modeling` records it.
+- Glossary is `CONTEXT.md`; ADRs are under `docs/adr/`. This PRD remains the product spec for the shipped POC.
 - The test seam was proposed as a single `run_turn` interface (snapshot builder not a second feature seam). Publishing proceeds on that basis after skills setup; implementation should not add HTTP/MCP/UI seams as the gold-test surface.
