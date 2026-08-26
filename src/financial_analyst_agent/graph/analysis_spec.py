@@ -63,9 +63,13 @@ class AnalysisSpec(BaseModel):
 
 
 class SpecPatch(BaseModel):
-    """Model-proposed edit. Deterministic code applies and resolves it."""
+    """Model-proposed edit. Deterministic code applies and resolves it.
 
-    mode: Literal["extend", "replace"]
+    ``mode`` is ``None`` when extend-versus-replace scope is ambiguous: the
+    conversation seam clarifies rather than guessing (ticket 14).
+    """
+
+    mode: Literal["extend", "replace"] | None = None
     add_companies: tuple[str, ...] = ()
     remove_companies: tuple[str, ...] = ()
     add_metrics: tuple[str, ...] = ()
@@ -119,6 +123,8 @@ def _company_matches_token(company: ResolvedCompany, token: str) -> bool:
 
 def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
     """Apply a proposed patch to the current spec (or empty) → unresolved draft."""
+    if patch.mode is None and current is not None:
+        raise ValueError("ambiguous patch mode must be clarified before apply_patch")
     if patch.mode == "replace" or current is None:
         companies = list(patch.add_companies)
         metrics = list(patch.add_metrics)

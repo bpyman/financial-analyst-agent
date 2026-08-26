@@ -15,18 +15,27 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 
-from financial_analyst_agent.contracts import TurnResult
+from financial_analyst_agent.contracts import Intent, TurnResult
 from financial_analyst_agent.evidence_store import (
     EvidenceStore,
     InMemoryEvidenceStore,
     LocalEvidenceStore,
 )
-from financial_analyst_agent.graph.analysis_spec import AnalysisSpec
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 
 
 class ThreadMessage(BaseModel):
     role: Literal["analyst"]
     content: str
+
+
+class PendingClarification(BaseModel):
+    """Analysis held awaiting the analyst's answer. Nothing has been fetched."""
+
+    kind: Literal["ambiguous_metric", "ambiguous_mode"]
+    candidates: tuple[str, ...]
+    patch: SpecPatch
+    intent: Intent = Intent.LOOKUP
 
 
 class ThreadState(BaseModel):
@@ -37,6 +46,7 @@ class ThreadState(BaseModel):
     evidence_refs: tuple[str, ...] = ()
     last_result_ref: str | None = None
     analysis_spec: AnalysisSpec | None = None
+    pending_clarification: PendingClarification | None = None
 
 
 class ThreadStore(Protocol):

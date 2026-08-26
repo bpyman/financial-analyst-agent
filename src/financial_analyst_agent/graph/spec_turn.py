@@ -447,6 +447,21 @@ def run_spec_turn(
         else plan_to_spec_patch(proposal)
     )
     intent = getattr(proposal, "intent", None) if not isinstance(proposal, SpecPatch) else None
+    if patch.mode is None:
+        if current_spec is None:
+            patch = patch.model_copy(update={"mode": "replace"})
+        else:
+            effective = intent or Intent.LOOKUP
+            return (
+                TurnResult(
+                    intent=effective,
+                    tool_traces=[],
+                    renderer=RendererKind.CLARIFY,
+                    candidates=("extend", "replace"),
+                ),
+                current_spec,
+                patch,
+            )
     patch, early = bind_metrics_from_message(patch, message, intent=intent)
     if early is not None:
         return early, current_spec, patch

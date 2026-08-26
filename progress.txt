@@ -1,5 +1,30 @@
 # Progress
 
+## 2026-08-25 — 14 Resumable clarification on the thread
+
+Task completed: `.scratch/stateful-agent-graph/issues/14-resumable-clarification.md`
+
+Key decisions:
+- ThreadState.pending_clarification holds the proposed SpecPatch plus
+  colliding candidates; clarify still runs no providers.
+- A unique candidate answer resumes the held patch; unrelated messages
+  discard it with an explicit banner.
+- SpecPatch.mode may be None: ambiguous extend/replace clarifies with
+  candidates ("extend", "replace") instead of guessing.
+
+Files changed:
+- `src/financial_analyst_agent/{conversation,thread_store,app}.py`
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `tests/unit/test_resumable_clarification.py`
+- `tests/unit/test_conversation_seam.py`
+- `.scratch/stateful-agent-graph/issues/14-resumable-clarification.md`
+- `progress.txt`
+
+Blockers / next:
+- 15 (exploratory research lane) remains open and unblocked.
+- Parent spec 01 stays ready-for-agent until remaining implementation
+  tickets land.
+
 ## 2026-08-25 — 13 Evidence on the thread, referenced not copied
 
 Task completed: `.scratch/stateful-agent-graph/issues/13-thread-evidence-store.md`

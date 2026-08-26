@@ -10,11 +10,15 @@ A patch-based interface can also mis-scope a follow-up. "Add Apple" is unambiguo
 
 **Blocked by:** 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] An ambiguous metric holds the pending analysis and runs no tools
-- [ ] Answering the question resumes the pending analysis rather than requiring a retype
-- [ ] Candidates remain the colliding catalog names only
-- [ ] An unknown metric still refuses with the full allowed list
-- [ ] Asking something unrelated discards the pending clarification explicitly
-- [ ] An ambiguously scoped follow-up clarifies instead of guessing between extending and replacing
+- [x] An ambiguous metric holds the pending analysis and runs no tools
+- [x] Answering the question resumes the pending analysis rather than requiring a retype
+- [x] Candidates remain the colliding catalog names only
+- [x] An unknown metric still refuses with the full allowed list
+- [x] Asking something unrelated discards the pending clarification explicitly
+- [x] An ambiguously scoped follow-up clarifies instead of guessing between extending and replacing
+
+## Answer
+
+Pending clarification is thread state. An ambiguous metric (or `SpecPatch.mode is None`) returns `CLARIFY` with catalog candidates, stores the proposed patch on the thread, and touches no providers. Answering with a unique candidate phrase (or `extend`/`replace`) resumes via `run_spec_turn` on the held patch. An unrelated message clears the pending interrupt and banners `Discarded pending clarification`. Unknown metrics still refuse with the full catalog and leave no pending.

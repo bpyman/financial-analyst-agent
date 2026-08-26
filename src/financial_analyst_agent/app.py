@@ -79,7 +79,10 @@ def _render_presentation(presented: Presentation, *, turn_index: int = 0) -> Non
     if presented.table is not None:
         _render_table(presented.table)
     if presented.candidates:
-        st.info("Ambiguous metric. Retype one of these names.")
+        if tuple(c.casefold() for c in presented.candidates) == ("extend", "replace"):
+            st.info("Ambiguous follow-up scope. Retype extend or replace.")
+        else:
+            st.info("Ambiguous metric. Retype one of these names.")
         for name in presented.candidates:
             st.markdown(f"- {name}")
     elif presented.message is not None:
