@@ -313,13 +313,23 @@ def main() -> None:
         else:
             st.session_state["turn_in_flight"] = True
             try:
-                with st.spinner("Running turn…"):
-                    turn = run_conversation_turn(
-                        st.session_state["thread_id"],
-                        query,
-                        runtime_for_kill_switch(enabled=kill_switch),
-                        store=store,
+                progress = st.progress(0, text="Running analysis…")
+
+                def _on_progress(done: int, total: int) -> None:
+                    fraction = 0.0 if total <= 0 else done / total
+                    progress.progress(
+                        fraction,
+                        text=f"Completed {done} of {total} cells…",
                     )
+
+                turn = run_conversation_turn(
+                    st.session_state["thread_id"],
+                    query,
+                    runtime_for_kill_switch(enabled=kill_switch),
+                    store=store,
+                    on_progress=_on_progress,
+                )
+                progress.progress(1.0, text="Analysis complete.")
             except ConfigurationError as exc:
                 st.error(str(exc))
             except Exception as exc:

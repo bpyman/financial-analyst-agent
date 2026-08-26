@@ -35,10 +35,17 @@ def run_conversation_turn(
     runtime: Runtime,
     *,
     store: ThreadStore,
+    on_progress: Any | None = None,
+    max_workers: int | None = None,
 ) -> ConversationTurn:
-    """Run one analyst message on a conversation thread and persist thread state."""
+    """Run one analyst message on a conversation thread and persist thread state.
+
+    ``on_progress(done, total)`` is invoked as independent compiled cells finish.
+    ``max_workers`` caps concurrent provider fan-out for structured analyses.
+    """
     from financial_analyst_agent.graph import run_workflow_turn
     from financial_analyst_agent.graph.spec_turn import (
+        DEFAULT_TASK_MAX_WORKERS,
         is_qualitative_proposal,
         is_structured_proposal,
         run_spec_turn,
@@ -50,6 +57,7 @@ def run_conversation_turn(
     proposed_patch: SpecPatch | None = None
     analysis_spec: AnalysisSpec | None = None
     persist_spec: AnalysisSpec | None = prior.analysis_spec
+    workers = DEFAULT_TASK_MAX_WORKERS if max_workers is None else max_workers
 
     if is_qualitative_proposal(proposal):
         result = run_workflow_turn(proposal, runtime, query=message)
@@ -60,6 +68,8 @@ def run_conversation_turn(
             runtime,
             current_spec=prior.analysis_spec,
             proposal=proposal,
+            on_progress=on_progress,
+            max_workers=workers,
         )
         if new_spec is not None:
             analysis_spec = new_spec

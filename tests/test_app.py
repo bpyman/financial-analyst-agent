@@ -131,6 +131,15 @@ class _Streamlit:
     def spinner(self, *args: Any, **kwargs: Any):
         yield None
 
+    def progress(self, *args: Any, **kwargs: Any) -> Any:
+        bar = SimpleNamespace(updates=[(args, kwargs)])
+
+        def _update(*u_args: Any, **u_kwargs: Any) -> None:
+            bar.updates.append((u_args, u_kwargs))
+
+        bar.progress = _update  # type: ignore[attr-defined]
+        return bar
+
     @contextmanager
     def expander(self, *args: Any, **kwargs: Any):
         label = str(args[0]) if args else str(kwargs.get("label", ""))
@@ -199,6 +208,7 @@ def test_main_runs_only_on_submit_and_renders_cached_history(
         runtime: object,
         *,
         store: object,
+        **_kwargs: Any,
     ) -> ConversationTurn:
         calls.append((thread_id, message))
         return ConversationTurn(
@@ -276,7 +286,7 @@ def test_main_clears_history_when_runtime_mode_changes(
     monkeypatch.setattr(
         app,
         "run_conversation_turn",
-        lambda thread_id, message, runtime, *, store: ConversationTurn(
+        lambda thread_id, message, runtime, *, store, **_kwargs: ConversationTurn(
             thread_id=thread_id,
             result=result,
             messages=(ThreadMessage(role="analyst", content=message),),
@@ -314,6 +324,7 @@ def test_main_keeps_prior_history_when_replacement_fails(
         runtime: object,
         *,
         store: object,
+        **_kwargs: Any,
     ) -> ConversationTurn:
         outcome = next(outcomes)
         if isinstance(outcome, Exception):
@@ -355,7 +366,7 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     monkeypatch.setattr(
         app,
         "run_conversation_turn",
-        lambda thread_id, message, runtime, *, store: (
+        lambda thread_id, message, runtime, *, store, **_kwargs: (
             _ for _ in ()
         ).throw(RuntimeError("provider failed")),
     )
@@ -402,6 +413,7 @@ def test_main_shows_second_turn_without_replacing_first(
         runtime: object,
         *,
         store: object,
+        **_kwargs: Any,
     ) -> ConversationTurn:
         result = next(results)
         prior = fake_streamlit.session_state.get("history", [])

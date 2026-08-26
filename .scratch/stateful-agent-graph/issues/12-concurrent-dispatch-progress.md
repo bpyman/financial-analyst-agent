@@ -8,10 +8,14 @@ Concurrency must not change a single number. The same request produces the same 
 
 **Blocked by:** 11
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Independent cells in one analysis execute concurrently
-- [ ] A wide analysis returns the same values, provenance, and ordering as serial execution against the fixture runtime
-- [ ] A failed provider call fails one cell with its typed reason and does not fail the turn or the thread
-- [ ] Progress is visible while a long turn runs
-- [ ] Concurrency is bounded so a wide request cannot flood a provider
+- [x] Independent cells in one analysis execute concurrently
+- [x] A wide analysis returns the same values, provenance, and ordering as serial execution against the fixture runtime
+- [x] A failed provider call fails one cell with its typed reason and does not fail the turn or the thread
+- [x] Progress is visible while a long turn runs
+- [x] Concurrency is bounded so a wide request cannot flood a provider
+
+## Answer
+
+`dispatch_compiled_tasks` runs independent compiled cells on a `ThreadPoolExecutor` capped at `DEFAULT_TASK_MAX_WORKERS` (8), preserving compile order when merging. Unexpected cell exceptions become typed partials so one failure cannot sink the turn or thread. `run_spec_turn` / `run_conversation_turn` accept `on_progress(done, total)` and optional `max_workers`; the Streamlit window drives `st.progress` from that callback instead of an indefinite spinner.

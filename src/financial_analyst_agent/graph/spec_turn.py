@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
@@ -29,6 +31,11 @@ from financial_analyst_agent.graph.analysis_spec import (
     validate_spec,
 )
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+# Bound concurrent provider fan-out so a wide window cannot flood SEC/EDGAR.
+DEFAULT_TASK_MAX_WORKERS = 8
+
+ProgressCallback = Callable[[int, int], None]
 
 
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
@@ -195,6 +202,98 @@ def execute_compiled_task(
     raise ValueError(f"unsupported compiled task: {task.kind!r}")
 
 
+def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
+    """Isolate an unexpected cell failure as a typed partial or refuse."""
+    if task.kind == "lookup" and task.company_queries and task.metric:
+        return TurnResult(
+            intent=Intent.LOOKUP,
+            tool_traces=[],
+            renderer=RendererKind.TABLE,
+            table_rows=[
+                TableRow(
+                    company_name=task.company_queries[0],
+                    ticker="",
+                    cik="",
+                    metric=task.metric,
+                    end_date=task.report_date,
+                    reason=MISSING_FACT,
+                )
+            ],
+        )
+    if task.kind == "compare" and task.company_queries and task.metric:
+        return TurnResult(
+            intent=Intent.COMPARE,
+            tool_traces=[],
+            renderer=RendererKind.TABLE,
+            table_rows=[
+                TableRow(
+                    company_name=company,
+                    ticker="",
+                    cik="",
+                    metric=task.metric,
+                    end_date=task.report_date,
+                    reason=MISSING_FACT,
+                )
+                for company in task.company_queries
+            ],
+        )
+    return TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.REFUSE,
+        message=str(exc),
+    )
+
+
+def dispatch_compiled_tasks(
+    tasks: tuple[CompiledTask, ...],
+    runtime: Runtime,
+    *,
+    query: str = "",
+    on_progress: ProgressCallback | None = None,
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
+) -> list[TurnResult]:
+    """Run independent compiled tasks concurrently; preserve task order in results.
+
+    Worker count is capped so a wide company × metric × period fan-out cannot
+    open unbounded provider connections. Completion order does not affect merge
+    order: results are always returned in ``tasks`` order.
+    """
+    total = len(tasks)
+    if total == 0:
+        return []
+    if total == 1 or max_workers <= 1:
+        results: list[TurnResult] = []
+        for index, task in enumerate(tasks):
+            try:
+                results.append(execute_compiled_task(task, runtime, query=query))
+            except Exception as exc:
+                results.append(_task_failure_result(task, exc))
+            if on_progress is not None:
+                on_progress(index + 1, total)
+        return results
+
+    workers = min(max_workers, total)
+    ordered: list[TurnResult | None] = [None] * total
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(execute_compiled_task, task, runtime, query=query): index
+            for index, task in enumerate(tasks)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                ordered[index] = future.result()
+            except Exception as exc:
+                ordered[index] = _task_failure_result(tasks[index], exc)
+            done += 1
+            if on_progress is not None:
+                on_progress(done, total)
+    assert all(result is not None for result in ordered)
+    return [result for result in ordered if result is not None]
+
+
 def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[TableRow]:
     """Convert a whole-lookup refuse into a cell so multi-metric tables stay partial."""
     if result.renderer is not RendererKind.REFUSE:
@@ -338,6 +437,8 @@ def run_spec_turn(
     *,
     current_spec: AnalysisSpec | None,
     proposal: Any,
+    on_progress: ProgressCallback | None = None,
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
     """Apply a structured proposal: patch → resolve → validate → compile → execute."""
     patch = (
@@ -399,6 +500,12 @@ def run_spec_turn(
             patch,
         )
 
-    results = [execute_compiled_task(task, runtime, query=message) for task in tasks]
+    results = dispatch_compiled_tasks(
+        tasks,
+        runtime,
+        query=message,
+        on_progress=on_progress,
+        max_workers=max_workers,
+    )
     across = "across_periods" in spec.operations
     return merge_task_results(tasks, results, across_periods=across), spec, patch

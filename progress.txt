@@ -1,5 +1,28 @@
 # Progress
 
+## 2026-08-25 — 12 Concurrent dispatch and visible progress
+
+Task completed: `.scratch/stateful-agent-graph/issues/12-concurrent-dispatch-progress.md`
+
+Key decisions:
+- dispatch_compiled_tasks fans out cells on a bounded ThreadPoolExecutor
+  (default 8); merge order stays compile order.
+- Cell exceptions become typed partials; missing-fact isolation preserved.
+- on_progress(done, total) on the conversation seam; Streamlit uses
+  st.progress instead of an indefinite spinner.
+
+Files changed:
+- `src/financial_analyst_agent/graph/spec_turn.py`
+- `src/financial_analyst_agent/{conversation,app}.py`
+- `tests/unit/test_concurrent_dispatch.py`
+- `tests/test_app.py`
+- `.scratch/stateful-agent-graph/issues/12-concurrent-dispatch-progress.md`
+- `progress.txt`
+
+Blockers / next:
+- 13 (evidence store), 14 (resumable clarification), 15 (exploratory)
+  remain open and unblocked.
+
 ## 2026-08-25 — 11 Multi-period analysis and across-period comparison
 
 Task completed: `.scratch/stateful-agent-graph/issues/11-multi-period-operations.md`
