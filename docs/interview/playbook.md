@@ -1,5 +1,7 @@
 # Interview playbook
 
+> Archive. The interview was 20 August 2026, 5 p.m. ET, and went well. There is no remaining deadline; the project continues as a portfolio piece. Keep this as the speaking guide from that session.
+
 Use this as a speaking guide, not a script to read verbatim. The goal is to show judgment:
 the system is agentic where interpretation helps and deterministic where correctness matters.
 

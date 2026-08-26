@@ -1,5 +1,7 @@
 # Interview checklist
 
+> Archive. The interview was 20 August 2026, 5 p.m. ET, and went well. There is no remaining deadline; the project continues as a portfolio piece. Use this as a demo preflight, not a countdown.
+
 ## Highest-value preparation order
 
 If time is short, do these in order:

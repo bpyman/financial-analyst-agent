@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-08-25 — Interview done; no deadline
+
+The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
+
+## 2026-08-25 — Stateful analysis graph spec + ADR 0005
+
+Spec written: `.scratch/stateful-agent-graph/issues/01-stateful-analysis-graph.md` (ready-for-agent). No code yet.
+
+Key decisions:
+- Redesign around a persisted conversation thread whose durable centre is a typed, patchable analysis spec. The model proposes a spec patch; deterministic code resolves, validates against the closed catalogs, compiles tasks, and dispatches to a workflow subgraph. Confirmed as the canonical representation of the current quantitative question.
+- Flexibility comes from spec dimensions (companies × metrics × periods × operations), not model autonomy. New metric = catalog entry; new comparison = spec operation; new capability = subgraph. No new intents.
+- One new public seam: thread id + message + runtime → conversation turn. `run_turn` becomes a compatibility wrapper over an ephemeral thread so gold and per-intent tests stay green, unchanged, for the whole migration. `Runtime`, ports, and the presentation mapping are untouched.
+- Trust boundary unchanged: SEC XBRL facts, `Decimal` formulas, snapshot-derived constituents, CIK identity inside tools, numeral lock. Exploratory lane is labelled, cited, read-only, and cannot emit structured rows.
+- Clarify becomes a resumable interrupt holding a pending analysis. ADR 0004's one-shot rejection of a pending plan is superseded; its phrase table and candidate-set rule survive.
+
+Files changed:
+- `docs/adr/0005-stateful-analysis-graph.md` (new), `docs/adr/0004-ambiguous-metric-clarify.md`
+- `prd.md`, `docs/design.md`, `CONTEXT.md`
+- `.scratch/stateful-agent-graph/issues/01-stateful-analysis-graph.md`
+
+Blockers / next:
+- Migration step 1 (graph as private implementation of today's six workflows, `run_turn` and gold unchanged) is unblocked. Split the spec into tickets before starting.
+- Watch `extend` vs `replace` mis-scoping on follow-ups; cover it in the first conversation-seam tests.
+
 ## 2026-08-17 — 03 Snapshot rank E2E (PRD US 18–24, 32–33, 38, 49)
 
 Task completed: `.scratch/financial-analyst-agent/issues/done/03-snapshot-rank-e2e.md`
