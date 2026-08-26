@@ -182,16 +182,20 @@ def select_quarterly_fact_with_filing_fallback(
     ticker: str,
     cik: str,
     source_url_for_filing: Callable[[Filing], str],
+    *,
+    report_date: date | None = None,
 ) -> tuple[FinancialFact, ...]:
     """
     Select quarterly facts using amendment-first filing fallback.
 
-    Tries each candidate filing for the newest report_date in order without
-    mixing facts across accessions. UnsupportedQuarterlyFactError from a filing
-    triggers fallback; AmbiguousFactError is never concealed by fallback.
+    Tries each candidate filing for the chosen report_date (newest when omitted)
+    in order without mixing facts across accessions. UnsupportedQuarterlyFactError
+    from a filing triggers fallback; AmbiguousFactError is never concealed by
+    fallback. A missing named report_date is a typed filing failure, not the
+    nearest available period.
     """
     try:
-        candidate_filings = get_candidate_filings(filings)
+        candidate_filings = get_candidate_filings(filings, report_date=report_date)
     except FilingNotFoundError:
         raise
 

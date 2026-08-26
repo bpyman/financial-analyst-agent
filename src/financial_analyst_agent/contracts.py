@@ -92,7 +92,13 @@ class EssayCompleter(Protocol):
 
 
 class FactsPort(Protocol):
-    def get_financials(self, company: str, metric: str) -> FinancialFact: ...
+    def get_financials(
+        self,
+        company: str,
+        metric: str,
+        *,
+        report_date: date | None = None,
+    ) -> FinancialFact: ...
 
 
 class RankingPort(Protocol):

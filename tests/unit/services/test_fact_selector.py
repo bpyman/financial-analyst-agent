@@ -6,8 +6,15 @@ from decimal import Decimal
 import pytest
 
 from financial_analyst_agent.domain.enums import Metric
-from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
-from financial_analyst_agent.services.fact_selector import select_quarterly_fact
+from financial_analyst_agent.domain.errors import (
+    AmbiguousFactError,
+    FilingNotFoundError,
+    UnsupportedQuarterlyFactError,
+)
+from financial_analyst_agent.services.fact_selector import (
+    select_quarterly_fact,
+    select_quarterly_fact_with_filing_fallback,
+)
 from helpers import make_fact, make_filing
 
 FILING = make_filing()
@@ -247,3 +254,127 @@ def test_duration_111_days_rejected() -> None:
     start = REPORT_END - timedelta(days=111)
     with pytest.raises(UnsupportedQuarterlyFactError):
         _select([make_fact(start_date=start, end_date=REPORT_END, value=Decimal("4"))])
+
+
+OLDER_END = date(2024, 6, 29)
+OLDER_START = date(2024, 3, 31)
+OLDER_ACCESSION = "0000320193-24-000060"
+
+
+def _source_url(filing: object) -> str:
+    return SOURCE_URL
+
+
+def test_filing_fallback_named_report_date_returns_that_quarter() -> None:
+    older_filing = make_filing(
+        accession_number=OLDER_ACCESSION,
+        report_date=OLDER_END,
+        filed_date=date(2024, 8, 1),
+        primary_document="aapl-20240629.htm",
+    )
+    newer_filing = FILING
+    facts = [
+        make_fact(
+            accession_number=OLDER_ACCESSION,
+            start_date=OLDER_START,
+            end_date=OLDER_END,
+            filed_date=date(2024, 8, 1),
+            value=Decimal("21448000000"),
+        ),
+        make_fact(value=Decimal("23636000000")),
+    ]
+
+    selected = select_quarterly_fact_with_filing_fallback(
+        facts,
+        [older_filing, newer_filing],
+        Metric.NET_INCOME,
+        "USD",
+        source_url_for_filing=_source_url,
+        report_date=OLDER_END,
+        **COMPANY,
+    )
+
+    assert len(selected) == 1
+    assert selected[0].value == Decimal("21448000000")
+    assert selected[0].end_date == OLDER_END
+    assert selected[0].accession_number == OLDER_ACCESSION
+
+
+def test_filing_fallback_named_report_date_missing_does_not_use_latest() -> None:
+    facts = [make_fact(value=Decimal("23636000000"))]
+
+    with pytest.raises(FilingNotFoundError):
+        select_quarterly_fact_with_filing_fallback(
+            facts,
+            [FILING],
+            Metric.NET_INCOME,
+            "USD",
+            source_url_for_filing=_source_url,
+            report_date=OLDER_END,
+            **COMPANY,
+        )
+
+
+def test_filing_fallback_latest_unchanged_when_report_date_omitted() -> None:
+    older_filing = make_filing(
+        accession_number=OLDER_ACCESSION,
+        report_date=OLDER_END,
+        filed_date=date(2024, 8, 1),
+    )
+    facts = [
+        make_fact(
+            accession_number=OLDER_ACCESSION,
+            start_date=OLDER_START,
+            end_date=OLDER_END,
+            filed_date=date(2024, 8, 1),
+            value=Decimal("21448000000"),
+        ),
+        make_fact(value=Decimal("23636000000")),
+    ]
+
+    selected = select_quarterly_fact_with_filing_fallback(
+        facts,
+        [older_filing, FILING],
+        Metric.NET_INCOME,
+        "USD",
+        source_url_for_filing=_source_url,
+        **COMPANY,
+    )
+
+    assert selected[0].value == Decimal("23636000000")
+    assert selected[0].end_date == REPORT_END
+
+
+def test_filing_fallback_named_period_still_raises_ambiguous() -> None:
+    older_filing = make_filing(
+        accession_number=OLDER_ACCESSION,
+        report_date=OLDER_END,
+        filed_date=date(2024, 8, 1),
+    )
+    facts = [
+        make_fact(
+            accession_number=OLDER_ACCESSION,
+            start_date=OLDER_START,
+            end_date=OLDER_END,
+            filed_date=date(2024, 8, 1),
+            value=Decimal("100"),
+        ),
+        make_fact(
+            accession_number=OLDER_ACCESSION,
+            start_date=OLDER_START,
+            end_date=OLDER_END,
+            filed_date=date(2024, 8, 1),
+            value=Decimal("200"),
+        ),
+    ]
+
+    with pytest.raises(AmbiguousFactError):
+        select_quarterly_fact_with_filing_fallback(
+            facts,
+            [older_filing, FILING],
+            Metric.NET_INCOME,
+            "USD",
+            source_url_for_filing=_source_url,
+            report_date=OLDER_END,
+            **COMPANY,
+        )

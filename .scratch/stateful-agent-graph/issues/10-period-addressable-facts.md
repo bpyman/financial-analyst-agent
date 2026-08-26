@@ -8,11 +8,15 @@ The selection rules do not loosen. Still a standalone-quarter duration from a qu
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A named quarter can be requested and returns that quarter's directly reported amount with correct filing provenance
-- [ ] Latest-quarter lookups behave exactly as they do today
-- [ ] Standalone-duration rules hold, with no year-to-date subtraction and no derived Q4
-- [ ] A requested quarter that is not reported is a typed failure, never a substituted neighbouring period
-- [ ] Colliding candidate concepts still fail as an ambiguous concept
-- [ ] Period selection has unit cases at the fact-selection seam
+- [x] A named quarter can be requested and returns that quarter's directly reported amount with correct filing provenance
+- [x] Latest-quarter lookups behave exactly as they do today
+- [x] Standalone-duration rules hold, with no year-to-date subtraction and no derived Q4
+- [x] A requested quarter that is not reported is a typed failure, never a substituted neighbouring period
+- [x] Colliding candidate concepts still fail as an ambiguous concept
+- [x] Period selection has unit cases at the fact-selection seam
+
+## Answer
+
+Named quarters are addressable by `report_date` on the fact seam. `get_candidate_filings` and `select_quarterly_fact_with_filing_fallback` take an optional `report_date`; omitted keeps newest-period behaviour. `FactsPort.get_financials` / `SecFactLookup.get_financials` accept the same keyword. A missing named period raises a typed filing failure (surfaced as `UnsupportedQuarterlyFactError` at the port) and never substitutes a neighbour. Standalone-duration, no YTD, no derived Q4, and `AmbiguousFactError` are unchanged. Analysis-spec period windows stay for ticket 11.

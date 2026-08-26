@@ -1,5 +1,27 @@
 # Progress
 
+## 2026-08-25 — 10 Period-addressable quarterly facts
+
+Task completed: `.scratch/stateful-agent-graph/issues/10-period-addressable-facts.md`
+
+Key decisions:
+- Named quarter = optional `report_date` on filing/fact selection and
+  `FactsPort.get_financials`; omit for unchanged latest-quarter path.
+- Missing named period is a typed filing failure, never a neighbour.
+- Analysis-spec period windows remain ticket 11.
+
+Files changed:
+- `src/financial_analyst_agent/services/{filing_selector,fact_selector}.py`
+- `src/financial_analyst_agent/{contracts,sec_facts}.py`
+- `tests/unit/services/test_{filing_selector,fact_selector}.py`
+- `tests/unit/providers/test_sec_facts.py`
+- `.scratch/stateful-agent-graph/issues/10-period-addressable-facts.md`
+- `progress.txt`
+
+Blockers / next:
+- 11 (multi-period) unblocked on 09+10; 12 still waits on 11;
+  13, 14, 15 remain independently unblocked.
+
 ## 2026-08-25 — 09 Multi-metric composition
 
 Task completed: `.scratch/stateful-agent-graph/issues/09-multi-metric-composition.md`
