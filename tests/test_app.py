@@ -1,8 +1,9 @@
-"""Streamlit submission and cached-result behavior."""
+"""Streamlit submission and multi-turn audience-window behavior."""
 
 import re
 from contextlib import contextmanager
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,8 +11,10 @@ import pytest
 
 from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
+from financial_analyst_agent.conversation import ConversationTurn
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import DisplayTable
+from financial_analyst_agent.thread_store import LocalThreadStore, ThreadMessage, ThreadState
 from financial_analyst_agent.turn import (
     Intent,
     NewsHit,
@@ -146,18 +149,12 @@ class _Streamlit:
         yield self
 
 
-def test_main_runs_only_on_submit_and_renders_cached_result(
+def _patch_main_shell(
     monkeypatch: pytest.MonkeyPatch,
+    fake_streamlit: _Streamlit,
+    *,
+    store_root: Path | None = None,
 ) -> None:
-    fake_streamlit = _Streamlit()
-    result = TurnResult(
-        intent=Intent.LOOKUP,
-        tool_traces=[],
-        renderer=RendererKind.TABLE,
-    )
-    calls: list[str] = []
-    rendered: list[TurnResult] = []
-
     monkeypatch.setattr(app, "st", fake_streamlit)
     monkeypatch.setattr(
         app,
@@ -170,19 +167,58 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
         lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
     )
     monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
+    if store_root is not None:
+        monkeypatch.setattr(app, "thread_store_root", lambda: store_root)
 
-    def fake_run_turn(query: str, runtime: object) -> TurnResult:
-        calls.append(query)
-        return result
 
-    monkeypatch.setattr(app, "run_turn", fake_run_turn)
-    monkeypatch.setattr(app, "render_turn_result", rendered.append)
+def _capture_renders(rendered: list[TurnResult]):
+    def capture(result: TurnResult, *, turn_index: int = 0) -> None:
+        rendered.append(result)
+
+    return capture
+
+
+def test_main_runs_only_on_submit_and_renders_cached_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit()
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.TABLE,
+    )
+    calls: list[tuple[str, str]] = []
+    rendered: list[TurnResult] = []
+
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+
+    def fake_conversation_turn(
+        thread_id: str,
+        message: str,
+        runtime: object,
+        *,
+        store: object,
+    ) -> ConversationTurn:
+        calls.append((thread_id, message))
+        return ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(result,),
+            last_result=result,
+        )
+
+    monkeypatch.setattr(app, "run_conversation_turn", fake_conversation_turn)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
 
     app.main()
     app.main()
 
     assert fake_streamlit.page_config.get("initial_sidebar_state") == "collapsed"
-    assert calls == ["What was Google's net income?"]
+    assert len(calls) == 1
+    assert calls[0][1] == "What was Google's net income?"
+    assert fake_streamlit.session_state["thread_id"] == calls[0][0]
     assert rendered == [result, result]
     catalog = "\n".join(fake_streamlit.markdowns)
     assert fake_streamlit.expanders == [
@@ -224,8 +260,9 @@ def test_main_runs_only_on_submit_and_renders_cached_result(
     assert "cost_of_revenue" not in catalog
 
 
-def test_main_clears_cached_result_when_runtime_mode_changes(
+def test_main_clears_history_when_runtime_mode_changes(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_streamlit = _Streamlit(kill_switch_values=(True, False))
     result = TurnResult(
@@ -235,30 +272,30 @@ def test_main_clears_cached_result_when_runtime_mode_changes(
     )
     rendered: list[TurnResult] = []
 
-    monkeypatch.setattr(app, "st", fake_streamlit)
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
         app,
-        "ui",
-        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
+        "run_conversation_turn",
+        lambda thread_id, message, runtime, *, store: ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(result,),
+            last_result=result,
+        ),
     )
-    monkeypatch.setattr(
-        app,
-        "get_settings",
-        lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
-    )
-    monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
-    monkeypatch.setattr(app, "run_turn", lambda query, runtime: result)
-    monkeypatch.setattr(app, "render_turn_result", rendered.append)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
 
     app.main()
     app.main()
 
     assert rendered == [result]
-    assert "result" not in fake_streamlit.session_state
+    assert fake_streamlit.session_state.get("history") in (None, [])
 
 
-def test_main_clears_previous_result_when_replacement_fails(
+def test_main_keeps_prior_history_when_replacement_fails(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_streamlit = _Streamlit(button_values=(True, True))
     result = TurnResult(
@@ -269,38 +306,39 @@ def test_main_clears_previous_result_when_replacement_fails(
     outcomes = iter((result, ConfigurationError("replacement failed")))
     rendered: list[TurnResult] = []
 
-    monkeypatch.setattr(app, "st", fake_streamlit)
-    monkeypatch.setattr(
-        app,
-        "ui",
-        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
-    )
-    monkeypatch.setattr(
-        app,
-        "get_settings",
-        lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
-    )
-    monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
 
-    def fake_run_turn(query: str, runtime: object) -> TurnResult:
+    def fake_conversation_turn(
+        thread_id: str,
+        message: str,
+        runtime: object,
+        *,
+        store: object,
+    ) -> ConversationTurn:
         outcome = next(outcomes)
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome
+        return ConversationTurn(
+            thread_id=thread_id,
+            result=outcome,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(outcome,),
+            last_result=outcome,
+        )
 
-    monkeypatch.setattr(app, "run_turn", fake_run_turn)
-    monkeypatch.setattr(app, "render_turn_result", rendered.append)
+    monkeypatch.setattr(app, "run_conversation_turn", fake_conversation_turn)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
 
     app.main()
     app.main()
 
-    assert rendered == [result]
-    assert "result" not in fake_streamlit.session_state
+    assert rendered == [result, result]
     assert fake_streamlit.errors == ["replacement failed"]
 
 
-def test_main_cleans_up_non_configuration_failure(
+def test_main_keeps_prior_history_on_non_configuration_failure(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     fake_streamlit = _Streamlit(button_values=(True,))
     previous = TurnResult(
@@ -308,35 +346,133 @@ def test_main_cleans_up_non_configuration_failure(
         tool_traces=[],
         renderer=RendererKind.TABLE,
     )
-    fake_streamlit.session_state["result"] = previous
-    fake_streamlit.session_state["result_kill_switch"] = True
+    fake_streamlit.session_state["thread_id"] = "thread-a"
+    fake_streamlit.session_state["history"] = [("prior question", previous)]
+    fake_streamlit.session_state["history_kill_switch"] = True
     rendered: list[TurnResult] = []
 
-    monkeypatch.setattr(app, "st", fake_streamlit)
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
         app,
-        "ui",
-        SimpleNamespace(badge=lambda *a, **k: None, metric_card=lambda *a, **k: None),
+        "run_conversation_turn",
+        lambda thread_id, message, runtime, *, store: (
+            _ for _ in ()
+        ).throw(RuntimeError("provider failed")),
     )
-    monkeypatch.setattr(
-        app,
-        "get_settings",
-        lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
-    )
-    monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
-    monkeypatch.setattr(
-        app,
-        "run_turn",
-        lambda query, runtime: (_ for _ in ()).throw(RuntimeError("provider failed")),
-    )
-    monkeypatch.setattr(app, "render_turn_result", rendered.append)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
 
     app.main()
 
-    assert rendered == []
-    assert "result" not in fake_streamlit.session_state
+    assert rendered == [previous]
+    assert fake_streamlit.session_state["history"] == [("prior question", previous)]
     assert fake_streamlit.session_state["turn_in_flight"] is False
     assert fake_streamlit.errors == ["Turn failed: provider failed"]
+
+
+def test_main_shows_second_turn_without_replacing_first(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = TurnResult(intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.TABLE)
+    second = TurnResult(
+        intent=Intent.EXPLAIN,
+        tool_traces=[],
+        renderer=RendererKind.ESSAY,
+        essay="Model analysis.",
+        banners=("Model analysis — not grounded in retrieved filings or news.",),
+    )
+    results = iter((first, second))
+    rendered: list[TurnResult] = []
+    messages = [
+        "What was Google's net income?",
+        "How can AI disrupt healthcare?",
+    ]
+    queries = iter(messages)
+
+    class _MultiQueryStreamlit(_Streamlit):
+        def text_input(self, *args: Any, **kwargs: Any) -> str:
+            return next(queries)
+
+    fake_streamlit = _MultiQueryStreamlit(button_values=(True, True))
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+
+    def fake_conversation_turn(
+        thread_id: str,
+        message: str,
+        runtime: object,
+        *,
+        store: object,
+    ) -> ConversationTurn:
+        result = next(results)
+        prior = fake_streamlit.session_state.get("history", [])
+        all_messages = tuple(
+            ThreadMessage(role="analyst", content=item[0]) for item in prior
+        ) + (ThreadMessage(role="analyst", content=message),)
+        all_results = tuple(item[1] for item in prior) + (result,)
+        return ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=all_messages,
+            results=all_results,
+            last_result=result,
+        )
+
+    monkeypatch.setattr(app, "run_conversation_turn", fake_conversation_turn)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
+
+    app.main()
+    app.main()
+
+    assert rendered == [first, first, second]
+    assert fake_streamlit.session_state["history"] == [
+        (messages[0], first),
+        (messages[1], second),
+    ]
+    assert any(messages[0] in item for item in fake_streamlit.markdowns)
+    assert any(messages[1] in item for item in fake_streamlit.markdowns)
+
+
+def test_main_reloads_thread_history_after_restart(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = TurnResult(intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.TABLE)
+    second = TurnResult(
+        intent=Intent.EXPLAIN,
+        tool_traces=[],
+        renderer=RendererKind.ESSAY,
+        essay="Model analysis.",
+    )
+    store = LocalThreadStore(tmp_path)
+    store.save(
+        ThreadState(
+            thread_id="local",
+            messages=(
+                ThreadMessage(role="analyst", content="What was Google's net income?"),
+                ThreadMessage(role="analyst", content="How can AI disrupt healthcare?"),
+            ),
+            results=(first, second),
+            last_result=second,
+        )
+    )
+    fake_streamlit = _Streamlit(button_values=(False,))
+    rendered: list[TurnResult] = []
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
+
+    app.main()
+
+    assert fake_streamlit.session_state["thread_id"] == "local"
+    assert rendered == [first, second]
+    assert fake_streamlit.session_state["history"] == [
+        ("What was Google's net income?", first),
+        ("How can AI disrupt healthcare?", second),
+    ]
 
 
 def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,10 +8,14 @@ Everything the window already does stays: the runtime badge, the fixture warning
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The window holds a thread identifier and sends every message to the conversation seam
-- [ ] Prior turns stay visible as a history, and a refresh or restart returns to the same thread
-- [ ] Runtime badge, fixture warning, tool traces, tables, fact cards, citations, clarify, and refusal all still render
-- [ ] The kill-switch still swaps adapters only
-- [ ] New result fields are asserted in presentation tests, not by rendering the app
+- [x] The window holds a thread identifier and sends every message to the conversation seam
+- [x] Prior turns stay visible as a history, and a refresh or restart returns to the same thread
+- [x] Runtime badge, fixture warning, tool traces, tables, fact cards, citations, clarify, and refusal all still render
+- [x] The kill-switch still swaps adapters only
+- [x] New result fields are asserted in presentation tests, not by rendering the app
+
+## Answer
+
+The Streamlit window owns a stable `local` thread id, persists under `.cache/threads` via `LocalThreadStore`, and sends every Ask through `run_conversation_turn`. Thread state now keeps `results` in parallel with analyst `messages` so a full Q&A history reloads after refresh or restart. Prior turns render as history (`You:` + existing `render_turn_result`); kill-switch still only swaps adapters and clears the on-screen history when the mode flips. Failed turns keep prior history. Fact-card widget keys are turn-indexed so multi-turn lookup cards do not collide.

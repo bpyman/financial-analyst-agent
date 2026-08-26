@@ -25,6 +25,7 @@ class ThreadState(BaseModel):
 
     thread_id: str
     messages: tuple[ThreadMessage, ...] = ()
+    results: tuple[TurnResult, ...] = ()
     last_result: TurnResult | None = None
 
 

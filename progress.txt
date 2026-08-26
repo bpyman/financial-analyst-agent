@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-08-25 — 07 Multi-turn audience window
+
+Task completed: `.scratch/stateful-agent-graph/issues/07-multi-turn-window.md`
+
+Key decisions:
+- Window owns stable thread id `local` and calls `run_conversation_turn`
+  with `LocalThreadStore` under `.cache/threads`.
+- Thread state persists `results` alongside analyst `messages` so history
+  survives refresh/restart; ConversationTurn exposes the same tuple.
+- History renders prior Q&A in-window; kill-switch still only swaps adapters
+  and clears displayed history when the mode flips; failed turns keep priors.
+
+Files changed:
+- `src/financial_analyst_agent/app.py`
+- `src/financial_analyst_agent/conversation.py`
+- `src/financial_analyst_agent/thread_store.py`
+- `tests/test_app.py`
+- `tests/unit/test_conversation_seam.py`
+- `.scratch/stateful-agent-graph/issues/07-multi-turn-window.md`
+
+Blockers / next:
+- 08 (analysis spec patch) and 15 (exploratory lane) remain unblocked on 06;
+  10 remains independently unblocked for period-addressable facts.
+
 ## 2026-08-25 — 06 Conversation seam on a persisted thread
 
 Task completed: `.scratch/stateful-agent-graph/issues/06-conversation-seam-thread.md`

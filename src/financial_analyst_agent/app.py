@@ -1,12 +1,16 @@
-"""One Streamlit window: query, intent chip, tool cards, answer."""
+"""One Streamlit window: multi-turn thread, tool cards, answers."""
+
+from __future__ import annotations
 
 import html
 import re
+from pathlib import Path
 
 import streamlit as st
 import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
 from financial_analyst_agent.config import AppMode, get_settings
+from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.presentation import (
     DisplayTable,
@@ -17,10 +21,12 @@ from financial_analyst_agent.presentation import (
     present_turn,
 )
 from financial_analyst_agent.runtime import runtime_for_kill_switch
-from financial_analyst_agent.turn import TurnResult, run_turn
+from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
+from financial_analyst_agent.turn import TurnResult
 
 _GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
 _MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
+_DEFAULT_THREAD_ID = "local"
 _CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Look up quarterly 10-Q financial facts or market cap for any "
@@ -52,11 +58,16 @@ KILL_SWITCH_BANNER = (
 )
 
 
-def render_turn_result(result: TurnResult) -> None:
-    _render_presentation(present_turn(result))
+def thread_store_root() -> Path:
+    """Durable local root for conversation threads (no database server)."""
+    return Path(".cache") / "threads"
 
 
-def _render_presentation(presented: Presentation) -> None:
+def render_turn_result(result: TurnResult, *, turn_index: int = 0) -> None:
+    _render_presentation(present_turn(result), turn_index=turn_index)
+
+
+def _render_presentation(presented: Presentation, *, turn_index: int = 0) -> None:
     st.badge(presented.intent, color="blue")
     for banner in presented.banners:
         st.info(banner)
@@ -64,7 +75,7 @@ def _render_presentation(presented: Presentation) -> None:
         published = f" ({hit.published})" if hit.published else ""
         st.markdown(f"[{hit.index}] [{hit.title}]({hit.url}){published}")
     if presented.fact_card is not None:
-        _render_fact_card(presented.fact_card)
+        _render_fact_card(presented.fact_card, turn_index=turn_index)
     if presented.table is not None:
         _render_table(presented.table)
     if presented.candidates:
@@ -151,12 +162,12 @@ def _trace_rows_html(items: list[tuple[str, str]], label_width: int) -> str:
     )
 
 
-def _render_fact_card(card: QuarterlyFactCard) -> None:
+def _render_fact_card(card: QuarterlyFactCard, *, turn_index: int = 0) -> None:
     ui.metric_card(
         label=card.metric_header,
         value=card.amount,
         description=f"{card.company_name} · {card.ticker}",
-        key="lookup-fact",
+        key=f"lookup-fact-{turn_index}",
     )
     st.caption(card.period_label)
     filing = f"[Filing]({card.source_url})" if card.source_url else ""
@@ -228,6 +239,33 @@ def _render_metric_catalog() -> None:
                 st.markdown("  \n".join(f":gray[{name}]" for name in names))
 
 
+def _history_pairs(state: ThreadState) -> list[tuple[str, TurnResult]]:
+    pairs: list[tuple[str, TurnResult]] = []
+    for message, result in zip(state.messages, state.results, strict=False):
+        pairs.append((message.content, result))
+    return pairs
+
+
+def _ensure_thread_and_history(store: LocalThreadStore, kill_switch: bool) -> None:
+    if "thread_id" not in st.session_state:
+        st.session_state["thread_id"] = _DEFAULT_THREAD_ID
+    if "history" in st.session_state:
+        return
+    state = store.load(st.session_state["thread_id"])
+    if state is None or not state.results:
+        st.session_state["history"] = []
+        return
+    st.session_state["history"] = _history_pairs(state)
+    st.session_state["history_kill_switch"] = kill_switch
+
+
+def _render_history() -> None:
+    history: list[tuple[str, TurnResult]] = list(st.session_state.get("history") or [])
+    for index, (message, result) in enumerate(history):
+        st.markdown(f"**You:** {message}")
+        render_turn_result(result, turn_index=index)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Financial analyst agent",
@@ -252,9 +290,16 @@ def main() -> None:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
-    if "result" in st.session_state and st.session_state.get("result_kill_switch") != kill_switch:
-        st.session_state.pop("result", None)
-        st.session_state.pop("result_kill_switch", None)
+
+    store = LocalThreadStore(thread_store_root())
+    _ensure_thread_and_history(store, kill_switch)
+
+    if (
+        st.session_state.get("history")
+        and st.session_state.get("history_kill_switch") != kill_switch
+    ):
+        st.session_state["history"] = []
+        st.session_state.pop("history_kill_switch", None)
 
     with st.form("ask"):
         query = st.text_input("Ask a question", value=_GOLD_QUERY)
@@ -266,28 +311,33 @@ def main() -> None:
         if st.session_state.get("turn_in_flight"):
             st.info("A turn is already running.")
         else:
-            st.session_state.pop("result", None)
-            st.session_state.pop("result_kill_switch", None)
             st.session_state["turn_in_flight"] = True
             try:
                 with st.spinner("Running turn…"):
-                    result = run_turn(
+                    turn = run_conversation_turn(
+                        st.session_state["thread_id"],
                         query,
                         runtime_for_kill_switch(enabled=kill_switch),
+                        store=store,
                     )
             except ConfigurationError as exc:
                 st.error(str(exc))
             except Exception as exc:
                 st.error(f"Turn failed: {exc}")
             else:
-                st.session_state["result"] = result
-                st.session_state["result_kill_switch"] = kill_switch
+                st.session_state["history"] = _history_pairs(
+                    ThreadState(
+                        thread_id=turn.thread_id,
+                        messages=turn.messages,
+                        results=turn.results,
+                        last_result=turn.last_result,
+                    )
+                )
+                st.session_state["history_kill_switch"] = kill_switch
             finally:
                 st.session_state["turn_in_flight"] = False
 
-    if "result" not in st.session_state:
-        return
-    render_turn_result(st.session_state["result"])
+    _render_history()
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ class ConversationTurn(BaseModel):
     thread_id: str
     result: TurnResult
     messages: tuple[ThreadMessage, ...] = ()
+    results: tuple[TurnResult, ...] = ()
     last_result: TurnResult
 
 
@@ -36,11 +37,18 @@ def run_conversation_turn(
     prior = store.load(thread_id) or ThreadState(thread_id=thread_id)
     result = execute_turn(message, runtime)
     messages = (*prior.messages, ThreadMessage(role="analyst", content=message))
-    state = ThreadState(thread_id=thread_id, messages=messages, last_result=result)
+    results = (*prior.results, result)
+    state = ThreadState(
+        thread_id=thread_id,
+        messages=messages,
+        results=results,
+        last_result=result,
+    )
     store.save(state)
     return ConversationTurn(
         thread_id=thread_id,
         result=result,
         messages=messages,
+        results=results,
         last_result=result,
     )
