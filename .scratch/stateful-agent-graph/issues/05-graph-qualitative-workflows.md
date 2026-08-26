@@ -8,10 +8,14 @@ Everything that makes those answers trustworthy stays put: the model-analysis ba
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Qualitative explanation and current events run as subgraphs, and the application seam delegates all six workflows
-- [ ] The pre-graph dispatch path is gone, so no workflow has two implementations
-- [ ] Banner, citation, numeral-lock, and news-refusal behaviour is unchanged
-- [ ] Subgraphs expose a small typed interface and do not read conversation history
-- [ ] The gold suite and per-workflow seam tests pass with no assertion changes
+- [x] Qualitative explanation and current events run as subgraphs, and the application seam delegates all six workflows
+- [x] The pre-graph dispatch path is gone, so no workflow has two implementations
+- [x] Banner, citation, numeral-lock, and news-refusal behaviour is unchanged
+- [x] Subgraphs expose a small typed interface and do not read conversation history
+- [x] The gold suite and per-workflow seam tests pass with no assertion changes
+
+## Answer
+
+Migration step 2: `run_qualitative_explanation` and `run_current_events` are one-node subgraphs behind typed interfaces; the parent graph routes all six closed intents via `run_workflow_turn`. `run_turn` delegates explain and news-and-explain through that entry (no direct helper calls). Banner, citations, numeral lock, and empty-news refuse stay in the existing turn helpers. Seam tests assert TurnResult only — no graph internals. `run_structured_turn` remains as a thin alias for structured callers.

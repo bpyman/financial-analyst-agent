@@ -1,7 +1,11 @@
-"""Parent graph for structured analysis workflows (migration step 1).
+"""Parent graph for closed analysis workflows (migration steps 1–2).
 
 Edges are fixed and typed. The model still selects a closed intent upstream;
 it does not choose nodes or chain tools. Graph internals are not a test surface.
+
+Structured analysis (lookup/compare/rank/rank_and_lookup) runs as nodes on the
+parent. Qualitative explanation and current events are separate subgraphs behind
+small typed interfaces; the parent dispatches to them.
 """
 
 from __future__ import annotations
@@ -11,17 +15,27 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from financial_analyst_agent.contracts import Intent, Runtime, TurnResult
+from financial_analyst_agent.graph.explain import run_qualitative_explanation
+from financial_analyst_agent.graph.news import run_current_events
 
-StructuredWorkflow = Literal["lookup", "compare", "rank", "rank_and_lookup"]
+ClosedWorkflow = Literal[
+    "lookup",
+    "compare",
+    "rank",
+    "rank_and_lookup",
+    "explain",
+    "news_and_explain",
+]
 
 
-class StructuredRunState(TypedDict):
+class WorkflowRunState(TypedDict):
     plan: Any
     runtime: Runtime
+    query: str
     result: TurnResult | None
 
 
-def _route_structured(state: StructuredRunState) -> StructuredWorkflow:
+def _route_closed(state: WorkflowRunState) -> ClosedWorkflow:
     intent = state["plan"].intent
     if intent == Intent.LOOKUP:
         return "lookup"
@@ -31,69 +45,93 @@ def _route_structured(state: StructuredRunState) -> StructuredWorkflow:
         return "rank"
     if intent == Intent.RANK_AND_LOOKUP:
         return "rank_and_lookup"
-    raise ValueError(f"unsupported structured intent: {intent!r}")
+    if intent == Intent.EXPLAIN:
+        return "explain"
+    if intent == Intent.NEWS_AND_EXPLAIN:
+        return "news_and_explain"
+    raise ValueError(f"unsupported closed intent: {intent!r}")
 
 
-def _lookup_node(state: StructuredRunState) -> dict[str, TurnResult]:
+def _lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     from financial_analyst_agent.turn import _lookup_turn
 
     return {"result": _lookup_turn(state["plan"], state["runtime"])}
 
 
-def _compare_node(state: StructuredRunState) -> dict[str, TurnResult]:
+def _compare_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     from financial_analyst_agent.turn import _compare_turn
 
     return {"result": _compare_turn(state["plan"], state["runtime"])}
 
 
-def _rank_node(state: StructuredRunState) -> dict[str, TurnResult]:
+def _rank_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     from financial_analyst_agent.turn import _rank_turn
 
     return {"result": _rank_turn(state["plan"], state["runtime"])}
 
 
-def _rank_and_lookup_node(state: StructuredRunState) -> dict[str, TurnResult]:
+def _rank_and_lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     from financial_analyst_agent.turn import _rank_and_lookup_turn
 
     return {"result": _rank_and_lookup_turn(state["plan"], state["runtime"])}
 
 
-def _build_structured_graph() -> Any:
-    builder = StateGraph(StructuredRunState)
+def _explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
+    return {"result": run_qualitative_explanation(state["plan"], state["runtime"])}
+
+
+def _news_and_explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
+    return {"result": run_current_events(state["query"], state["runtime"])}
+
+
+def _build_workflow_graph() -> Any:
+    builder = StateGraph(WorkflowRunState)
     builder.add_node("lookup", _lookup_node)
     builder.add_node("compare", _compare_node)
     builder.add_node("rank", _rank_node)
     builder.add_node("rank_and_lookup", _rank_and_lookup_node)
+    builder.add_node("explain", _explain_node)
+    builder.add_node("news_and_explain", _news_and_explain_node)
     builder.add_conditional_edges(
         START,
-        _route_structured,
+        _route_closed,
         {
             "lookup": "lookup",
             "compare": "compare",
             "rank": "rank",
             "rank_and_lookup": "rank_and_lookup",
+            "explain": "explain",
+            "news_and_explain": "news_and_explain",
         },
     )
     builder.add_edge("lookup", END)
     builder.add_edge("compare", END)
     builder.add_edge("rank", END)
     builder.add_edge("rank_and_lookup", END)
+    builder.add_edge("explain", END)
+    builder.add_edge("news_and_explain", END)
     return builder.compile()
 
 
-_STRUCTURED_GRAPH = _build_structured_graph()
+_WORKFLOW_GRAPH = _build_workflow_graph()
 
 
-def run_structured_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    """Execute one structured workflow via the parent graph; return TurnResult."""
-    final: StructuredRunState = _STRUCTURED_GRAPH.invoke(
+def run_workflow_turn(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
+    """Execute one closed workflow via the parent graph; return TurnResult."""
+    final: WorkflowRunState = _WORKFLOW_GRAPH.invoke(
         {
             "plan": plan,
             "runtime": runtime,
+            "query": query,
             "result": None,
         }
     )
     result = final["result"]
     if result is None:
-        raise RuntimeError("structured graph produced no result")
+        raise RuntimeError("workflow graph produced no result")
     return result
+
+
+def run_structured_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    """Execute one structured workflow via the parent graph; return TurnResult."""
+    return run_workflow_turn(plan, runtime)

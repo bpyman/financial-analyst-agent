@@ -677,20 +677,20 @@ def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
     )
 
 
-def _run_structured(plan: Any, runtime: Runtime) -> TurnResult:
-    from financial_analyst_agent.graph import run_structured_turn
+def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
+    from financial_analyst_agent.graph import run_workflow_turn
 
-    return run_structured_turn(plan, runtime)
+    return run_workflow_turn(plan, runtime, query=query)
 
 
 def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
-        return _explain_turn(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
-        return _news_and_explain_turn(query, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.RANK:
-        return _run_structured(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     resolved = resolve_metric_phrase(query)
     if resolved.kind == "ambiguous":
         return _clarify_metric(plan.intent, resolved.candidates)
@@ -710,13 +710,13 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.COMPARE:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _run_structured(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.RANK_AND_LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _run_structured(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _run_structured(plan, runtime)
+        return _run_workflow(plan, runtime, query=query)
     raise ValueError(f"unsupported intent: {plan.intent!r}")
