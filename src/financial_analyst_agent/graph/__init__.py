@@ -4,8 +4,8 @@ Edges are fixed and typed. The model still selects a closed intent upstream;
 it does not choose nodes or chain tools. Graph internals are not a test surface.
 
 Structured analysis (lookup/compare/rank/rank_and_lookup) runs as nodes on the
-parent. Qualitative explanation and current events are separate subgraphs behind
-small typed interfaces; the parent dispatches to them.
+parent. Qualitative explanation, current events, and exploratory research are
+separate subgraphs behind small typed interfaces; the parent dispatches to them.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 
 from financial_analyst_agent.contracts import Intent, Runtime, TurnResult
 from financial_analyst_agent.graph.explain import run_qualitative_explanation
+from financial_analyst_agent.graph.exploratory import run_exploratory_research
 from financial_analyst_agent.graph.news import run_current_events
 
 ClosedWorkflow = Literal[
@@ -25,6 +26,7 @@ ClosedWorkflow = Literal[
     "rank_and_lookup",
     "explain",
     "news_and_explain",
+    "exploratory_research",
 ]
 
 
@@ -50,6 +52,8 @@ def _route_closed(state: WorkflowRunState) -> ClosedWorkflow:
         return "explain"
     if intent == Intent.NEWS_AND_EXPLAIN:
         return "news_and_explain"
+    if intent == Intent.EXPLORATORY_RESEARCH:
+        return "exploratory_research"
     raise ValueError(f"unsupported closed intent: {intent!r}")
 
 
@@ -91,6 +95,10 @@ def _news_and_explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     return {"result": run_current_events(state["query"], state["runtime"])}
 
 
+def _exploratory_research_node(state: WorkflowRunState) -> dict[str, TurnResult]:
+    return {"result": run_exploratory_research(state["query"], state["runtime"])}
+
+
 def _build_workflow_graph() -> Any:
     builder = StateGraph(WorkflowRunState)
     builder.add_node("lookup", _lookup_node)
@@ -99,6 +107,7 @@ def _build_workflow_graph() -> Any:
     builder.add_node("rank_and_lookup", _rank_and_lookup_node)
     builder.add_node("explain", _explain_node)
     builder.add_node("news_and_explain", _news_and_explain_node)
+    builder.add_node("exploratory_research", _exploratory_research_node)
     builder.add_conditional_edges(
         START,
         _route_closed,
@@ -109,6 +118,7 @@ def _build_workflow_graph() -> Any:
             "rank_and_lookup": "rank_and_lookup",
             "explain": "explain",
             "news_and_explain": "news_and_explain",
+            "exploratory_research": "exploratory_research",
         },
     )
     builder.add_edge("lookup", END)
@@ -117,6 +127,7 @@ def _build_workflow_graph() -> Any:
     builder.add_edge("rank_and_lookup", END)
     builder.add_edge("explain", END)
     builder.add_edge("news_and_explain", END)
+    builder.add_edge("exploratory_research", END)
     return builder.compile()
 
 

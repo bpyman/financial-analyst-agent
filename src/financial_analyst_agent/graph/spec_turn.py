@@ -124,7 +124,11 @@ def is_qualitative_proposal(proposal: Any) -> bool:
     if isinstance(proposal, SpecPatch):
         return False
     intent = getattr(proposal, "intent", None)
-    return intent in (Intent.EXPLAIN, Intent.NEWS_AND_EXPLAIN)
+    return intent in (
+        Intent.EXPLAIN,
+        Intent.NEWS_AND_EXPLAIN,
+        Intent.EXPLORATORY_RESEARCH,
+    )
 
 
 def is_structured_proposal(proposal: Any) -> bool:

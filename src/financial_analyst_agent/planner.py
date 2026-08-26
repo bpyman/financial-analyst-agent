@@ -13,7 +13,7 @@ _PLANNER_FAILED_MESSAGE = "LLM planner failed"
 _SYSTEM_PROMPT = (
     "Map the user question to a Plan. "
     "intent must be one of lookup, compare, rank, rank_and_lookup, explain, "
-    "news_and_explain. "
+    "news_and_explain, exploratory_research. "
     "Use lookup for a named company's latest quarterly reported metric. "
     "Use compare for two or more issuers on a reported metric or formula. "
     "Use rank for top-N industry market-cap ranking without a reported metric. "
@@ -21,8 +21,12 @@ _SYSTEM_PROMPT = (
     "or formula for each. "
     "Use explain for qualitative industry or AI-disruption questions with no retrieval. "
     "Use news_and_explain for named-company current events (supply chain, what's going on). "
+    "Use exploratory_research for questions that no analysis spec expresses "
+    "(themes, open research drafts) that need cited news evidence rather than "
+    "structured financial rows. "
     f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
     "For explain, set topic to the user question. "
+    "For exploratory_research, set topic to the user question. "
     "Never calculate, select, or invent financial values."
 )
 
@@ -85,6 +89,11 @@ class _NewsAndExplainPlan(BaseModel):
     intent: Literal[Intent.NEWS_AND_EXPLAIN]
 
 
+class _ExploratoryResearchPlan(BaseModel):
+    intent: Literal[Intent.EXPLORATORY_RESEARCH]
+    topic: NonEmptyText
+
+
 PlanAction = (
     _LookupPlan
     | _ComparePlan
@@ -92,6 +101,7 @@ PlanAction = (
     | _RankAndLookupPlan
     | _ExplainPlan
     | _NewsAndExplainPlan
+    | _ExploratoryResearchPlan
 )
 
 
@@ -141,7 +151,7 @@ class Plan(BaseModel):
 
     @property
     def topic(self) -> str | None:
-        if isinstance(self.action, _ExplainPlan):
+        if isinstance(self.action, (_ExplainPlan, _ExploratoryResearchPlan)):
             return self.action.topic
         return None
 

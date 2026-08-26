@@ -9,7 +9,12 @@ from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.facts import RecordedSECDataSource
-from financial_analyst_agent.news import FIXTURE_NEWS_QUERY, FixtureNewsSearch, TavilyNewsSearch
+from financial_analyst_agent.news import (
+    FIXTURE_NEWS_QUERY,
+    FIXTURE_RESEARCH_QUERY,
+    FixtureNewsSearch,
+    TavilyNewsSearch,
+)
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
@@ -133,11 +138,17 @@ def _metric_from_query(normalized: str) -> str:
 
 
 def _is_news_query(normalized: str) -> bool:
-    if "hormuz" in normalized:
+    if "hormuz" in normalized and "themes" not in normalized:
         return True
     if "supply chain" in normalized or "supply-chain" in normalized:
         return True
     return re.search(r"what(?:['’]?s| is) going on", normalized) is not None
+
+
+def _is_exploratory_query(normalized: str) -> bool:
+    if "themes" in normalized and ("coverage" in normalized or "emerging" in normalized):
+        return True
+    return "exploratory" in normalized
 
 
 FIXTURE_EXPLAIN_ESSAY = (
@@ -156,7 +167,10 @@ class FixtureEssayCompleter:
             if query.strip().casefold() != FIXTURE_EXPLAIN_QUERY.casefold():
                 raise ProviderError("No recorded fixture essay for this prompt")
             return FIXTURE_EXPLAIN_ESSAY
-        if query.strip().casefold() != FIXTURE_NEWS_QUERY.casefold():
+        if query.strip().casefold() not in {
+            FIXTURE_NEWS_QUERY.casefold(),
+            FIXTURE_RESEARCH_QUERY.casefold(),
+        }:
             raise ProviderError("No recorded fixture news essay for this prompt")
         try:
             payload = json.loads(tool_json)
@@ -190,6 +204,8 @@ class DemoCompleter:
         metric = _metric_from_query(normalized)
         if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):
             return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
+        if _is_exploratory_query(normalized):
+            return SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=query)
         if _is_news_query(normalized):
             return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=query)
         if "compare" in normalized or re.search(r"\bvs\b", normalized):

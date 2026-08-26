@@ -23,15 +23,22 @@ FIXTURE_NEWS_HITS: tuple[NewsHit, ...] = (
     ),
 )
 FIXTURE_NEWS_QUERY = "Effects of recent Strait of Hormuz closures on Exxon"
+FIXTURE_RESEARCH_QUERY = (
+    "What themes are emerging in coverage of Hormuz closures and energy markets?"
+)
 
 
 class FixtureNewsSearch:
     """Recorded Tavily-shaped hits so news_and_explain stays offline."""
 
     def search_news(self, query: str) -> list[NewsHit]:
-        if query.strip().casefold() != FIXTURE_NEWS_QUERY.casefold():
-            return []
-        return list(FIXTURE_NEWS_HITS)
+        normalized = query.strip().casefold()
+        if normalized in {
+            FIXTURE_NEWS_QUERY.casefold(),
+            FIXTURE_RESEARCH_QUERY.casefold(),
+        }:
+            return list(FIXTURE_NEWS_HITS)
+        return []
 
 
 def _parse_tavily_score(value: Any) -> float | None:

@@ -17,6 +17,7 @@ from typing import Any
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     AMBIGUOUS_CONCEPT,
+    EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
     FORMULA_METRICS,
     MISSING_FACT,
@@ -67,6 +68,7 @@ _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 __all__ = [
     "ALLOWED_METRICS",
     "AMBIGUOUS_CONCEPT",
+    "EXPLORATORY_RESEARCH_BANNER",
     "FORMULA_COMPONENTS",
     "FORMULA_METRICS",
     "MISSING_FACT",
@@ -231,6 +233,68 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
         renderer=RendererKind.ESSAY,
         citations=hits,
         essay=essay,
+    )
+
+
+def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Cited research draft via the constrained news wrapper; never structured rows."""
+    if runtime.news is None:
+        raise RuntimeError("exploratory_research intent requires a news adapter")
+    if runtime.essay is None:
+        raise RuntimeError("exploratory_research intent requires an essay completer")
+    search_args = _search_news_args(query)
+    try:
+        hits = _usable_news_hits(runtime.news.search_news(query))
+    except ProviderError as exc:
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=[
+                ToolTrace(
+                    tool="search_news",
+                    args=search_args,
+                    provenance={
+                        "error": {"code": exc.code, "message": str(exc)},
+                    },
+                )
+            ],
+            renderer=RendererKind.REFUSE,
+            message=("News search is unavailable. Refusing rather than using training data."),
+        )
+    traces = [
+        ToolTrace(
+            tool="search_news",
+            args=search_args,
+            provenance={"hits": [hit.model_dump(mode="json") for hit in hits]},
+        )
+    ]
+    if not hits:
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="No usable news hits for this query. Refusing rather than using training data.",
+        )
+    tool_json = _hits_json(hits)
+    essay = runtime.essay.complete_essay(query, tool_json)
+    extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
+    if extras:
+        invented = ", ".join(extras)
+        return TurnResult(
+            intent=Intent.EXPLORATORY_RESEARCH,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            citations=hits,
+            numeral_lock_extras=extras,
+            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+        )
+    return TurnResult(
+        intent=Intent.EXPLORATORY_RESEARCH,
+        tool_traces=traces,
+        renderer=RendererKind.ESSAY,
+        banners=[EXPLORATORY_RESEARCH_BANNER],
+        citations=hits,
+        essay=essay,
+        table_rows=[],
     )
 
 
@@ -733,6 +797,8 @@ def execute_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.EXPLAIN:
         return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
+        return _run_workflow(plan, runtime, query=query)
+    if plan.intent is Intent.EXPLORATORY_RESEARCH:
         return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.RANK:
         return _run_workflow(plan, runtime, query=query)

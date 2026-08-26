@@ -8,11 +8,15 @@ The lane is deliberately fenced. It is read-only and restricted to approved capa
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A question no analysis spec expresses routes to the exploratory lane
-- [ ] Its output is labelled as research, distinct from reported facts, and carries citations
-- [ ] It cannot emit structured financial rows
-- [ ] It cannot introduce numerals absent from its evidence
-- [ ] It stays read-only and within the constrained news wrapper
-- [ ] Routing is a selection from the closed workflow set
+- [x] A question no analysis spec expresses routes to the exploratory lane
+- [x] Its output is labelled as research, distinct from reported facts, and carries citations
+- [x] It cannot emit structured financial rows
+- [x] It cannot introduce numerals absent from its evidence
+- [x] It stays read-only and within the constrained news wrapper
+- [x] Routing is a selection from the closed workflow set
+
+## Answer
+
+Shipped `Intent.EXPLORATORY_RESEARCH` as a seventh closed workflow. The parent graph dispatches to a one-node exploratory subgraph that searches via the constrained news wrapper, numeral-locks the essay against hit JSON, banners `exploratory-research` (not `model-analysis`), returns citations, and never emits table rows. Empty or failed news refuses rather than falling back to training data. The conversation seam treats it as qualitative (clears the analysis spec). Planner schema and DemoCompleter recognize theme/coverage research questions; fixture news/essay recordings cover the Hormuz research prompt.

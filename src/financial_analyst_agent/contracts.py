@@ -22,6 +22,7 @@ class Intent(StrEnum):
     RANK_AND_LOOKUP = "rank_and_lookup"
     EXPLAIN = "explain"
     NEWS_AND_EXPLAIN = "news_and_explain"
+    EXPLORATORY_RESEARCH = "exploratory_research"
 
 
 class RendererKind(StrEnum):
@@ -78,6 +79,7 @@ MISSING_FACT = "missing_fact"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 ZERO_DENOMINATOR = "zero_denominator"
 MODEL_ANALYSIS_BANNER = "model-analysis"
+EXPLORATORY_RESEARCH_BANNER = "exploratory-research"
 SEARCH_NEWS_TOPIC = "news"
 SEARCH_NEWS_MAX_RESULTS = 5
 SEARCH_NEWS_TIME_RANGE = "week"

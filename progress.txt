@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-08-25 — 15 Exploratory research lane
+
+Task completed: `.scratch/stateful-agent-graph/issues/15-exploratory-research-lane.md`
+
+Key decisions:
+- Intent.EXPLORATORY_RESEARCH is a closed workflow; parent routes to a
+  one-node exploratory subgraph (constrained news only).
+- Successful drafts banner exploratory-research (not model-analysis),
+  carry citations, keep table_rows empty, and numeral-lock against hits.
+- Conversation seam treats exploratory like other qualitative turns
+  (no analysis spec); planner + DemoCompleter select it from the closed set.
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py`
+- `src/financial_analyst_agent/{turn,planner,runtime,news}.py`
+- `src/financial_analyst_agent/graph/{__init__,exploratory,spec_turn}.py`
+- `tests/unit/test_exploratory_research.py`
+- `.scratch/stateful-agent-graph/issues/15-exploratory-research-lane.md`
+- `progress.txt`
+
+Blockers / next:
+- Parent spec 01 stays ready-for-agent until remaining implementation
+  tickets land (all numbered implementation tickets 02–15 are resolved).
+
 ## 2026-08-25 — 14 Resumable clarification on the thread
 
 Task completed: `.scratch/stateful-agent-graph/issues/14-resumable-clarification.md`
