@@ -52,3 +52,16 @@ def get_candidate_filings(
         reverse=True,
     )
     return amendments + originals
+
+
+def list_quarterly_report_dates(
+    filings: list[Filing],
+    *,
+    limit: int,
+) -> list[date]:
+    """Newest-first distinct 10-Q / 10-Q/A report dates, up to ``limit``."""
+    if limit < 1:
+        return []
+    quarterly = [filing for filing in filings if filing.form in _QUARTERLY_FORMS]
+    unique = sorted({filing.report_date for filing in quarterly}, reverse=True)
+    return unique[:limit]

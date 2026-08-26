@@ -384,14 +384,28 @@ def _compare_row(identity: Any, metric: str, **kwargs: Any) -> TableRow:
     )
 
 
-def compare_metrics(facts: FactsPort, issuers: list[str], metric: str) -> list[TableRow]:
+def compare_metrics(
+    facts: FactsPort,
+    issuers: list[str],
+    metric: str,
+    *,
+    report_date: date | None = None,
+) -> list[TableRow]:
     """Resolve issuers, fetch formula components, and period-align Decimal results."""
     component_names = _component_metrics(metric)
     rows: list[TableRow] = []
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            fetched = [facts.get_financials(issuer, component) for component in component_names]
+            if report_date is None:
+                fetched = [
+                    facts.get_financials(issuer, component) for component in component_names
+                ]
+            else:
+                fetched = [
+                    facts.get_financials(issuer, component, report_date=report_date)
+                    for component in component_names
+                ]
         except _LOOKUP_FAILURES as exc:
             rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
             continue
@@ -541,16 +555,26 @@ def _compare_components_provenance(rows: list[TableRow]) -> dict[str, Any]:
     }
 
 
-def _metrics_turn(intent: Intent, issuers: list[str], metric: str, runtime: Runtime) -> TurnResult:
+def _metrics_turn(
+    intent: Intent,
+    issuers: list[str],
+    metric: str,
+    runtime: Runtime,
+    *,
+    report_date: date | None = None,
+) -> TurnResult:
     if metric in SNAPSHOT_METRICS:
         return _snapshot_metrics_turn(intent, issuers, metric, runtime)
-    rows = compare_metrics(runtime.facts, issuers, metric)
+    rows = compare_metrics(runtime.facts, issuers, metric, report_date=report_date)
+    args: dict[str, Any] = {"issuers": issuers, "metric": metric}
+    if report_date is not None:
+        args["report_date"] = report_date.isoformat()
     return TurnResult(
         intent=intent,
         tool_traces=[
             ToolTrace(
                 tool="compare_metrics",
-                args={"issuers": issuers, "metric": metric},
+                args=args,
                 provenance=_compare_components_provenance(rows),
             )
         ],
@@ -627,18 +651,31 @@ def _snapshot_metrics_turn(
 
 
 def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    return _metrics_turn(Intent.COMPARE, list(plan.companies), plan.metric, runtime)
+    report_date = getattr(plan, "report_date", None)
+    return _metrics_turn(
+        Intent.COMPARE, list(plan.companies), plan.metric, runtime, report_date=report_date
+    )
 
 
 def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     metric = plan.metric
+    report_date = getattr(plan, "report_date", None)
     if metric in FORMULA_COMPONENTS:
-        return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
+        return _metrics_turn(
+            Intent.LOOKUP, [plan.company], metric, runtime, report_date=report_date
+        )
     if metric in SNAPSHOT_METRICS:
         return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-    args = {"company": plan.company, "metric": metric}
+    args: dict[str, Any] = {"company": plan.company, "metric": metric}
+    if report_date is not None:
+        args["report_date"] = report_date.isoformat()
     try:
-        fact = runtime.facts.get_financials(plan.company, metric)
+        if report_date is None:
+            fact = runtime.facts.get_financials(plan.company, metric)
+        else:
+            fact = runtime.facts.get_financials(
+                plan.company, metric, report_date=report_date
+            )
     except _LOOKUP_FAILURES as exc:
         return TurnResult(
             intent=Intent.LOOKUP,

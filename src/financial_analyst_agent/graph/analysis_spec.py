@@ -6,16 +6,36 @@ should not depend on these helpers; the conversation seam owns the public API.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from financial_analyst_agent.contracts import ALLOWED_METRICS
 from financial_analyst_agent.domain.errors import AmbiguousCompanyError, CompanyNotFoundError
 
 
 class PeriodSelection(BaseModel):
-    kind: Literal["latest_quarter"] = "latest_quarter"
+    """Period window for an analysis.
+
+    ``latest_quarter`` keeps one-shot behaviour. ``last_n_quarters`` re-runs
+    metrics across a window; ``report_dates`` (newest first) are concrete bounds
+    when known, otherwise execution discovers them from the facts adapter.
+    """
+
+    kind: Literal["latest_quarter", "last_n_quarters"] = "latest_quarter"
+    count: int | None = None
+    report_dates: tuple[date, ...] = ()
+
+    @model_validator(mode="after")
+    def _check_window(self) -> PeriodSelection:
+        if self.kind == "latest_quarter":
+            return self
+        if self.count is None or self.count < 1:
+            raise ValueError("last_n_quarters requires count >= 1")
+        if self.report_dates and len(self.report_dates) != self.count:
+            raise ValueError("report_dates length must match count")
+        return self
 
 
 class ResolvedCompany(BaseModel):
@@ -68,7 +88,9 @@ class SpecDraft(BaseModel):
     ranked_request: tuple[str, int] | None = None
 
 
-SUPPORTED_OPERATIONS: frozenset[str] = frozenset({"across_companies", "rank"})
+SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
+    {"across_companies", "across_periods", "rank"}
+)
 
 
 class SpecRejection(BaseModel):
@@ -82,6 +104,7 @@ class CompiledTask(BaseModel):
     metric: str | None = None
     industry: str | None = None
     limit: int | None = None
+    report_date: date | None = None
 
 
 def _company_matches_token(company: ResolvedCompany, token: str) -> bool:
@@ -223,6 +246,17 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
                     f"Allowed: {', '.join(sorted(SUPPORTED_OPERATIONS))}"
                 ),
             )
+        if operation == "across_periods" and (
+            spec.periods.kind != "last_n_quarters"
+            or (spec.periods.count or 0) < 2
+        ):
+            return SpecRejection(
+                code="unsupported_combination",
+                message=(
+                    "Operation 'across_periods' requires a last_n_quarters "
+                    "period window with count >= 2"
+                ),
+            )
     has_companies = bool(spec.companies)
     has_constituents = spec.constituents is not None
     if not has_companies and not has_constituents:
@@ -240,12 +274,7 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
     return None
 
 
-def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
-    """Compile a resolved spec into typed tasks without executing providers.
-
-    Each metric becomes an independent task so multi-metric analyses compose
-    without a special-cased multi-metric workflow.
-    """
+def _base_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     if spec.constituents is not None:
         if not spec.metrics:
             return (
@@ -284,4 +313,31 @@ def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
             metric=metric,
         )
         for metric in spec.metrics
+    )
+
+
+def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
+    """Compile a resolved spec into typed tasks without executing providers.
+
+    Each metric becomes an independent task so multi-metric analyses compose
+    without a special-cased multi-metric workflow. A last_n_quarters window with
+    concrete report_dates fans out one task per period.
+    """
+    base = _base_tasks(spec)
+    if (
+        spec.periods.kind != "last_n_quarters"
+        or not spec.periods.report_dates
+        or not base
+    ):
+        return base
+    # Rank workflows are snapshot-dated, not filing-period windows.
+    expandable = tuple(
+        task for task in base if task.kind in {"lookup", "compare"}
+    )
+    if not expandable:
+        return base
+    return tuple(
+        task.model_copy(update={"report_date": report_date})
+        for report_date in spec.periods.report_dates
+        for task in expandable
     )

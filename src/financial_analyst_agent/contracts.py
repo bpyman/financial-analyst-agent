@@ -7,7 +7,7 @@ without loading those workflows.
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -168,6 +168,7 @@ class TableRow(BaseModel):
     source_url: str | None = None
     components: list[ComponentProvenance] = Field(default_factory=list)
     reason: str | None = None
+    comparison: Literal["sequential", "yoy"] | None = None
 
 
 class TurnResult(BaseModel):

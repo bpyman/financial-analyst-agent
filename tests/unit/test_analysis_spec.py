@@ -326,7 +326,7 @@ def test_compile_tasks_multi_metric_lookup_is_one_task_per_metric() -> None:
     )
 
 
-def test_validate_spec_refuses_unsupported_across_periods() -> None:
+def test_validate_spec_refuses_across_periods_without_window() -> None:
     from financial_analyst_agent.graph.analysis_spec import (
         AnalysisSpec,
         PeriodSelection,
@@ -352,6 +352,78 @@ def test_validate_spec_refuses_unsupported_across_periods() -> None:
     )
     assert isinstance(outcome, SpecRejection)
     assert outcome.code == "unsupported_combination"
+    assert "across_periods" in outcome.message
+
+
+def test_validate_spec_allows_across_periods_with_window() -> None:
+    from financial_analyst_agent.graph.analysis_spec import (
+        AnalysisSpec,
+        PeriodSelection,
+        ResolvedCompany,
+        validate_spec,
+    )
+
+    outcome = validate_spec(
+        AnalysisSpec(
+            companies=(
+                ResolvedCompany(
+                    cik="0001652044",
+                    name="Alphabet Inc.",
+                    ticker="GOOG",
+                    query="Google",
+                ),
+            ),
+            metrics=("net_income",),
+            periods=PeriodSelection(kind="last_n_quarters", count=4),
+            operations=("across_periods",),
+        )
+    )
+    assert outcome is None
+
+def test_compile_tasks_fans_out_last_n_report_dates() -> None:
+    from datetime import date
+
+    from financial_analyst_agent.graph.analysis_spec import (
+        AnalysisSpec,
+        CompiledTask,
+        PeriodSelection,
+        ResolvedCompany,
+        compile_tasks,
+    )
+
+    q2 = date(2025, 6, 30)
+    q1 = date(2025, 3, 31)
+    spec = AnalysisSpec(
+        companies=(
+            ResolvedCompany(
+                cik="0000789019",
+                name="Microsoft",
+                ticker="MSFT",
+                query="Microsoft",
+            ),
+        ),
+        metrics=("revenue",),
+        periods=PeriodSelection(
+            kind="last_n_quarters",
+            count=2,
+            report_dates=(q2, q1),
+        ),
+    )
+    tasks = compile_tasks(spec)
+    assert tasks == (
+        CompiledTask(
+            kind="lookup",
+            company_queries=("Microsoft",),
+            metric="revenue",
+            report_date=q2,
+        ),
+        CompiledTask(
+            kind="lookup",
+            company_queries=("Microsoft",),
+            metric="revenue",
+            report_date=q1,
+        ),
+    )
 
 
 def test_compile_tasks_rank_and_lookup_from_constituents() -> None:

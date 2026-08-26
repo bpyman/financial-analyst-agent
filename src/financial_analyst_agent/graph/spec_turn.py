@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     MISSING_FACT,
+    ComponentProvenance,
     Intent,
     RendererKind,
     Runtime,
@@ -153,6 +155,7 @@ def execute_compiled_task(
             industry=None,
             limit=10,
             topic=None,
+            report_date=task.report_date,
         )
         return run_workflow_turn(plan, runtime, query=query)
     if task.kind == "compare":
@@ -164,6 +167,7 @@ def execute_compiled_task(
             industry=None,
             limit=10,
             topic=None,
+            report_date=task.report_date,
         )
         return run_workflow_turn(plan, runtime, query=query)
     if task.kind == "rank":
@@ -203,16 +207,90 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
             ticker="",
             cik="",
             metric=task.metric,
+            end_date=task.report_date,
             reason=MISSING_FACT,
         )
     ]
 
 
+def _provenance_from_level(row: TableRow) -> ComponentProvenance:
+    if row.components:
+        return row.components[0]
+    assert row.value is not None
+    assert row.start_date is not None
+    assert row.end_date is not None
+    return ComponentProvenance(
+        metric=row.metric,
+        value=row.value,
+        start_date=row.start_date,
+        end_date=row.end_date,
+        form=row.form or "",
+        accession_number=row.accession_number or "",
+        taxonomy=row.taxonomy or "",
+        concept=row.concept or row.metric,
+        source_url=row.source_url or "",
+        source="sec_xbrl",
+    )
+
+
+def _change_row(current: TableRow, prior: TableRow, *, comparison: str) -> TableRow:
+    from decimal import Decimal
+
+    assert current.value is not None and prior.value is not None
+    return TableRow(
+        company_name=current.company_name,
+        ticker=current.ticker,
+        cik=current.cik,
+        metric=current.metric,
+        value=Decimal(str(current.value)) - Decimal(str(prior.value)),
+        currency=current.currency,
+        start_date=prior.start_date,
+        end_date=current.end_date,
+        components=[_provenance_from_level(prior), _provenance_from_level(current)],
+        comparison=comparison,  # type: ignore[arg-type]
+    )
+
+
+def _yoy_prior_date(end: date) -> date:
+    try:
+        return end.replace(year=end.year - 1)
+    except ValueError:
+        # Feb 29 → Feb 28 prior year
+        return end.replace(year=end.year - 1, day=28)
+
+
+def across_period_change_rows(levels: list[TableRow]) -> list[TableRow]:
+    """Sequential and year-over-year change from period-aligned level cells."""
+    by_key: dict[tuple[str, str], list[TableRow]] = {}
+    for row in levels:
+        if row.value is None or row.end_date is None or row.comparison is not None:
+            continue
+        by_key.setdefault((row.cik or row.company_name, row.metric), []).append(row)
+
+    changes: list[TableRow] = []
+    for group in by_key.values():
+        ordered = sorted(group, key=lambda r: r.end_date or date.min, reverse=True)
+        for newer, older in zip(ordered, ordered[1:], strict=False):
+            changes.append(_change_row(newer, older, comparison="sequential"))
+        by_end = {row.end_date: row for row in ordered if row.end_date is not None}
+        for row in ordered:
+            if row.end_date is None:
+                continue
+            prior = by_end.get(_yoy_prior_date(row.end_date))
+            if prior is None or prior is row:
+                continue
+            changes.append(_change_row(row, prior, comparison="yoy"))
+    return changes
+
+
 def merge_task_results(
-    tasks: tuple[CompiledTask, ...], results: list[TurnResult]
+    tasks: tuple[CompiledTask, ...],
+    results: list[TurnResult],
+    *,
+    across_periods: bool = False,
 ) -> TurnResult:
     """Assemble independent cell results into one analysis table."""
-    if len(results) == 1:
+    if len(results) == 1 and not across_periods:
         return results[0]
 
     rows: list[TableRow] = []
@@ -233,6 +311,9 @@ def merge_task_results(
         for result in results:
             if result.renderer is RendererKind.REFUSE:
                 return result
+
+    if across_periods:
+        rows = list(rows) + across_period_change_rows(rows)
 
     intent = results[0].intent
     if any(task.kind == "compare" for task in tasks):
@@ -319,4 +400,5 @@ def run_spec_turn(
         )
 
     results = [execute_compiled_task(task, runtime, query=message) for task in tasks]
-    return merge_task_results(tasks, results), spec, patch
+    across = "across_periods" in spec.operations
+    return merge_task_results(tasks, results, across_periods=across), spec, patch

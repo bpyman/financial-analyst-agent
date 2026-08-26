@@ -173,3 +173,13 @@ class SecFactLookup:
             "No directly reported standalone-quarter fact exists for metric",
             details={"metric": parsed_metric.value},
         )
+
+    def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
+        """Newest-first distinct quarterly report dates for a company."""
+        from financial_analyst_agent.services.filing_selector import list_quarterly_report_dates
+
+        tickers_payload = self._cached_company_tickers()
+        resolved = resolve_company(company, tickers_payload)
+        submissions_payload = self._cached_submissions(resolved.cik)
+        filings = parse_submissions(submissions_payload)
+        return tuple(list_quarterly_report_dates(filings, limit=limit))

@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-08-25 — 11 Multi-period analysis and across-period comparison
+
+Task completed: `.scratch/stateful-agent-graph/issues/11-multi-period-operations.md`
+
+Key decisions:
+- PeriodSelection.last_n_quarters + report_dates fans out compile_tasks;
+  extend set_periods keeps companies/metrics/operations.
+- across_periods (window count >= 2) adds sequential and YoY Decimal
+  change rows; levels stay; mismatch/zero-denom/missing stay typed.
+- Named-period across-company compare uses report_date on existing
+  compare/lookup paths.
+
+Files changed:
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `src/financial_analyst_agent/{contracts,turn,sec_facts}.py`
+- `src/financial_analyst_agent/services/filing_selector.py`
+- `tests/unit/test_{multi_period,analysis_spec,multi_metric}.py`
+- `tests/unit/services/test_filing_selector.py`
+- `.scratch/stateful-agent-graph/issues/11-multi-period-operations.md`
+- `progress.txt`
+
+Blockers / next:
+- 12 (concurrent dispatch) unblocked on 11; 13, 14, 15 remain open.
+
 ## 2026-08-25 — 10 Period-addressable quarterly facts
 
 Task completed: `.scratch/stateful-agent-graph/issues/10-period-addressable-facts.md`

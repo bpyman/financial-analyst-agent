@@ -92,3 +92,19 @@ def test_named_report_date_prefers_amendment_then_original() -> None:
         "0000320193-24-000061",
         "0000320193-24-000060",
     ]
+
+
+def test_list_quarterly_report_dates_newest_first_limited() -> None:
+    from financial_analyst_agent.services.filing_selector import list_quarterly_report_dates
+
+    filings = [
+        make_filing(report_date=OLDER, accession_number="a"),
+        make_filing(report_date=NEWER, accession_number="b"),
+        make_filing(
+            form="10-K",
+            report_date=date(2024, 12, 31),
+            accession_number="c",
+        ),
+    ]
+    assert list_quarterly_report_dates(filings, limit=1) == [NEWER]
+    assert list_quarterly_report_dates(filings, limit=2) == [NEWER, OLDER]

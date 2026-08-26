@@ -200,7 +200,7 @@ def test_unsupported_combination_refuses_explicitly(tmp_path: Path) -> None:
     from financial_analyst_agent.graph.analysis_spec import SpecPatch
     from financial_analyst_agent.thread_store import LocalThreadStore
 
-    class _AcrossPeriods:
+    class _AcrossPeriodsLatest:
         def complete(self, query: str) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
@@ -213,7 +213,7 @@ def test_unsupported_combination_refuses_explicitly(tmp_path: Path) -> None:
     turn = run_conversation_turn(
         "t1",
         "show Google net income across periods",
-        _runtime(completer=_AcrossPeriods(), facts=_MultiMetricFacts()),
+        _runtime(completer=_AcrossPeriodsLatest(), facts=_MultiMetricFacts()),
         store=store,
     )
     assert turn.result.renderer is RendererKind.REFUSE

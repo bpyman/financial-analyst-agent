@@ -8,11 +8,15 @@ Comparison becomes a spec operation rather than a new route. Across periods for 
 
 **Blocked by:** 09, 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A period window re-runs the active metrics across those periods as one analysis
-- [ ] Changing the window keeps the existing companies, metrics, and operations
-- [ ] Across-period comparison yields sequential and year-over-year change from period-aligned components
-- [ ] Across-company comparison for a given period stays expressible
-- [ ] Mismatched periods and zero denominators do not compute and say why
-- [ ] A window with one unreported quarter returns the remaining cells with a typed reason for the gap
+- [x] A period window re-runs the active metrics across those periods as one analysis
+- [x] Changing the window keeps the existing companies, metrics, and operations
+- [x] Across-period comparison yields sequential and year-over-year change from period-aligned components
+- [x] Across-company comparison for a given period stays expressible
+- [x] Mismatched periods and zero denominators do not compute and say why
+- [x] A window with one unreported quarter returns the remaining cells with a typed reason for the gap
+
+## Answer
+
+`PeriodSelection` supports `last_n_quarters` with `count` and optional concrete `report_dates` (newest first). `compile_tasks` fans out one lookup/compare task per report date; `set_periods` on an extend patch changes only the window. `across_periods` is a supported operation when the window has `count >= 2`; after level cells merge, deterministic `Decimal` subtraction emits sequential (adjacent) and YoY (same month/day prior year) rows with `TableRow.comparison` and two-period components. Across-company compare for a named period still uses `across_companies` + a one-date window via `report_date` on `compare_metrics` / lookup. Period mismatch and zero denominator stay typed non-compute reasons; a missing quarter in the window becomes a partial `missing_fact` cell. `list_quarterly_report_dates` on the filing selector / `SecFactLookup` supports discovery when dates are not yet concrete.
