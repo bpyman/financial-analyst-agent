@@ -3,6 +3,9 @@
 Contracts (ports, Runtime, result models, enums, metric constants) live in
 ``contracts``; this module keeps the workflow implementations and re-exports
 every public name callers already import from here.
+
+``run_turn`` is a compatibility wrapper over an ephemeral conversation thread.
+New multi-turn behaviour is asserted at ``run_conversation_turn``.
 """
 
 import json
@@ -90,6 +93,7 @@ __all__ = [
     "ToolTrace",
     "TurnResult",
     "compare_metrics",
+    "execute_turn",
     "run_turn",
     "snapshot_compare_rows",
 ]
@@ -683,7 +687,8 @@ def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult
     return run_workflow_turn(plan, runtime, query=query)
 
 
-def run_turn(query: str, runtime: Runtime) -> TurnResult:
+def execute_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Plan and run one one-shot analysis. Run state is not returned or persisted."""
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
         return _run_workflow(plan, runtime, query=query)
@@ -720,3 +725,16 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
             return _refuse_unknown_metric(plan.intent, metric)
         return _run_workflow(plan, runtime, query=query)
     raise ValueError(f"unsupported intent: {plan.intent!r}")
+
+
+def run_turn(query: str, runtime: Runtime) -> TurnResult:
+    """Compatibility wrapper: one ephemeral conversation thread → TurnResult."""
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.thread_store import EphemeralThreadStore
+
+    return run_conversation_turn(
+        "ephemeral",
+        query,
+        runtime,
+        store=EphemeralThreadStore(),
+    ).result

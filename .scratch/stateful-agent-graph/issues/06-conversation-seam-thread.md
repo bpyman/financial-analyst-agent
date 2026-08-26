@@ -8,11 +8,15 @@ Thread state holds the messages and the last completed result. Run state — wha
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The conversation seam accepts a thread identifier and an analyst message and returns a typed conversation turn
-- [ ] Thread state round-trips: a second call with the same identifier sees the prior turn, a different identifier starts clean
-- [ ] Thread state survives a process restart, with no database server required
-- [ ] The application seam is a wrapper over an ephemeral thread and its tests pass with no assertion changes
-- [ ] Run state is not carried between turns
-- [ ] Tests exercise persistence against a temporary store rather than mocking it
+- [x] The conversation seam accepts a thread identifier and an analyst message and returns a typed conversation turn
+- [x] Thread state round-trips: a second call with the same identifier sees the prior turn, a different identifier starts clean
+- [x] Thread state survives a process restart, with no database server required
+- [x] The application seam is a wrapper over an ephemeral thread and its tests pass with no assertion changes
+- [x] Run state is not carried between turns
+- [x] Tests exercise persistence against a temporary store rather than mocking it
+
+## Answer
+
+Shipped `run_conversation_turn(thread_id, message, runtime, *, store) → ConversationTurn` as the public conversation seam. `LocalThreadStore` persists messages and `last_result` as JSON under a directory (no DB server); `ThreadStore` is a Protocol so a server-backed store can replace it later. `EphemeralThreadStore` backs `run_turn`, which now opens a one-shot thread and returns `TurnResult`. Planning/workflows live in `execute_turn`; run state is never written to the store. Seam tests use a real `tmp_path` store.

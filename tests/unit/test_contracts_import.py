@@ -6,12 +6,14 @@ import sys
 
 
 def test_contracts_import_without_loading_turn_workflows() -> None:
+    dependents = (
+        "financial_analyst_agent.turn",
+        "financial_analyst_agent.conversation",
+        "financial_analyst_agent.thread_store",
+        "financial_analyst_agent.contracts",
+    )
     for name in list(sys.modules):
-        if name == "financial_analyst_agent.turn" or name.startswith(
-            "financial_analyst_agent.turn."
-        ):
-            del sys.modules[name]
-        if name == "financial_analyst_agent.contracts":
+        if name in dependents or any(name.startswith(f"{dep}.") for dep in dependents):
             del sys.modules[name]
 
     import financial_analyst_agent.contracts as contracts

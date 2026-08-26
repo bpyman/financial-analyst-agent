@@ -1,5 +1,30 @@
 # Progress
 
+## 2026-08-25 — 06 Conversation seam on a persisted thread
+
+Task completed: `.scratch/stateful-agent-graph/issues/06-conversation-seam-thread.md`
+
+Key decisions:
+- Public seam is `run_conversation_turn(thread_id, message, runtime, store=…)`;
+  thread state is messages + last_result only (no run state).
+- `LocalThreadStore` writes JSON under a directory (swappable via `ThreadStore`);
+  tests use a real temporary root, not mocks.
+- `run_turn` wraps an ephemeral in-process thread and still returns `TurnResult`;
+  one-shot planning/workflows live in `execute_turn`.
+
+Files changed:
+- `src/financial_analyst_agent/conversation.py` (new)
+- `src/financial_analyst_agent/thread_store.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_conversation_seam.py` (new)
+- `tests/unit/test_contracts_import.py`
+- `.scratch/stateful-agent-graph/issues/06-conversation-seam-thread.md`
+
+Blockers / next:
+- 07 (multi-turn window) and 08 (analysis spec patch) are unblocked on the
+  conversation seam; 10 remains independently unblocked for period-addressable
+  facts; 15 (exploratory lane) is also unblocked by 06.
+
 ## 2026-08-25 — 05 Graph qualitative workflows
 
 Task completed: `.scratch/stateful-agent-graph/issues/05-graph-qualitative-workflows.md`
