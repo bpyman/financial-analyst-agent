@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
-
-CURSOR_AGENT='C:/Users/the_w/AppData/Local/cursor-agent/agent.ps1'
-
+# One Ralph iteration. Optional feature slug scopes tickets.
+# Usage: bash ralph/once.sh [feature-slug]
 set -euo pipefail
 
-issues=$(cat issues/*.md 2>/dev/null || echo "No issues found")
-commits=$(git log -n 5 --format="%H%n%ad%n%B---" --date=short 2>/dev/null || echo "No commits found")
+# shellcheck source=lib.sh
+source "$(dirname "$0")/lib.sh"
+ralph_cd_root
+
+feature="${1:-}"
+issues=$(ralph_collect_issues "$feature")
+commits=$(ralph_recent_commits)
 prompt=$(cat ralph/prompt.md)
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass \
-  -File "$CURSOR_AGENT" \
-  --print \
-  --force \
-  --output-format stream-json \
-  --stream-partial-output \
-  "Previous commits:
+ralph_run_agent "Previous commits:
 $commits
 
 Issues:
