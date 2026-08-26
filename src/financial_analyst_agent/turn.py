@@ -704,8 +704,8 @@ def execute_turn(query: str, runtime: Runtime) -> TurnResult:
         term = fallback if fallback not in ALLOWED_METRICS else "unknown"
         return _refuse_unknown_metric(plan.intent, term)
     if resolved.kind == "unique" and len(resolved.metrics) > 1:
-        # Multi-metric composition lands in ticket 09; keep the one-shot seam
-        # from silently picking a planner slug or the first phrase alone.
+        # One-shot execute_turn still clarifies; multi-metric composition runs
+        # through run_spec_turn on the conversation seam (ticket 09).
         return _clarify_metric(plan.intent, resolved.metrics)
     if resolved.kind == "unique" and resolved.metric is not None:
         metric = resolved.metric

@@ -7,9 +7,12 @@ from typing import Any
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
+    MISSING_FACT,
     Intent,
     RendererKind,
     Runtime,
+    TableRow,
+    ToolTrace,
     TurnResult,
 )
 from financial_analyst_agent.domain.errors import UnknownIndustryError
@@ -74,17 +77,18 @@ def bind_metrics_from_message(
             renderer=RendererKind.CLARIFY,
             candidates=resolved.candidates,
         )
-    if resolved.kind == "unique" and len(resolved.metrics) > 1:
-        return patch, TurnResult(
-            intent=effective_intent,
-            tool_traces=[],
-            renderer=RendererKind.CLARIFY,
-            candidates=resolved.metrics,
-        )
-    if resolved.kind == "unique" and resolved.metric is not None:
+    phrased: tuple[str, ...] = ()
+    if resolved.kind == "unique":
+        if resolved.metrics:
+            phrased = resolved.metrics
+        elif resolved.metric is not None:
+            phrased = (resolved.metric,)
+    if phrased:
         if patch.mode == "replace":
-            return patch.model_copy(update={"add_metrics": (resolved.metric,)}), None
-        metrics = tuple(dict.fromkeys([*patch.add_metrics, resolved.metric]))
+            return patch.model_copy(update={"add_metrics": phrased}), None
+        # Extend: add phrased metrics except those this patch is removing.
+        to_add = tuple(m for m in phrased if m not in patch.remove_metrics)
+        metrics = tuple(dict.fromkeys([*patch.add_metrics, *to_add]))
         return patch.model_copy(update={"add_metrics": metrics}), None
     # No metric phrase in the analyst's wording.
     if patch.mode == "extend":
@@ -187,6 +191,66 @@ def execute_compiled_task(
     raise ValueError(f"unsupported compiled task: {task.kind!r}")
 
 
+def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[TableRow]:
+    """Convert a whole-lookup refuse into a cell so multi-metric tables stay partial."""
+    if result.renderer is not RendererKind.REFUSE:
+        return list(result.table_rows)
+    if task.kind != "lookup" or not task.company_queries or not task.metric:
+        return list(result.table_rows)
+    return [
+        TableRow(
+            company_name=task.company_queries[0],
+            ticker="",
+            cik="",
+            metric=task.metric,
+            reason=MISSING_FACT,
+        )
+    ]
+
+
+def merge_task_results(
+    tasks: tuple[CompiledTask, ...], results: list[TurnResult]
+) -> TurnResult:
+    """Assemble independent cell results into one analysis table."""
+    if len(results) == 1:
+        return results[0]
+
+    rows: list[TableRow] = []
+    traces: list[ToolTrace] = []
+    banners: list[str] = []
+    for task, result in zip(tasks, results, strict=True):
+        if result.renderer is RendererKind.REFUSE and not result.table_rows:
+            rows.extend(_lookup_refuse_as_partial(task, result))
+            continue
+        rows.extend(result.table_rows)
+        traces.extend(result.tool_traces)
+        for banner in result.banners:
+            if banner not in banners:
+                banners.append(banner)
+
+    if not rows and any(r.renderer is RendererKind.REFUSE for r in results):
+        # Every task refused with no cells — surface the first refuse.
+        for result in results:
+            if result.renderer is RendererKind.REFUSE:
+                return result
+
+    intent = results[0].intent
+    if any(task.kind == "compare" for task in tasks):
+        intent = Intent.COMPARE
+    elif any(task.kind == "rank_and_lookup" for task in tasks):
+        intent = Intent.RANK_AND_LOOKUP
+    elif any(task.kind == "rank" for task in tasks):
+        intent = Intent.RANK
+
+    return TurnResult(
+        intent=intent,
+        tool_traces=traces,
+        renderer=RendererKind.TABLE,
+        table_rows=rows,
+        banners=banners,
+    )
+
+
 def run_spec_turn(
     message: str,
     runtime: Runtime,
@@ -254,5 +318,5 @@ def run_spec_turn(
             patch,
         )
 
-    result = execute_compiled_task(tasks[0], runtime, query=message)
-    return result, spec, patch
+    results = [execute_compiled_task(task, runtime, query=message) for task in tasks]
+    return merge_task_results(tasks, results), spec, patch

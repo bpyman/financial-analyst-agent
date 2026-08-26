@@ -255,6 +255,105 @@ def test_compile_tasks_compare_for_two_companies() -> None:
     )
 
 
+def test_compile_tasks_one_independent_task_per_metric() -> None:
+    from financial_analyst_agent.graph.analysis_spec import (
+        AnalysisSpec,
+        CompiledTask,
+        PeriodSelection,
+        ResolvedCompany,
+        compile_tasks,
+    )
+
+    spec = AnalysisSpec(
+        companies=(
+            ResolvedCompany(
+                cik="0000789019",
+                name="Microsoft",
+                ticker="MSFT",
+                query="Microsoft",
+            ),
+            ResolvedCompany(
+                cik="0001652044",
+                name="Alphabet Inc.",
+                ticker="GOOG",
+                query="Google",
+            ),
+        ),
+        metrics=("revenue", "operating_margin"),
+        periods=PeriodSelection(kind="latest_quarter"),
+        operations=("across_companies",),
+    )
+    tasks = compile_tasks(spec)
+    assert tasks == (
+        CompiledTask(
+            kind="compare",
+            company_queries=("Microsoft", "Google"),
+            metric="revenue",
+        ),
+        CompiledTask(
+            kind="compare",
+            company_queries=("Microsoft", "Google"),
+            metric="operating_margin",
+        ),
+    )
+
+
+def test_compile_tasks_multi_metric_lookup_is_one_task_per_metric() -> None:
+    from financial_analyst_agent.graph.analysis_spec import (
+        AnalysisSpec,
+        CompiledTask,
+        PeriodSelection,
+        ResolvedCompany,
+        compile_tasks,
+    )
+
+    spec = AnalysisSpec(
+        companies=(
+            ResolvedCompany(
+                cik="0001652044",
+                name="Alphabet Inc.",
+                ticker="GOOG",
+                query="Google",
+            ),
+        ),
+        metrics=("revenue", "net_income"),
+        periods=PeriodSelection(kind="latest_quarter"),
+    )
+    tasks = compile_tasks(spec)
+    assert tasks == (
+        CompiledTask(kind="lookup", company_queries=("Google",), metric="revenue"),
+        CompiledTask(kind="lookup", company_queries=("Google",), metric="net_income"),
+    )
+
+
+def test_validate_spec_refuses_unsupported_across_periods() -> None:
+    from financial_analyst_agent.graph.analysis_spec import (
+        AnalysisSpec,
+        PeriodSelection,
+        ResolvedCompany,
+        SpecRejection,
+        validate_spec,
+    )
+
+    outcome = validate_spec(
+        AnalysisSpec(
+            companies=(
+                ResolvedCompany(
+                    cik="0001652044",
+                    name="Alphabet Inc.",
+                    ticker="GOOG",
+                    query="Google",
+                ),
+            ),
+            metrics=("net_income",),
+            periods=PeriodSelection(kind="latest_quarter"),
+            operations=("across_periods",),
+        )
+    )
+    assert isinstance(outcome, SpecRejection)
+    assert outcome.code == "unsupported_combination"
+
+
 def test_compile_tasks_rank_and_lookup_from_constituents() -> None:
     from financial_analyst_agent.graph.analysis_spec import (
         AnalysisSpec,

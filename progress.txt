@@ -1,6 +1,29 @@
 # Progress
 
+## 2026-08-25 — 09 Multi-metric composition
+
+Task completed: `.scratch/stateful-agent-graph/issues/09-multi-metric-composition.md`
+
+Key decisions:
+- Several unique metric phrases bind into the spec; cells compile as one
+  independent task per metric and merge into one table.
+- Partial missing cells keep typed reasons; unsupported operations
+  (e.g. across_periods) refuse before providers.
+- Add/remove metric follow-ups keep companies; single-metric paths unchanged.
+
+Files changed:
+- `src/financial_analyst_agent/graph/{analysis_spec,spec_turn}.py`
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_{analysis_spec,multi_metric}.py`
+- `.scratch/stateful-agent-graph/issues/09-multi-metric-composition.md`
+- `progress.txt`
+
+Blockers / next:
+- 11 (multi-period) unblocked on 09+10 once 10 lands; 13 (evidence store)
+  unblocked on 09; 10 and 14 and 15 remain independently unblocked.
+
 ## 2026-08-25 — 08 Analysis spec and patch resolution
+
 
 Task completed: `.scratch/stateful-agent-graph/issues/08-analysis-spec-patch.md`
 

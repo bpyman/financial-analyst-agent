@@ -68,8 +68,11 @@ class SpecDraft(BaseModel):
     ranked_request: tuple[str, int] | None = None
 
 
+SUPPORTED_OPERATIONS: frozenset[str] = frozenset({"across_companies", "rank"})
+
+
 class SpecRejection(BaseModel):
-    code: Literal["invalid_metric", "empty_spec"]
+    code: Literal["invalid_metric", "empty_spec", "unsupported_combination"]
     message: str
 
 
@@ -211,6 +214,15 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
                 code="invalid_metric",
                 message=f"Unknown metric {metric!r}. Allowed: {', '.join(ALLOWED_METRICS)}",
             )
+    for operation in spec.operations:
+        if operation not in SUPPORTED_OPERATIONS:
+            return SpecRejection(
+                code="unsupported_combination",
+                message=(
+                    f"Unsupported operation {operation!r}. "
+                    f"Allowed: {', '.join(sorted(SUPPORTED_OPERATIONS))}"
+                ),
+            )
     has_companies = bool(spec.companies)
     has_constituents = spec.constituents is not None
     if not has_companies and not has_constituents:
@@ -229,42 +241,47 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
 
 
 def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
-    """Compile a resolved spec into typed tasks without executing providers."""
+    """Compile a resolved spec into typed tasks without executing providers.
+
+    Each metric becomes an independent task so multi-metric analyses compose
+    without a special-cased multi-metric workflow.
+    """
     if spec.constituents is not None:
-        if spec.metrics:
-            metric = spec.metrics[0]
+        if not spec.metrics:
             return (
                 CompiledTask(
-                    kind="rank_and_lookup",
+                    kind="rank",
                     industry=spec.constituents.industry,
                     limit=spec.constituents.limit,
-                    metric=metric,
                 ),
             )
-        return (
+        return tuple(
             CompiledTask(
-                kind="rank",
+                kind="rank_and_lookup",
                 industry=spec.constituents.industry,
                 limit=spec.constituents.limit,
-            ),
+                metric=metric,
+            )
+            for metric in spec.metrics
         )
 
     queries = tuple(company.query for company in spec.companies)
     if not queries or not spec.metrics:
         return ()
-    metric = spec.metrics[0]
     if len(queries) == 1:
-        return (
+        return tuple(
             CompiledTask(
                 kind="lookup",
                 company_queries=queries,
                 metric=metric,
-            ),
+            )
+            for metric in spec.metrics
         )
-    return (
+    return tuple(
         CompiledTask(
             kind="compare",
             company_queries=queries,
             metric=metric,
-        ),
+        )
+        for metric in spec.metrics
     )
