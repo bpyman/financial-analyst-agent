@@ -2,15 +2,23 @@
 
 Persistence is delegated to a ThreadStore. Run state stays ephemeral inside
 the turn (proposed patch, compiled tasks) and is never written to the store.
+Evidence bodies live in the store's EvidenceStore; thread state keeps refs.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from pydantic import BaseModel
 
 from financial_analyst_agent.contracts import Runtime, TurnResult
+from financial_analyst_agent.evidence_store import (
+    EvidenceCachedFacts,
+    grounding_json_from_result,
+    label_reused_evidence,
+    retain_result_evidence,
+)
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.thread_store import (
     ThreadMessage,
@@ -59,13 +67,26 @@ def run_conversation_turn(
     persist_spec: AnalysisSpec | None = prior.analysis_spec
     workers = DEFAULT_TASK_MAX_WORKERS if max_workers is None else max_workers
 
+    evidence = store.evidence_for(thread_id)
+    prior_ids = evidence.known_ids()
+    cached_facts = EvidenceCachedFacts(
+        runtime.facts, evidence, prior_ids=prior_ids
+    )
+    turn_runtime = replace(runtime, facts=cached_facts)
+
     if is_qualitative_proposal(proposal):
-        result = run_workflow_turn(proposal, runtime, query=message)
+        prior_result = store.resolve_last_result(prior)
+        result = run_workflow_turn(
+            proposal,
+            turn_runtime,
+            query=message,
+            grounding_json=grounding_json_from_result(prior_result),
+        )
         persist_spec = None
     elif is_structured_proposal(proposal):
         result, new_spec, proposed_patch = run_spec_turn(
             message,
-            runtime,
+            turn_runtime,
             current_spec=prior.analysis_spec,
             proposal=proposal,
             on_progress=on_progress,
@@ -80,20 +101,43 @@ def run_conversation_turn(
     else:
         from financial_analyst_agent.turn import execute_turn
 
-        result = execute_turn(message, runtime)
+        result = execute_turn(message, turn_runtime)
         analysis_spec = prior.analysis_spec
         persist_spec = prior.analysis_spec
 
+    result = label_reused_evidence(result, reused=bool(cached_facts.reused_ids))
+
+    result_ref = retain_result_evidence(evidence, result)
+    new_fact_refs = tuple(
+        sorted(
+            eid
+            for eid in evidence.known_ids() - prior_ids
+            if eid.startswith("fact-")
+        )
+    )
+    evidence_refs = tuple(
+        dict.fromkeys((*prior.evidence_refs, *new_fact_refs, result_ref))
+    )
+
     messages = (*prior.messages, ThreadMessage(role="analyst", content=message))
-    results = (*prior.results, result)
     state = ThreadState(
         thread_id=thread_id,
         messages=messages,
-        results=results,
-        last_result=result,
+        evidence_refs=evidence_refs,
+        last_result_ref=result_ref,
         analysis_spec=persist_spec,
     )
     store.save(state)
+    prior_results = store.resolve_results(
+        ThreadState(
+            thread_id=thread_id,
+            messages=prior.messages,
+            evidence_refs=prior.evidence_refs,
+            last_result_ref=prior.last_result_ref,
+            analysis_spec=prior.analysis_spec,
+        )
+    )
+    results = (*prior_results, result)
     return ConversationTurn(
         thread_id=thread_id,
         result=result,

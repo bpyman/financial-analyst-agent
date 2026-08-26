@@ -448,6 +448,8 @@ def test_main_reloads_thread_history_after_restart(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from financial_analyst_agent.evidence_store import retain_result_evidence
+
     first = TurnResult(intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.TABLE)
     second = TurnResult(
         intent=Intent.EXPLAIN,
@@ -456,6 +458,8 @@ def test_main_reloads_thread_history_after_restart(
         essay="Model analysis.",
     )
     store = LocalThreadStore(tmp_path)
+    first_ref = retain_result_evidence(store.evidence_for("local"), first)
+    second_ref = retain_result_evidence(store.evidence_for("local"), second)
     store.save(
         ThreadState(
             thread_id="local",
@@ -463,8 +467,8 @@ def test_main_reloads_thread_history_after_restart(
                 ThreadMessage(role="analyst", content="What was Google's net income?"),
                 ThreadMessage(role="analyst", content="How can AI disrupt healthcare?"),
             ),
-            results=(first, second),
-            last_result=second,
+            evidence_refs=(first_ref, second_ref),
+            last_result_ref=second_ref,
         )
     )
     fake_streamlit = _Streamlit(button_values=(False,))

@@ -197,7 +197,7 @@ def test_failed_cell_does_not_fail_turn_or_thread(tmp_path: Path) -> None:
     assert by_key[("net_income", Q2)].value == Decimal("50")
     reloaded = store.load("t1")
     assert reloaded is not None
-    assert reloaded.last_result is not None
+    assert store.resolve_last_result(reloaded) is not None
     assert reloaded.analysis_spec is not None
 
 

@@ -32,6 +32,7 @@ class WorkflowRunState(TypedDict):
     plan: Any
     runtime: Runtime
     query: str
+    grounding_json: str
     result: TurnResult | None
 
 
@@ -77,7 +78,13 @@ def _rank_and_lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
 
 
 def _explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    return {"result": run_qualitative_explanation(state["plan"], state["runtime"])}
+    return {
+        "result": run_qualitative_explanation(
+            state["plan"],
+            state["runtime"],
+            grounding_json=state.get("grounding_json", ""),
+        )
+    }
 
 
 def _news_and_explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
@@ -116,13 +123,24 @@ def _build_workflow_graph() -> Any:
 _WORKFLOW_GRAPH = _build_workflow_graph()
 
 
-def run_workflow_turn(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
-    """Execute one closed workflow via the parent graph; return TurnResult."""
+def run_workflow_turn(
+    plan: Any,
+    runtime: Runtime,
+    *,
+    query: str = "",
+    grounding_json: str = "",
+) -> TurnResult:
+    """Execute one closed workflow via the parent graph; return TurnResult.
+
+    ``grounding_json`` is optional deterministic analysis already on the thread
+    (injected by the conversation seam). Subgraphs still do not read history.
+    """
     final: WorkflowRunState = _WORKFLOW_GRAPH.invoke(
         {
             "plan": plan,
             "runtime": runtime,
             "query": query,
+            "grounding_json": grounding_json,
             "result": None,
         }
     )

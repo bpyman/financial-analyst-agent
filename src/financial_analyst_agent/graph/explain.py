@@ -15,13 +15,20 @@ from financial_analyst_agent.contracts import Runtime, TurnResult
 class ExplainState(TypedDict):
     plan: Any
     runtime: Runtime
+    grounding_json: str
     result: TurnResult | None
 
 
 def _explain_node(state: ExplainState) -> dict[str, TurnResult]:
     from financial_analyst_agent.turn import _explain_turn
 
-    return {"result": _explain_turn(state["plan"], state["runtime"])}
+    return {
+        "result": _explain_turn(
+            state["plan"],
+            state["runtime"],
+            grounding_json=state.get("grounding_json", ""),
+        )
+    }
 
 
 def _build_explain_graph() -> Any:
@@ -35,12 +42,15 @@ def _build_explain_graph() -> Any:
 _EXPLAIN_GRAPH = _build_explain_graph()
 
 
-def run_qualitative_explanation(plan: Any, runtime: Runtime) -> TurnResult:
+def run_qualitative_explanation(
+    plan: Any, runtime: Runtime, *, grounding_json: str = ""
+) -> TurnResult:
     """Execute the qualitative-explanation workflow; return TurnResult."""
     final: ExplainState = _EXPLAIN_GRAPH.invoke(
         {
             "plan": plan,
             "runtime": runtime,
+            "grounding_json": grounding_json,
             "result": None,
         }
     )

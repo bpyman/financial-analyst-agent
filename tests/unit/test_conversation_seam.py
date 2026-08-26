@@ -188,12 +188,13 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     assert set(dumped) == {
         "thread_id",
         "messages",
-        "results",
-        "last_result",
+        "evidence_refs",
+        "last_result_ref",
         "analysis_spec",
     }
-    assert len(state.results) == len(state.messages) == 1
-    assert state.results[0] == state.last_result
+    assert len(state.evidence_refs) >= 1
+    assert state.last_result_ref is not None
+    assert store.resolve_last_result(state) is not None
     assert "plan" not in dumped
     assert "runtime" not in dumped
     assert "compiled_tasks" not in dumped

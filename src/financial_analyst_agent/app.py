@@ -239,9 +239,10 @@ def _render_metric_catalog() -> None:
                 st.markdown("  \n".join(f":gray[{name}]" for name in names))
 
 
-def _history_pairs(state: ThreadState) -> list[tuple[str, TurnResult]]:
+def _history_pairs(state: ThreadState, store: LocalThreadStore) -> list[tuple[str, TurnResult]]:
     pairs: list[tuple[str, TurnResult]] = []
-    for message, result in zip(state.messages, state.results, strict=False):
+    results = store.resolve_results(state)
+    for message, result in zip(state.messages, results, strict=False):
         pairs.append((message.content, result))
     return pairs
 
@@ -252,10 +253,10 @@ def _ensure_thread_and_history(store: LocalThreadStore, kill_switch: bool) -> No
     if "history" in st.session_state:
         return
     state = store.load(st.session_state["thread_id"])
-    if state is None or not state.results:
+    if state is None or not state.evidence_refs:
         st.session_state["history"] = []
         return
-    st.session_state["history"] = _history_pairs(state)
+    st.session_state["history"] = _history_pairs(state, store)
     st.session_state["history_kill_switch"] = kill_switch
 
 
@@ -335,12 +336,11 @@ def main() -> None:
             except Exception as exc:
                 st.error(f"Turn failed: {exc}")
             else:
-                st.session_state["history"] = _history_pairs(
-                    ThreadState(
-                        thread_id=turn.thread_id,
-                        messages=turn.messages,
-                        results=turn.results,
-                        last_result=turn.last_result,
+                st.session_state["history"] = list(
+                    zip(
+                        (m.content for m in turn.messages),
+                        turn.results,
+                        strict=False,
                     )
                 )
                 st.session_state["history_kill_switch"] = kill_switch

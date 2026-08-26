@@ -24,7 +24,7 @@ class _ExplainCompleter:
 
 
 class _NumberFreeEssay:
-    def complete_essay(self, query: str) -> str:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
         if query != AI_HEALTHCARE_QUERY:
             raise AssertionError(f"unexpected essay query: {query!r}")
         return FIXTURE_EXPLAIN_ESSAY
@@ -50,7 +50,7 @@ def _explain_runtime(essay: EssayCompleter) -> Runtime:
 
 
 class _InventedDollarEssay:
-    def complete_essay(self, query: str) -> str:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
         return "AI imaging will create a $29.8B market without citing a filing."
 
 

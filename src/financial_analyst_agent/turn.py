@@ -117,12 +117,14 @@ def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> l
     )
 
 
-def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
+def _explain_turn(
+    plan: Any, runtime: Runtime, *, grounding_json: str = ""
+) -> TurnResult:
     if runtime.essay is None:
         raise RuntimeError("explain intent requires an essay completer")
     traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
     try:
-        essay = runtime.essay.complete_essay(plan.topic)
+        essay = runtime.essay.complete_essay(plan.topic, grounding_json)
     except ProviderError as exc:
         traces[0] = traces[0].model_copy(
             update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
@@ -133,9 +135,10 @@ def _explain_turn(plan: Any, runtime: Runtime) -> TurnResult:
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
-    extras = _numeral_lock_extras(
-        essay, json.dumps([trace.model_dump(mode="json") for trace in traces])
+    lock_json = grounding_json or json.dumps(
+        [trace.model_dump(mode="json") for trace in traces]
     )
+    extras = _numeral_lock_extras(essay, lock_json)
     if extras:
         invented = ", ".join(extras)
         return TurnResult(

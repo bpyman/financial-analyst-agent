@@ -1,5 +1,31 @@
 # Progress
 
+## 2026-08-25 — 13 Evidence on the thread, referenced not copied
+
+Task completed: `.scratch/stateful-agent-graph/issues/13-thread-evidence-store.md`
+
+Key decisions:
+- Per-thread EvidenceStore holds facts/news/results by id; ThreadState
+  keeps only evidence_refs + last_result_ref (no inline table copies).
+- EvidenceCachedFacts reuses prior cells on follow-ups; reused turns get
+  the "Reused thread evidence" banner (run-state hits stay unlabelled).
+- Qualitative turns receive prior analysis JSON as grounding for numeral
+  lock; subgraphs still do not read conversation history.
+
+Files changed:
+- `src/financial_analyst_agent/evidence_store.py`
+- `src/financial_analyst_agent/{thread_store,conversation,app,turn}.py`
+- `src/financial_analyst_agent/graph/{__init__,explain}.py`
+- `tests/unit/test_thread_evidence.py`
+- `tests/unit/test_{conversation_seam,contracts_import,concurrent_dispatch}.py`
+- `tests/test_{app,run_turn_explain}.py`
+- `.scratch/stateful-agent-graph/issues/13-thread-evidence-store.md`
+- `progress.txt`
+
+Blockers / next:
+- 14 (resumable clarification) and 15 (exploratory) remain open and
+  unblocked.
+
 ## 2026-08-25 — 12 Concurrent dispatch and visible progress
 
 Task completed: `.scratch/stateful-agent-graph/issues/12-concurrent-dispatch-progress.md`
