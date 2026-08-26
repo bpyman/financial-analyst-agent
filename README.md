@@ -14,7 +14,7 @@ copy .env.example .env
 Fill `OPENAI_API_KEY`, `SEC_USER_AGENT`, and `TAVILY_API_KEY` in `.env`. Then:
 
 ```text
-uv run streamlit run src/financial_analyst_agent/app.py
+uv run python -m streamlit run src/financial_analyst_agent/app.py
 ```
 
 Live default. Scripted prompts:

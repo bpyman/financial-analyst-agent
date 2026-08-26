@@ -199,7 +199,8 @@ class FixtureEssayCompleter:
 class DemoCompleter:
     """Injectable fake completer so this slice is demoable without OpenAI."""
 
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
+        _ = current_spec
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
         if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):

@@ -1,4 +1,4 @@
-"""OpenAI structured-output planner. Emits a closed intent, never numbers."""
+"""OpenAI structured-output planner. Emits a closed intent or a spec patch."""
 
 from typing import Annotated, Any, Literal
 
@@ -7,6 +7,7 @@ from pydantic import AfterValidator, BaseModel, model_validator
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import PlannerError
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, PeriodSelection, SpecPatch
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 
 _PLANNER_FAILED_MESSAGE = "LLM planner failed"
@@ -28,6 +29,22 @@ _SYSTEM_PROMPT = (
     "For explain, set topic to the user question. "
     "For exploratory_research, set topic to the user question. "
     "Never calculate, select, or invent financial values."
+)
+_FOLLOW_UP_PROMPT = (
+    "The analyst is continuing a conversation thread. The current analysis spec "
+    "is provided. Map this follow-up to a FollowUpPlan. "
+    "Use intent spec_patch when they are editing or replacing the quantitative "
+    "analysis. mode=extend when they add/remove/swap companies or metrics, "
+    "change the period window, or ask for year-over-year on the current analysis. "
+    "mode=replace when they start an unrelated new analysis, including a "
+    "complete lookup or compare question about different issuers. "
+    "mode=null when extend versus replace is unclear. "
+    "Company names as the user said them — never CIKs. "
+    "Do not invent financial values. "
+    "Use explain / news_and_explain / exploratory_research only for qualitative "
+    "or current-event questions that are not a spec edit. "
+    f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
+    "Allowed operations: across_companies, across_periods, rank."
 )
 
 
@@ -156,6 +173,82 @@ class Plan(BaseModel):
         return None
 
 
+class _SpecPatchAction(BaseModel):
+    intent: Literal["spec_patch"]
+    mode: Literal["extend", "replace"] | None = None
+    add_companies: tuple[str, ...] = ()
+    remove_companies: tuple[str, ...] = ()
+    add_metrics: tuple[str, ...] = ()
+    remove_metrics: tuple[str, ...] = ()
+    period_kind: Literal["latest_quarter", "last_n_quarters"] | None = None
+    period_count: int | None = None
+    add_operations: tuple[str, ...] = ()
+    remove_operations: tuple[str, ...] = ()
+    ranked_industry: str | None = None
+    ranked_limit: PositiveLimit | None = None
+
+    def to_spec_patch(self) -> SpecPatch:
+        periods: PeriodSelection | None = None
+        if self.period_kind == "last_n_quarters":
+            periods = PeriodSelection(
+                kind="last_n_quarters",
+                count=self.period_count if self.period_count is not None else 4,
+            )
+        elif self.period_kind == "latest_quarter":
+            periods = PeriodSelection()
+        ranked = None
+        if self.ranked_industry:
+            ranked = (self.ranked_industry, int(self.ranked_limit or 10))
+        return SpecPatch(
+            mode=self.mode,
+            add_companies=self.add_companies,
+            remove_companies=self.remove_companies,
+            add_metrics=self.add_metrics,
+            remove_metrics=self.remove_metrics,
+            set_periods=periods,
+            add_operations=self.add_operations,
+            remove_operations=self.remove_operations,
+            ranked_request=ranked,
+        )
+
+
+FollowUpAction = (
+    _SpecPatchAction | _ExplainPlan | _NewsAndExplainPlan | _ExploratoryResearchPlan
+)
+
+
+class FollowUpPlan(BaseModel):
+    action: FollowUpAction
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_flat_action(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "action" not in value and "intent" in value:
+            return {"action": value}
+        return value
+
+
+def format_spec_for_planner(spec: AnalysisSpec) -> str:
+    companies = ", ".join(
+        f"{company.name} ({company.ticker})" for company in spec.companies
+    ) or "(none)"
+    constituents = "(none)"
+    if spec.constituents is not None:
+        constituents = f"{spec.constituents.industry} top {spec.constituents.limit}"
+    metrics = ", ".join(spec.metrics) or "(none)"
+    period_label: str = spec.periods.kind
+    if spec.periods.count is not None:
+        period_label = f"{spec.periods.kind} n={spec.periods.count}"
+    operations = ", ".join(spec.operations) or "(none)"
+    return (
+        f"Companies: {companies}\n"
+        f"Ranked constituents: {constituents}\n"
+        f"Metrics: {metrics}\n"
+        f"Periods: {period_label}\n"
+        f"Operations: {operations}"
+    )
+
+
 def openai_client_from_settings(settings: Settings) -> tuple[Any, str]:
     api_key = settings.require_openai_api_key()
     model = settings.require_openai_model()
@@ -174,15 +267,24 @@ class OpenAIStructuredCompleter:
     def from_settings(cls, settings: Settings) -> "OpenAIStructuredCompleter":
         return cls(*openai_client_from_settings(settings))
 
-    def complete(self, query: str) -> Plan:
+    def complete(self, query: str, current_spec: AnalysisSpec | None = None) -> Plan | SpecPatch:
+        if current_spec is None:
+            system = _SYSTEM_PROMPT
+            response_format: type[BaseModel] = Plan
+        else:
+            system = (
+                f"{_FOLLOW_UP_PROMPT}\n\nCurrent analysis spec:\n"
+                f"{format_spec_for_planner(current_spec)}"
+            )
+            response_format = FollowUpPlan
         try:
             completion = self._client.chat.completions.parse(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": query},
                 ],
-                response_format=Plan,
+                response_format=response_format,
             )
         except openai.OpenAIError as exc:
             raise PlannerError(
@@ -202,6 +304,15 @@ class OpenAIStructuredCompleter:
         parsed = getattr(message, "parsed", None)
         if parsed is None:
             raise PlannerError(_PLANNER_FAILED_MESSAGE, details={"stage": "missing_parsed"})
+        if isinstance(parsed, FollowUpPlan):
+            if isinstance(parsed.action, _SpecPatchAction):
+                return parsed.action.to_spec_patch()
+            return Plan(action=parsed.action)
         if isinstance(parsed, Plan):
             return parsed
-        return Plan.model_validate(parsed)
+        if current_spec is None:
+            return Plan.model_validate(parsed)
+        follow = FollowUpPlan.model_validate(parsed)
+        if isinstance(follow.action, _SpecPatchAction):
+            return follow.action.to_spec_patch()
+        return Plan(action=follow.action)

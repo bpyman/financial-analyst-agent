@@ -205,6 +205,86 @@ def test_qualitative_after_analysis_receives_deterministic_result(tmp_path: Path
     assert "200" in received["tool_json"]
 
 
+def test_explain_after_news_does_not_reuse_prior_news_json(tmp_path: Path) -> None:
+    from financial_analyst_agent.contracts import Intent, NewsHit, RendererKind, Runtime
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    store = LocalThreadStore(tmp_path)
+
+    class _NewsCompleter:
+        def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
+            return SimpleNamespace(
+                intent=Intent.NEWS_AND_EXPLAIN,
+                query=query,
+                topic=query,
+            )
+
+    class _NewsPort:
+        def search_news(self, query: str) -> list[NewsHit]:
+            return [
+                NewsHit(
+                    title="Lilly obesity pipeline",
+                    url="https://example.test/lilly",
+                    snippet="Zepbound sales cited $4.5B after the latest quarter.",
+                    score=0.9,
+                    published="2026-08-20",
+                )
+            ]
+
+    class _NewsEssay:
+        def complete_essay(self, query: str, tool_json: str = "") -> str:
+            return "Lilly obesity coverage cites $4.5B of Zepbound sales [1]."
+
+    news_runtime = Runtime(
+        completer=_NewsCompleter(),  # type: ignore[arg-type]
+        facts=SimpleNamespace(),  # type: ignore[arg-type]
+        news=_NewsPort(),  # type: ignore[arg-type]
+        essay=_NewsEssay(),  # type: ignore[arg-type]
+        ranking=_runtime(completer=_CompareCompleter()).ranking,
+    )
+    run_conversation_turn(
+        "t1",
+        "What's going on with Eli Lilly's obesity drugs?",
+        news_runtime,
+        store=store,
+    )
+
+    received: dict[str, str] = {}
+
+    class _ExplainCompleter:
+        def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
+            return SimpleNamespace(
+                intent=Intent.EXPLAIN,
+                topic=query,
+            )
+
+    class _ExplainEssay:
+        def complete_essay(self, query: str, tool_json: str = "") -> str:
+            received["query"] = query
+            received["tool_json"] = tool_json
+            return "Bank underwriting can use models to score credit files."
+
+    explain_runtime = Runtime(
+        completer=_ExplainCompleter(),  # type: ignore[arg-type]
+        facts=SimpleNamespace(),  # type: ignore[arg-type]
+        essay=_ExplainEssay(),  # type: ignore[arg-type]
+        ranking=news_runtime.ranking,
+    )
+    turn = run_conversation_turn(
+        "t1",
+        "How could AI change bank underwriting?",
+        explain_runtime,
+        store=store,
+    )
+    assert turn.result.intent is Intent.EXPLAIN
+    assert turn.result.renderer is RendererKind.ESSAY
+    assert "obesity" not in received["tool_json"].casefold()
+    assert "4.5B" not in received["tool_json"]
+    assert "Lilly" not in received["tool_json"]
+    assert received["tool_json"] == ""
+
+
 def test_thread_checkpoint_stays_small_as_turns_accumulate(tmp_path: Path) -> None:
     from financial_analyst_agent.conversation import run_conversation_turn
     from financial_analyst_agent.graph.analysis_spec import SpecPatch

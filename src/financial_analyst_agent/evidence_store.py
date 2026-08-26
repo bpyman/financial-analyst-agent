@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import NewsHit, TurnResult
+from financial_analyst_agent.contracts import Intent, NewsHit, TurnResult
 
 EvidenceKind = Literal["fact", "news", "result"]
 
@@ -323,7 +323,7 @@ class EvidenceCachedFacts:
     def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
         listing = getattr(self._inner, "list_quarterly_report_dates", None)
         if listing is None:
-            raise AttributeError("inner facts port has no list_quarterly_report_dates")
+            return ()
         dates = listing(company, limit=limit)
         return tuple(dates)
 
@@ -345,7 +345,22 @@ def retain_result_evidence(store: EvidenceStore, result: TurnResult) -> str:
 
 
 def grounding_json_from_result(result: TurnResult | None) -> str:
-    """Deterministic analysis payload for a later qualitative numeral lock."""
+    """Deterministic analysis payload for a later qualitative numeral lock.
+
+    News and model-analysis essays are not analysis numbers; passing them as
+    essay tool JSON makes a later explain treat them as the news set.
+    """
     if result is None:
         return ""
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    if result.intent in {
+        Intent.EXPLAIN,
+        Intent.NEWS_AND_EXPLAIN,
+        Intent.EXPLORATORY_RESEARCH,
+    }:
+        return ""
+    if not result.table_rows:
+        return ""
+    return json.dumps(
+        [row.model_dump(mode="json") for row in result.table_rows],
+        default=str,
+    )

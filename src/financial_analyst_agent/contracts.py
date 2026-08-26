@@ -86,7 +86,7 @@ SEARCH_NEWS_TIME_RANGE = "week"
 
 
 class Completer(Protocol):
-    def complete(self, query: str) -> Any: ...
+    def complete(self, query: str, current_spec: Any | None = None) -> Any: ...
 
 
 class EssayCompleter(Protocol):

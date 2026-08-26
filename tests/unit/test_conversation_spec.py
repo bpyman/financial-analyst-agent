@@ -231,6 +231,29 @@ def test_unrelated_question_replaces_spec(tmp_path: Path) -> None:
     assert state.analysis_spec is None
 
 
+def test_complete_does_not_retry_internal_typeerror(tmp_path: Path) -> None:
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    class _Boom:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, query: str, current_spec: object = None) -> object:
+            self.calls += 1
+            raise TypeError("structured parse failed")
+
+    boom = _Boom()
+    store = LocalThreadStore(tmp_path)
+    try:
+        run_conversation_turn("t1", "add Apple", _runtime(completer=boom), store=store)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("expected TypeError to propagate")
+    assert boom.calls == 1
+
+
 def test_invalid_patch_rejects_before_provider(tmp_path: Path) -> None:
     from financial_analyst_agent.contracts import RendererKind
     from financial_analyst_agent.conversation import run_conversation_turn

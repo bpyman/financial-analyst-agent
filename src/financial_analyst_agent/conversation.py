@@ -11,6 +11,8 @@ asks something unrelated (which discards it explicitly).
 
 from __future__ import annotations
 
+import inspect
+import re
 from dataclasses import replace
 from typing import Any, Literal
 
@@ -33,6 +35,28 @@ from financial_analyst_agent.thread_store import (
 )
 
 DISCARDED_CLARIFICATION_BANNER = "Discarded pending clarification"
+_REMOVE_METRIC_EDIT = re.compile(
+    r"^\s*(?:drop|remove|without)\s+",
+    re.IGNORECASE,
+)
+
+
+def _accepts_current_spec(completer: Any) -> bool:
+    try:
+        params = inspect.signature(completer.complete).parameters
+    except (TypeError, ValueError):
+        return False
+    if "current_spec" in params:
+        return True
+    return any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
+
+
+def _complete(completer: Any, message: str, current_spec: AnalysisSpec | None) -> Any:
+    if _accepts_current_spec(completer):
+        return completer.complete(message, current_spec=current_spec)
+    return completer.complete(message)
 
 
 class ConversationTurn(BaseModel):
@@ -76,7 +100,7 @@ def _match_clarification_answer(
 
 
 def _pending_from_clarify(
-    result: TurnResult, patch: SpecPatch
+    result: TurnResult, patch: SpecPatch, message: str = ""
 ) -> PendingClarification | None:
     if result.renderer is not RendererKind.CLARIFY or not result.candidates:
         return None
@@ -85,11 +109,15 @@ def _pending_from_clarify(
         if result.candidates == ("extend", "replace")
         else "ambiguous_metric"
     )
+    metric_role: Literal["add", "remove"] = (
+        "remove" if _REMOVE_METRIC_EDIT.match(message.strip()) else "add"
+    )
     return PendingClarification(
         kind=kind,
         candidates=result.candidates,
         patch=patch,
         intent=result.intent,
+        metric_role=metric_role,
     )
 
 
@@ -106,7 +134,12 @@ def _resume_pending(
     from financial_analyst_agent.graph.spec_turn import run_spec_turn
 
     if pending.kind == "ambiguous_metric":
-        patch = pending.patch.model_copy(update={"add_metrics": (answer,)})
+        if pending.metric_role == "remove":
+            patch = pending.patch.model_copy(
+                update={"remove_metrics": (answer,), "add_metrics": ()}
+            )
+        else:
+            patch = pending.patch.model_copy(update={"add_metrics": (answer,)})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
         return run_spec_turn(
@@ -187,13 +220,13 @@ def run_conversation_turn(
             else:
                 analysis_spec = None
                 persist_spec = prior.analysis_spec
-            pending_out = _pending_from_clarify(result, proposed_patch)
+            pending_out = _pending_from_clarify(result, proposed_patch, message)
             resumed = True
         else:
             discarded_clarification = True
 
     if not resumed:
-        proposal: Any = runtime.completer.complete(message)
+        proposal: Any = _complete(runtime.completer, message, prior.analysis_spec)
 
         if is_qualitative_proposal(proposal):
             prior_result = store.resolve_last_result(prior)
@@ -214,7 +247,9 @@ def run_conversation_turn(
                 on_progress=on_progress,
                 max_workers=workers,
             )
-            pending_from_result = _pending_from_clarify(result, proposed_patch)
+            pending_from_result = _pending_from_clarify(
+                result, proposed_patch, message
+            )
             if pending_from_result is not None:
                 pending_out = pending_from_result
                 analysis_spec = None

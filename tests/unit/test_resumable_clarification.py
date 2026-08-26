@@ -25,6 +25,16 @@ class _LookupFacts:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
+    def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
+        dates = (
+            date(2026, 3, 31),
+            date(2025, 12, 31),
+            date(2025, 9, 30),
+            date(2025, 6, 30),
+            date(2025, 3, 31),
+        )
+        return dates[:limit]
+
     def get_financials(
         self, company: str, metric: str, *, report_date: date | None = None
     ) -> SimpleNamespace:

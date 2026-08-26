@@ -37,6 +37,7 @@ class PendingClarification(BaseModel):
     candidates: tuple[str, ...]
     patch: SpecPatch
     intent: Intent = Intent.LOOKUP
+    metric_role: Literal["add", "remove"] = "add"
 
 
 class ThreadState(BaseModel):

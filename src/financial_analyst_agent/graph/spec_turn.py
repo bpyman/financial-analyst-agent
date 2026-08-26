@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
@@ -19,10 +20,15 @@ from financial_analyst_agent.contracts import (
     ToolTrace,
     TurnResult,
 )
-from financial_analyst_agent.domain.errors import UnknownIndustryError
+from financial_analyst_agent.domain.errors import (
+    CompanyNotFoundError,
+    ProviderError,
+    UnknownIndustryError,
+)
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
     CompiledTask,
+    PeriodSelection,
     SpecPatch,
     SpecRejection,
     apply_patch,
@@ -31,6 +37,47 @@ from financial_analyst_agent.graph.analysis_spec import (
     validate_spec,
 )
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+_ADD_EDIT = re.compile(
+    r"^\s*(?:now\s+)?(?:also\s+)?(?:add|include)\s+(.+?)\s*$",
+    re.IGNORECASE,
+)
+_DROP_EDIT = re.compile(
+    r"^\s*(?:drop|remove|without)\s+(.+?)\s*$",
+    re.IGNORECASE,
+)
+_SWAP_EDIT = re.compile(
+    r"^\s*(?:use|swap)\s+(.+?)\s+instead of\s+(.+?)\s*$",
+    re.IGNORECASE,
+)
+_LAST_N_QUARTERS = re.compile(
+    r"\blast\s+(\d+|two|three|four|five|six|eight)\s+quarters?\b",
+    re.IGNORECASE,
+)
+_YOY = re.compile(
+    r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year)\b",
+    re.IGNORECASE,
+)
+_STANDALONE_LOOKUP = re.compile(
+    r"^\s*what(?:'s| is| was)\b",
+    re.IGNORECASE,
+)
+_STANDALONE_COMPARE = re.compile(
+    r"^\s*compare\s+(?!to\b).+\band\b",
+    re.IGNORECASE,
+)
+_COMPARE_TO_ISSUER = re.compile(
+    r"^\s*compare\s+to\s+(.+?)\s*$",
+    re.IGNORECASE,
+)
+_NUMBER_WORDS = {
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "eight": 8,
+}
 
 # Bound concurrent provider fan-out so a wide window cannot flood SEC/EDGAR.
 DEFAULT_TASK_MAX_WORKERS = 8
@@ -117,6 +164,233 @@ def bind_metrics_from_message(
         tool_traces=[],
         renderer=RendererKind.REFUSE,
         message=f"Unknown metric {term!r}. Allowed: {allowed}",
+    )
+
+
+def _unique_metrics_from_phrase(text: str) -> tuple[str, ...]:
+    resolved = resolve_metric_phrase(text)
+    if resolved.kind != "unique":
+        return ()
+    if resolved.metrics:
+        return resolved.metrics
+    if resolved.metric is not None:
+        return (resolved.metric,)
+    return ()
+
+
+def _company_tokens(text: str) -> tuple[str, ...]:
+    parts = re.split(r"\s+and\s+|,\s*", text, flags=re.IGNORECASE)
+    return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
+
+
+def _period_count_from_match(match: re.Match[str] | None, *, yoy: bool) -> int:
+    if match is not None:
+        raw = match.group(1).casefold()
+        count = _NUMBER_WORDS.get(raw, int(raw) if raw.isdigit() else 4)
+    else:
+        count = 5
+    if yoy and count < 5:
+        return 5
+    return count
+
+
+def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
+    """Period windows come from the analyst's wording, not a model slug."""
+    match = _LAST_N_QUARTERS.search(message)
+    yoy = _YOY.search(message) is not None
+    if match is None and not yoy:
+        return patch
+    operations = patch.add_operations
+    if yoy and "across_periods" not in operations:
+        operations = (*operations, "across_periods")
+    if match is None and patch.set_periods is not None:
+        return patch.model_copy(update={"add_operations": operations})
+    count = _period_count_from_match(match, yoy=yoy)
+    return patch.model_copy(
+        update={
+            "set_periods": PeriodSelection(kind="last_n_quarters", count=count),
+            "add_operations": operations,
+        }
+    )
+
+
+def refine_patch_from_message(
+    patch: SpecPatch,
+    message: str,
+    current_spec: AnalysisSpec | None,
+) -> SpecPatch:
+    """Turn follow-up wording into an extend patch when the planner still replaced."""
+    patch = bind_periods_from_message(patch, message)
+    if current_spec is None:
+        return patch
+
+    swapped = _SWAP_EDIT.match(message.strip())
+    if swapped is not None:
+        incoming = swapped.group(1).strip()
+        outgoing = swapped.group(2).strip()
+        add_metrics = _unique_metrics_from_phrase(incoming)
+        remove_metrics = _unique_metrics_from_phrase(outgoing)
+        if add_metrics and remove_metrics:
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_metrics": add_metrics,
+                    "remove_metrics": remove_metrics,
+                    "add_companies": (),
+                    "remove_companies": (),
+                    "ranked_request": None,
+                }
+            )
+        return patch.model_copy(
+            update={
+                "mode": "extend",
+                "add_companies": (incoming,),
+                "remove_companies": (outgoing,),
+                "add_metrics": (),
+                "ranked_request": None,
+            }
+        )
+
+    added = _ADD_EDIT.match(message.strip())
+    if added is not None:
+        token = added.group(1).strip(" .,")
+        metrics = _unique_metrics_from_phrase(token)
+        if metrics:
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_metrics": metrics,
+                    "add_companies": (),
+                    "ranked_request": None,
+                }
+            )
+        resolved = resolve_metric_phrase(token)
+        if resolved.kind == "ambiguous":
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_companies": (),
+                    "ranked_request": None,
+                }
+            )
+        if patch.add_metrics and not patch.add_companies:
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_companies": (),
+                    "ranked_request": None,
+                }
+            )
+        companies = _company_tokens(token)
+        return patch.model_copy(
+            update={
+                "mode": "extend",
+                "add_companies": companies,
+                "add_metrics": (),
+                "ranked_request": None,
+            }
+        )
+
+    dropped = _DROP_EDIT.match(message.strip())
+    if dropped is not None:
+        token = dropped.group(1).strip(" .,")
+        metrics = _unique_metrics_from_phrase(token)
+        if metrics:
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "remove_metrics": metrics,
+                    "add_metrics": (),
+                    "add_companies": (),
+                    "ranked_request": None,
+                }
+            )
+        resolved = resolve_metric_phrase(token)
+        if resolved.kind == "ambiguous":
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_companies": (),
+                    "remove_companies": (),
+                    "add_metrics": (),
+                    "ranked_request": None,
+                }
+            )
+        companies = _company_tokens(token)
+        return patch.model_copy(
+            update={
+                "mode": "extend",
+                "remove_companies": companies,
+                "add_metrics": (),
+                "add_companies": (),
+                "ranked_request": None,
+            }
+        )
+
+    compare_to = _COMPARE_TO_ISSUER.match(message.strip())
+    if compare_to is not None and _YOY.search(message) is None:
+        token = compare_to.group(1).strip(" .,")
+        if token and not _unique_metrics_from_phrase(token):
+            return patch.model_copy(
+                update={
+                    "mode": "extend",
+                    "add_companies": (token,),
+                    "add_metrics": (),
+                    "ranked_request": None,
+                }
+            )
+
+    standalone = (
+        _STANDALONE_LOOKUP.search(message.strip()) is not None
+        or _STANDALONE_COMPARE.search(message.strip()) is not None
+    )
+    if patch.set_periods is not None and patch.mode == "replace" and not standalone:
+        return patch.model_copy(
+            update={
+                "mode": "extend",
+                "add_companies": (),
+                "add_metrics": (),
+                "ranked_request": None,
+            }
+        )
+    if standalone and _YOY.search(message) is None:
+        return patch.model_copy(
+            update={
+                "mode": "replace",
+                "remove_companies": (),
+                "remove_metrics": (),
+            }
+        )
+    return patch
+
+
+def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:
+    """Fill last_n_quarters report_dates from the facts port when the patch omitted them."""
+    if spec.periods.kind != "last_n_quarters" or spec.periods.report_dates:
+        return spec
+    count = spec.periods.count or 1
+    listing = getattr(runtime.facts, "list_quarterly_report_dates", None)
+    if listing is None:
+        return spec
+    company = ""
+    if spec.companies:
+        company = spec.companies[0].query
+    elif spec.constituents is not None and spec.constituents.members:
+        company = spec.constituents.members[0].query
+    if not company:
+        return spec
+    try:
+        dates = tuple(listing(company, limit=count))
+    except (AttributeError, TypeError):
+        return spec
+    if not dates:
+        return spec
+    return spec.model_copy(
+        update={
+            "periods": spec.periods.model_copy(
+                update={"count": len(dates), "report_dates": dates}
+            )
+        }
     )
 
 
@@ -451,6 +725,7 @@ def run_spec_turn(
         else plan_to_spec_patch(proposal)
     )
     intent = getattr(proposal, "intent", None) if not isinstance(proposal, SpecPatch) else None
+    patch = refine_patch_from_message(patch, message, current_spec)
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
@@ -509,6 +784,33 @@ def run_spec_turn(
     if outcome is not None:
         return _rejection_result(outcome), None, patch
 
+    try:
+        spec = materialize_period_dates(spec, runtime)
+    except (CompanyNotFoundError, ProviderError) as exc:
+        return (
+            TurnResult(
+                intent=Intent.LOOKUP,
+                tool_traces=[],
+                renderer=RendererKind.REFUSE,
+                message=str(exc),
+            ),
+            None,
+            patch,
+        )
+    if spec.periods.kind == "last_n_quarters" and not spec.periods.report_dates:
+        return (
+            _rejection_result(
+                SpecRejection(
+                    code="empty_spec",
+                    message=(
+                        "Could not determine quarterly report dates "
+                        "for the requested window"
+                    ),
+                )
+            ),
+            None,
+            patch,
+        )
     tasks = compile_tasks(spec)
     if not tasks:
         return (
