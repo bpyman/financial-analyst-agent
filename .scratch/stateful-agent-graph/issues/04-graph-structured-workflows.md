@@ -8,10 +8,14 @@ No new analyst-visible behaviour. This is migration step one, and its whole poin
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Quarterly lookup, comparison, ranking, and rank-then-lookup run through the graph
-- [ ] The application seam returns the same intent, tool order, values, provenance, banners, and reasons as before
-- [ ] The gold suite and the per-workflow seam tests pass with no assertion changes
-- [ ] The model still selects a workflow from the closed set; it does not select nodes or chain tools
-- [ ] No test asserts graph internals
+- [x] Quarterly lookup, comparison, ranking, and rank-then-lookup run through the graph
+- [x] The application seam returns the same intent, tool order, values, provenance, banners, and reasons as before
+- [x] The gold suite and the per-workflow seam tests pass with no assertion changes
+- [x] The model still selects a workflow from the closed set; it does not select nodes or chain tools
+- [x] No test asserts graph internals
+
+## Answer
+
+Migration step 1 for structured workflows: LangGraph is a dependency; `financial_analyst_agent.graph.run_structured_turn` is a parent graph with fixed conditional edges from START to `lookup` / `compare` / `rank` / `rank_and_lookup`. Nodes call the existing turn helpers (`_lookup_turn` extracted for the reported/formula/snapshot lookup paths). `run_turn` still plans and resolves metrics, then delegates those four intents through the graph; explain and news-and-explain stay on the pre-graph path until ticket 05. Seam tests assert TurnResult shape only — no node or channel names.

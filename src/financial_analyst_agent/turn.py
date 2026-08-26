@@ -626,6 +626,36 @@ def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
     return _metrics_turn(Intent.COMPARE, list(plan.companies), plan.metric, runtime)
 
 
+def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    metric = plan.metric
+    if metric in FORMULA_COMPONENTS:
+        return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
+    if metric in SNAPSHOT_METRICS:
+        return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
+    args = {"company": plan.company, "metric": metric}
+    try:
+        fact = runtime.facts.get_financials(plan.company, metric)
+    except _LOOKUP_FAILURES as exc:
+        return TurnResult(
+            intent=Intent.LOOKUP,
+            tool_traces=[],
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    return TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[
+            ToolTrace(
+                tool="get_financials",
+                args=args,
+                provenance=_lookup_provenance(fact),
+            )
+        ],
+        renderer=RendererKind.TABLE,
+        table_rows=[_table_row_from_fact(fact)],
+    )
+
+
 def _plan_with_metric(plan: Any, metric: str) -> Any:
     return SimpleNamespace(
         intent=plan.intent,
@@ -647,6 +677,12 @@ def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
     )
 
 
+def _run_structured(plan: Any, runtime: Runtime) -> TurnResult:
+    from financial_analyst_agent.graph import run_structured_turn
+
+    return run_structured_turn(plan, runtime)
+
+
 def run_turn(query: str, runtime: Runtime) -> TurnResult:
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
@@ -654,7 +690,7 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
         return _news_and_explain_turn(query, runtime)
     if plan.intent is Intent.RANK:
-        return _rank_turn(plan, runtime)
+        return _run_structured(plan, runtime)
     resolved = resolve_metric_phrase(query)
     if resolved.kind == "ambiguous":
         return _clarify_metric(plan.intent, resolved.candidates)
@@ -674,37 +710,13 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
     if plan.intent is Intent.COMPARE:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _compare_turn(plan, runtime)
+        return _run_structured(plan, runtime)
     if plan.intent is Intent.RANK_AND_LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        return _rank_and_lookup_turn(plan, runtime)
+        return _run_structured(plan, runtime)
     if plan.intent is Intent.LOOKUP:
         if metric not in ALLOWED_METRICS:
             return _refuse_unknown_metric(plan.intent, metric)
-        if metric in FORMULA_COMPONENTS:
-            return _metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-        if metric in SNAPSHOT_METRICS:
-            return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-    args = {"company": plan.company, "metric": metric}
-    try:
-        fact = runtime.facts.get_financials(plan.company, metric)
-    except _LOOKUP_FAILURES as exc:
-        return TurnResult(
-            intent=plan.intent,
-            tool_traces=[],
-            renderer=RendererKind.REFUSE,
-            message=str(exc),
-        )
-    return TurnResult(
-        intent=plan.intent,
-        tool_traces=[
-            ToolTrace(
-                tool="get_financials",
-                args=args,
-                provenance=_lookup_provenance(fact),
-            )
-        ],
-        renderer=RendererKind.TABLE,
-        table_rows=[_table_row_from_fact(fact)],
-    )
+        return _run_structured(plan, runtime)
+    raise ValueError(f"unsupported intent: {plan.intent!r}")
