@@ -13,6 +13,7 @@ from urllib.parse import quote
 from pydantic import BaseModel
 
 from financial_analyst_agent.contracts import TurnResult
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec
 
 
 class ThreadMessage(BaseModel):
@@ -27,6 +28,7 @@ class ThreadState(BaseModel):
     messages: tuple[ThreadMessage, ...] = ()
     results: tuple[TurnResult, ...] = ()
     last_result: TurnResult | None = None
+    analysis_spec: AnalysisSpec | None = None
 
 
 class ThreadStore(Protocol):

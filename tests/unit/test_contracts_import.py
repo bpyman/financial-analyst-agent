@@ -11,6 +11,7 @@ def test_contracts_import_without_loading_turn_workflows() -> None:
         "financial_analyst_agent.conversation",
         "financial_analyst_agent.thread_store",
         "financial_analyst_agent.contracts",
+        "financial_analyst_agent.graph",
     )
     for name in list(sys.modules):
         if name in dependents or any(name.startswith(f"{dep}.") for dep in dependents):

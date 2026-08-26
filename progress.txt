@@ -1,5 +1,34 @@
 # Progress
 
+## 2026-08-25 — 08 Analysis spec and patch resolution
+
+Task completed: `.scratch/stateful-agent-graph/issues/08-analysis-spec-patch.md`
+
+Key decisions:
+- Thread quantitative state is a resolved AnalysisSpec; turns propose SpecPatch
+  (or a Plan lifted to replace-mode) that deterministic code applies.
+- Metric binding stays on analyst wording; ranked constituents come from the
+  ranking port (model-typed company lists ignored); invalid patches refuse
+  before fact providers.
+- ConversationTurn exposes analysis_spec + proposed_patch; only the resolved
+  spec is persisted (proposed patch is run-state). Qualitative turns clear it.
+
+Files changed:
+- `src/financial_analyst_agent/graph/analysis_spec.py` (new)
+- `src/financial_analyst_agent/graph/spec_turn.py` (new)
+- `src/financial_analyst_agent/conversation.py`
+- `src/financial_analyst_agent/thread_store.py`
+- `tests/unit/test_analysis_spec.py` (new)
+- `tests/unit/test_conversation_spec.py` (new)
+- `tests/unit/test_conversation_seam.py`
+- `tests/unit/test_contracts_import.py`
+- `.scratch/stateful-agent-graph/issues/08-analysis-spec-patch.md`
+
+Blockers / next:
+- 09 (multi-metric composition) and 14 (resumable clarification) are unblocked
+  on 08; 15 remains unblocked for the exploratory lane; 10 remains independently
+  unblocked for period-addressable facts.
+
 ## 2026-08-25 — 07 Multi-turn audience window
 
 Task completed: `.scratch/stateful-agent-graph/issues/07-multi-turn-window.md`

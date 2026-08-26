@@ -10,13 +10,17 @@ The trust boundary does not move. The model never emits a resolved spec, never e
 
 **Blocked by:** 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A first message produces the expected resolved spec and the same answer as today for one metric
-- [ ] Swapping, adding, and removing a company keeps the rest of the analysis intact
-- [ ] An unrelated question replaces the spec instead of merging into it
-- [ ] A spec is resolved and validated before any provider call, and an invalid patch is a typed rejection
-- [ ] A ranked request takes its constituents from the ranking port, and a model-typed company list is ignored
-- [ ] The active companies, metrics, periods, and operations are visible to the analyst
-- [ ] The model's proposed patch is recorded separately from the resolved spec
-- [ ] Patch application, spec validation, and task compilation have their own unit cases, including compiling without executing
+- [x] A first message produces the expected resolved spec and the same answer as today for one metric
+- [x] Swapping, adding, and removing a company keeps the rest of the analysis intact
+- [x] An unrelated question replaces the spec instead of merging into it
+- [x] A spec is resolved and validated before any provider call, and an invalid patch is a typed rejection
+- [x] A ranked request takes its constituents from the ranking port, and a model-typed company list is ignored
+- [x] The active companies, metrics, periods, and operations are visible to the analyst
+- [x] The model's proposed patch is recorded separately from the resolved spec
+- [x] Patch application, spec validation, and task compilation have their own unit cases, including compiling without executing
+
+## Answer
+
+Shipped a patchable **analysis spec** on the conversation thread. Completer proposals are either a `SpecPatch` or a closed Plan lifted to replace-mode; deterministic code applies the patch, binds metrics from the analyst's wording, resolves identity / ranked constituents, validates against the closed catalogs, compiles typed tasks, and executes through the existing workflow graph. Invalid patches and unknown industries refuse with empty tool traces. `ConversationTurn` exposes `analysis_spec` and `proposed_patch`; only the resolved spec is persisted on `ThreadState` (proposed patch stays run-state). Qualitative turns clear the active spec. Single-metric lookup/compare/rank answers match today's paths; follow-ups can swap/add/remove companies without retyping the metric.

@@ -185,12 +185,19 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     state = store.load("thread-a")
     assert isinstance(state, ThreadState)
     dumped = state.model_dump()
-    assert set(dumped) == {"thread_id", "messages", "results", "last_result"}
+    assert set(dumped) == {
+        "thread_id",
+        "messages",
+        "results",
+        "last_result",
+        "analysis_spec",
+    }
     assert len(state.results) == len(state.messages) == 1
     assert state.results[0] == state.last_result
     assert "plan" not in dumped
     assert "runtime" not in dumped
     assert "compiled_tasks" not in dumped
+    assert "proposed_patch" not in dumped
 
 
 def test_run_turn_is_ephemeral_thread_wrapper() -> None:
