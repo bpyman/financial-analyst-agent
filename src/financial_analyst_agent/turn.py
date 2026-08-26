@@ -1,15 +1,45 @@
-"""Application seam: run_turn(query, runtime) → TurnResult."""
+"""Application seam: run_turn(query, runtime) → TurnResult.
+
+Contracts (ports, Runtime, result models, enums, metric constants) live in
+``contracts``; this module keeps the workflow implementations and re-exports
+every public name callers already import from here.
+"""
 
 import json
 import re
-from dataclasses import dataclass
 from datetime import date
-from enum import StrEnum
 from types import SimpleNamespace
-from typing import Any, Protocol
+from typing import Any
 
-from pydantic import BaseModel, Field
-
+from financial_analyst_agent.contracts import (
+    ALLOWED_METRICS,
+    AMBIGUOUS_CONCEPT,
+    FORMULA_COMPONENTS,
+    FORMULA_METRICS,
+    MISSING_FACT,
+    MODEL_ANALYSIS_BANNER,
+    PERCENT_FORMULAS,
+    PERIOD_MISMATCH,
+    REPORTED_METRICS,
+    SEARCH_NEWS_MAX_RESULTS,
+    SEARCH_NEWS_TIME_RANGE,
+    SEARCH_NEWS_TOPIC,
+    SNAPSHOT_METRICS,
+    ZERO_DENOMINATOR,
+    Completer,
+    ComponentProvenance,
+    EssayCompleter,
+    FactsPort,
+    Intent,
+    NewsHit,
+    NewsPort,
+    RankingPort,
+    RendererKind,
+    Runtime,
+    TableRow,
+    ToolTrace,
+    TurnResult,
+)
 from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
@@ -18,68 +48,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FinancialFact
-from financial_analyst_agent.domain.serialization import DecimalStr
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
-
-
-class Intent(StrEnum):
-    LOOKUP = "lookup"
-    COMPARE = "compare"
-    RANK = "rank"
-    RANK_AND_LOOKUP = "rank_and_lookup"
-    EXPLAIN = "explain"
-    NEWS_AND_EXPLAIN = "news_and_explain"
-
-
-class RendererKind(StrEnum):
-    TABLE = "table"
-    ESSAY = "essay"
-    REFUSE = "refuse"
-    CLARIFY = "clarify"
-
-
-REPORTED_METRICS: tuple[str, ...] = (
-    "revenue",
-    "cost_of_revenue",
-    "gross_profit",
-    "operating_expenses",
-    "operating_income",
-    "net_income",
-    "research_and_development",
-    "selling_general_and_administrative",
-    "interest_expense",
-    "income_tax_expense",
-    "pretax_income",
-)
-FORMULA_METRICS: tuple[str, ...] = (
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
-    "rd_to_sales",
-    "sga_ratio",
-    "effective_tax_rate",
-    "interest_coverage",
-)
-SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap",)
-ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS + SNAPSHOT_METRICS
-PERCENT_FORMULAS: tuple[str, ...] = (
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
-    "rd_to_sales",
-    "sga_ratio",
-    "effective_tax_rate",
-)
-FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
-    "gross_margin": ("gross_profit", "revenue"),
-    "operating_margin": ("operating_income", "revenue"),
-    "net_margin": ("net_income", "revenue"),
-    "rd_to_sales": ("research_and_development", "revenue"),
-    "sga_ratio": ("selling_general_and_administrative", "revenue"),
-    "effective_tax_rate": ("income_tax_expense", "pretax_income"),
-    "interest_coverage": ("operating_income", "interest_expense"),
-}
 
 _LOOKUP_FAILURES = (
     AmbiguousFactError,
@@ -87,113 +56,43 @@ _LOOKUP_FAILURES = (
     AmbiguousCompanyError,
     CompanyNotFoundError,
 )
-PERIOD_MISMATCH = "period_mismatch"
-MISSING_FACT = "missing_fact"
-AMBIGUOUS_CONCEPT = "ambiguous_concept"
-ZERO_DENOMINATOR = "zero_denominator"
-MODEL_ANALYSIS_BANNER = "model-analysis"
-SEARCH_NEWS_TOPIC = "news"
-SEARCH_NEWS_MAX_RESULTS = 5
-SEARCH_NEWS_TIME_RANGE = "week"
 _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 
-
-class Completer(Protocol):
-    def complete(self, query: str) -> Any: ...
-
-
-class EssayCompleter(Protocol):
-    def complete_essay(self, query: str, tool_json: str = "") -> str: ...
-
-
-class FactsPort(Protocol):
-    def get_financials(self, company: str, metric: str) -> FinancialFact: ...
-
-
-class RankingPort(Protocol):
-    def rank_companies(self, industry: str, limit: int) -> Any: ...
-
-    def lookup_member(self, company: str) -> Any: ...
-
-    def snapshot_as_of(self) -> str: ...
-
-    def snapshot_source(self) -> str: ...
-
-
-class NewsPort(Protocol):
-    def search_news(self, query: str) -> list["NewsHit"]: ...
-
-
-@dataclass(frozen=True)
-class Runtime:
-    completer: Completer
-    facts: FactsPort
-    ranking: RankingPort | None = None
-    news: NewsPort | None = None
-    essay: EssayCompleter | None = None
-
-
-class NewsHit(BaseModel):
-    title: str
-    url: str
-    snippet: str = ""
-    score: float | None = None
-    published: str | None = None
-
-
-class ToolTrace(BaseModel):
-    tool: str
-    args: dict[str, Any]
-    provenance: dict[str, Any] = Field(default_factory=dict)
-
-
-class ComponentProvenance(BaseModel):
-    metric: str
-    value: DecimalStr
-    start_date: date
-    end_date: date
-    form: str
-    accession_number: str
-    taxonomy: str
-    concept: str
-    source_url: str
-    source: str
-
-
-class TableRow(BaseModel):
-    company_name: str
-    ticker: str
-    cik: str
-    metric: str
-    rank: int | None = None
-    value: DecimalStr | None = None
-    currency: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
-    form: str | None = None
-    accession_number: str | None = None
-    taxonomy: str | None = None
-    concept: str | None = None
-    source_url: str | None = None
-    components: list[ComponentProvenance] = Field(default_factory=list)
-    reason: str | None = None
-
-
-class TurnResult(BaseModel):
-    intent: Intent
-    tool_traces: list[ToolTrace]
-    renderer: RendererKind
-    table_rows: list[TableRow] = Field(default_factory=list)
-    banners: list[str] = Field(default_factory=list)
-    numeral_lock_extras: list[str] = Field(default_factory=list)
-    message: str | None = None
-    essay: str | None = None
-    citations: list[NewsHit] = Field(default_factory=list)
-    candidates: tuple[str, ...] = ()
-
+__all__ = [
+    "ALLOWED_METRICS",
+    "AMBIGUOUS_CONCEPT",
+    "FORMULA_COMPONENTS",
+    "FORMULA_METRICS",
+    "MISSING_FACT",
+    "MODEL_ANALYSIS_BANNER",
+    "PERCENT_FORMULAS",
+    "PERIOD_MISMATCH",
+    "REPORTED_METRICS",
+    "SEARCH_NEWS_MAX_RESULTS",
+    "SEARCH_NEWS_TIME_RANGE",
+    "SEARCH_NEWS_TOPIC",
+    "SNAPSHOT_METRICS",
+    "ZERO_DENOMINATOR",
+    "Completer",
+    "ComponentProvenance",
+    "EssayCompleter",
+    "FactsPort",
+    "Intent",
+    "NewsHit",
+    "NewsPort",
+    "RankingPort",
+    "RendererKind",
+    "Runtime",
+    "TableRow",
+    "ToolTrace",
+    "TurnResult",
+    "compare_metrics",
+    "run_turn",
+    "snapshot_compare_rows",
+]
 
 def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     def replace(match: re.Match[str]) -> str:

@@ -6,9 +6,13 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Runtime ports, result models, enums, and metric constants live in modules that carry no workflow logic
-- [ ] The application seam re-exports its current public names, so no other module or test changes an import
-- [ ] A new package can import the contracts without importing the workflow implementations
-- [ ] The offline suite passes with no assertion changes, and strict type checking and lint stay clean
+- [x] Runtime ports, result models, enums, and metric constants live in modules that carry no workflow logic
+- [x] The application seam re-exports its current public names, so no other module or test changes an import
+- [x] A new package can import the contracts without importing the workflow implementations
+- [x] The offline suite passes with no assertion changes, and strict type checking and lint stay clean
+
+## Answer
+
+Moved ports, `Runtime`, result/row models, intent/renderer enums, metric constants, news search constants, and partial-row reason codes into `financial_analyst_agent.contracts`. Workflow helpers and `run_turn` stay in `turn.py`, which re-exports every prior public name so planner, runtime, MCP, presentation, news, and tests keep their existing imports. Unit coverage asserts `contracts` loads without importing `turn`.

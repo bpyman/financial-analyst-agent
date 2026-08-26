@@ -4,6 +4,25 @@
 
 The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
 
+## 2026-08-25 — 02 Split turn contracts
+
+Task completed: `.scratch/stateful-agent-graph/issues/02-split-turn-contracts.md`
+
+Key decisions:
+- Put ports, `Runtime`, result models, enums, and metric/news constants in `contracts.py` so a future graph package can import them without loading workflow code.
+- Keep `turn.py` as the application seam: workflows + `run_turn`, re-exporting every prior public name so no caller import changes.
+- Partial-row reason codes and search-news constants travel with the contracts because they are part of the typed result surface.
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py` (new)
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/test_contracts_import.py` (new)
+- `.scratch/stateful-agent-graph/issues/02-split-turn-contracts.md`
+
+Blockers / next:
+- Issue 03 (per-phrase metric resolution) and issue 04 (graph structured workflows, blocked by 02) are both unblocked on the contracts seam.
+- Do not move `compare_metrics` / `snapshot_compare_rows` into contracts; they remain workflow helpers re-exported from `turn`.
+
 ## 2026-08-25 — Stateful analysis graph spec + ADR 0005
 
 Spec written: `.scratch/stateful-agent-graph/issues/01-stateful-analysis-graph.md` (ready-for-agent). No code yet.
