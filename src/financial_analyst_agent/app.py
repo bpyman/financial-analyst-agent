@@ -51,6 +51,15 @@ _CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         "Answer general queries and provide qualitative industry analysis",
         ("How could AI change bank underwriting?",),
     ),
+    (
+        "Stay on the same thread to extend the current analysis, or start a new one",
+        (
+            "add Apple",
+            "now add operating margin",
+            "make that the last four quarters",
+            "show year-over-year",
+        ),
+    ),
 )
 KILL_SWITCH_BANNER = (
     "KILL-SWITCH ON — fixture runtime (recorded facts, not live EDGAR). "
@@ -263,11 +272,23 @@ def _ensure_thread_and_history(store: LocalThreadStore, kill_switch: bool) -> No
     st.session_state["history_kill_switch"] = kill_switch
 
 
+def _start_over(store: LocalThreadStore) -> None:
+    thread_id = str(st.session_state.get("thread_id") or _DEFAULT_THREAD_ID)
+    store.clear(thread_id)
+    st.session_state["thread_id"] = thread_id
+    st.session_state["history"] = []
+    st.session_state.pop("history_kill_switch", None)
+    st.session_state.pop("turn_in_flight", None)
+
+
 def _render_history() -> None:
     history: list[tuple[str, TurnResult]] = list(st.session_state.get("history") or [])
-    for index, (message, result) in enumerate(history):
-        st.markdown(f"**You:** {message}")
-        render_turn_result(result, turn_index=index)
+    with st.container(height="stretch", autoscroll=True):
+        for index, (message, result) in enumerate(history):
+            with st.chat_message("user"):
+                st.markdown(message)
+            with st.chat_message("assistant"):
+                render_turn_result(result, turn_index=index)
 
 
 def main() -> None:
@@ -290,12 +311,16 @@ def main() -> None:
             variant="destructive" if kill_switch else "default",
             key="runtime-status",
         )
+        start_over = st.button("Start over", icon=":material/refresh:")
     if kill_switch:
         st.warning(KILL_SWITCH_BANNER)
     else:
         st.caption("Live runtime — SEC XBRL, OpenAI planner, Tavily news.")
 
     store = LocalThreadStore(thread_store_root())
+    if start_over:
+        _start_over(store)
+        st.rerun()
     _ensure_thread_and_history(store, kill_switch)
 
     if (
@@ -305,13 +330,12 @@ def main() -> None:
         st.session_state["history"] = []
         st.session_state.pop("history_kill_switch", None)
 
-    with st.form("ask"):
-        query = st.text_input("Ask a question", value=_GOLD_QUERY)
-        submitted = st.form_submit_button("Ask", type="primary")
     _render_capabilities()
     _render_metric_catalog()
 
-    if submitted:
+    with st.bottom:
+        query = st.chat_input(_GOLD_QUERY, submit_mode="disable")
+    if query and query.strip():
         if st.session_state.get("turn_in_flight"):
             st.info("A turn is already running.")
         else:
@@ -328,7 +352,7 @@ def main() -> None:
 
                 turn = run_conversation_turn(
                     st.session_state["thread_id"],
-                    query,
+                    query.strip(),
                     runtime_for_kill_switch(enabled=kill_switch),
                     store=store,
                     on_progress=_on_progress,

@@ -37,12 +37,14 @@ class _Streamlit:
     def __init__(
         self,
         *,
-        button_values: tuple[bool, ...] = (True, False),
+        chat_values: tuple[str | None, ...] = ("What was Google's net income?", None),
+        start_over_values: tuple[bool, ...] = (),
         kill_switch_values: tuple[bool, ...] = (True, True),
     ) -> None:
         self.sidebar = _Sidebar(kill_switch_values)
         self.session_state: dict[str, object] = {}
-        self._button_values = iter(button_values)
+        self._chat_values = iter(chat_values)
+        self._start_over_values = iter(start_over_values)
         self.page_config: dict[str, Any] = {}
         self.errors: list[str] = []
         self.infos: list[str] = []
@@ -59,6 +61,12 @@ class _Streamlit:
         self.expanders: list[tuple[str, bool]] = []
         self.spaces: list[object] = []
         self.htmls: list[str] = []
+        self.chat_inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        self.chat_messages: list[str] = []
+        self.buttons: list[str] = []
+        self.forms: list[object] = []
+        self.reruns = 0
+        self.bottom = self
 
     def __enter__(self) -> "_Streamlit":
         return self
@@ -116,16 +124,31 @@ class _Streamlit:
 
     @contextmanager
     def form(self, *args: Any, **kwargs: Any):
+        self.forms.append(args[0] if args else kwargs.get("key"))
         yield None
 
     def text_input(self, *args: Any, **kwargs: Any) -> str:
-        return "What was Google's net income?"
+        raise AssertionError("Ask must use st.chat_input, not st.text_input")
 
     def form_submit_button(self, *args: Any, **kwargs: Any) -> bool:
-        return next(self._button_values)
+        raise AssertionError("Ask must use st.chat_input, not st.form_submit_button")
 
     def button(self, *args: Any, **kwargs: Any) -> bool:
-        raise AssertionError("Ask must use st.form_submit_button, not st.button")
+        label = str(args[0]) if args else str(kwargs.get("label", ""))
+        self.buttons.append(label)
+        return next(self._start_over_values, False)
+
+    def chat_input(self, *args: Any, **kwargs: Any) -> str | None:
+        self.chat_inputs.append((args, kwargs))
+        return next(self._chat_values, None)
+
+    @contextmanager
+    def chat_message(self, role: str, *args: Any, **kwargs: Any):
+        self.chat_messages.append(role)
+        yield self
+
+    def rerun(self, *args: Any, **kwargs: Any) -> None:
+        self.reruns += 1
 
     @contextmanager
     def spinner(self, *args: Any, **kwargs: Any):
@@ -242,6 +265,7 @@ def test_main_runs_only_on_submit_and_renders_cached_history(
         "rank and lookup",
         "Access and analyze relevant financial news linked to specific companies",
         "Answer general queries and provide qualitative industry analysis",
+        "Stay on the same thread to extend the current analysis, or start a new one",
     )
     for sentence in capabilities:
         assert sentence in catalog
@@ -253,6 +277,10 @@ def test_main_runs_only_on_submit_and_renders_cached_history(
         "What are the top 10 tech companies and R&D spend for each?",
         "What's going on with Eli Lilly's obesity drugs?",
         "How could AI change bank underwriting?",
+        "add Apple",
+        "now add operating margin",
+        "make that the last four quarters",
+        "show year-over-year",
     )
     for example in examples:
         assert example in catalog
@@ -307,7 +335,7 @@ def test_main_keeps_prior_history_when_replacement_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_streamlit = _Streamlit(button_values=(True, True))
+    fake_streamlit = _Streamlit(chat_values=("What was Google's net income?",) * 2)
     result = TurnResult(
         intent=Intent.LOOKUP,
         tool_traces=[],
@@ -351,7 +379,7 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_streamlit = _Streamlit(button_values=(True,))
+    fake_streamlit = _Streamlit(chat_values=("What was Google's net income?",))
     previous = TurnResult(
         intent=Intent.LOOKUP,
         tool_traces=[],
@@ -398,13 +426,7 @@ def test_main_shows_second_turn_without_replacing_first(
         "What was Google's net income?",
         "How can AI disrupt healthcare?",
     ]
-    queries = iter(messages)
-
-    class _MultiQueryStreamlit(_Streamlit):
-        def text_input(self, *args: Any, **kwargs: Any) -> str:
-            return next(queries)
-
-    fake_streamlit = _MultiQueryStreamlit(button_values=(True, True))
+    fake_streamlit = _Streamlit(chat_values=tuple(messages))
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
 
     def fake_conversation_turn(
@@ -471,7 +493,7 @@ def test_main_reloads_thread_history_after_restart(
             last_result_ref=second_ref,
         )
     )
-    fake_streamlit = _Streamlit(button_values=(False,))
+    fake_streamlit = _Streamlit(chat_values=(None,))
     rendered: list[TurnResult] = []
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
@@ -489,6 +511,120 @@ def test_main_reloads_thread_history_after_restart(
         ("What was Google's net income?", first),
         ("How can AI disrupt healthcare?", second),
     ]
+
+
+def test_start_over_forgets_persisted_thread_on_reload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from financial_analyst_agent.evidence_store import retain_result_evidence
+
+    first = TurnResult(intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.TABLE)
+    store = LocalThreadStore(tmp_path)
+    first_ref = retain_result_evidence(store.evidence_for("local"), first)
+    store.save(
+        ThreadState(
+            thread_id="local",
+            messages=(
+                ThreadMessage(role="analyst", content="What was Google's net income?"),
+            ),
+            evidence_refs=(first_ref,),
+            last_result_ref=first_ref,
+        )
+    )
+    fake_streamlit = _Streamlit(chat_values=(None,), start_over_values=(True,))
+    rendered: list[TurnResult] = []
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
+
+    app.main()
+
+    assert "Start over" in fake_streamlit.buttons
+    assert fake_streamlit.session_state.get("history") == []
+    assert rendered == []
+    assert LocalThreadStore(tmp_path).load("local") is None
+
+    fake_streamlit.chat_messages.clear()
+    fake_streamlit = _Streamlit(chat_values=(None,))
+    fake_streamlit.session_state.clear()
+    rendered_after: list[TurnResult] = []
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered_after))
+    app.main()
+    assert rendered_after == []
+    assert fake_streamlit.session_state.get("history") == []
+
+
+def test_ask_uses_bottom_chat_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit()
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.TABLE,
+    )
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda thread_id, message, runtime, *, store, **_kwargs: ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(result,),
+            last_result=result,
+        ),
+    )
+    monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
+
+    app.main()
+
+    assert fake_streamlit.forms == []
+    assert fake_streamlit.chat_inputs
+    placeholder = fake_streamlit.chat_inputs[0][0][0]
+    assert placeholder == app._GOLD_QUERY
+
+
+def test_history_autoscrolls_new_results(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit()
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.TABLE,
+    )
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda thread_id, message, runtime, *, store, **_kwargs: ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(result,),
+            last_result=result,
+        ),
+    )
+    monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
+
+    app.main()
+
+    scrolling = [
+        kwargs
+        for kwargs in fake_streamlit.containers
+        if kwargs.get("autoscroll") is True and kwargs.get("height") == "stretch"
+    ]
+    assert scrolling
+    assert fake_streamlit.chat_messages == ["user", "assistant"]
 
 
 def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:

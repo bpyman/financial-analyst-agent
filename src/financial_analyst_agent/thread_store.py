@@ -9,6 +9,7 @@ EvidenceStore so checkpoints stay small and threads do not share evidence.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Literal, Protocol
 from urllib.parse import quote
@@ -60,6 +61,8 @@ class ThreadStore(Protocol):
 
     def resolve_last_result(self, state: ThreadState) -> TurnResult | None: ...
 
+    def clear(self, thread_id: str) -> None: ...
+
 
 class LocalThreadStore:
     """JSON thread checkpoints plus a per-thread evidence directory."""
@@ -71,10 +74,13 @@ class LocalThreadStore:
         self._evidence_root.mkdir(parents=True, exist_ok=True)
 
     def evidence_for(self, thread_id: str) -> EvidenceStore:
-        return LocalEvidenceStore(self._evidence_root / quote(thread_id, safe=""))
+        return LocalEvidenceStore(self._evidence_dir(thread_id))
 
     def _path(self, thread_id: str) -> Path:
         return self._root / f"{quote(thread_id, safe='')}.json"
+
+    def _evidence_dir(self, thread_id: str) -> Path:
+        return self._evidence_root / quote(thread_id, safe="")
 
     def load(self, thread_id: str) -> ThreadState | None:
         path = self._path(thread_id)
@@ -98,6 +104,14 @@ class LocalThreadStore:
         if state.last_result_ref is None:
             return None
         return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+
+    def clear(self, thread_id: str) -> None:
+        path = self._path(thread_id)
+        if path.is_file():
+            path.unlink()
+        evidence_dir = self._evidence_dir(thread_id)
+        if evidence_dir.is_dir():
+            shutil.rmtree(evidence_dir)
 
 
 class EphemeralThreadStore:
@@ -130,3 +144,7 @@ class EphemeralThreadStore:
         if state.last_result_ref is None:
             return None
         return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+
+    def clear(self, thread_id: str) -> None:
+        self._states.pop(thread_id, None)
+        self._evidence.pop(thread_id, None)

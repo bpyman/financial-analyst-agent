@@ -203,6 +203,38 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     assert "proposed_patch" not in dumped
 
 
+def test_clearing_a_thread_forgets_prior_turns(tmp_path: Path) -> None:
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    message = "What was Google's net income based on their latest quarterly report?"
+    store = LocalThreadStore(tmp_path)
+    run_conversation_turn(
+        "thread-a",
+        message,
+        _runtime(completer=_LookupCompleter()),  # type: ignore[arg-type]
+        store=store,
+    )
+    prior = store.load("thread-a")
+    assert prior is not None
+    assert prior.messages
+    assert store.resolve_last_result(prior) is not None
+
+    store.clear("thread-a")
+
+    assert store.load("thread-a") is None
+    restarted = LocalThreadStore(tmp_path)
+    assert restarted.load("thread-a") is None
+    turn = run_conversation_turn(
+        "thread-a",
+        "How can AI disrupt healthcare?",
+        _runtime(completer=_ExplainCompleter(), essay=_NumberFreeEssay()),  # type: ignore[arg-type]
+        store=restarted,
+    )
+    assert [m.content for m in turn.messages] == ["How can AI disrupt healthcare?"]
+    assert turn.last_result.intent.value == "explain"
+
+
 def test_run_turn_is_ephemeral_thread_wrapper() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind, TurnResult
     from financial_analyst_agent.turn import run_turn
