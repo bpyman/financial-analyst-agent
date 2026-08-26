@@ -1,7 +1,11 @@
 import pytest
 
 from financial_analyst_agent.domain.errors import UnknownMetricError
-from financial_analyst_agent.services.metric_catalog import parse_metric, resolve_metric_phrase
+from financial_analyst_agent.services.metric_catalog import (
+    parse_metric,
+    resolve_metric_phrase,
+    resolve_metric_phrases,
+)
 from financial_analyst_agent.turn import ALLOWED_METRICS
 
 
@@ -101,10 +105,26 @@ def test_ebitda_is_unknown() -> None:
     assert resolved.kind == "unknown"
 
 
-def test_two_unique_catalog_names_are_ambiguous() -> None:
-    resolved = resolve_metric_phrase("Compare Google revenue and net income")
-    assert resolved.kind == "ambiguous"
-    assert resolved.candidates == ("revenue", "net_income")
+def test_several_distinct_catalog_metrics_resolve_in_order() -> None:
+    phrases = resolve_metric_phrases("Compare Google revenue and net income")
+    assert [p.kind for p in phrases] == ["unique", "unique"]
+    assert [p.metric for p in phrases] == ["revenue", "net_income"]
+
+
+def test_colliding_phrase_beside_unique_stays_ambiguous() -> None:
+    phrases = resolve_metric_phrases("Compare Google revenue and profit")
+    assert len(phrases) == 2
+    assert phrases[0].kind == "unique"
+    assert phrases[0].metric == "revenue"
+    assert phrases[1].kind == "ambiguous"
+    assert phrases[1].candidates == ("gross_profit", "operating_income", "net_income")
+
+
+def test_resolve_metric_phrase_multi_unique_is_not_ambiguous() -> None:
+    resolved = resolve_metric_phrase("Compare Google revenue and operating margin")
+    assert resolved.kind == "unique"
+    assert resolved.metrics == ("revenue", "operating_margin")
+    assert resolved.candidates == ()
 
 
 def test_roe_is_unknown() -> None:

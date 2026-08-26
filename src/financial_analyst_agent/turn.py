@@ -662,6 +662,10 @@ def run_turn(query: str, runtime: Runtime) -> TurnResult:
         fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
         term = fallback if fallback not in ALLOWED_METRICS else "unknown"
         return _refuse_unknown_metric(plan.intent, term)
+    if resolved.kind == "unique" and len(resolved.metrics) > 1:
+        # Multi-metric composition lands in ticket 09; keep the one-shot seam
+        # from silently picking a planner slug or the first phrase alone.
+        return _clarify_metric(plan.intent, resolved.metrics)
     if resolved.kind == "unique" and resolved.metric is not None:
         metric = resolved.metric
     else:

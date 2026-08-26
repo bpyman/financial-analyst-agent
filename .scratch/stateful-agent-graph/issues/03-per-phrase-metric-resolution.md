@@ -8,10 +8,16 @@ Single-phrase behaviour must not move: a question naming one metric resolves exa
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A question naming several distinct catalog metrics resolves to those metrics in order, not to an ambiguous metric
-- [ ] A colliding phrase is still ambiguous, with the same candidate set, even when it sits beside a phrase that resolves cleanly
-- [ ] A phrase naming nothing in the closed catalog is still unknown
-- [ ] Existing single-metric clarify and refusal behaviour is unchanged at the application seam
-- [ ] The phrase table gets unit cases in the style of the existing ones
+- [x] A question naming several distinct catalog metrics resolves to those metrics in order, not to an ambiguous metric
+- [x] A colliding phrase is still ambiguous, with the same candidate set, even when it sits beside a phrase that resolves cleanly
+- [x] A phrase naming nothing in the closed catalog is still unknown
+- [x] Existing single-metric clarify and refusal behaviour is unchanged at the application seam
+- [x] The phrase table gets unit cases in the style of the existing ones
+
+## Answer
+
+Shipped `resolve_metric_phrases`, which walks the question left to right and classifies each non-overlapping unique or ambiguous span on its own. Several distinct catalog names resolve to ordered unique metrics instead of one ambiguous collision; a colliding phrase beside a clean one still returns that phrase's candidate set; unknown-only questions still resolve as unknown.
+
+`resolve_metric_phrase` is the one-shot seam adapter: any ambiguous phrase still clarifies with the same candidates; a single unique still proceeds; multiple uniques return `kind="unique"` with `metrics=...` (not ambiguous). Until ticket 09 wires multi-metric composition, `run_turn` clarifies when more than one unique metric is present so it does not silently take the planner slug or the first phrase alone.

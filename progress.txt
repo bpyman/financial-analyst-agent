@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-08-25 — 03 Per-phrase metric resolution
+
+Task completed: `.scratch/stateful-agent-graph/issues/03-per-phrase-metric-resolution.md`
+
+Key decisions:
+- Add `resolve_metric_phrases` so each non-overlapping unique or ambiguous span is classified on its own, left to right.
+- Drop the "two unique catalog names ⇒ ambiguous" rule; several distinct catalog metrics resolve in order.
+- Keep scanning for ambiguous phrases outside unique spans so "revenue and profit" still surfaces the profit candidate set.
+- `resolve_metric_phrase` stays the one-shot adapter: prefer any ambiguous phrase for clarify; single unique proceeds; multi-unique returns `kind="unique"` with `metrics`.
+- Until ticket 09, `run_turn` clarifies on multi-unique so the seam does not silently pick a planner slug or the first phrase.
+
+Files changed:
+- `src/financial_analyst_agent/services/metric_catalog.py`
+- `src/financial_analyst_agent/turn.py`
+- `tests/unit/services/test_metric_phrase.py`
+- `.scratch/stateful-agent-graph/issues/03-per-phrase-metric-resolution.md`
+
+Blockers / next:
+- Issue 09 (multi-metric composition) can consume ordered unique metrics once 08 lands; issue 04 remains the next unblocked structured-graph tracer.
+
 ## 2026-08-25 — Interview done; no deadline
 
 The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
