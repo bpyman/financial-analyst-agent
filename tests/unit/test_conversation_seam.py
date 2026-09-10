@@ -185,13 +185,24 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     state = store.load("thread-a")
     assert isinstance(state, ThreadState)
     dumped = state.model_dump()
-    assert set(dumped) == {
+    assert {
         "thread_id",
         "messages",
         "evidence_refs",
         "last_result_ref",
         "analysis_spec",
         "pending_clarification",
+    } <= set(dumped)
+    assert set(dumped) <= {
+        "thread_id",
+        "messages",
+        "evidence_refs",
+        "last_result_ref",
+        "analysis_spec",
+        "pending_clarification",
+        "updated_at",
+        "turn_count",
+        "live_sec_requests",
     }
     assert dumped["pending_clarification"] is None
     assert len(state.evidence_refs) >= 1

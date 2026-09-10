@@ -23,6 +23,7 @@ class Intent(StrEnum):
     EXPLAIN = "explain"
     NEWS_AND_EXPLAIN = "news_and_explain"
     EXPLORATORY_RESEARCH = "exploratory_research"
+    FILING_CHANGE = "filing_change"
 
 
 class RendererKind(StrEnum):
@@ -173,6 +174,23 @@ class TableRow(BaseModel):
     comparison: Literal["sequential", "yoy"] | None = None
 
 
+class DisclosureChange(BaseModel):
+    """Deterministic paragraph-level change between two accession-pinned sections."""
+
+    section: Literal["mda", "risk_factors"]
+    section_label: str
+    change_kind: Literal["added", "removed", "changed"]
+    before_text: str = ""
+    after_text: str = ""
+    older_accession: str
+    newer_accession: str
+    older_url: str
+    newer_url: str
+    selection_rule: str = (
+        "Reviewed section extracted by Item heading; paragraph diff is deterministic."
+    )
+
+
 class TurnResult(BaseModel):
     intent: Intent
     tool_traces: list[ToolTrace]
@@ -184,3 +202,4 @@ class TurnResult(BaseModel):
     essay: str | None = None
     citations: list[NewsHit] = Field(default_factory=list)
     candidates: tuple[str, ...] = ()
+    disclosure_changes: list[DisclosureChange] = Field(default_factory=list)

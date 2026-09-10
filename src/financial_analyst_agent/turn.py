@@ -32,6 +32,7 @@ from financial_analyst_agent.contracts import (
     ZERO_DENOMINATOR,
     Completer,
     ComponentProvenance,
+    DisclosureChange,
     EssayCompleter,
     FactsPort,
     Intent,
@@ -83,6 +84,7 @@ __all__ = [
     "ZERO_DENOMINATOR",
     "Completer",
     "ComponentProvenance",
+    "DisclosureChange",
     "EssayCompleter",
     "FactsPort",
     "Intent",
@@ -795,6 +797,8 @@ def execute_turn(query: str, runtime: Runtime) -> TurnResult:
     """Plan and run one one-shot analysis. Run state is not returned or persisted."""
     plan = runtime.completer.complete(query)
     if plan.intent is Intent.EXPLAIN:
+        return _run_workflow(plan, runtime, query=query)
+    if plan.intent is Intent.FILING_CHANGE:
         return _run_workflow(plan, runtime, query=query)
     if plan.intent is Intent.NEWS_AND_EXPLAIN:
         return _run_workflow(plan, runtime, query=query)

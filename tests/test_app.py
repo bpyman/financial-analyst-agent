@@ -67,6 +67,11 @@ class _Streamlit:
         self.forms: list[object] = []
         self.reruns = 0
         self.bottom = self
+        self.selectboxes: list[tuple[str, list[str]]] = []
+        self.charts: list[str] = []
+        self.link_buttons: list[tuple[str, str]] = []
+        self.pills: list[object] = []
+        self.warnings: list[str] = []
 
     def __enter__(self) -> "_Streamlit":
         return self
@@ -81,7 +86,8 @@ class _Streamlit:
         return None
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        if args:
+            self.warnings.append(str(args[0]))
 
     def caption(self, *args: Any, **kwargs: Any) -> None:
         if args:
@@ -136,7 +142,27 @@ class _Streamlit:
     def button(self, *args: Any, **kwargs: Any) -> bool:
         label = str(args[0]) if args else str(kwargs.get("label", ""))
         self.buttons.append(label)
-        return next(self._start_over_values, False)
+        if label == "Start over":
+            return next(self._start_over_values, False)
+        return False
+
+    def link_button(self, label: str, url: str, *args: Any, **kwargs: Any) -> bool:
+        self.link_buttons.append((label, url))
+        return False
+
+    def selectbox(self, label: str, options: list[str], *args: Any, **kwargs: Any) -> str:
+        values = list(options)
+        self.selectboxes.append((label, values))
+        return values[0] if values else ""
+
+    def line_chart(self, *args: Any, **kwargs: Any) -> None:
+        self.charts.append("line")
+
+    def bar_chart(self, *args: Any, **kwargs: Any) -> None:
+        self.charts.append("bar")
+
+    def pills(self, *args: Any, **kwargs: Any) -> None:
+        self.pills.append(args)
 
     def chat_input(self, *args: Any, **kwargs: Any) -> str | None:
         self.chat_inputs.append((args, kwargs))
@@ -196,7 +222,15 @@ def _patch_main_shell(
     monkeypatch.setattr(
         app,
         "get_settings",
-        lambda: SimpleNamespace(app_mode=AppMode.FIXTURE),
+        lambda: SimpleNamespace(
+            app_mode=AppMode.FIXTURE,
+            public_demo=False,
+            demo_live_sec=False,
+            thread_ttl_seconds=7200,
+            max_turns_per_thread=25,
+            max_live_sec_requests_per_thread=12,
+            snapshot_stale_after_days=30,
+        ),
     )
     monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
     if store_root is not None:
@@ -405,7 +439,7 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     assert rendered == [previous]
     assert fake_streamlit.session_state["history"] == [("prior question", previous)]
     assert fake_streamlit.session_state["turn_in_flight"] is False
-    assert fake_streamlit.errors == ["Turn failed: provider failed"]
+    assert fake_streamlit.errors == [app.PUBLIC_FAILURE_MESSAGE]
 
 
 def test_main_shows_second_turn_without_replacing_first(
@@ -494,6 +528,7 @@ def test_main_reloads_thread_history_after_restart(
         )
     )
     fake_streamlit = _Streamlit(chat_values=(None,))
+    fake_streamlit.session_state["thread_id"] = "local"
     rendered: list[TurnResult] = []
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
@@ -533,6 +568,7 @@ def test_start_over_forgets_persisted_thread_on_reload(
         )
     )
     fake_streamlit = _Streamlit(chat_values=(None,), start_over_values=(True,))
+    fake_streamlit.session_state["thread_id"] = "local"
     rendered: list[TurnResult] = []
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
@@ -640,10 +676,10 @@ def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None
     app.render_turn_result(result)
 
     assert fake_streamlit.errors == []
-    assert fake_streamlit.infos == ["Ambiguous metric. Retype one of these names."]
-    assert "- Gross profit" in fake_streamlit.markdowns
-    assert "- Operating income" in fake_streamlit.markdowns
-    assert "- Net income" in fake_streamlit.markdowns
+    assert fake_streamlit.infos == ["Ambiguous metric. Choose one of these names."]
+    assert "Gross profit" in fake_streamlit.buttons
+    assert "Operating income" in fake_streamlit.buttons
+    assert "Net income" in fake_streamlit.buttons
 
 
 def test_render_table_configures_source_url_as_filing_link(

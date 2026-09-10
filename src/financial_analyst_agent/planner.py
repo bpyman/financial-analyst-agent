@@ -14,7 +14,7 @@ _PLANNER_FAILED_MESSAGE = "LLM planner failed"
 _SYSTEM_PROMPT = (
     "Map the user question to a Plan. "
     "intent must be one of lookup, compare, rank, rank_and_lookup, explain, "
-    "news_and_explain, exploratory_research. "
+    "news_and_explain, exploratory_research, filing_change. "
     "Use lookup for a named company's latest quarterly reported metric. "
     "Use compare for two or more issuers on a reported metric or formula. "
     "Use rank for top-N industry market-cap ranking without a reported metric. "
@@ -25,6 +25,10 @@ _SYSTEM_PROMPT = (
     "Use exploratory_research for questions that no analysis spec expresses "
     "(themes, open research drafts) that need cited news evidence rather than "
     "structured financial rows. "
+    "Use filing_change when the user asks what changed in MD&A or Risk Factors "
+    "between two named 10-Q or 10-K accession numbers. Set company, older_accession, "
+    "newer_accession, and section (mda, risk_factors, or both). "
+    "Set summarize true only when they also ask for a summary. "
     f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
     "For explain, set topic to the user question. "
     "For exploratory_research, set topic to the user question. "
@@ -43,6 +47,7 @@ _FOLLOW_UP_PROMPT = (
     "Do not invent financial values. "
     "Use explain / news_and_explain / exploratory_research only for qualitative "
     "or current-event questions that are not a spec edit. "
+    "Use filing_change for MD&A or Risk Factors comparison between two accessions. "
     f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
     "Allowed operations: across_companies, across_periods, rank."
 )
@@ -111,6 +116,15 @@ class _ExploratoryResearchPlan(BaseModel):
     topic: NonEmptyText
 
 
+class _FilingChangePlan(BaseModel):
+    intent: Literal[Intent.FILING_CHANGE]
+    company: NonEmptyText
+    older_accession: NonEmptyText
+    newer_accession: NonEmptyText
+    section: NonEmptyText = "mda"
+    summarize: bool = False
+
+
 PlanAction = (
     _LookupPlan
     | _ComparePlan
@@ -119,6 +133,7 @@ PlanAction = (
     | _ExplainPlan
     | _NewsAndExplainPlan
     | _ExploratoryResearchPlan
+    | _FilingChangePlan
 )
 
 
@@ -213,7 +228,11 @@ class _SpecPatchAction(BaseModel):
 
 
 FollowUpAction = (
-    _SpecPatchAction | _ExplainPlan | _NewsAndExplainPlan | _ExploratoryResearchPlan
+    _SpecPatchAction
+    | _ExplainPlan
+    | _NewsAndExplainPlan
+    | _ExploratoryResearchPlan
+    | _FilingChangePlan
 )
 
 

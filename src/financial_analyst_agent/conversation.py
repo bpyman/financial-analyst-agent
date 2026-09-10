@@ -14,6 +14,7 @@ from __future__ import annotations
 import inspect
 import re
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ from financial_analyst_agent.evidence_store import (
     retain_result_evidence,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
+from financial_analyst_agent.observability import timed
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.thread_store import (
     PendingClarification,
@@ -180,11 +182,13 @@ def run_conversation_turn(
     from financial_analyst_agent.graph import run_workflow_turn
     from financial_analyst_agent.graph.spec_turn import (
         DEFAULT_TASK_MAX_WORKERS,
+        is_filing_change_proposal,
         is_qualitative_proposal,
         is_structured_proposal,
         run_spec_turn,
     )
 
+    finish = timed("conversation_turn", thread_id=thread_id)
     prior = store.load(thread_id) or ThreadState(thread_id=thread_id)
     workers = DEFAULT_TASK_MAX_WORKERS if max_workers is None else max_workers
 
@@ -228,7 +232,15 @@ def run_conversation_turn(
     if not resumed:
         proposal: Any = _complete(runtime.completer, message, prior.analysis_spec)
 
-        if is_qualitative_proposal(proposal):
+        if is_filing_change_proposal(proposal):
+            result = run_workflow_turn(
+                proposal,
+                turn_runtime,
+                query=message,
+            )
+            persist_spec = prior.analysis_spec
+            analysis_spec = prior.analysis_spec
+        elif is_qualitative_proposal(proposal):
             prior_result = store.resolve_last_result(prior)
             result = run_workflow_turn(
                 proposal,
@@ -295,6 +307,9 @@ def run_conversation_turn(
         last_result_ref=result_ref,
         analysis_spec=persist_spec,
         pending_clarification=pending_out,
+        turn_count=prior.turn_count + 1,
+        live_sec_requests=prior.live_sec_requests,
+        updated_at=datetime.now(UTC),
     )
     store.save(state)
     prior_results = store.resolve_results(
@@ -308,6 +323,11 @@ def run_conversation_turn(
         )
     )
     results = (*prior_results, result)
+    finish(
+        turn=state.turn_count,
+        intent=result.intent.value,
+        renderer=result.renderer.value,
+    )
     return ConversationTurn(
         thread_id=thread_id,
         result=result,

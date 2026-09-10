@@ -4,9 +4,17 @@
 
 **Blocked by:** 03 — Make public sessions safe by default.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Three guided stories submit complete, demoable questions without typing.
-- [ ] Intent, banners, and runtime mode use human copy rather than machine slugs.
-- [ ] Active companies, metrics, periods, and operations appear as compact chips on the thread.
-- [ ] Pending clarification candidates are clickable and resume the held analysis.
+- [x] Three guided stories submit complete, demoable questions without typing.
+- [x] Intent, banners, and runtime mode use human copy rather than machine slugs.
+- [x] Active companies, metrics, periods, and operations appear as compact chips on the thread.
+- [x] Pending clarification candidates are clickable and resume the held analysis.
+
+## Answer
+
+`GUIDED_STORIES` in `app.py` are one-click buttons: pretax lookup, last-four-quarters revenue, rank-and-lookup R&D, plus a filing-change story. Intent badges use `intent_label`. Runtime copy is "Guided demo" / "Live SEC". `spec_chips` render the active analysis. Clarification candidates are buttons that resume the held patch.
+
+## Comments
+
+- Agent: a fourth story covers filing change so tickets 08/09 are demoable from an empty chat.

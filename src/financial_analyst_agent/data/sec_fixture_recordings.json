@@ -1,179 +1,528 @@
 {
   "company_tickers": {
-    "0": {"cik_str": 1652044, "ticker": "GOOG", "title": "Alphabet Inc."},
-    "1": {"cik_str": 1652044, "ticker": "GOOGL", "title": "Alphabet Inc."},
-    "2": {"cik_str": 789019, "ticker": "MSFT", "title": "Microsoft Corporation"},
-    "3": {"cik_str": 59478, "ticker": "LLY", "title": "Eli Lilly and Company"},
-    "4": {"cik_str": 731766, "ticker": "UNH", "title": "UnitedHealth Group Incorporated"},
-    "5": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
-    "6": {"cik_str": 1318605, "ticker": "TSLA", "title": "Tesla, Inc."},
-    "7": {"cik_str": 1467858, "ticker": "GM", "title": "General Motors Company"}
+    "0": {
+      "cik_str": 1652044,
+      "ticker": "GOOG",
+      "title": "Alphabet Inc."
+    },
+    "1": {
+      "cik_str": 1652044,
+      "ticker": "GOOGL",
+      "title": "Alphabet Inc."
+    },
+    "2": {
+      "cik_str": 789019,
+      "ticker": "MSFT",
+      "title": "Microsoft Corporation"
+    },
+    "3": {
+      "cik_str": 59478,
+      "ticker": "LLY",
+      "title": "Eli Lilly and Company"
+    },
+    "4": {
+      "cik_str": 731766,
+      "ticker": "UNH",
+      "title": "UnitedHealth Group Incorporated"
+    },
+    "5": {
+      "cik_str": 320193,
+      "ticker": "AAPL",
+      "title": "Apple Inc."
+    },
+    "6": {
+      "cik_str": 1318605,
+      "ticker": "TSLA",
+      "title": "Tesla, Inc."
+    },
+    "7": {
+      "cik_str": 1467858,
+      "ticker": "GM",
+      "title": "General Motors Company"
+    }
   },
   "submissions": {
     "0001652044": {
       "cik": 1652044,
       "name": "Alphabet Inc.",
-      "tickers": ["GOOG", "GOOGL"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0001652044-26-000048"],
-        "filingDate": ["2026-04-30"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["goog-20260331.htm"]
-      }}
+      "tickers": [
+        "GOOG",
+        "GOOGL"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001652044-26-000048"
+          ],
+          "filingDate": [
+            "2026-04-30"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "goog-20260331.htm"
+          ]
+        }
+      }
     },
     "0000789019": {
       "cik": 789019,
       "name": "Microsoft Corporation",
-      "tickers": ["MSFT"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0001193125-26-191507"],
-        "filingDate": ["2026-04-29"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["msft-20260331.htm"]
-      }}
+      "tickers": [
+        "MSFT"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q",
+            "10-Q",
+            "10-Q",
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001193125-26-191507",
+            "0001193125-25-000099",
+            "0001193125-25-000088",
+            "0001193125-25-000077"
+          ],
+          "filingDate": [
+            "2026-04-29",
+            "2025-01-30",
+            "2024-10-30",
+            "2024-07-30"
+          ],
+          "reportDate": [
+            "2026-03-31",
+            "2024-12-31",
+            "2024-09-30",
+            "2024-06-30"
+          ],
+          "primaryDocument": [
+            "msft-20260331.htm",
+            "msft-20241231.htm",
+            "msft-20240930.htm",
+            "msft-20240630.htm"
+          ]
+        }
+      }
     },
     "0000059478": {
       "cik": 59478,
       "name": "Eli Lilly and Company",
-      "tickers": ["LLY"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0000059478-26-000045"],
-        "filingDate": ["2026-04-30"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["lly-20260331.htm"]
-      }}
+      "tickers": [
+        "LLY"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000059478-26-000045"
+          ],
+          "filingDate": [
+            "2026-04-30"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "lly-20260331.htm"
+          ]
+        }
+      }
     },
     "0000731766": {
       "cik": 731766,
       "name": "UnitedHealth Group Incorporated",
-      "tickers": ["UNH"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0000731766-26-000127"],
-        "filingDate": ["2026-04-21"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["unh-20260331.htm"]
-      }}
+      "tickers": [
+        "UNH"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000731766-26-000127"
+          ],
+          "filingDate": [
+            "2026-04-21"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "unh-20260331.htm"
+          ]
+        }
+      }
     },
     "0000320193": {
       "cik": 320193,
       "name": "Apple Inc.",
-      "tickers": ["AAPL"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0000320193-26-000064"],
-        "filingDate": ["2026-05-02"],
-        "reportDate": ["2026-03-28"],
-        "primaryDocument": ["aapl-20260328.htm"]
-      }}
+      "tickers": [
+        "AAPL"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000320193-26-000064"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-28"
+          ],
+          "primaryDocument": [
+            "aapl-20260328.htm"
+          ]
+        }
+      }
     },
     "0001318605": {
       "cik": 1318605,
       "name": "Tesla, Inc.",
-      "tickers": ["TSLA"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0001318605-26-000021"],
-        "filingDate": ["2026-04-23"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["tsla-20260331.htm"]
-      }}
+      "tickers": [
+        "TSLA"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001318605-26-000021"
+          ],
+          "filingDate": [
+            "2026-04-23"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "tsla-20260331.htm"
+          ]
+        }
+      }
     },
     "0001467858": {
       "cik": 1467858,
       "name": "General Motors Company",
-      "tickers": ["GM"],
-      "filings": {"recent": {
-        "form": ["10-Q"],
-        "accessionNumber": ["0001467858-26-000033"],
-        "filingDate": ["2026-04-29"],
-        "reportDate": ["2026-03-31"],
-        "primaryDocument": ["gm-20260331.htm"]
-      }}
+      "tickers": [
+        "GM"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001467858-26-000033"
+          ],
+          "filingDate": [
+            "2026-04-29"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "gm-20260331.htm"
+          ]
+        }
+      }
     }
   },
   "company_facts": {
     "0001652044": {
       "cik": 1652044,
       "entityName": "Alphabet Inc.",
-      "facts": {"us-gaap": {
-        "NetIncomeLoss": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 62578000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
-        ]}},
-        "OperatingIncomeLoss": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 39696000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
-        ]}},
-        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 109896000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
-        ]}},
-        "ResearchAndDevelopmentExpense": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 13838000000, "accn": "0001652044-26-000048", "form": "10-Q", "filed": "2026-04-30"}
-        ]}}
-      }}
+      "facts": {
+        "us-gaap": {
+          "NetIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 62578000000,
+                  "accn": "0001652044-26-000048",
+                  "form": "10-Q",
+                  "filed": "2026-04-30"
+                }
+              ]
+            }
+          },
+          "OperatingIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 39696000000,
+                  "accn": "0001652044-26-000048",
+                  "form": "10-Q",
+                  "filed": "2026-04-30"
+                }
+              ]
+            }
+          },
+          "RevenueFromContractWithCustomerExcludingAssessedTax": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 109896000000,
+                  "accn": "0001652044-26-000048",
+                  "form": "10-Q",
+                  "filed": "2026-04-30"
+                }
+              ]
+            }
+          },
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 13838000000,
+                  "accn": "0001652044-26-000048",
+                  "form": "10-Q",
+                  "filed": "2026-04-30"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0000789019": {
       "cik": 789019,
       "entityName": "Microsoft Corporation",
-      "facts": {"us-gaap": {
-        "OperatingIncomeLoss": {"units": {"USD": [
-          {"start": "2025-07-01", "end": "2026-03-31", "val": 114634000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"},
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 38398000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
-        ]}},
-        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
-          {"start": "2025-07-01", "end": "2026-03-31", "val": 241832000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"},
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 82886000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
-        ]}},
-        "PretaxIncomeLoss": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 32014000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
-        ]}},
-        "ResearchAndDevelopmentExpense": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 8197000000, "accn": "0001193125-26-191507", "form": "10-Q", "filed": "2026-04-29"}
-        ]}}
-      }}
+      "facts": {
+        "us-gaap": {
+          "OperatingIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2025-07-01",
+                  "end": "2026-03-31",
+                  "val": 114634000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                },
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 38398000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                }
+              ]
+            }
+          },
+          "RevenueFromContractWithCustomerExcludingAssessedTax": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2025-07-01",
+                  "end": "2026-03-31",
+                  "val": 241832000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                },
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 82886000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                },
+                {
+                  "start": "2024-10-01",
+                  "end": "2024-12-31",
+                  "val": 69627000000,
+                  "accn": "0001193125-25-000099",
+                  "form": "10-Q",
+                  "filed": "2025-01-30"
+                },
+                {
+                  "start": "2024-07-01",
+                  "end": "2024-09-30",
+                  "val": 65585000000,
+                  "accn": "0001193125-25-000088",
+                  "form": "10-Q",
+                  "filed": "2024-10-30"
+                },
+                {
+                  "start": "2024-04-01",
+                  "end": "2024-06-30",
+                  "val": 64727000000,
+                  "accn": "0001193125-25-000077",
+                  "form": "10-Q",
+                  "filed": "2024-07-30"
+                }
+              ]
+            }
+          },
+          "PretaxIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 32014000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                }
+              ]
+            }
+          },
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 8197000000,
+                  "accn": "0001193125-26-191507",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0000059478": {
       "cik": 59478,
       "entityName": "Eli Lilly and Company",
-      "facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": [
-        {"start": "2026-01-01", "end": "2026-03-31", "val": 7396000000, "accn": "0000059478-26-000045", "form": "10-Q", "filed": "2026-04-30"}
-      ]}}}}
+      "facts": {
+        "us-gaap": {
+          "NetIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 7396000000,
+                  "accn": "0000059478-26-000045",
+                  "form": "10-Q",
+                  "filed": "2026-04-30"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0000731766": {
       "cik": 731766,
       "entityName": "UnitedHealth Group Incorporated",
-      "facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": [
-        {"start": "2026-01-01", "end": "2026-03-31", "val": 6481000000, "accn": "0000731766-26-000127", "form": "10-Q", "filed": "2026-04-21"}
-      ]}}}}
+      "facts": {
+        "us-gaap": {
+          "NetIncomeLoss": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 6481000000,
+                  "accn": "0000731766-26-000127",
+                  "form": "10-Q",
+                  "filed": "2026-04-21"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0000320193": {
       "cik": 320193,
       "entityName": "Apple Inc.",
-      "facts": {"us-gaap": {
-        "ResearchAndDevelopmentExpense": {"units": {"USD": [
-          {"start": "2025-12-28", "end": "2026-03-28", "val": 8042000000, "accn": "0000320193-26-000064", "form": "10-Q", "filed": "2026-05-02"}
-        ]}}
-      }}
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2025-12-28",
+                  "end": "2026-03-28",
+                  "val": 8042000000,
+                  "accn": "0000320193-26-000064",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0001318605": {
       "cik": 1318605,
       "entityName": "Tesla, Inc.",
-      "facts": {"us-gaap": {
-        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 19335000000, "accn": "0001318605-26-000021", "form": "10-Q", "filed": "2026-04-23"}
-        ]}}
-      }}
+      "facts": {
+        "us-gaap": {
+          "RevenueFromContractWithCustomerExcludingAssessedTax": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 19335000000,
+                  "accn": "0001318605-26-000021",
+                  "form": "10-Q",
+                  "filed": "2026-04-23"
+                }
+              ]
+            }
+          }
+        }
+      }
     },
     "0001467858": {
       "cik": 1467858,
       "entityName": "General Motors Company",
-      "facts": {"us-gaap": {
-        "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
-          {"start": "2026-01-01", "end": "2026-03-31", "val": 44019000000, "accn": "0001467858-26-000033", "form": "10-Q", "filed": "2026-04-29"}
-        ]}}
-      }}
+      "facts": {
+        "us-gaap": {
+          "RevenueFromContractWithCustomerExcludingAssessedTax": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 44019000000,
+                  "accn": "0001467858-26-000033",
+                  "form": "10-Q",
+                  "filed": "2026-04-29"
+                }
+              ]
+            }
+          }
+        }
+      }
     }
+  },
+  "filing_documents": {
+    "0000789019:0001193125-25-000099:msft-20241231.htm": "<html><body>\n<div>Item 1A. Risk Factors</div>\n<p>We face competition in cloud services.</p>\n<p>Regulatory change could affect our licenses.</p>\n<div>Item 2. Management's Discussion and Analysis</div>\n<p>Cloud demand was stable during the quarter.</p>\n<p>Capital spending stayed flat.</p>\n<div>Item 3. Quantitative and Qualitative Disclosures About Market Risk</div>\n<p>Not meaningful.</p>\n</body></html>",
+    "0000789019:0001193125-26-191507:msft-20260331.htm": "<html><body>\n<div>Item 1A. Risk Factors</div>\n<p>We face competition in cloud services.</p>\n<p>AI product liability is an emerging risk.</p>\n<div>Item 2. Management's Discussion and Analysis</div>\n<p>Cloud demand increased during the quarter.</p>\n<p>Capital spending rose for AI infrastructure.</p>\n<div>Item 3. Quantitative and Qualitative Disclosures About Market Risk</div>\n<p>Not meaningful.</p>\n</body></html>"
   }
 }

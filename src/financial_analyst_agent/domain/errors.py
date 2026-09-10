@@ -64,3 +64,8 @@ class UnknownIndustryError(FinancialAnalystError):
 
 class PlannerError(FinancialAnalystError):
     code = "planner_error"
+
+
+class SessionQuotaError(FinancialAnalystError):
+    code = "session_quota"
+

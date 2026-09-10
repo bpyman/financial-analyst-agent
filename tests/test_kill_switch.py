@@ -18,11 +18,9 @@ def test_kill_switch_on_replays_recorded_google_net_income() -> None:
     assert result.table_rows[0].accession_number == ACCESSION
 
 
-def test_kill_switch_banner_is_obvious_and_must_be_announced() -> None:
+def test_kill_switch_banner_discloses_recorded_data() -> None:
     from financial_analyst_agent.app import KILL_SWITCH_BANNER
 
     text = KILL_SWITCH_BANNER.casefold()
-    assert "kill-switch" in text
-    assert "fixture" in text or "recorded" in text
-    assert "announce" in text or "say this out loud" in text
+    assert "recorded" in text
     assert "edgar" in text or "live" in text

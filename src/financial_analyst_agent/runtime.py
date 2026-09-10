@@ -16,8 +16,11 @@ from financial_analyst_agent.news import (
     TavilyNewsSearch,
 )
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
+from financial_analyst_agent.providers.sec.cache import CachingSECDataSource
+from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
+from financial_analyst_agent.session import SessionBudget
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
@@ -53,6 +56,8 @@ _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
 _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("microsoft", "Microsoft"),
     ("msft", "Microsoft"),
+    ("apple", "Apple"),
+    ("aapl", "Apple"),
     ("alphabet", "Google"),
     ("google", "Google"),
     ("googl", "Google"),
@@ -62,6 +67,9 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("general motors", "GM"),
     ("gm", "GM"),
 )
+_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
+FIXTURE_FILING_OLDER = "0001193125-25-000099"
+FIXTURE_FILING_NEWER = "0001193125-26-191507"
 
 
 def _company_from_query(normalized: str) -> str:
@@ -145,6 +153,36 @@ def _is_news_query(normalized: str) -> bool:
     return re.search(r"what(?:['’]?s| is) going on", normalized) is not None
 
 
+def _is_filing_change_query(normalized: str) -> bool:
+    if "what changed" not in normalized and "filing change" not in normalized:
+        return False
+    return any(
+        token in normalized
+        for token in ("md&a", "mda", "risk factor", "management discussion")
+    )
+
+
+def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
+    accessions = _ACCESSION_PATTERN.findall(query)
+    older = accessions[0] if len(accessions) >= 2 else FIXTURE_FILING_OLDER
+    newer = accessions[1] if len(accessions) >= 2 else FIXTURE_FILING_NEWER
+    section = "mda"
+    if "risk" in normalized and (
+        "md&a" in normalized or "mda" in normalized or "both" in normalized
+    ):
+        section = "mda and risk_factors"
+    elif "risk" in normalized:
+        section = "risk_factors"
+    return SimpleNamespace(
+        intent=Intent.FILING_CHANGE,
+        company=_company_from_query(normalized),
+        older_accession=older,
+        newer_accession=newer,
+        section=section,
+        summarize="summar" in normalized,
+    )
+
+
 def _is_exploratory_query(normalized: str) -> bool:
     if "themes" in normalized and ("coverage" in normalized or "emerging" in normalized):
         return True
@@ -170,8 +208,13 @@ class FixtureEssayCompleter:
         if query.strip().casefold() not in {
             FIXTURE_NEWS_QUERY.casefold(),
             FIXTURE_RESEARCH_QUERY.casefold(),
-        }:
+        } and "disclosure changes" not in query.casefold():
             raise ProviderError("No recorded fixture news essay for this prompt")
+        if "disclosure changes" in query.casefold():
+            return (
+                "Management described stronger cloud demand and added an "
+                "AI product-liability risk."
+            )
         try:
             payload = json.loads(tool_json)
         except json.JSONDecodeError as exc:
@@ -203,6 +246,8 @@ class DemoCompleter:
         _ = current_spec
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
+        if _is_filing_change_query(normalized):
+            return _filing_change_plan(query, normalized)
         if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):
             return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
         if _is_exploratory_query(normalized):
@@ -247,14 +292,25 @@ def fixture_runtime() -> Runtime:
     )
 
 
-def live_runtime(settings: Settings | None = None) -> Runtime:
+def live_runtime(
+    settings: Settings | None = None,
+    *,
+    budget: SessionBudget | None = None,
+) -> Runtime:
     resolved = settings or get_settings()
+    use_openai = not resolved.public_demo or resolved.allow_public_openai
+    use_tavily = not resolved.public_demo or resolved.allow_public_tavily
+    completer = OpenAIStructuredCompleter.from_settings(resolved) if use_openai else DemoCompleter()
+    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else FixtureEssayCompleter()
+    news = TavilyNewsSearch(resolved) if use_tavily else FixtureNewsSearch()
+    cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
+    client = CachingSECDataSource(SECClient(resolved), Path(cache_dir), budget=budget)
     return Runtime(
-        completer=OpenAIStructuredCompleter.from_settings(resolved),
-        facts=SecFactLookup(resolved),
+        completer=completer,
+        facts=SecFactLookup(client=client),
         ranking=SnapshotRanking.from_path(),
-        news=TavilyNewsSearch(resolved),
-        essay=OpenAIEssayCompleter.from_settings(resolved),
+        news=news,
+        essay=essay,
     )
 
 
@@ -262,10 +318,12 @@ def runtime_for_kill_switch(
     *,
     enabled: bool,
     settings: Settings | None = None,
+    budget: SessionBudget | None = None,
 ) -> Runtime:
-    if enabled:
+    resolved = settings or get_settings()
+    if enabled or (resolved.public_demo and not resolved.demo_live_sec):
         return fixture_runtime()
-    return live_runtime(settings)
+    return live_runtime(resolved, budget=budget)
 
 
 def build_runtime(settings: Settings | None = None) -> Runtime:

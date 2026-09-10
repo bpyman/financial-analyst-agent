@@ -35,6 +35,18 @@ class RecordedSECDataSource:
         payload = self._issuer_payload("company_facts", cik)
         return validate_companyfacts_response(payload, cik, details={"cik": cik})
 
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
+        docs = self._recording.get("filing_documents")
+        if not isinstance(docs, dict):
+            raise ProviderError("Recorded SEC cassette missing filing_documents")
+        payload = docs.get(f"{cik}:{accession}:{document}")
+        if not isinstance(payload, str):
+            raise ProviderError(
+                "No recorded filing document",
+                details={"cik": cik, "accession": accession, "document": document},
+            )
+        return payload
+
     def _issuer_payload(self, section: str, cik: str) -> dict[str, Any]:
         payloads = self._recording.get(section)
         if not isinstance(payloads, dict):

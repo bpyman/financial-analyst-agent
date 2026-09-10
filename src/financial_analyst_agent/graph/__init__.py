@@ -27,6 +27,7 @@ ClosedWorkflow = Literal[
     "explain",
     "news_and_explain",
     "exploratory_research",
+    "filing_change",
 ]
 
 
@@ -54,6 +55,8 @@ def _route_closed(state: WorkflowRunState) -> ClosedWorkflow:
         return "news_and_explain"
     if intent == Intent.EXPLORATORY_RESEARCH:
         return "exploratory_research"
+    if intent == Intent.FILING_CHANGE:
+        return "filing_change"
     raise ValueError(f"unsupported closed intent: {intent!r}")
 
 
@@ -99,6 +102,14 @@ def _exploratory_research_node(state: WorkflowRunState) -> dict[str, TurnResult]
     return {"result": run_exploratory_research(state["query"], state["runtime"])}
 
 
+def _filing_change_node(state: WorkflowRunState) -> dict[str, TurnResult]:
+    from financial_analyst_agent.filing_change import run_filing_change
+
+    plan = state["plan"]
+    action = getattr(plan, "action", plan)
+    return {"result": run_filing_change(action, state["runtime"])}
+
+
 def _build_workflow_graph() -> Any:
     builder = StateGraph(WorkflowRunState)
     builder.add_node("lookup", _lookup_node)
@@ -108,6 +119,7 @@ def _build_workflow_graph() -> Any:
     builder.add_node("explain", _explain_node)
     builder.add_node("news_and_explain", _news_and_explain_node)
     builder.add_node("exploratory_research", _exploratory_research_node)
+    builder.add_node("filing_change", _filing_change_node)
     builder.add_conditional_edges(
         START,
         _route_closed,
@@ -119,6 +131,7 @@ def _build_workflow_graph() -> Any:
             "explain": "explain",
             "news_and_explain": "news_and_explain",
             "exploratory_research": "exploratory_research",
+            "filing_change": "filing_change",
         },
     )
     builder.add_edge("lookup", END)
@@ -128,6 +141,7 @@ def _build_workflow_graph() -> Any:
     builder.add_edge("explain", END)
     builder.add_edge("news_and_explain", END)
     builder.add_edge("exploratory_research", END)
+    builder.add_edge("filing_change", END)
     return builder.compile()
 
 

@@ -4,9 +4,17 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The public description leads with an evidence-first tagline and three differentiators: SEC quarterly facts, constrained planning, and answers the model cannot rewrite.
-- [ ] GitHub metadata, package description, and license no longer present the project as a POC.
-- [ ] Historical interview material is archived and linked, not the first thing a recruiter sees.
-- [ ] Design docs match the shipped stateful analysis graph.
+- [x] The public description leads with an evidence-first tagline and three differentiators: SEC quarterly facts, constrained planning, and answers the model cannot rewrite.
+- [x] GitHub metadata, package description, and license no longer present the project as a POC.
+- [x] Historical interview material is archived and linked, not the first thing a recruiter sees.
+- [x] Design docs match the shipped stateful analysis graph.
+
+## Answer
+
+README, `pyproject.toml`, MIT `LICENSE`, and GitHub description/topics now lead with the evidence-first product, not a POC. Interview notes moved to `docs/archive/interview/`. `docs/design.md` documents the conversation seam and patchable analysis spec as current architecture. Homepage URL waits on ticket 06.
+
+## Comments
+
+- Agent: implemented on `cursor/portfolio-impact-tickets`; GitHub description updated via `gh repo edit`.

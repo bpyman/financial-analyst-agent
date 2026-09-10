@@ -19,6 +19,7 @@ from urllib.parse import quote
 from pydantic import BaseModel, Field
 
 from financial_analyst_agent.contracts import Intent, NewsHit, TurnResult
+from financial_analyst_agent.domain.errors import ProviderError
 
 EvidenceKind = Literal["fact", "news", "result"]
 
@@ -326,6 +327,12 @@ class EvidenceCachedFacts:
             return ()
         dates = listing(company, limit=limit)
         return tuple(dates)
+
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
+        getter = getattr(self._inner, "get_filing_document", None)
+        if not callable(getter):
+            raise ProviderError("Filing documents are not available")
+        return str(getter(cik, accession, document))
 
 
 def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:

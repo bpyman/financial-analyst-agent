@@ -394,6 +394,16 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
     )
 
 
+def is_filing_change_proposal(proposal: Any) -> bool:
+    if isinstance(proposal, SpecPatch):
+        return False
+    intent = getattr(proposal, "intent", None)
+    if intent == Intent.FILING_CHANGE:
+        return True
+    action = getattr(proposal, "action", None)
+    return getattr(action, "intent", None) == Intent.FILING_CHANGE
+
+
 def is_qualitative_proposal(proposal: Any) -> bool:
     if isinstance(proposal, SpecPatch):
         return False

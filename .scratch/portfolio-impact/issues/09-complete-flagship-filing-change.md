@@ -4,9 +4,17 @@
 
 **Blocked by:** 07 — Publish an evaluation and operability scorecard; 08 — Ship a one-section filing-change tracer bullet.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Multiple reviewed sections (at least MD&A and Risk Factors) can be compared for the same two accessions.
-- [ ] Any model summary is labelled analysis, grounded only in the produced diff, and fails the numeral lock if it invents numbers.
-- [ ] The same thread can show metric trends for the issuer alongside the disclosure map.
-- [ ] Evidence inspection works for both the numeric cells and the disclosure anchors.
+- [x] Multiple reviewed sections (at least MD&A and Risk Factors) can be compared for the same two accessions.
+- [x] Any model summary is labelled analysis, grounded only in the produced diff, and fails the numeral lock if it invents numbers.
+- [x] The same thread can show metric trends for the issuer alongside the disclosure map.
+- [x] Evidence inspection works for both the numeric cells and the disclosure anchors.
+
+## Answer
+
+`parse_sections` can request both MD&A and Risk Factors for the same two accessions. Optional `summarize=True` runs the essay completer on the diff JSON, labels it model-analysis, and drops the essay if numeral lock extras appear. Filing-change turns keep the prior analysis spec, so a last-four-quarters lookup can sit on the same thread. Numeric cells use the evidence inspector; disclosure blocks have their own Open filing buttons.
+
+## Comments
+
+- Agent: fixture summary text is canned and number-free so the lock stays green.

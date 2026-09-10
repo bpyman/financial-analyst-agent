@@ -12,30 +12,35 @@ numbers.
 
 ```mermaid
 flowchart TB
-    Q["1 · User question"] --> P["2 · Planner<br/>picks one closed intent"]
-    P --> E["3 · Executor<br/>runs a fixed workflow"]
-
-    E -->|"lookup · compare · rank<br/>rank-and-lookup"| ST
-    E -->|"explain · news-and-explain"| QT
-    E -.->|"ambiguous / unknown"| CL["Clarify or refuse<br/>no tools"]
+    Q["Analyst message"] --> C["Conversation seam"]
+    C --> P["Planner proposes spec patch or qualitative intent"]
+    P --> G["Guard: metric phrases, catalogs, mode"]
+    G -->|"structured"| S["Resolve and validate analysis spec"]
+    G -->|"ambiguous"| CL["Pending clarification"]
+    G -->|"unsupported"| RF["Refuse"]
+    S --> X["Compile tasks and dispatch"]
 
     subgraph ST["Structured tools"]
         direction LR
         F["get_financials"]
-        C["compare_metrics"]
+        CM["compare_metrics"]
         K["rank_companies"]
+        D["filing_change"]
     end
 
     subgraph QT["Qualitative tools"]
         direction LR
         N["search_news"]
-        X["explain_topic"]
+        EX["explain_topic"]
     end
 
-    ST --> R["4 · Typed TurnResult"]
+    X --> ST
+    X --> QT
+    ST --> R["Typed TurnResult"]
     QT --> R
     CL --> R
-    R --> O["5 · Table · Essay · Clarify · Refuse"]
+    RF --> R
+    R --> O["Table · chart · essay · clarify · refuse"]
 
     MCP["FastMCP HTTP"] .-> ST
     MCP -.-> QT
@@ -43,60 +48,64 @@ flowchart TB
     classDef step fill:#eaf2ff,stroke:#2563eb,color:#172554,stroke-width:1.5px
     classDef tool fill:#ecfdf5,stroke:#059669,color:#064e3b
     classDef edge fill:#f8fafc,stroke:#64748b,color:#0f172a
-    class Q,P,E,R,O step
-    class F,C,K,N,X tool
-    class CL,MCP edge
+    class Q,C,P,G,S,X,R,O step
+    class F,CM,K,D,N,EX tool
+    class CL,RF,MCP edge
 ```
 
 ### Request lifecycle
 
-1. **Plan** — an OpenAI structured response selects one of six supported intents:
-   lookup, compare, rank, rank-and-lookup, explain, or news-and-explain.
-2. **Guard** — structured financial requests resolve the metric from the user's original
-   wording. Ambiguous input asks for clarification; unsupported input refuses before data access.
-3. **Execute** — code selects a fixed workflow. Multi-tool composition is explicit rather than
-   chosen by an open-ended model loop.
-4. **Collect evidence** — tools return typed values with filing, period, identity, snapshot, or
-   citation provenance.
-5. **Render** — a typed `TurnResult` becomes a table, grounded essay, clarification, or refusal.
-   Financial values are never rewritten by the model.
+1. **Load thread** — a conversation thread holds messages, the current analysis spec, pending
+   clarification, and evidence references. Follow-ups patch that spec instead of restarting.
+2. **Plan** — the planner proposes a typed spec patch or a closed qualitative intent. It never
+   emits a resolved spec, CIKs, or numbers.
+3. **Guard** — metric phrases resolve against the closed catalog. Ambiguous input holds a
+   pending clarification; unsupported scope refuses before data access.
+4. **Execute** — code compiles the resolved spec into lookup, compare, rank, rank-and-lookup,
+   or filing-change tasks. Qualitative intents run their own subgraphs. Tool order is fixed.
+5. **Collect evidence** — tools return typed values with filing, period, identity, snapshot, or
+   citation provenance. Filing-change diffs are deterministic text maps, not model rewrites.
+6. **Render** — a typed `TurnResult` becomes a chart and table, grounded essay, clarification, or
+   refusal. Financial values are never rewritten by the model.
 
-The diagram and lifecycle above describe the shipped one-shot path. The next architecture is a
-persisted conversation thread carrying a patchable analysis spec; see
-[ADR 0005](adr/0005-stateful-analysis-graph.md). The trust boundary is identical in both.
+`run_turn(query, runtime)` remains a compatibility wrapper over a one-message thread so the gold
+suite stays green. The public seam is `run_conversation_turn`. See
+[ADR 0005](adr/0005-stateful-analysis-graph.md). The trust boundary is identical on both paths.
 
 ## System boundaries
 
 ### Streamlit — audience layer
 
-Collects a question and displays runtime status, intent, answer, provenance, and expandable tool
-traces. It contains no financial business logic.
+Collects a question, shows guided stories, the active analysis spec, runtime status, answers,
+evidence inspection, and expandable tool traces. It contains no financial business logic.
 
-### `run_turn(query, runtime)` — application boundary
+### `run_conversation_turn(thread_id, message, runtime)` — application boundary
 
-Coordinates planning, validation, execution, and result construction. Streamlit, tests, and
-fixture mode all call this interface.
+Coordinates planning, spec patch application, validation, execution, and persistence.
+Streamlit, tests, and fixture mode all call this interface. `run_turn` wraps it for one-shot
+regression tests.
 
 ### Planner — language boundary
 
-Selects a typed intent and extracts entities. It cannot invent workflows, choose ranked
-constituents, calculate values, or resolve an ambiguous metric.
+Selects a typed intent or spec patch. It cannot invent workflows, choose ranked constituents,
+calculate values, pick filings, or resolve an ambiguous metric.
 
 ### Executor and tools — correctness boundary
 
-Own company resolution, fact selection, ranking, comparisons, formulas, news retrieval, and
-workflow composition. Company identity is carried as SEC CIK rather than model-generated ticker
-text.
+Own company resolution, fact selection, ranking, comparisons, formulas, filing-section diffs,
+news retrieval, and workflow composition. Company identity is carried as SEC CIK rather than
+model-generated ticker text.
 
 ### Runtime adapters — provider boundary
 
 Connect the application to SEC EDGAR, a packaged FMP snapshot, Tavily, and OpenAI. Recorded
-adapters provide the same contracts in fixture mode.
+adapters provide the same contracts in fixture mode. Live SEC responses are disk-cached.
 
 ### `TurnResult` — presentation boundary
 
-Carries intent, ordered traces, values, provenance, citations, failures, and renderer choice.
-This keeps provider output and presentation decoupled without losing audit information.
+Carries intent, ordered traces, values, provenance, citations, disclosure changes, failures, and
+renderer choice. This keeps provider output and presentation decoupled without losing audit
+information.
 
 ## Key design decisions
 
@@ -123,11 +132,11 @@ but not resolve. An open ReAct loop over the number path stays rejected.
 **Why:** application behavior can be tested independently of Streamlit and external services.
 Live and recorded providers can change without creating separate execution paths.
 
-**Trade-off:** `run_turn` is a critical module and must be kept cohesive as the product grows.
+**Trade-off:** the conversation seam is a critical module and must be kept cohesive as the product
+grows. `run_turn` stays as a thin one-shot wrapper for the gold suite.
 
-**Revision:** ADR 0005 adds a conversation seam (thread, message, runtime) above `run_turn`, which
-becomes a compatibility wrapper over an ephemeral single-message thread. `Runtime` and its ports
-are unchanged.
+**Shipped:** [ADR 0005](adr/0005-stateful-analysis-graph.md) is the current architecture: a
+persisted thread plus a patchable analysis spec. `Runtime` and its ports are unchanged.
 
 ### 3. SEC XBRL as the quarterly source of truth
 
@@ -184,8 +193,8 @@ same contracts in-process.
 stdio child process or unnecessary network hop. The five capabilities are financial lookup,
 comparison, ranking, news search, and qualitative explanation.
 
-**Trade-off:** the POC does not demonstrate distributed deployment. The contracts are ready for
-it without imposing that operational cost on the demo.
+**Trade-off:** the hosted demo does not demonstrate distributed MCP deployment. The contracts are
+ready for it without imposing that operational cost on the audience window.
 
 ## Reliability model
 
@@ -203,19 +212,15 @@ application behavior, not live data freshness, and must be disclosed when used.
 
 ## Verification and production path
 
-The default test suite is offline and asserts behavior at `run_turn`: intent, tool order, values,
-periods, provenance, partial failures, citations, and renderer choice. Gold tests replay the demo
-workflows through fixture mode. Separate network-marked tests cover live OpenAI, SEC, and Tavily
-integrations.
+The default test suite is offline and asserts behavior at `run_turn` and `run_conversation_turn`:
+intent, spec patches, tool order, values, periods, provenance, partial failures, citations, numeral
+lock, and renderer choice. Gold tests replay the demo workflows through fixture mode. CI runs pytest,
+gold, ruff, and mypy on every push. Separate network-marked tests cover live OpenAI, SEC, and
+Tavily integrations. A generated evaluation scorecard reports pass rate and latency.
 
-Production evolution would add:
-
-1. provider caching, retries, rate limits, and observability;
-2. scheduled, versioned snapshots with freshness monitoring;
-3. routing and fact-selection evaluation sets;
-4. authentication, authorization, and audit logging;
-5. durable workflow state where human approval is valuable; and
-6. PDF verification with explicit disagreement handling.
+Public sessions isolate threads, expire unused state, cache SEC responses, and quota-cap live
+EDGAR. Full production operations (authn/z, scheduled snapshot rebuilds, PDF disagreement
+handling) remain future work.
 
 The trust boundary should remain unchanged as the system grows: **models interpret language and
 synthesize supplied evidence; deterministic components own financial truth.**
