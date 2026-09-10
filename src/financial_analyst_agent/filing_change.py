@@ -7,6 +7,7 @@ import re
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
 from typing import Any, Literal
+from urllib.parse import quote
 
 from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
@@ -18,6 +19,7 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
 
@@ -35,7 +37,7 @@ _SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
     ),
     "risk_factors": re.compile(r"item\s+1a\s*[.:]?\s*risk\s+factors", re.IGNORECASE),
 }
-_NEXT_ITEM = re.compile(r"\nitem\s+\d+[a-z]?\s*[.:]", re.IGNORECASE)
+_NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
 _SECTION_ALIASES: dict[str, SectionId] = {
     "md&a": "mda",
     "mda": "mda",
@@ -43,6 +45,7 @@ _SECTION_ALIASES: dict[str, SectionId] = {
     "management discussion": "mda",
     "risk factors": "risk_factors",
     "risk factor": "risk_factors",
+    "risk_factors": "risk_factors",
 }
 
 
@@ -72,6 +75,16 @@ class _TextExtractor(HTMLParser):
         return "".join(self._chunks)
 
 
+def filing_anchor_url(url: str, snippet: str) -> str:
+    """Point a filing URL at the reviewed section or changed paragraph."""
+    text = " ".join(snippet.split())
+    if not url or not text:
+        return url
+    if "#:~:text=" in url:
+        return url
+    return f"{url}#:~:text={quote(text[:96], safe='')}"
+
+
 def html_to_text(html: str) -> str:
     parser = _TextExtractor()
     parser.feed(html)
@@ -81,13 +94,16 @@ def html_to_text(html: str) -> str:
 
 def extract_section(html: str, section: SectionId) -> str:
     text = html_to_text(html)
-    match = _SECTION_HEADINGS[section].search(text)
-    if match is None:
-        return ""
-    rest = text[match.start() :]
-    nxt = _NEXT_ITEM.search(rest, pos=len(match.group(0)))
-    body = rest if nxt is None else rest[: nxt.start()]
-    return body.strip()
+    heading = _SECTION_HEADINGS[section]
+    candidates: list[str] = []
+    for match in heading.finditer(text):
+        end = len(text)
+        for next_item in _NEXT_ITEM.finditer(text, match.end()):
+            if heading.match(text, next_item.start()) is None:
+                end = next_item.start()
+                break
+        candidates.append(text[match.start() : end].strip())
+    return max(candidates, key=len, default="")
 
 
 def _paragraphs(section_text: str) -> list[str]:
@@ -125,8 +141,8 @@ def diff_paragraphs(
                         after_text=paragraph,
                         older_accession=older_accession,
                         newer_accession=newer_accession,
-                        older_url=older_url,
-                        newer_url=newer_url,
+                        older_url=filing_anchor_url(older_url, label),
+                        newer_url=filing_anchor_url(newer_url, paragraph),
                     )
                 )
         elif tag == "delete":
@@ -139,8 +155,8 @@ def diff_paragraphs(
                         before_text=paragraph,
                         older_accession=older_accession,
                         newer_accession=newer_accession,
-                        older_url=older_url,
-                        newer_url=newer_url,
+                        older_url=filing_anchor_url(older_url, paragraph),
+                        newer_url=filing_anchor_url(newer_url, label),
                     )
                 )
         else:
@@ -155,8 +171,8 @@ def diff_paragraphs(
                     after_text=after,
                     older_accession=older_accession,
                     newer_accession=newer_accession,
-                    older_url=older_url,
-                    newer_url=newer_url,
+                    older_url=filing_anchor_url(older_url, before),
+                    newer_url=filing_anchor_url(newer_url, after),
                 )
             )
     return changes
@@ -205,15 +221,33 @@ def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
     facts = runtime.facts
     inner = getattr(facts, "_inner", facts)
     client = getattr(inner, "_client", None)
-    if client is None or not hasattr(client, "get_submissions"):
-        return "primary.htm"
-    from financial_analyst_agent.providers.sec.submissions import parse_submissions
-
-    filings = parse_submissions(client.get_submissions(cik))
-    for filing in filings:
-        if filing.accession_number == accession:
-            return filing.primary_document or "primary.htm"
-    return "primary.htm"
+    getter = getattr(client, "get_submissions", None)
+    if not callable(getter):
+        raise ProviderError("Filing submissions are not available on this runtime")
+    payload = getter(cik)
+    if not isinstance(payload, dict) or not isinstance(payload.get("filings"), dict):
+        raise ProviderError("submissions payload missing filings object")
+    recent = payload["filings"].get("recent")
+    if not isinstance(recent, dict):
+        raise ProviderError("submissions payload missing filings.recent object")
+    accessions = recent.get("accessionNumber")
+    documents = recent.get("primaryDocument")
+    forms = recent.get("form")
+    if (
+        not isinstance(accessions, list)
+        or not isinstance(documents, list)
+        or not isinstance(forms, list)
+    ):
+        raise ProviderError("submissions accessionNumber, primaryDocument and form must be lists")
+    if len(accessions) != len(documents) or len(accessions) != len(forms):
+        raise ProviderError("submissions filing arrays have inconsistent lengths")
+    for index, candidate in enumerate(accessions):
+        if candidate == accession and forms[index] in ("10-Q", "10-Q/A", "10-K", "10-K/A"):
+            document = documents[index]
+            if isinstance(document, str) and document.strip():
+                return document
+            raise ProviderError(f"Primary document is missing for accession {accession}")
+    raise ProviderError(f"Filing accession {accession} was not found in supported submissions")
 
 
 def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
@@ -314,8 +348,11 @@ def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
             f"Summarize only the following disclosure changes for {resolved.name}. "
             "Do not invent numbers."
         )
+        essay_completer = runtime.essay
         try:
-            essay = runtime.essay.complete_essay(topic, grounding)
+            essay = call_provider(
+                "llm", lambda: essay_completer.complete_essay(topic, grounding)
+            )
             extras = _numeral_lock_extras(essay, grounding)
             banners = [MODEL_ANALYSIS_BANNER]
             if extras:

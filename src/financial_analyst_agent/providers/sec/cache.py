@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ from financial_analyst_agent.session import SessionBudget
 
 
 class CachingSECDataSource:
-    """Replay SEC JSON from disk; charge live quota only on a miss."""
+    """Cache SEC JSON for one hour and accession-pinned HTML indefinitely."""
 
     def __init__(
         self,
@@ -63,7 +64,7 @@ class CachingSECDataSource:
 
     def _json(self, name: str, fetch: Any) -> object:
         path = self._dir / name
-        if path.is_file():
+        if path.is_file() and time.time() - path.stat().st_mtime < 3600:
             return json.loads(path.read_text(encoding="utf-8"))
         if self._budget is not None:
             self._budget.consume_live_sec()

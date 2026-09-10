@@ -1,9 +1,9 @@
 # Evaluation scorecard
 
-Generated `2026-09-09T05:01:06.343164+00:00` against the fixture runtime.
+Generated `2026-09-10T13:51:16.703995+00:00` against the fixture runtime.
 
-- Pass rate: **8/8** (100%)
-- Latency p50 / p95: **1 ms** / **5 ms**
+- Pass rate: **9/9** (100%)
+- Latency p50 / p95: **1 ms** / **4 ms**
 - Approximate live cost per scenario: **$0.00** (fixture path; live OpenAI/Tavily is not billed here)
 - Planner: `fixture DemoCompleter`
 
@@ -16,6 +16,7 @@ Generated `2026-09-09T05:01:06.343164+00:00` against the fixture runtime.
 | `clarify_profit` | ambiguity_refusal | pass | 0 |
 | `follow_up_add_apple` | stateful_follow_up | pass | 2 |
 | `numeral_lock_explain` | numeral_lock | pass | 1 |
-| `filing_change_mda` | filing_change | pass | 5 |
+| `numeral_lock_invented_number` | numeral_lock | pass | 0 |
+| `filing_change_mda` | filing_change | pass | 4 |
 
 SEC JSON is disk-cached on the live path; retries and 429/5xx backoff live in `SECClient`. This is not a full production operations report.

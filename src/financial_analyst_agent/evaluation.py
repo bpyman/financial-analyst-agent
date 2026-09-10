@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import statistics
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,18 @@ class EvalCase:
     expect_intent: Intent | None = None
     expect_renderer: RendererKind | None = None
     follow_up: str | None = None
+    expect_tickers: tuple[str, ...] = ()
+    expect_companies: tuple[str, ...] = ()
+    expect_values: tuple[str, ...] = ()
+    expect_accessions: tuple[str, ...] = ()
+    expect_concepts: tuple[str, ...] = ()
+    invent_numbers: bool = False
+    expect_lock_extras: bool = False
+
+
+class _InventingEssay:
+    def complete_essay(self, query: str, tool_json: str = "") -> str:
+        return "Healthcare AI will grow 47 percent next year."
 
 
 def _cases() -> tuple[EvalCase, ...]:
@@ -37,6 +49,10 @@ def _cases() -> tuple[EvalCase, ...]:
             "Microsoft pre-tax income",
             Intent.LOOKUP,
             RendererKind.TABLE,
+            expect_tickers=("MSFT",),
+            expect_values=("32014000000",),
+            expect_accessions=("0001193125-26-191507",),
+            expect_concepts=("PretaxIncomeLoss",),
         ),
         EvalCase(
             "compare_tsla_gm",
@@ -44,6 +60,8 @@ def _cases() -> tuple[EvalCase, ...]:
             "TSLA vs GM revenue",
             Intent.COMPARE,
             RendererKind.TABLE,
+            expect_tickers=("TSLA", "GM"),
+            expect_values=("19335000000", "44019000000"),
         ),
         EvalCase(
             "rank_tech_rd",
@@ -51,6 +69,7 @@ def _cases() -> tuple[EvalCase, ...]:
             "Top 10 tech companies R&D spend",
             Intent.RANK_AND_LOOKUP,
             RendererKind.TABLE,
+            expect_tickers=("AAPL", "MSFT", "GOOG"),
         ),
         EvalCase(
             "refuse_unknown_metric",
@@ -73,6 +92,8 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.LOOKUP,
             RendererKind.TABLE,
             follow_up="add Apple",
+            expect_tickers=("MSFT",),
+            expect_companies=("Apple",),
         ),
         EvalCase(
             "numeral_lock_explain",
@@ -82,14 +103,69 @@ def _cases() -> tuple[EvalCase, ...]:
             RendererKind.ESSAY,
         ),
         EvalCase(
+            "numeral_lock_invented_number",
+            "numeral_lock",
+            "How can AI disrupt healthcare?",
+            Intent.EXPLAIN,
+            RendererKind.REFUSE,
+            invent_numbers=True,
+            expect_lock_extras=True,
+        ),
+        EvalCase(
             "filing_change_mda",
             "filing_change",
             "What changed in Microsoft's MD&A between "
             "0001193125-25-000099 and 0001193125-26-191507?",
             Intent.FILING_CHANGE,
             RendererKind.TABLE,
+            expect_accessions=("0001193125-25-000099", "0001193125-26-191507"),
         ),
     )
+
+
+def _check_result(case: EvalCase, result: Any) -> str:
+    if case.expect_intent is not None and result.intent is not case.expect_intent:
+        return f"intent {result.intent}"
+    if case.expect_renderer is not None and result.renderer is not case.expect_renderer:
+        return f"renderer {result.renderer}"
+    if case.expect_lock_extras:
+        if not result.numeral_lock_extras:
+            return "expected numeral lock extras"
+    elif result.numeral_lock_extras:
+        return "numeral lock extras"
+    have_tickers = {row.ticker for row in result.table_rows}
+    missing_tickers = [ticker for ticker in case.expect_tickers if ticker not in have_tickers]
+    if missing_tickers:
+        return f"missing tickers {missing_tickers}"
+    have_companies = {row.company_name for row in result.table_rows}
+    missing_companies = [
+        name for name in case.expect_companies if name not in have_companies
+    ]
+    if missing_companies:
+        return f"missing companies {missing_companies}"
+    have_values = {str(row.value) for row in result.table_rows if row.value is not None}
+    missing_values = [value for value in case.expect_values if value not in have_values]
+    if missing_values:
+        return f"missing values {missing_values}"
+    have_accessions = {row.accession_number for row in result.table_rows} | {
+        change.older_accession for change in result.disclosure_changes
+    } | {change.newer_accession for change in result.disclosure_changes}
+    missing_accessions = [
+        accession for accession in case.expect_accessions if accession not in have_accessions
+    ]
+    if missing_accessions:
+        return f"missing accessions {missing_accessions}"
+    have_concepts = {row.concept for row in result.table_rows}
+    missing_concepts = [concept for concept in case.expect_concepts if concept not in have_concepts]
+    if missing_concepts:
+        return f"missing concepts {missing_concepts}"
+    if case.category == "filing_change" and not result.disclosure_changes:
+        return "missing disclosure changes"
+    if case.category == "filing_change" and not all(
+        change.older_url and change.newer_url for change in result.disclosure_changes
+    ):
+        return "missing filing citations"
+    return ""
 
 
 def run_suite() -> dict[str, Any]:
@@ -99,38 +175,55 @@ def run_suite() -> dict[str, Any]:
         started = time.perf_counter()
         passed = True
         detail = ""
+        case_runtime = (
+            replace(runtime, essay=_InventingEssay()) if case.invent_numbers else runtime
+        )
         try:
             if case.follow_up:
                 store = EphemeralThreadStore()
-                first = run_conversation_turn("eval", case.query, runtime, store=store)
-                second = run_conversation_turn("eval", case.follow_up, runtime, store=store)
-                result = second.result
+                first = run_conversation_turn(
+                    "eval", case.query, case_runtime, store=store
+                )
+                second = run_conversation_turn(
+                    "eval", case.follow_up, case_runtime, store=store
+                )
                 elapsed_ms = int((time.perf_counter() - started) * 1000)
-                if case.expect_intent is not None and first.result.intent is not case.expect_intent:
-                    passed = False
-                    detail = f"first intent {first.result.intent}"
-                elif result.renderer is RendererKind.REFUSE:
-                    passed = False
-                    detail = "follow-up refused"
-                elif second.analysis_spec is None:
-                    passed = False
-                    detail = "follow-up dropped spec"
+                detail = _check_result(
+                    EvalCase(
+                        case.case_id,
+                        case.category,
+                        case.query,
+                        expect_intent=case.expect_intent,
+                        expect_renderer=case.expect_renderer,
+                    ),
+                    first.result,
+                )
+                if not detail:
+                    if second.result.renderer is RendererKind.REFUSE:
+                        detail = "follow-up refused"
+                    elif second.analysis_spec is None:
+                        detail = "follow-up dropped spec"
+                    else:
+                        detail = _check_result(
+                            EvalCase(
+                                case.case_id,
+                                case.category,
+                                case.follow_up,
+                                expect_tickers=case.expect_tickers,
+                                expect_companies=case.expect_companies,
+                            ),
+                            second.result,
+                        )
             else:
-                result = run_turn(case.query, runtime)
+                result = run_turn(case.query, case_runtime)
                 elapsed_ms = int((time.perf_counter() - started) * 1000)
-                if case.expect_intent is not None and result.intent is not case.expect_intent:
-                    passed = False
-                    detail = f"intent {result.intent}"
-                if case.expect_renderer is not None and result.renderer is not case.expect_renderer:
-                    passed = False
-                    detail = f"renderer {result.renderer}"
-                if result.numeral_lock_extras:
-                    passed = False
-                    detail = "numeral lock extras"
+                detail = _check_result(case, result)
         except Exception as exc:
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             passed = False
             detail = type(exc).__name__
+        if detail:
+            passed = False
         rows.append(
             {
                 "id": case.case_id,

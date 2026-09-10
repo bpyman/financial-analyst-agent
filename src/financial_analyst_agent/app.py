@@ -22,7 +22,11 @@ from financial_analyst_agent.presentation import (
     present_turn,
     spec_chips,
 )
-from financial_analyst_agent.runtime import runtime_for_kill_switch
+from financial_analyst_agent.runtime import (
+    FIXTURE_FILING_NEWER,
+    FIXTURE_FILING_OLDER,
+    runtime_for_kill_switch,
+)
 from financial_analyst_agent.session import SessionBudget, new_thread_id, snapshot_status
 from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
 from financial_analyst_agent.turn import TurnResult
@@ -45,7 +49,7 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     (
         "What changed in the 10-Q",
         "What changed in Microsoft's MD&A and Risk Factors between "
-        "0001193125-25-000099 and 0001193125-26-191507?",
+        f"{FIXTURE_FILING_OLDER} and {FIXTURE_FILING_NEWER}?",
     ),
 )
 PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
@@ -119,7 +123,7 @@ def _render_presentation(
     if presented.table is not None:
         _render_table(presented.table)
     if presented.disclosures:
-        _render_disclosures(presented.disclosures)
+        _render_disclosures(presented.disclosures, turn_index=turn_index)
     if presented.evidence:
         _render_evidence_inspector(presented.evidence, turn_index=turn_index)
     for banner in presented.banners:
@@ -248,10 +252,11 @@ def _render_evidence_inspector(items: tuple[object, ...], *, turn_index: int) ->
     ]
     chosen = st.selectbox(
         "Inspect exact source",
-        labels,
+        range(len(items)),
+        format_func=lambda index: f"{index + 1}. {labels[index]}",
         key=f"evidence-{turn_index}",
     )
-    item = items[labels.index(chosen)]
+    item = items[chosen]
     st.markdown(f"**{getattr(item, 'amount', '')}**")
     st.caption(f"Exact amount: `{getattr(item, 'raw_amount', '')}`")
     st.markdown(
@@ -269,7 +274,7 @@ def _render_evidence_inspector(items: tuple[object, ...], *, turn_index: int) ->
         st.link_button("Open filing", url)
 
 
-def _render_disclosures(items: tuple[object, ...]) -> None:
+def _render_disclosures(items: tuple[object, ...], *, turn_index: int) -> None:
     for index, item in enumerate(items):
         kind = str(getattr(item, "change_kind", "changed")).title()
         heading = f"{getattr(item, 'section_label', 'Section')} · {kind}"
@@ -285,9 +290,13 @@ def _render_disclosures(items: tuple[object, ...]) -> None:
             older = str(getattr(item, "older_url", "") or "")
             newer = str(getattr(item, "newer_url", "") or "")
             if older:
-                st.link_button("Open previous filing", older, key=f"older-{index}")
+                st.link_button(
+                    "Open previous filing", older, key=f"older-{turn_index}-{index}"
+                )
             if newer:
-                st.link_button("Open current filing", newer, key=f"newer-{index}")
+                st.link_button(
+                    "Open current filing", newer, key=f"newer-{turn_index}-{index}"
+                )
 
 
 def _value_column_format(table: DisplayTable) -> str:
@@ -423,6 +432,29 @@ def _render_guided_stories() -> None:
                 st.rerun()
 
 
+def _persist_session_budget(
+    store: LocalThreadStore, thread_id: str, budget: SessionBudget
+) -> None:
+    saved = store.load(thread_id)
+    if saved is None:
+        store.save(
+            ThreadState(
+                thread_id=thread_id,
+                turn_count=budget.turns,
+                live_sec_requests=budget.live_sec_requests,
+            )
+        )
+        return
+    store.save(
+        saved.model_copy(
+            update={
+                "turn_count": max(saved.turn_count, budget.turns),
+                "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
+            }
+        )
+    )
+
+
 def _render_spec_chips(store: LocalThreadStore) -> None:
     thread_id = str(st.session_state.get("thread_id") or "")
     if not thread_id:
@@ -508,8 +540,15 @@ def main() -> None:
             st.info("A turn is already running.")
         else:
             st.session_state["turn_in_flight"] = True
+            thread_id = str(st.session_state["thread_id"])
+            reserved = False
+            budget = SessionBudget.from_counts(
+                turns=0,
+                live_sec_requests=0,
+                max_turns=settings.max_turns_per_thread,
+                max_live_sec_requests=settings.max_live_sec_requests_per_thread,
+            )
             try:
-                thread_id = str(st.session_state["thread_id"])
                 prior = store.load(thread_id, ttl_seconds=settings.thread_ttl_seconds)
                 budget = SessionBudget.from_counts(
                     turns=prior.turn_count if prior is not None else 0,
@@ -518,6 +557,7 @@ def main() -> None:
                     max_live_sec_requests=settings.max_live_sec_requests_per_thread,
                 )
                 budget.consume_turn()
+                reserved = True
                 progress = st.progress(0, text="Running analysis…")
 
                 def _on_progress(done: int, total: int) -> None:
@@ -538,11 +578,6 @@ def main() -> None:
                     store=store,
                     on_progress=_on_progress,
                 )
-                saved = store.load(thread_id)
-                if saved is not None:
-                    store.save(
-                        saved.model_copy(update={"live_sec_requests": budget.live_sec_requests})
-                    )
                 progress.progress(1.0, text="Analysis complete.")
             except (ConfigurationError, SessionQuotaError) as exc:
                 st.error(public_error_message(exc))
@@ -558,6 +593,8 @@ def main() -> None:
                 )
                 st.session_state["history_kill_switch"] = kill_switch
             finally:
+                if reserved:
+                    _persist_session_budget(store, thread_id, budget)
                 st.session_state["turn_in_flight"] = False
 
     _render_history()

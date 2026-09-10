@@ -164,8 +164,8 @@ def _is_filing_change_query(normalized: str) -> bool:
 
 def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
     accessions = _ACCESSION_PATTERN.findall(query)
-    older = accessions[0] if len(accessions) >= 2 else FIXTURE_FILING_OLDER
-    newer = accessions[1] if len(accessions) >= 2 else FIXTURE_FILING_NEWER
+    older = accessions[0] if len(accessions) >= 2 else ""
+    newer = accessions[1] if len(accessions) >= 2 else ""
     section = "mda"
     if "risk" in normalized and (
         "md&a" in normalized or "mda" in normalized or "both" in normalized

@@ -24,3 +24,15 @@ def timed(event: str, **fields: Any) -> Callable[..., None]:
         log_event(event, elapsed_ms=elapsed_ms, **fields, **extra)
 
     return done
+
+
+def call_provider[T](name: str, fn: Callable[[], T], **fields: Any) -> T:
+    """Time a planner, SEC, news, or LLM call and emit a provider log event."""
+    finish = timed("provider", provider=name, **fields)
+    try:
+        result = fn()
+    except Exception as exc:
+        finish(ok=False, error=type(exc).__name__)
+        raise
+    finish(ok=True)
+    return result

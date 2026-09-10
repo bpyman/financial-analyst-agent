@@ -53,6 +53,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
+from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _LOOKUP_FAILURES = (
@@ -126,9 +127,13 @@ def _explain_turn(
 ) -> TurnResult:
     if runtime.essay is None:
         raise RuntimeError("explain intent requires an essay completer")
+    essay_completer = runtime.essay
     traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
     try:
-        essay = runtime.essay.complete_essay(plan.topic, grounding_json)
+        essay = call_provider(
+            "llm",
+            lambda: essay_completer.complete_essay(plan.topic, grounding_json),
+        )
     except ProviderError as exc:
         traces[0] = traces[0].model_copy(
             update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
@@ -184,9 +189,11 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
         raise RuntimeError("news_and_explain intent requires a news adapter")
     if runtime.essay is None:
         raise RuntimeError("news_and_explain intent requires an essay completer")
+    news = runtime.news
+    essay_completer = runtime.essay
     search_args = _search_news_args(query)
     try:
-        hits = _usable_news_hits(runtime.news.search_news(query))
+        hits = _usable_news_hits(call_provider("news", lambda: news.search_news(query)))
     except ProviderError as exc:
         return TurnResult(
             intent=Intent.NEWS_AND_EXPLAIN,
@@ -217,7 +224,9 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
             message="No usable news hits for this query. Refusing rather than using training data.",
         )
     tool_json = _hits_json(hits)
-    essay = runtime.essay.complete_essay(query, tool_json)
+    essay = call_provider(
+        "llm", lambda: essay_completer.complete_essay(query, tool_json)
+    )
     extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
     if extras:
         invented = ", ".join(extras)
@@ -244,9 +253,11 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
         raise RuntimeError("exploratory_research intent requires a news adapter")
     if runtime.essay is None:
         raise RuntimeError("exploratory_research intent requires an essay completer")
+    news = runtime.news
+    essay_completer = runtime.essay
     search_args = _search_news_args(query)
     try:
-        hits = _usable_news_hits(runtime.news.search_news(query))
+        hits = _usable_news_hits(call_provider("news", lambda: news.search_news(query)))
     except ProviderError as exc:
         return TurnResult(
             intent=Intent.EXPLORATORY_RESEARCH,
@@ -277,7 +288,9 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
             message="No usable news hits for this query. Refusing rather than using training data.",
         )
     tool_json = _hits_json(hits)
-    essay = runtime.essay.complete_essay(query, tool_json)
+    essay = call_provider(
+        "llm", lambda: essay_completer.complete_essay(query, tool_json)
+    )
     extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
     if extras:
         invented = ", ".join(extras)

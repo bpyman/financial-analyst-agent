@@ -8,6 +8,7 @@ import httpx
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_facts import validate_companyfacts_response
 from financial_analyst_agent.providers.sec.submissions import validate_submissions_response
 from financial_analyst_agent.providers.sec.tickers import require_usable_company_tickers
@@ -52,20 +53,26 @@ class SECClient:
         self._last_request_at = time.monotonic()
 
     def _fetch_json(self, url: str) -> object:
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
-            self._acquire()
-            try:
-                return self._fetch_json_once(url)
-            except ProviderError as exc:
-                last_error = exc
-                if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
-                    raise
-                delay = min(_DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1), _MAX_RETRY_DELAY_SECONDS)
-                time.sleep(delay)
-        if last_error is not None:
-            raise last_error
-        raise ProviderError("SEC request failed after retries", details={"url": url})
+        def _run() -> object:
+            last_error: Exception | None = None
+            for attempt in range(_MAX_RETRIES):
+                self._acquire()
+                try:
+                    return self._fetch_json_once(url)
+                except ProviderError as exc:
+                    last_error = exc
+                    if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
+                        raise
+                    delay = min(
+                        _DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1),
+                        _MAX_RETRY_DELAY_SECONDS,
+                    )
+                    time.sleep(delay)
+            if last_error is not None:
+                raise last_error
+            raise ProviderError("SEC request failed after retries", details={"url": url})
+
+        return call_provider("sec", _run, url=url)
 
     def _fetch_json_once(self, url: str) -> object:
         headers = {
@@ -112,20 +119,26 @@ class SECClient:
         return decoded
 
     def _fetch_body(self, url: str) -> str:
-        last_error: Exception | None = None
-        for attempt in range(_MAX_RETRIES):
-            self._acquire()
-            try:
-                return self._fetch_body_once(url)
-            except ProviderError as exc:
-                last_error = exc
-                if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
-                    raise
-                delay = min(_DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1), _MAX_RETRY_DELAY_SECONDS)
-                time.sleep(delay)
-        if last_error is not None:
-            raise last_error
-        raise ProviderError("SEC request failed after retries", details={"url": url})
+        def _run() -> str:
+            last_error: Exception | None = None
+            for attempt in range(_MAX_RETRIES):
+                self._acquire()
+                try:
+                    return self._fetch_body_once(url)
+                except ProviderError as exc:
+                    last_error = exc
+                    if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
+                        raise
+                    delay = min(
+                        _DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1),
+                        _MAX_RETRY_DELAY_SECONDS,
+                    )
+                    time.sleep(delay)
+            if last_error is not None:
+                raise last_error
+            raise ProviderError("SEC request failed after retries", details={"url": url})
+
+        return call_provider("sec", _run, url=url)
 
     def _fetch_body_once(self, url: str) -> str:
         headers = {

@@ -1,12 +1,18 @@
 """Deterministic MD&A / Risk Factors diff between two accessions."""
 
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.filing_change import (
+    SectionId,
     diff_paragraphs,
     extract_section,
+    filing_anchor_url,
     html_to_text,
+    parse_sections,
     run_filing_change,
 )
 
@@ -41,6 +47,20 @@ NEWER = "0001193125-26-191507"
 CIK = "0000789019"
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("risk_factors", ("risk_factors",)),
+        ("RISK_FACTORS", ("risk_factors",)),
+        ("mda", ("mda",)),
+        ("mda,risk_factors", ("mda", "risk_factors")),
+        ("Risk Factors", ("risk_factors",)),
+    ],
+)
+def test_parse_sections_accepts_canonical_ids(raw: str, expected: tuple[str, ...]) -> None:
+    assert parse_sections(raw) == expected
+
+
 class _Client:
     def get_company_tickers(self) -> dict[str, object]:
         return {
@@ -71,8 +91,10 @@ class _Client:
     def get_filing_document(self, cik: str, accession: str, document: str) -> str:
         assert cik == CIK
         if accession == OLDER:
+            assert document == "msft-20241231.htm"
             return OLDER_HTML
         if accession == NEWER:
+            assert document == "msft-20260331.htm"
             return NEWER_HTML
         raise AssertionError(accession)
 
@@ -97,6 +119,61 @@ def test_extracts_reviewed_sections() -> None:
     assert "Cloud demand" not in risk
 
 
+@pytest.mark.parametrize("punctuation", [".", ":", ""])
+@pytest.mark.parametrize(
+    ("section", "heading", "next_heading"),
+    [
+        ("risk_factors", "Item 1A{punctuation} Risk Factors", "Item 1B"),
+        ("mda", "Item 2{punctuation} Management's Discussion and Analysis", "Item 3"),
+        ("mda", "Item 7{punctuation} Management’s Discussion and Analysis", "Item 7A"),
+    ],
+)
+def test_extract_section_skips_toc_and_retains_repeated_body_headings(
+    section: SectionId, heading: str, next_heading: str, punctuation: str
+) -> None:
+    title = heading.format(punctuation=punctuation)
+    html = f"""
+    <div>Table of Contents</div>
+    <table><tr><td>{title}</td><td>12</td></tr>
+    <tr><td>{next_heading}{punctuation} Other disclosures</td><td>20</td></tr></table>
+    <h2>{title}</h2>
+    <p>First actual disclosure paragraph must remain in the extracted section.</p>
+    <h2>{title} (continued)</h2>
+    <p>Second actual disclosure paragraph must remain in the extracted section.</p>
+    <h2>{next_heading}{punctuation} Other disclosures</h2>
+    <p>Unrelated disclosure must not be included.</p>
+    """
+
+    extracted = extract_section(html, section)
+
+    assert extracted.startswith(title + "\n")
+    assert "First actual disclosure" in extracted
+    assert "Second actual disclosure" in extracted
+    assert "Other disclosures" not in extracted
+    assert "Unrelated disclosure" not in extracted
+
+
+def test_diff_compares_body_changes_despite_identical_toc() -> None:
+    toc = """
+    <div>Item 1A. Risk Factors</div>
+    <div>Item 2. Management's Discussion and Analysis</div>
+    <div>Item 3. Market Risk</div>
+    """
+    changes = diff_paragraphs(
+        extract_section(toc + OLDER_HTML, "risk_factors"),
+        extract_section(toc + NEWER_HTML, "risk_factors"),
+        section="risk_factors",
+        older_accession=OLDER,
+        newer_accession=NEWER,
+        older_url="https://www.sec.gov/old.htm",
+        newer_url="https://www.sec.gov/new.htm",
+    )
+
+    assert len(changes) == 1
+    assert changes[0].before_text == "Regulatory change could affect our licenses."
+    assert changes[0].after_text == "AI product liability is an emerging risk."
+
+
 def test_html_to_text_drops_tags() -> None:
     assert "<p>" not in html_to_text(NEWER_HTML)
     assert "Cloud demand increased" in html_to_text(NEWER_HTML)
@@ -117,7 +194,14 @@ def test_paragraph_diff_is_deterministic() -> None:
     kinds = {item.change_kind for item in changes}
     assert "changed" in kinds or "added" in kinds
     assert all(item.older_accession == OLDER for item in changes)
-    assert all(item.newer_url.endswith("new.htm") for item in changes)
+    assert all(
+        item.newer_url.startswith("https://www.sec.gov/new.htm#:~:text=")
+        for item in changes
+    )
+    assert all(
+        item.older_url.startswith("https://www.sec.gov/old.htm#:~:text=")
+        for item in changes
+    )
 
 
 def test_run_filing_change_maps_both_reviewed_sections() -> None:
@@ -138,6 +222,98 @@ def test_run_filing_change_maps_both_reviewed_sections() -> None:
     assert sections == {"mda", "risk_factors"}
     assert result.essay is None
     assert result.tool_traces[0].tool == "filing_change"
+
+
+@pytest.mark.parametrize("form", ["10-K", "10-K/A", "10-Q", "10-Q/A"])
+def test_run_filing_change_resolves_actual_primary_document(
+    monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    facts = _Facts()
+    payload: dict[str, Any] = facts._client.get_submissions(CIK)
+    payload["filings"]["recent"]["form"] = [form, form]
+    monkeypatch.setattr(facts._client, "get_submissions", lambda cik: payload)
+
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="risk_factors",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+    )
+
+    assert result.renderer is RendererKind.TABLE
+    assert {change.section for change in result.disclosure_changes} == {"risk_factors"}
+    older_base = (
+        "https://www.sec.gov/Archives/edgar/data/789019/000119312525000099/msft-20241231.htm"
+    )
+    newer_base = (
+        "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm"
+    )
+    assert all(
+        change.older_url.startswith(older_base) and "#:~:text=" in change.older_url
+        and change.newer_url.startswith(newer_base) and "#:~:text=" in change.newer_url
+        for change in result.disclosure_changes
+    )
+
+
+def test_filing_anchor_url_encodes_section_text() -> None:
+    url = "https://www.sec.gov/Archives/edgar/data/789019/msft.htm"
+    anchored = filing_anchor_url(url, "Item 2. Management's Discussion")
+    assert anchored.startswith(url + "#:~:text=")
+    assert "Management" in anchored
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "unknown_accession",
+        "missing_document",
+        "empty_document",
+        "blank_document",
+        "missing_field",
+        "no_submissions",
+    ],
+)
+def test_run_filing_change_refuses_unresolved_document(
+    monkeypatch: pytest.MonkeyPatch, problem: str
+) -> None:
+    facts = _Facts()
+    payload: dict[str, Any] = facts._client.get_submissions(CIK)
+    recent = payload["filings"]["recent"]
+    if problem == "unknown_accession":
+        recent["accessionNumber"][1] = "0001193125-25-000098"
+    elif problem == "missing_field":
+        del recent["primaryDocument"]
+    elif problem == "missing_document":
+        recent["primaryDocument"][1] = None
+    elif problem == "empty_document":
+        recent["primaryDocument"][1] = ""
+    elif problem == "blank_document":
+        recent["primaryDocument"][1] = "   "
+    monkeypatch.setattr(facts._client, "get_submissions", lambda cik: payload)
+    if problem == "no_submissions":
+        monkeypatch.delattr(facts._client, "get_submissions")
+        monkeypatch.delattr(_Client, "get_submissions")
+
+    def unexpected_download(*args: object) -> str:
+        pytest.fail("Unresolved documents must be refused before downloading")
+
+    monkeypatch.setattr(facts, "get_filing_document", unexpected_download)
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert not result.disclosure_changes
+    assert result.tool_traces[0].provenance["error"]
 
 
 def test_numeral_lock_drops_invented_summary_numbers() -> None:
@@ -162,3 +338,19 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
     )
     assert result.essay is None
     assert result.numeral_lock_extras
+
+
+def test_run_filing_change_refuses_when_accessions_are_missing() -> None:
+    result = run_filing_change(
+        SimpleNamespace(
+            intent=Intent.FILING_CHANGE,
+            company="Microsoft",
+            older_accession="",
+            newer_accession="",
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+    )
+    assert result.renderer is RendererKind.REFUSE
+    assert "accession" in (result.message or "").lower()
+    assert not result.disclosure_changes

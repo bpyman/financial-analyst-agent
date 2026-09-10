@@ -11,6 +11,10 @@ isolated browser sessions, thread expiry, and cached SEC responses.
    `APP_MODE=fixture` and `PUBLIC_DEMO=true`.
 4. Confirm the first guided story (`Verify a quarterly fact`) returns a table.
 
+Keep the boolean flags quoted in the secrets template. Streamlit exports top-level
+strings and numbers to environment variables, but not TOML booleans; the app's
+settings read those environment variables.
+
 Local smoke:
 
 ```text

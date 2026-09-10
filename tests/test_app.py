@@ -1,6 +1,7 @@
 """Streamlit submission and multi-turn audience-window behavior."""
 
 import re
+from collections.abc import Iterable
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -150,9 +151,10 @@ class _Streamlit:
         self.link_buttons.append((label, url))
         return False
 
-    def selectbox(self, label: str, options: list[str], *args: Any, **kwargs: Any) -> str:
+    def selectbox(self, label: str, options: Iterable[Any], *args: Any, **kwargs: Any) -> Any:
         values = list(options)
-        self.selectboxes.append((label, values))
+        format_func = kwargs.get("format_func", str)
+        self.selectboxes.append((label, [format_func(value) for value in values]))
         return values[0] if values else ""
 
     def line_chart(self, *args: Any, **kwargs: Any) -> None:
@@ -440,6 +442,55 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     assert fake_streamlit.session_state["history"] == [("prior question", previous)]
     assert fake_streamlit.session_state["turn_in_flight"] is False
     assert fake_streamlit.errors == [app.PUBLIC_FAILURE_MESSAGE]
+
+
+def test_main_persists_quota_reservation_when_turn_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit(chat_values=("What was Google's net income?",))
+    fake_streamlit.session_state["thread_id"] = "thread-quota"
+    store = LocalThreadStore(tmp_path)
+    store.save(
+        ThreadState(
+            thread_id="thread-quota",
+            messages=(ThreadMessage(role="analyst", content="prior"),),
+            turn_count=3,
+            live_sec_requests=4,
+        )
+    )
+
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+
+    def fake_turn(
+        thread_id: str,
+        message: str,
+        runtime: object,
+        *,
+        store: object,
+        **_kwargs: Any,
+    ) -> ConversationTurn:
+        budget = getattr(runtime, "budget", None)
+        if budget is None:
+            raise AssertionError("runtime must carry the session budget")
+        budget.consume_live_sec()
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(
+        app,
+        "runtime_for_kill_switch",
+        lambda **kwargs: SimpleNamespace(budget=kwargs.get("budget"), ranking=None),
+    )
+    monkeypatch.setattr(app, "run_conversation_turn", fake_turn)
+    monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
+
+    app.main()
+
+    saved = LocalThreadStore(tmp_path).load("thread-quota")
+    assert saved is not None
+    assert saved.turn_count == 4
+    assert saved.live_sec_requests == 5
+    assert saved.messages == (ThreadMessage(role="analyst", content="prior"),)
 
 
 def test_main_shows_second_turn_without_replacing_first(

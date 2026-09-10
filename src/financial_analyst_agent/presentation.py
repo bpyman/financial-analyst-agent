@@ -255,7 +255,9 @@ _INTENT_LABELS = {
     "filing_change": "Filing change",
 }
 
-_SELECTION_RULE = "Latest standalone quarterly 10-Q; no year-to-date derivation."
+_LATEST_QUARTER_RULE = "Latest standalone quarterly 10-Q; no year-to-date derivation."
+_SNAPSHOT_RULE = "Universe snapshot market cap; not a 10-Q filing fact."
+_FORMULA_RULE = "Calculated from the listed component facts; no LLM arithmetic."
 
 
 @dataclass(frozen=True)
@@ -329,6 +331,8 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     rows = [row for row in result.table_rows if row.value is not None]
     if table is None or len(rows) < 2:
         return None
+    if len({row.metric for row in rows}) > 1:
+        return None
     periods = {row.end_date for row in rows if row.end_date is not None}
     companies = {row.company_name for row in rows}
     if len(periods) >= 2:
@@ -363,6 +367,31 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     return None
 
 
+def _period_label(start: date | None, end: date | None) -> str:
+    if start is not None and end is not None:
+        return f"{format_date(start)} – {format_date(end)}"
+    if end is not None:
+        return format_date(end)
+    return ""
+
+
+def _selection_rule(row: TableRow) -> str:
+    if row.metric in SNAPSHOT_METRICS:
+        return _SNAPSHOT_RULE
+    if row.components:
+        return _FORMULA_RULE
+    if row.comparison == "yoy":
+        return "Year-over-year change from two standalone periods."
+    if row.comparison == "sequential":
+        return "Sequential change from two standalone periods."
+    if row.form:
+        return (
+            f"Standalone {row.form} fact for the stated period; "
+            "no year-to-date derivation."
+        )
+    return _LATEST_QUARTER_RULE
+
+
 def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
@@ -370,25 +399,64 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         else (row.reason or "")
     )
     raw = str(row.value) if row.value is not None else ""
-    period = ""
-    if row.start_date is not None and row.end_date is not None:
-        period = f"{format_date(row.start_date)} – {format_date(row.end_date)}"
-    elif row.end_date is not None:
-        period = format_date(row.end_date)
+    period = _period_label(row.start_date, row.end_date)
+    concept = row.concept or ""
+    form = row.form or ""
+    accession_number = row.accession_number or ""
+    source_url = row.source_url or ""
+    if row.components and not concept:
+        concept = " / ".join(component.concept for component in row.components)
+        first = row.components[0]
+        form = form or first.form
+        accession_number = accession_number or first.accession_number
+        source_url = source_url or first.source_url
     return EvidenceItem(
-        label=f"{row.company_name} · {_humanize_field(row.metric)}",
+        label=(
+            f"{row.company_name} · {_humanize_field(row.metric)}"
+            + (f" · {period}" if period else "")
+        ),
         amount=amount,
         raw_amount=raw,
         company_name=row.company_name,
         ticker=row.ticker,
         cik=row.cik,
-        concept=row.concept or "",
+        concept=concept,
         period_label=period,
-        accession_number=row.accession_number or "",
-        form=row.form or "",
-        source_url=row.source_url or "",
-        selection_rule=_SELECTION_RULE,
+        accession_number=accession_number,
+        form=form,
+        source_url=source_url,
+        selection_rule=_selection_rule(row),
     )
+
+
+def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
+    period = _period_label(component.start_date, component.end_date)
+    return EvidenceItem(
+        label=(
+            f"{row.company_name} · {_humanize_field(component.metric)}"
+            + (f" · {period}" if period else "")
+        ),
+        amount=format_metric_value(component.metric, component.value),
+        raw_amount=str(component.value),
+        company_name=row.company_name,
+        ticker=row.ticker,
+        cik=row.cik,
+        concept=component.concept,
+        period_label=period,
+        accession_number=component.accession_number,
+        form=component.form,
+        source_url=component.source_url,
+        selection_rule=(
+            f"Standalone {component.form} component fact for the stated period; "
+            "no year-to-date derivation."
+        ),
+    )
+
+
+def _evidence_items(row: TableRow) -> tuple[EvidenceItem, ...]:
+    items = [_evidence_item(row)]
+    items.extend(_evidence_from_component(row, component) for component in row.components)
+    return tuple(items)
 
 
 def present_turn(result: TurnResult) -> Presentation:
@@ -405,7 +473,12 @@ def present_turn(result: TurnResult) -> Presentation:
         fact_card = _fact_card(result.table_rows[0])
     elif result.renderer is RendererKind.TABLE:
         table = _display_table(result.table_rows)
-    evidence = tuple(_evidence_item(row) for row in result.table_rows if row.cik or row.source_url)
+    evidence = tuple(
+        item
+        for row in result.table_rows
+        if row.cik or row.source_url or row.components
+        for item in _evidence_items(row)
+    )
     disclosures = tuple(
         DisplayDisclosure(
             section_label=item.section_label,

@@ -27,7 +27,7 @@ from financial_analyst_agent.evidence_store import (
     retain_result_evidence,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.observability import timed
+from financial_analyst_agent.observability import call_provider, timed
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.thread_store import (
     PendingClarification,
@@ -57,8 +57,11 @@ def _accepts_current_spec(completer: Any) -> bool:
 
 def _complete(completer: Any, message: str, current_spec: AnalysisSpec | None) -> Any:
     if _accepts_current_spec(completer):
-        return completer.complete(message, current_spec=current_spec)
-    return completer.complete(message)
+        return call_provider(
+            "planner",
+            lambda: completer.complete(message, current_spec=current_spec),
+        )
+    return call_provider("planner", lambda: completer.complete(message))
 
 
 class ConversationTurn(BaseModel):
