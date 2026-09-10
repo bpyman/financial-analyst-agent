@@ -601,6 +601,47 @@ def test_main_reloads_thread_history_after_restart(
     ]
 
 
+def test_main_clears_in_memory_history_when_thread_expires(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from datetime import UTC, datetime
+
+    from financial_analyst_agent.evidence_store import retain_result_evidence
+
+    previous = TurnResult(intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.TABLE)
+    store = LocalThreadStore(tmp_path)
+    ref = retain_result_evidence(store.evidence_for("expired"), previous)
+    store.save(
+        ThreadState(
+            thread_id="expired",
+            messages=(ThreadMessage(role="analyst", content="prior question"),),
+            evidence_refs=(ref,),
+            last_result_ref=ref,
+            updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+    )
+    fake_streamlit = _Streamlit(chat_values=(None,))
+    fake_streamlit.session_state["thread_id"] = "expired"
+    fake_streamlit.session_state["history"] = [("prior question", previous)]
+    fake_streamlit.session_state["history_kill_switch"] = True
+    rendered: list[TurnResult] = []
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+    monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
+
+    app.main()
+
+    assert fake_streamlit.session_state["history"] == []
+    assert fake_streamlit.session_state["thread_id"] != "expired"
+    assert rendered == []
+    assert store.load("expired") is None
+
+
 def test_start_over_forgets_persisted_thread_on_reload(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

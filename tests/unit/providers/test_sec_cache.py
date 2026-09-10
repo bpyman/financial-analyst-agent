@@ -182,3 +182,35 @@ def test_concurrent_cold_fills_charge_quota_once(tmp_path: Path) -> None:
     assert results == [{"ok": True}] * 8
     assert inner.calls == ["tickers"]
     assert budget.live_sec_requests == 1
+
+
+def test_concurrent_fills_across_cache_instances_share_one_fetch(tmp_path: Path) -> None:
+    inner = _CountingSource({"ok": True}, {}, {})
+    original = inner.get_company_tickers
+    started = threading.Event()
+
+    def delayed() -> dict[str, Any]:
+        started.set()
+        time.sleep(0.05)
+        return original()
+
+    inner.get_company_tickers = delayed  # type: ignore[method-assign]
+    left = CachingSECDataSource(
+        inner, tmp_path, budget=SessionBudget(max_turns=10, max_live_sec_requests=12)
+    )
+    right = CachingSECDataSource(
+        inner, tmp_path, budget=SessionBudget(max_turns=10, max_live_sec_requests=12)
+    )
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [
+            pool.submit((left if index % 2 == 0 else right).get_company_tickers)
+            for index in range(8)
+        ]
+        assert started.wait(timeout=2)
+        results = [future.result() for future in futures]
+    assert results == [{"ok": True}] * 8
+    assert inner.calls == ["tickers"]
+    assert left._budget is not None
+    assert right._budget is not None
+    assert left._budget.live_sec_requests + right._budget.live_sec_requests == 1
+    assert json.loads((tmp_path / "tickers.json").read_text(encoding="utf-8")) == {"ok": True}

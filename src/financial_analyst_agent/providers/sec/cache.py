@@ -10,6 +10,25 @@ from typing import Any
 
 from financial_analyst_agent.session import SessionBudget
 
+_FILL_LOCKS: dict[str, Lock] = {}
+_FILL_LOCKS_GUARD = Lock()
+
+
+def _lock_for(path: Path) -> Lock:
+    key = str(path.resolve())
+    with _FILL_LOCKS_GUARD:
+        lock = _FILL_LOCKS.get(key)
+        if lock is None:
+            lock = Lock()
+            _FILL_LOCKS[key] = lock
+        return lock
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
 
 class CachingSECDataSource:
     """Cache SEC JSON for one hour and accession-pinned HTML indefinitely."""
@@ -25,8 +44,6 @@ class CachingSECDataSource:
         self._dir = cache_dir
         self._dir.mkdir(parents=True, exist_ok=True)
         self._budget = budget
-        self._fill_locks: dict[str, Lock] = {}
-        self._fill_locks_guard = Lock()
 
     def close(self) -> None:
         close = getattr(self._inner, "close", None)
@@ -56,39 +73,30 @@ class CachingSECDataSource:
         if not callable(getter):
             raise AttributeError("inner SEC source does not fetch filing documents")
         safe = "".join(ch if ch.isalnum() or ch in "-._" else "_" for ch in document)
-        key = f"html-{cik}-{accession}-{safe}"
-        path = self._dir / key
+        path = self._dir / f"html-{cik}-{accession}-{safe}"
         if path.is_file():
             return path.read_text(encoding="utf-8")
-        with self._lock_for(key):
+        with _lock_for(path):
             if path.is_file():
                 return path.read_text(encoding="utf-8")
             if self._budget is not None:
                 self._budget.consume_live_sec()
             text = str(getter(cik, accession, document))
-            path.write_text(text, encoding="utf-8")
+            _write_text_atomic(path, text)
             return text
 
     def _json(self, name: str, fetch: Any) -> object:
         path = self._dir / name
         if self._json_is_fresh(path):
             return json.loads(path.read_text(encoding="utf-8"))
-        with self._lock_for(name):
+        with _lock_for(path):
             if self._json_is_fresh(path):
                 return json.loads(path.read_text(encoding="utf-8"))
             if self._budget is not None:
                 self._budget.consume_live_sec()
             payload = fetch()
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            _write_text_atomic(path, json.dumps(payload))
             return payload
 
     def _json_is_fresh(self, path: Path) -> bool:
         return path.is_file() and time.time() - path.stat().st_mtime < 3600
-
-    def _lock_for(self, key: str) -> Lock:
-        with self._fill_locks_guard:
-            lock = self._fill_locks.get(key)
-            if lock is None:
-                lock = Lock()
-                self._fill_locks[key] = lock
-            return lock

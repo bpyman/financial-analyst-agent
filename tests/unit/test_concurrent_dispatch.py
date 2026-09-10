@@ -7,6 +7,8 @@ progress. Does not assert graph internals. Uses a real temporary store.
 
 from __future__ import annotations
 
+import json
+import logging
 import threading
 import time
 from datetime import date
@@ -220,6 +222,46 @@ def test_session_quota_error_is_not_isolated_as_missing_fact(tmp_path: Path) -> 
             max_workers=4,
         )
     assert store.load("t1") is None
+
+
+def test_worker_provider_logs_include_thread_and_turn(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.observability import call_provider
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    class _LoggedFacts(_SlowFacts):
+        def get_financials(self, company: str, metric: str, *, report_date: date | None = None):
+            return call_provider(
+                "sec",
+                lambda: _SlowFacts.get_financials(
+                    self, company, metric, report_date=report_date
+                ),
+            )
+
+    caplog.set_level(logging.INFO, logger="financial_analyst_agent")
+    store = LocalThreadStore(tmp_path)
+    run_conversation_turn(
+        "t1",
+        "Microsoft revenue and net income for the last four quarters",
+        _runtime(
+            completer=_wide_lookup_completer(),
+            facts=_LoggedFacts(_four_metric_values(), hold_ms=0.01),
+        ),
+        store=store,
+        max_workers=4,
+    )
+    sec_events = []
+    for record in caplog.records:
+        try:
+            event = json.loads(record.message)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("provider") == "sec":
+            sec_events.append(event)
+    assert sec_events
+    assert all(event.get("thread_id") == "t1" and event.get("turn") == 1 for event in sec_events)
 
 
 def test_progress_reports_each_completed_cell(tmp_path: Path) -> None:

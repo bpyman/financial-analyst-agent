@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from datetime import date
+from functools import partial
 from types import SimpleNamespace
 from typing import Any
 
@@ -569,7 +571,10 @@ def dispatch_compiled_tasks(
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(execute_compiled_task, task, runtime, query=query): index
+            pool.submit(
+                copy_context().run,
+                partial(execute_compiled_task, task, runtime, query=query),
+            ): index
             for index, task in enumerate(tasks)
         }
         for future in as_completed(futures):

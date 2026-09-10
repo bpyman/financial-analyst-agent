@@ -406,11 +406,22 @@ def _ensure_thread_and_history(
 ) -> None:
     if "thread_id" not in st.session_state:
         st.session_state["thread_id"] = new_thread_id()
+    thread_id = str(st.session_state["thread_id"])
+    existed = store.load(thread_id) is not None
     store.purge_expired(now=datetime.now(UTC), ttl_seconds=ttl_seconds)
+    state = store.load(thread_id, ttl_seconds=ttl_seconds)
+    if state is None:
+        if existed and st.session_state.get("history"):
+            st.session_state["history"] = []
+            st.session_state.pop("history_kill_switch", None)
+            st.session_state.pop("pending_query", None)
+            st.session_state["thread_id"] = new_thread_id()
+        elif "history" not in st.session_state:
+            st.session_state["history"] = []
+        return
     if "history" in st.session_state:
         return
-    state = store.load(st.session_state["thread_id"], ttl_seconds=ttl_seconds)
-    if state is None or not state.evidence_refs:
+    if not state.evidence_refs:
         st.session_state["history"] = []
         return
     st.session_state["history"] = _history_pairs(state, store)
