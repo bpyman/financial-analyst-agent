@@ -2,7 +2,9 @@
 
 import json
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -158,3 +160,25 @@ def test_accession_pinned_html_does_not_expire(
     assert second.get_filing_document(*args) == "<html>filing</html>"
     assert budget.live_sec_requests == 1
     assert attempts == [args]
+
+
+def test_concurrent_cold_fills_charge_quota_once(tmp_path: Path) -> None:
+    inner = _CountingSource({"ok": True}, {}, {})
+    original = inner.get_company_tickers
+    started = threading.Event()
+
+    def delayed() -> dict[str, Any]:
+        started.set()
+        time.sleep(0.05)
+        return original()
+
+    inner.get_company_tickers = delayed  # type: ignore[method-assign]
+    budget = SessionBudget(max_turns=10, max_live_sec_requests=12)
+    cached = CachingSECDataSource(inner, tmp_path, budget=budget)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(cached.get_company_tickers) for _ in range(8)]
+        assert started.wait(timeout=2)
+        results = [future.result() for future in futures]
+    assert results == [{"ok": True}] * 8
+    assert inner.calls == ["tickers"]
+    assert budget.live_sec_requests == 1

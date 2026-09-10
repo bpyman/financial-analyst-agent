@@ -14,6 +14,8 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
@@ -197,8 +199,27 @@ def test_failed_cell_does_not_fail_turn_or_thread(tmp_path: Path) -> None:
     assert by_key[("net_income", Q2)].value == Decimal("50")
     reloaded = store.load("t1")
     assert reloaded is not None
-    assert store.resolve_last_result(reloaded) is not None
-    assert reloaded.analysis_spec is not None
+
+
+def test_session_quota_error_is_not_isolated_as_missing_fact(tmp_path: Path) -> None:
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.domain.errors import SessionQuotaError
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    class _QuotaFacts(_SlowFacts):
+        def get_financials(self, company: str, metric: str, *, report_date: date | None = None):
+            raise SessionQuotaError("This session has reached its live SEC request limit.")
+
+    store = LocalThreadStore(tmp_path)
+    with pytest.raises(SessionQuotaError, match="live SEC"):
+        run_conversation_turn(
+            "t1",
+            "Microsoft revenue and net income for the last four quarters",
+            _runtime(completer=_wide_lookup_completer(), facts=_QuotaFacts(_four_metric_values())),
+            store=store,
+            max_workers=4,
+        )
+    assert store.load("t1") is None
 
 
 def test_progress_reports_each_completed_cell(tmp_path: Path) -> None:

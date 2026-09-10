@@ -22,4 +22,4 @@ def test_fixture_scorecard_covers_required_categories() -> None:
     assert payload["case_count"] >= 9
     assert payload["pass_rate"] == 1.0
     assert "p50_ms" in payload
-    assert payload["live_cost_usd"] == 0.0
+    assert payload["live_cost_usd"] is None

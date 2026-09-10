@@ -5,14 +5,49 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
+_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "observability_context", default=None
+)
+
+
+def configure_logging() -> None:
+    """Emit INFO structured events in Streamlit and CLI runs."""
+    _LOGGER.setLevel(logging.INFO)
+    if _LOGGER.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    _LOGGER.addHandler(handler)
+
+
+@contextmanager
+def log_context(**fields: Any) -> Iterator[None]:
+    token = bind_log_context(**fields)
+    try:
+        yield
+    finally:
+        reset_log_context(token)
+
+
+def bind_log_context(**fields: Any) -> Any:
+    current = dict(_CONTEXT.get() or {})
+    current.update({key: value for key, value in fields.items() if value is not None})
+    return _CONTEXT.set(current)
+
+
+def reset_log_context(token: Any) -> None:
+    _CONTEXT.reset(token)
 
 
 def log_event(event: str, **fields: Any) -> None:
-    payload = {"event": event, **fields}
+    payload = {**(_CONTEXT.get() or {}), "event": event, **fields}
     _LOGGER.info(json.dumps(payload, default=str))
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from financial_analyst_agent.session import SessionBudget
@@ -24,6 +25,8 @@ class CachingSECDataSource:
         self._dir = cache_dir
         self._dir.mkdir(parents=True, exist_ok=True)
         self._budget = budget
+        self._fill_locks: dict[str, Lock] = {}
+        self._fill_locks_guard = Lock()
 
     def close(self) -> None:
         close = getattr(self._inner, "close", None)
@@ -53,21 +56,39 @@ class CachingSECDataSource:
         if not callable(getter):
             raise AttributeError("inner SEC source does not fetch filing documents")
         safe = "".join(ch if ch.isalnum() or ch in "-._" else "_" for ch in document)
-        path = self._dir / f"html-{cik}-{accession}-{safe}"
+        key = f"html-{cik}-{accession}-{safe}"
+        path = self._dir / key
         if path.is_file():
             return path.read_text(encoding="utf-8")
-        if self._budget is not None:
-            self._budget.consume_live_sec()
-        text = str(getter(cik, accession, document))
-        path.write_text(text, encoding="utf-8")
-        return text
+        with self._lock_for(key):
+            if path.is_file():
+                return path.read_text(encoding="utf-8")
+            if self._budget is not None:
+                self._budget.consume_live_sec()
+            text = str(getter(cik, accession, document))
+            path.write_text(text, encoding="utf-8")
+            return text
 
     def _json(self, name: str, fetch: Any) -> object:
         path = self._dir / name
-        if path.is_file() and time.time() - path.stat().st_mtime < 3600:
+        if self._json_is_fresh(path):
             return json.loads(path.read_text(encoding="utf-8"))
-        if self._budget is not None:
-            self._budget.consume_live_sec()
-        payload = fetch()
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        return payload
+        with self._lock_for(name):
+            if self._json_is_fresh(path):
+                return json.loads(path.read_text(encoding="utf-8"))
+            if self._budget is not None:
+                self._budget.consume_live_sec()
+            payload = fetch()
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            return payload
+
+    def _json_is_fresh(self, path: Path) -> bool:
+        return path.is_file() and time.time() - path.stat().st_mtime < 3600
+
+    def _lock_for(self, key: str) -> Lock:
+        with self._fill_locks_guard:
+            lock = self._fill_locks.get(key)
+            if lock is None:
+                lock = Lock()
+                self._fill_locks[key] = lock
+            return lock

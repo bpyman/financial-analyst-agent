@@ -241,7 +241,7 @@ def run_suite() -> dict[str, Any]:
     payload = {
         "generated_at": datetime.now(UTC).isoformat(),
         "model": "fixture DemoCompleter",
-        "live_cost_usd": 0.0,
+        "live_cost_usd": None,
         "pass_count": pass_count,
         "case_count": len(rows),
         "pass_rate": pass_count / len(rows) if rows else 0.0,
@@ -262,8 +262,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Pass rate: **{payload['pass_count']}/{payload['case_count']}** "
         f"({payload['pass_rate']:.0%})",
         f"- Latency p50 / p95: **{payload['p50_ms']} ms** / **{payload['p95_ms']} ms**",
-        f"- Approximate live cost per scenario: **${payload['live_cost_usd']:.2f}** "
-        "(fixture path; live OpenAI/Tavily is not billed here)",
+        "- Approximate live cost per scenario: **not measured** "
+        "(published card is the fixture path)",
         f"- Planner: `{payload['model']}`",
         "",
         "| Case | Category | Result | ms |",

@@ -38,6 +38,7 @@ _SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
     "risk_factors": re.compile(r"item\s+1a\s*[.:]?\s*risk\s+factors", re.IGNORECASE),
 }
 _NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
+_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
 _SECTION_ALIASES: dict[str, SectionId] = {
     "md&a": "mda",
     "mda": "mda",
@@ -217,7 +218,7 @@ def _tickers_payload(runtime: Runtime) -> dict[str, Any]:
     return payload
 
 
-def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
+def _submissions_recent(runtime: Runtime, cik: str) -> dict[str, Any]:
     facts = runtime.facts
     inner = getattr(facts, "_inner", facts)
     client = getattr(inner, "_client", None)
@@ -230,6 +231,11 @@ def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
     recent = payload["filings"].get("recent")
     if not isinstance(recent, dict):
         raise ProviderError("submissions payload missing filings.recent object")
+    return recent
+
+
+def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
+    recent = _submissions_recent(runtime, cik)
     accessions = recent.get("accessionNumber")
     documents = recent.get("primaryDocument")
     forms = recent.get("form")
@@ -250,11 +256,62 @@ def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
     raise ProviderError(f"Filing accession {accession} was not found in supported submissions")
 
 
-def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
+def _filing_date(recent: dict[str, Any], accession: str) -> str:
+    accessions = recent.get("accessionNumber")
+    if not isinstance(accessions, list):
+        return ""
+    dates = recent.get("reportDate")
+    if not isinstance(dates, list):
+        dates = recent.get("filingDate")
+    if not isinstance(dates, list) or len(dates) != len(accessions):
+        return ""
+    for index, candidate in enumerate(accessions):
+        if candidate == accession:
+            value = dates[index]
+            return value.strip() if isinstance(value, str) else ""
+    return ""
+
+
+def _order_accessions(recent: dict[str, Any], first: str, second: str) -> tuple[str, str]:
+    left = _filing_date(recent, first)
+    right = _filing_date(recent, second)
+    if left and right and left > right:
+        return second, first
+    return first, second
+
+
+def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tuple[str, str]:
+    found = _ACCESSION_PATTERN.findall(query)
+    if query.strip():
+        if len(found) >= 2:
+            return found[0], found[1]
+        return "", ""
+    return plan_older, plan_newer
+
+
+def _section_choice(query: str, fallback: str) -> str:
+    normalized = query.strip().casefold()
+    if not normalized:
+        return fallback
+    if "risk" in normalized and (
+        "md&a" in normalized or "mda" in normalized or "both" in normalized
+    ):
+        return "mda and risk_factors"
+    if "risk" in normalized:
+        return "risk_factors"
+    if "md&a" in normalized or "mda" in normalized or "management discussion" in normalized:
+        return "mda"
+    return fallback
+
+
+def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
     company = str(getattr(plan, "company", "") or "")
-    older = str(getattr(plan, "older_accession", "") or "")
-    newer = str(getattr(plan, "newer_accession", "") or "")
-    sections = parse_sections(str(getattr(plan, "section", "mda")))
+    older, newer = _accessions_from_query(
+        query,
+        str(getattr(plan, "older_accession", "") or ""),
+        str(getattr(plan, "newer_accession", "") or ""),
+    )
+    sections = parse_sections(_section_choice(query, str(getattr(plan, "section", "mda"))))
     traces = [
         ToolTrace(
             tool="filing_change",
@@ -284,7 +341,19 @@ def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
         )
     cik = resolved.cik
     changes: list[DisclosureChange] = []
+    section_errors: list[str] = []
     try:
+        recent = _submissions_recent(runtime, cik)
+        older, newer = _order_accessions(recent, older, newer)
+        traces[0] = traces[0].model_copy(
+            update={
+                "args": {
+                    **traces[0].args,
+                    "older_accession": older,
+                    "newer_accession": newer,
+                }
+            }
+        )
         for section in sections:
             older_doc = _primary_document(runtime, cik, older)
             newer_doc = _primary_document(runtime, cik, newer)
@@ -295,13 +364,7 @@ def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
             older_section = extract_section(older_html, section)
             newer_section = extract_section(newer_html, section)
             if not older_section or not newer_section:
-                traces[0] = traces[0].model_copy(
-                    update={
-                        "provenance": {
-                            "error": f"Reviewed section {SECTION_LABELS[section]} was not found"
-                        }
-                    }
-                )
+                section_errors.append(f"{SECTION_LABELS[section]} was not found")
                 continue
             changes.extend(
                 diff_paragraphs(
@@ -331,16 +394,24 @@ def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
             renderer=RendererKind.REFUSE,
             message="No reviewed-section changes were found between those filings.",
         )
+    banners: list[str] = []
     traces[0] = traces[0].model_copy(
-        update={"provenance": {"change_count": len(changes), "cik": cik}}
+        update={
+            "provenance": {
+                "change_count": len(changes),
+                "cik": cik,
+                **({"section_errors": section_errors} if section_errors else {}),
+            }
+        }
     )
+    if section_errors:
+        banners.append("Partial filing change: " + "; ".join(section_errors) + ".")
     grounding = json.dumps(
         [item.model_dump(mode="json") for item in changes],
         default=str,
     )
     essay = None
     extras: list[str] = []
-    banners: list[str] = []
     if runtime.essay is not None and getattr(plan, "summarize", False):
         from financial_analyst_agent.turn import _numeral_lock_extras
 
@@ -354,7 +425,7 @@ def run_filing_change(plan: Any, runtime: Runtime) -> TurnResult:
                 "llm", lambda: essay_completer.complete_essay(topic, grounding)
             )
             extras = _numeral_lock_extras(essay, grounding)
-            banners = [MODEL_ANALYSIS_BANNER]
+            banners.append(MODEL_ANALYSIS_BANNER)
             if extras:
                 essay = None
         except ProviderError:

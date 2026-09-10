@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 
 from financial_analyst_agent.domain.errors import SessionQuotaError
 from financial_analyst_agent.presentation import format_datetime_utc, try_parse_datetime
@@ -21,6 +22,7 @@ class SessionBudget:
         self.max_live_sec_requests = max_live_sec_requests
         self.turns = 0
         self.live_sec_requests = 0
+        self._lock = Lock()
 
     @classmethod
     def from_counts(
@@ -37,19 +39,21 @@ class SessionBudget:
         return budget
 
     def consume_turn(self) -> None:
-        if self.turns >= self.max_turns:
-            raise SessionQuotaError(
-                "This session has reached its turn limit. Start over to continue."
-            )
-        self.turns += 1
+        with self._lock:
+            if self.turns >= self.max_turns:
+                raise SessionQuotaError(
+                    "This session has reached its turn limit. Start over to continue."
+                )
+            self.turns += 1
 
     def consume_live_sec(self) -> None:
-        if self.live_sec_requests >= self.max_live_sec_requests:
-            raise SessionQuotaError(
-                "This session has reached its live SEC request limit. "
-                "Retry later or use recorded demo data."
-            )
-        self.live_sec_requests += 1
+        with self._lock:
+            if self.live_sec_requests >= self.max_live_sec_requests:
+                raise SessionQuotaError(
+                    "This session has reached its live SEC request limit. "
+                    "Retry later or use recorded demo data."
+                )
+            self.live_sec_requests += 1
 
 
 def snapshot_status(

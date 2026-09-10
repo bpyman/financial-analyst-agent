@@ -71,6 +71,7 @@ class _Streamlit:
         self.selectboxes: list[tuple[str, list[str]]] = []
         self.charts: list[str] = []
         self.link_buttons: list[tuple[str, str]] = []
+        self.button_disabled: list[tuple[str, bool]] = []
         self.pills: list[object] = []
         self.warnings: list[str] = []
 
@@ -143,6 +144,7 @@ class _Streamlit:
     def button(self, *args: Any, **kwargs: Any) -> bool:
         label = str(args[0]) if args else str(kwargs.get("label", ""))
         self.buttons.append(label)
+        self.button_disabled.append((label, bool(kwargs.get("disabled", False))))
         if label == "Start over":
             return next(self._start_over_values, False)
         return False
@@ -240,7 +242,7 @@ def _patch_main_shell(
 
 
 def _capture_renders(rendered: list[TurnResult]):
-    def capture(result: TurnResult, *, turn_index: int = 0) -> None:
+    def capture(result: TurnResult, *, turn_index: int = 0, **_kwargs: Any) -> None:
         rendered.append(result)
 
     return capture
@@ -731,6 +733,27 @@ def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None
     assert "Gross profit" in fake_streamlit.buttons
     assert "Operating income" in fake_streamlit.buttons
     assert "Net income" in fake_streamlit.buttons
+
+
+def test_historical_clarification_buttons_are_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    monkeypatch.setattr(app, "st", fake_streamlit)
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=("gross_profit", "operating_income", "net_income"),
+    )
+
+    app.render_turn_result(result, turn_index=0, clarify_enabled=False)
+
+    assert fake_streamlit.button_disabled == [
+        ("Gross profit", True),
+        ("Operating income", True),
+        ("Net income", True),
+    ]
 
 
 def test_render_table_configures_source_url_as_filing_link(

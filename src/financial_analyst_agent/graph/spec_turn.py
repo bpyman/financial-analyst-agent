@@ -23,6 +23,7 @@ from financial_analyst_agent.contracts import (
 from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
     ProviderError,
+    SessionQuotaError,
     UnknownIndustryError,
 )
 from financial_analyst_agent.graph.analysis_spec import (
@@ -555,6 +556,8 @@ def dispatch_compiled_tasks(
         for index, task in enumerate(tasks):
             try:
                 results.append(execute_compiled_task(task, runtime, query=query))
+            except SessionQuotaError:
+                raise
             except Exception as exc:
                 results.append(_task_failure_result(task, exc))
             if on_progress is not None:
@@ -573,6 +576,8 @@ def dispatch_compiled_tasks(
             index = futures[future]
             try:
                 ordered[index] = future.result()
+            except SessionQuotaError:
+                raise
             except Exception as exc:
                 ordered[index] = _task_failure_result(tasks[index], exc)
             done += 1

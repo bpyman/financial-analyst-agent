@@ -751,3 +751,47 @@ def test_single_metric_trend_preserves_each_period_value() -> None:
         {"Period": "Mar 31, 2025", "Microsoft": 1000000000.0},
         {"Period": "Mar 31, 2026", "Microsoft": 2000000000.0},
     )
+
+
+def test_trend_chart_excludes_period_change_rows() -> None:
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("150"),
+                end_date=date(2026, 3, 31),
+            ),
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("100"),
+                end_date=date(2025, 3, 31),
+            ),
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("50"),
+                end_date=date(2026, 3, 31),
+                comparison="yoy",
+            ),
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.records == (
+        {"Period": "Mar 31, 2026", "Microsoft": 150.0},
+        {"Period": "Mar 31, 2025", "Microsoft": 100.0},
+    )

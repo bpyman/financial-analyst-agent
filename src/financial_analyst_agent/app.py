@@ -13,6 +13,7 @@ import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 from financial_analyst_agent.config import AppMode, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.domain.errors import ConfigurationError, SessionQuotaError
+from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import (
     DisplayTable,
     Presentation,
@@ -22,9 +23,11 @@ from financial_analyst_agent.presentation import (
     present_turn,
     spec_chips,
 )
+from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_FILING_NEWER,
     FIXTURE_FILING_OLDER,
+    FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     runtime_for_kill_switch,
 )
 from financial_analyst_agent.session import SessionBudget, new_thread_id, snapshot_status
@@ -105,8 +108,15 @@ def thread_store_root() -> Path:
     return Path(".cache") / "threads"
 
 
-def render_turn_result(result: TurnResult, *, turn_index: int = 0) -> None:
-    _render_presentation(present_turn(result), result=result, turn_index=turn_index)
+def render_turn_result(
+    result: TurnResult, *, turn_index: int = 0, clarify_enabled: bool = True
+) -> None:
+    _render_presentation(
+        present_turn(result),
+        result=result,
+        turn_index=turn_index,
+        clarify_enabled=clarify_enabled,
+    )
 
 
 def _render_presentation(
@@ -114,6 +124,7 @@ def _render_presentation(
     *,
     result: TurnResult | None = None,
     turn_index: int = 0,
+    clarify_enabled: bool = True,
 ) -> None:
     st.badge(presented.intent_label or presented.intent, color="blue")
     if presented.chart is not None:
@@ -138,7 +149,11 @@ def _render_presentation(
             st.info("Ambiguous metric. Choose one of these names.")
         slugs = result.candidates if result is not None else presented.candidates
         for slug, label in zip(slugs, presented.candidates, strict=False):
-            if st.button(label, key=f"clarify-{turn_index}-{slug}"):
+            if st.button(
+                label,
+                key=f"clarify-{turn_index}-{slug}",
+                disabled=not clarify_enabled,
+            ):
                 st.session_state["pending_query"] = slug
                 st.rerun()
     elif presented.message is not None:
@@ -413,14 +428,22 @@ def _start_over(store: LocalThreadStore) -> None:
     st.session_state.pop("pending_query", None)
 
 
-def _render_history() -> None:
+def _render_history(store: LocalThreadStore) -> None:
     history: list[tuple[str, TurnResult]] = list(st.session_state.get("history") or [])
+    thread_id = str(st.session_state.get("thread_id") or "")
+    state = store.load(thread_id) if thread_id else None
+    pending = state is not None and state.pending_clarification is not None
+    last_index = len(history) - 1
     with st.container(height="stretch", autoscroll=True):
         for index, (message, result) in enumerate(history):
             with st.chat_message("user"):
                 st.markdown(message)
             with st.chat_message("assistant"):
-                render_turn_result(result, turn_index=index)
+                render_turn_result(
+                    result,
+                    turn_index=index,
+                    clarify_enabled=pending and index == last_index,
+                )
 
 
 def _render_guided_stories() -> None:
@@ -470,6 +493,7 @@ def _render_spec_chips(store: LocalThreadStore) -> None:
 
 
 def main() -> None:
+    configure_logging()
     st.set_page_config(
         page_title="Financial analyst agent",
         page_icon=":material/query_stats:",
@@ -513,17 +537,17 @@ def main() -> None:
         st.session_state["history"] = []
         st.session_state.pop("history_kill_switch", None)
 
-    ranking_runtime = runtime_for_kill_switch(enabled=kill_switch, settings=settings)
-    ranking = getattr(ranking_runtime, "ranking", None)
-    if ranking is not None:
-        banner, stale = snapshot_status(
-            ranking.snapshot_as_of(),
-            stale_after_days=settings.snapshot_stale_after_days,
-        )
-        if stale:
-            st.warning(banner)
-        else:
-            st.caption(banner)
+    ranking = SnapshotRanking.from_path(
+        FIXTURE_UNIVERSE_SNAPSHOT_PATH if kill_switch else None
+    )
+    banner, stale = snapshot_status(
+        ranking.snapshot_as_of(),
+        stale_after_days=settings.snapshot_stale_after_days,
+    )
+    if stale:
+        st.warning(banner)
+    else:
+        st.caption(banner)
 
     if not st.session_state.get("history"):
         _render_guided_stories()
@@ -597,7 +621,7 @@ def main() -> None:
                     _persist_session_budget(store, thread_id, budget)
                 st.session_state["turn_in_flight"] = False
 
-    _render_history()
+    _render_history(store)
 
 
 if __name__ == "__main__":

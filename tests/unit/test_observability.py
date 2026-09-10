@@ -45,3 +45,9 @@ def test_explain_turn_logs_planner_and_llm_timing(caplog: pytest.LogCaptureFixtu
     assert "conversation_turn" in names
     assert "planner" in providers
     assert "llm" in providers
+    assert any(
+        event.get("event") == "provider"
+        and event.get("thread_id") == "ephemeral"
+        and event.get("turn") == 1
+        for event in _events(caplog)
+    )

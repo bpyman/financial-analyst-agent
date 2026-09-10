@@ -328,7 +328,11 @@ def _period_key(row: TableRow) -> str:
 
 
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
-    rows = [row for row in result.table_rows if row.value is not None]
+    rows = [
+        row
+        for row in result.table_rows
+        if row.value is not None and row.comparison is None
+    ]
     if table is None or len(rows) < 2:
         return None
     if len({row.metric for row in rows}) > 1:

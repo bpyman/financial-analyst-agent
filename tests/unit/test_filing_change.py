@@ -354,3 +354,74 @@ def test_run_filing_change_refuses_when_accessions_are_missing() -> None:
     assert result.renderer is RendererKind.REFUSE
     assert "accession" in (result.message or "").lower()
     assert not result.disclosure_changes
+
+
+def test_run_filing_change_orders_accessions_by_report_date() -> None:
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=NEWER,
+            newer_accession=OLDER,
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+    )
+    assert result.renderer is RendererKind.TABLE
+    assert {item.older_accession for item in result.disclosure_changes} == {OLDER}
+    assert {item.newer_accession for item in result.disclosure_changes} == {NEWER}
+
+
+def test_run_filing_change_uses_query_accessions_not_plan() -> None:
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession="0000000000-00-000000",
+            newer_accession="1111111111-11-111111",
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        query=f"What changed in Microsoft's MD&A between {OLDER} and {NEWER}?",
+    )
+    assert result.renderer is RendererKind.TABLE
+    assert {item.older_accession for item in result.disclosure_changes} == {OLDER}
+
+
+def test_run_filing_change_refuses_planner_accessions_absent_from_query() -> None:
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        query="What changed in Microsoft's MD&A",
+    )
+    assert result.renderer is RendererKind.REFUSE
+    assert "accession" in (result.message or "").lower()
+
+
+def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
+    import financial_analyst_agent.filing_change as filing_change
+
+    original = filing_change.extract_section
+
+    def missing_risk(html: str, section: str) -> str:
+        if section == "risk_factors":
+            return ""
+        return original(html, section)
+
+    monkeypatch.setattr(filing_change, "extract_section", missing_risk)
+    result = filing_change.run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="mda and risk_factors",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+    )
+    assert result.renderer is RendererKind.TABLE
+    assert {item.section for item in result.disclosure_changes} == {"mda"}
+    assert result.tool_traces[0].provenance["section_errors"] == ["Risk Factors was not found"]
+    assert any("Partial filing change" in banner for banner in result.banners)

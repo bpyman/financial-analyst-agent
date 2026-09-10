@@ -107,7 +107,7 @@ def _filing_change_node(state: WorkflowRunState) -> dict[str, TurnResult]:
 
     plan = state["plan"]
     action = getattr(plan, "action", plan)
-    return {"result": run_filing_change(action, state["runtime"])}
+    return {"result": run_filing_change(action, state["runtime"], query=state.get("query", ""))}
 
 
 def _build_workflow_graph() -> Any:
