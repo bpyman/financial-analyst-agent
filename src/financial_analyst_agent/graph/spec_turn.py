@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from datetime import date
+from functools import partial
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,6 +25,7 @@ from financial_analyst_agent.contracts import (
 from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
     ProviderError,
+    SessionQuotaError,
     UnknownIndustryError,
 )
 from financial_analyst_agent.graph.analysis_spec import (
@@ -394,6 +397,16 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
     )
 
 
+def is_filing_change_proposal(proposal: Any) -> bool:
+    if isinstance(proposal, SpecPatch):
+        return False
+    intent = getattr(proposal, "intent", None)
+    if intent == Intent.FILING_CHANGE:
+        return True
+    action = getattr(proposal, "action", None)
+    return getattr(action, "intent", None) == Intent.FILING_CHANGE
+
+
 def is_qualitative_proposal(proposal: Any) -> bool:
     if isinstance(proposal, SpecPatch):
         return False
@@ -545,6 +558,8 @@ def dispatch_compiled_tasks(
         for index, task in enumerate(tasks):
             try:
                 results.append(execute_compiled_task(task, runtime, query=query))
+            except SessionQuotaError:
+                raise
             except Exception as exc:
                 results.append(_task_failure_result(task, exc))
             if on_progress is not None:
@@ -556,13 +571,18 @@ def dispatch_compiled_tasks(
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(execute_compiled_task, task, runtime, query=query): index
+            pool.submit(
+                copy_context().run,
+                partial(execute_compiled_task, task, runtime, query=query),
+            ): index
             for index, task in enumerate(tasks)
         }
         for future in as_completed(futures):
             index = futures[future]
             try:
                 ordered[index] = future.result()
+            except SessionQuotaError:
+                raise
             except Exception as exc:
                 ordered[index] = _task_failure_result(tasks[index], exc)
             done += 1

@@ -220,6 +220,10 @@ class Presentation:
     essay: str | None
     message: str | None
     candidates: tuple[str, ...]
+    intent_label: str = ""
+    chart: ChartSpec | None = None
+    evidence: tuple[EvidenceItem, ...] = ()
+    disclosures: tuple[DisplayDisclosure, ...] = ()
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -240,6 +244,225 @@ def metric_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
     )
 
 
+_INTENT_LABELS = {
+    "lookup": "Quarterly lookup",
+    "compare": "Comparison",
+    "rank": "Industry ranking",
+    "rank_and_lookup": "Rank and lookup",
+    "explain": "Qualitative analysis",
+    "news_and_explain": "Current events",
+    "exploratory_research": "Exploratory research",
+    "filing_change": "Filing change",
+}
+
+_LATEST_QUARTER_RULE = "Latest standalone quarterly 10-Q; no year-to-date derivation."
+_SNAPSHOT_RULE = "Universe snapshot market cap; not a 10-Q filing fact."
+_FORMULA_RULE = "Calculated from the listed component facts; no LLM arithmetic."
+
+
+@dataclass(frozen=True)
+class ChartSpec:
+    kind: str
+    title: str
+    records: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True)
+class EvidenceItem:
+    label: str
+    amount: str
+    raw_amount: str
+    company_name: str
+    ticker: str
+    cik: str
+    concept: str
+    period_label: str
+    accession_number: str
+    form: str
+    source_url: str
+    selection_rule: str
+
+
+@dataclass(frozen=True)
+class DisplayDisclosure:
+    section_label: str
+    change_kind: str
+    before_text: str
+    after_text: str
+    older_accession: str
+    newer_accession: str
+    older_url: str
+    newer_url: str
+
+
+def intent_label(intent: str) -> str:
+    return _INTENT_LABELS.get(intent, _humanize_field(intent))
+
+
+def spec_chips(spec: Any) -> tuple[str, ...]:
+    """Compact labels for the active analysis spec."""
+    chips: list[str] = []
+    companies = getattr(spec, "companies", ())
+    for company in companies:
+        chips.append(company.ticker or company.name)
+    constituents = getattr(spec, "constituents", None)
+    if constituents is not None:
+        chips.append(f"{constituents.industry} top {constituents.limit}")
+    for metric in getattr(spec, "metrics", ()):
+        chips.append(_humanize_field(str(metric)))
+    periods = getattr(spec, "periods", None)
+    if periods is not None:
+        if getattr(periods, "kind", "") == "last_n_quarters":
+            chips.append(f"Last {periods.count} quarters")
+        else:
+            chips.append("Latest quarter")
+    for operation in getattr(spec, "operations", ()):
+        chips.append(_humanize_field(str(operation)))
+    return tuple(chips)
+
+
+def _period_key(row: TableRow) -> str:
+    if row.end_date is None:
+        return ""
+    return format_date(row.end_date)
+
+
+def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
+    rows = [
+        row
+        for row in result.table_rows
+        if row.value is not None and row.comparison is None
+    ]
+    if table is None or len(rows) < 2:
+        return None
+    if len({row.metric for row in rows}) > 1:
+        return None
+    periods = {row.end_date for row in rows if row.end_date is not None}
+    companies = {row.company_name for row in rows}
+    if len(periods) >= 2:
+        records = tuple(
+            {
+                "Period": _period_key(row),
+                row.company_name: float(row.value) if row.value is not None else None,
+            }
+            for row in rows
+        )
+        merged: dict[str, dict[str, object]] = {}
+        for record in records:
+            period = str(record["Period"])
+            bucket = merged.setdefault(period, {"Period": period})
+            for key, value in record.items():
+                if key != "Period":
+                    bucket[key] = value
+        return ChartSpec(kind="line", title="Trend", records=tuple(merged[key] for key in merged))
+    if len(companies) >= 2:
+        records = tuple(
+            {
+                "Company": row.ticker or row.company_name,
+                "Value": float(row.value) if row.value is not None else None,
+            }
+            for row in rows
+        )
+        return ChartSpec(
+            kind="bar",
+            title="Comparison",
+            records=tuple(dict(record) for record in records),
+        )
+    return None
+
+
+def _period_label(start: date | None, end: date | None) -> str:
+    if start is not None and end is not None:
+        return f"{format_date(start)} – {format_date(end)}"
+    if end is not None:
+        return format_date(end)
+    return ""
+
+
+def _selection_rule(row: TableRow) -> str:
+    if row.metric in SNAPSHOT_METRICS:
+        return _SNAPSHOT_RULE
+    if row.components:
+        return _FORMULA_RULE
+    if row.comparison == "yoy":
+        return "Year-over-year change from two standalone periods."
+    if row.comparison == "sequential":
+        return "Sequential change from two standalone periods."
+    if row.form:
+        return (
+            f"Standalone {row.form} fact for the stated period; "
+            "no year-to-date derivation."
+        )
+    return _LATEST_QUARTER_RULE
+
+
+def _evidence_item(row: TableRow) -> EvidenceItem:
+    amount = (
+        format_metric_value(row.metric, row.value)
+        if row.value is not None
+        else (row.reason or "")
+    )
+    raw = str(row.value) if row.value is not None else ""
+    period = _period_label(row.start_date, row.end_date)
+    concept = row.concept or ""
+    form = row.form or ""
+    accession_number = row.accession_number or ""
+    source_url = row.source_url or ""
+    if row.components and not concept:
+        concept = " / ".join(component.concept for component in row.components)
+        first = row.components[0]
+        form = form or first.form
+        accession_number = accession_number or first.accession_number
+        source_url = source_url or first.source_url
+    return EvidenceItem(
+        label=(
+            f"{row.company_name} · {_humanize_field(row.metric)}"
+            + (f" · {period}" if period else "")
+        ),
+        amount=amount,
+        raw_amount=raw,
+        company_name=row.company_name,
+        ticker=row.ticker,
+        cik=row.cik,
+        concept=concept,
+        period_label=period,
+        accession_number=accession_number,
+        form=form,
+        source_url=source_url,
+        selection_rule=_selection_rule(row),
+    )
+
+
+def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
+    period = _period_label(component.start_date, component.end_date)
+    return EvidenceItem(
+        label=(
+            f"{row.company_name} · {_humanize_field(component.metric)}"
+            + (f" · {period}" if period else "")
+        ),
+        amount=format_metric_value(component.metric, component.value),
+        raw_amount=str(component.value),
+        company_name=row.company_name,
+        ticker=row.ticker,
+        cik=row.cik,
+        concept=component.concept,
+        period_label=period,
+        accession_number=component.accession_number,
+        form=component.form,
+        source_url=component.source_url,
+        selection_rule=(
+            f"Standalone {component.form} component fact for the stated period; "
+            "no year-to-date derivation."
+        ),
+    )
+
+
+def _evidence_items(row: TableRow) -> tuple[EvidenceItem, ...]:
+    items = [_evidence_item(row)]
+    items.extend(_evidence_from_component(row, component) for component in row.components)
+    return tuple(items)
+
+
 def present_turn(result: TurnResult) -> Presentation:
     fact_card = None
     table = None
@@ -254,8 +477,28 @@ def present_turn(result: TurnResult) -> Presentation:
         fact_card = _fact_card(result.table_rows[0])
     elif result.renderer is RendererKind.TABLE:
         table = _display_table(result.table_rows)
+    evidence = tuple(
+        item
+        for row in result.table_rows
+        if row.cik or row.source_url or row.components
+        for item in _evidence_items(row)
+    )
+    disclosures = tuple(
+        DisplayDisclosure(
+            section_label=item.section_label,
+            change_kind=item.change_kind,
+            before_text=item.before_text,
+            after_text=item.after_text,
+            older_accession=item.older_accession,
+            newer_accession=item.newer_accession,
+            older_url=item.older_url,
+            newer_url=item.newer_url,
+        )
+        for item in result.disclosure_changes
+    )
     return Presentation(
         intent=result.intent.value,
+        intent_label=intent_label(result.intent.value),
         banners=tuple(_format_banner(banner) for banner in result.banners),
         traces=tuple(_display_trace(trace) for trace in result.tool_traces),
         citations=tuple(
@@ -263,6 +506,9 @@ def present_turn(result: TurnResult) -> Presentation:
         ),
         fact_card=fact_card,
         table=table,
+        chart=_chart_spec(result, table),
+        evidence=evidence,
+        disclosures=disclosures,
         essay=result.essay,
         message=result.message if result.renderer is not RendererKind.CLARIFY else None,
         candidates=tuple(_humanize_field(name) for name in result.candidates),

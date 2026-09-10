@@ -13,6 +13,12 @@ def _accession_path_segment(accession_number: str) -> str:
     return accession_number.replace("-", "")
 
 
+def build_filing_document_url(cik: str, accession_number: str, document: str) -> str:
+    cik_segment = _cik_path_segment(cik)
+    accession_segment = _accession_path_segment(accession_number)
+    return f"{_SEC_ARCHIVES_BASE}/{cik_segment}/{accession_segment}/{document}"
+
+
 def build_filing_source_url(cik: str, filing: Filing) -> str:
     """
     Build a continuous URL to the filing's primary HTML document.

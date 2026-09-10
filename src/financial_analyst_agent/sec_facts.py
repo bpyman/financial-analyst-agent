@@ -183,3 +183,9 @@ class SecFactLookup:
         submissions_payload = self._cached_submissions(resolved.cik)
         filings = parse_submissions(submissions_payload)
         return tuple(list_quarterly_report_dates(filings, limit=limit))
+
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
+        getter = getattr(self._client, "get_filing_document", None)
+        if not callable(getter):
+            raise ProviderError("Filing documents are not available on this SEC source")
+        return str(getter(cik, accession, document))

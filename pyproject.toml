@@ -1,7 +1,7 @@
 [project]
 name = "financial-analyst-agent"
 version = "0.1.0"
-description = "Financial analyst agent POC"
+description = "Evidence-first financial research agent: SEC XBRL facts, constrained planning, numeral-locked answers"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=2.12.0",
@@ -56,5 +56,5 @@ pythonpath = ["src", "tests"]
 addopts = "-m 'not network'"
 markers = [
     "network: tests that require live network access",
-    "gold: rehearsal prompts for Thursday (fixture kill-switch path)",
+    "gold: fixture-path rehearsal prompts for the public demo scripts",
 ]

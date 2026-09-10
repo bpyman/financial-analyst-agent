@@ -1,6 +1,8 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import pytest
+
 from financial_analyst_agent.presentation import (
     format_date,
     format_datetime_utc,
@@ -263,6 +265,59 @@ def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
     assert card.accession_number == "0001594805-26-000012"
     assert card.concept == "NetIncomeLoss / RevenueFromContractWithCustomerExcludingAssessedTax"
     assert card.source_url.endswith("shop.htm")
+    evidence = presented.evidence
+    assert len(evidence) == 3
+    derived, net_income, revenue = evidence
+    assert derived.concept == (
+        "NetIncomeLoss / RevenueFromContractWithCustomerExcludingAssessedTax"
+    )
+    assert derived.accession_number == "0001594805-26-000012"
+    assert derived.form == "10-Q"
+    assert "component" in derived.selection_rule.lower()
+    assert net_income.concept == "NetIncomeLoss"
+    assert net_income.raw_amount == "100"
+    assert net_income.accession_number == "0001594805-26-000012"
+    assert net_income.source_url.endswith("shop.htm")
+    assert revenue.concept == "RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert revenue.raw_amount == "1000"
+
+
+def test_evidence_inspector_uses_row_specific_selection_rules() -> None:
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Eli Lilly and Company",
+                ticker="LLY",
+                cik="0000059478",
+                metric="market_cap",
+                value=Decimal("800000000000"),
+                currency="USD",
+            ),
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("70000000000"),
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 3, 31),
+                form="10-Q",
+                accession_number="0001193125-25-000099",
+                concept="RevenueFromContractWithCustomerExcludingAssessedTax",
+                source_url="https://www.sec.gov/Archives/edgar/data/789019/old.htm",
+            ),
+        ],
+    )
+    presented = present_turn(result)
+    market_cap, quarter = presented.evidence
+    assert "snapshot" in market_cap.selection_rule.lower()
+    assert "Latest standalone quarterly 10-Q" not in market_cap.selection_rule
+    assert "Latest standalone quarterly 10-Q" not in quarter.selection_rule
+    assert "10-Q" in quarter.selection_rule
+    assert "stated period" in quarter.selection_rule
 
 
 def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
@@ -636,3 +691,107 @@ def test_metric_groups_split_reported_from_calculated() -> None:
         "Interest coverage",
     )
     assert groups["Daily snapshot (FMP)"] == ("Market cap",)
+
+
+@pytest.mark.parametrize("across_periods", [True, False])
+def test_mixed_metrics_keep_the_table_without_a_misleading_chart(across_periods: bool) -> None:
+    rows = [
+        TableRow(
+            company_name=company,
+            ticker=ticker,
+            cik=cik,
+            metric=metric,
+            value=Decimal(value),
+            end_date=period,
+        )
+        for company, ticker, cik, period in (
+            ("Microsoft", "MSFT", "0000789019", date(2025, 3, 31)),
+            (
+                "Microsoft" if across_periods else "Apple",
+                "MSFT" if across_periods else "AAPL",
+                "0000789019" if across_periods else "0000320193",
+                date(2026, 3, 31) if across_periods else date(2025, 3, 31),
+            ),
+        )
+        for metric, value in (("revenue", "1000000000"), ("net_margin", "0.25"))
+    ]
+    result = TurnResult(
+        intent=Intent.COMPARE, renderer=RendererKind.TABLE, table_rows=rows, tool_traces=[]
+    )
+
+    presented = present_turn(result)
+
+    assert presented.table is not None
+    assert len(presented.table.rows) == 4
+    assert presented.chart is None
+
+
+def test_single_metric_trend_preserves_each_period_value() -> None:
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name="Microsoft", ticker="MSFT", cik="0000789019",
+                metric="revenue", value=Decimal(value), end_date=period,
+            )
+            for period, value in (
+                (date(2025, 3, 31), "1000000000"),
+                (date(2026, 3, 31), "2000000000"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.records == (
+        {"Period": "Mar 31, 2025", "Microsoft": 1000000000.0},
+        {"Period": "Mar 31, 2026", "Microsoft": 2000000000.0},
+    )
+
+
+def test_trend_chart_excludes_period_change_rows() -> None:
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("150"),
+                end_date=date(2026, 3, 31),
+            ),
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("100"),
+                end_date=date(2025, 3, 31),
+            ),
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("50"),
+                end_date=date(2026, 3, 31),
+                comparison="yoy",
+            ),
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.records == (
+        {"Period": "Mar 31, 2026", "Microsoft": 150.0},
+        {"Period": "Mar 31, 2025", "Microsoft": 100.0},
+    )

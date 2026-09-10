@@ -105,7 +105,7 @@ def test_thread_state_references_evidence_by_id_not_inline_results(tmp_path: Pat
 
     state = store.load("t1")
     assert state is not None
-    dumped = state.model_dump()
+    dumped = state.model_dump(mode="json")
     assert "evidence_refs" in dumped
     assert state.evidence_refs
     # Checkpoint stays small: no copied table rows / tool traces on thread state.

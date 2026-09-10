@@ -1,0 +1,441 @@
+"""Accession-pinned filing-section comparison. The model does not pick filings or rewrite diffs."""
+
+from __future__ import annotations
+
+import json
+import re
+from difflib import SequenceMatcher
+from html.parser import HTMLParser
+from typing import Any, Literal
+from urllib.parse import quote
+
+from financial_analyst_agent.contracts import (
+    MODEL_ANALYSIS_BANNER,
+    DisclosureChange,
+    Intent,
+    RendererKind,
+    Runtime,
+    ToolTrace,
+    TurnResult,
+)
+from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.observability import call_provider
+from financial_analyst_agent.providers.sec.company_resolver import resolve_company
+from financial_analyst_agent.providers.sec.urls import build_filing_document_url
+
+SectionId = Literal["mda", "risk_factors"]
+
+REVIEWED_SECTIONS: tuple[SectionId, ...] = ("mda", "risk_factors")
+SECTION_LABELS: dict[SectionId, str] = {
+    "mda": "Management's Discussion and Analysis",
+    "risk_factors": "Risk Factors",
+}
+_SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
+    "mda": re.compile(
+        r"item\s+(?:2|7)\s*[.:]?\s*management['’]?s?\s+discussion",
+        re.IGNORECASE,
+    ),
+    "risk_factors": re.compile(r"item\s+1a\s*[.:]?\s*risk\s+factors", re.IGNORECASE),
+}
+_NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
+_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
+_SECTION_ALIASES: dict[str, SectionId] = {
+    "md&a": "mda",
+    "mda": "mda",
+    "management's discussion": "mda",
+    "management discussion": "mda",
+    "risk factors": "risk_factors",
+    "risk factor": "risk_factors",
+    "risk_factors": "risk_factors",
+}
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._skip = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self._skip = True
+        if tag in {"p", "div", "br", "tr", "h1", "h2", "h3", "h4"}:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"}:
+            self._skip = False
+        if tag in {"p", "div", "h1", "h2", "h3", "h4"}:
+            self._chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip:
+            self._chunks.append(data)
+
+    def text(self) -> str:
+        return "".join(self._chunks)
+
+
+def filing_anchor_url(url: str, snippet: str) -> str:
+    """Point a filing URL at the reviewed section or changed paragraph."""
+    text = " ".join(snippet.split())
+    if not url or not text:
+        return url
+    if "#:~:text=" in url:
+        return url
+    return f"{url}#:~:text={quote(text[:96], safe='')}"
+
+
+def html_to_text(html: str) -> str:
+    parser = _TextExtractor()
+    parser.feed(html)
+    lines = [" ".join(line.split()) for line in parser.text().splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def extract_section(html: str, section: SectionId) -> str:
+    text = html_to_text(html)
+    heading = _SECTION_HEADINGS[section]
+    candidates: list[str] = []
+    for match in heading.finditer(text):
+        end = len(text)
+        for next_item in _NEXT_ITEM.finditer(text, match.end()):
+            if heading.match(text, next_item.start()) is None:
+                end = next_item.start()
+                break
+        candidates.append(text[match.start() : end].strip())
+    return max(candidates, key=len, default="")
+
+
+def _paragraphs(section_text: str) -> list[str]:
+    blocks = [part.strip() for part in re.split(r"\n{2,}", section_text) if part.strip()]
+    if len(blocks) <= 1:
+        blocks = [line.strip() for line in section_text.splitlines() if line.strip()]
+    return [block for block in blocks if len(block) > 20 or block.lower().startswith("item")]
+
+
+def diff_paragraphs(
+    older: str,
+    newer: str,
+    *,
+    section: SectionId,
+    older_accession: str,
+    newer_accession: str,
+    older_url: str,
+    newer_url: str,
+) -> list[DisclosureChange]:
+    left = _paragraphs(older)
+    right = _paragraphs(newer)
+    matcher = SequenceMatcher(a=left, b=right, autojunk=False)
+    changes: list[DisclosureChange] = []
+    label = SECTION_LABELS[section]
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if tag == "insert":
+            for paragraph in right[j1:j2]:
+                changes.append(
+                    DisclosureChange(
+                        section=section,
+                        section_label=label,
+                        change_kind="added",
+                        after_text=paragraph,
+                        older_accession=older_accession,
+                        newer_accession=newer_accession,
+                        older_url=filing_anchor_url(older_url, label),
+                        newer_url=filing_anchor_url(newer_url, paragraph),
+                    )
+                )
+        elif tag == "delete":
+            for paragraph in left[i1:i2]:
+                changes.append(
+                    DisclosureChange(
+                        section=section,
+                        section_label=label,
+                        change_kind="removed",
+                        before_text=paragraph,
+                        older_accession=older_accession,
+                        newer_accession=newer_accession,
+                        older_url=filing_anchor_url(older_url, paragraph),
+                        newer_url=filing_anchor_url(newer_url, label),
+                    )
+                )
+        else:
+            before = "\n\n".join(left[i1:i2])
+            after = "\n\n".join(right[j1:j2])
+            changes.append(
+                DisclosureChange(
+                    section=section,
+                    section_label=label,
+                    change_kind="changed",
+                    before_text=before,
+                    after_text=after,
+                    older_accession=older_accession,
+                    newer_accession=newer_accession,
+                    older_url=filing_anchor_url(older_url, before),
+                    newer_url=filing_anchor_url(newer_url, after),
+                )
+            )
+    return changes
+
+
+def parse_sections(raw: str) -> tuple[SectionId, ...]:
+    lowered = raw.casefold()
+    found: list[SectionId] = []
+    if "both" in lowered or "and risk" in lowered:
+        return REVIEWED_SECTIONS
+    for alias, section in _SECTION_ALIASES.items():
+        if alias in lowered and section not in found:
+            found.append(section)
+    if not found:
+        return ("mda",)
+    return tuple(found)
+
+
+def _document_for(runtime: Runtime, cik: str, accession: str, document: str) -> str:
+    facts = runtime.facts
+    getter = getattr(facts, "get_filing_document", None)
+    if not callable(getter):
+        inner = getattr(facts, "_inner", facts)
+        getter = getattr(inner, "get_filing_document", None)
+    if not callable(getter):
+        client = getattr(getattr(facts, "_inner", facts), "_client", None)
+        getter = getattr(client, "get_filing_document", None)
+    if not callable(getter):
+        raise ProviderError("Filing documents are not available on this runtime")
+    return str(getter(cik, accession, document))
+
+
+def _tickers_payload(runtime: Runtime) -> dict[str, Any]:
+    facts = runtime.facts
+    inner = getattr(facts, "_inner", facts)
+    client = getattr(inner, "_client", None)
+    if client is None:
+        raise ProviderError("Company identity is not available on this runtime")
+    payload = client.get_company_tickers()
+    if not isinstance(payload, dict):
+        raise ProviderError("Company ticker payload must be an object")
+    return payload
+
+
+def _submissions_recent(runtime: Runtime, cik: str) -> dict[str, Any]:
+    facts = runtime.facts
+    inner = getattr(facts, "_inner", facts)
+    client = getattr(inner, "_client", None)
+    getter = getattr(client, "get_submissions", None)
+    if not callable(getter):
+        raise ProviderError("Filing submissions are not available on this runtime")
+    payload = getter(cik)
+    if not isinstance(payload, dict) or not isinstance(payload.get("filings"), dict):
+        raise ProviderError("submissions payload missing filings object")
+    recent = payload["filings"].get("recent")
+    if not isinstance(recent, dict):
+        raise ProviderError("submissions payload missing filings.recent object")
+    return recent
+
+
+def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
+    recent = _submissions_recent(runtime, cik)
+    accessions = recent.get("accessionNumber")
+    documents = recent.get("primaryDocument")
+    forms = recent.get("form")
+    if (
+        not isinstance(accessions, list)
+        or not isinstance(documents, list)
+        or not isinstance(forms, list)
+    ):
+        raise ProviderError("submissions accessionNumber, primaryDocument and form must be lists")
+    if len(accessions) != len(documents) or len(accessions) != len(forms):
+        raise ProviderError("submissions filing arrays have inconsistent lengths")
+    for index, candidate in enumerate(accessions):
+        if candidate == accession and forms[index] in ("10-Q", "10-Q/A", "10-K", "10-K/A"):
+            document = documents[index]
+            if isinstance(document, str) and document.strip():
+                return document
+            raise ProviderError(f"Primary document is missing for accession {accession}")
+    raise ProviderError(f"Filing accession {accession} was not found in supported submissions")
+
+
+def _filing_date(recent: dict[str, Any], accession: str) -> str:
+    accessions = recent.get("accessionNumber")
+    if not isinstance(accessions, list):
+        return ""
+    dates = recent.get("reportDate")
+    if not isinstance(dates, list):
+        dates = recent.get("filingDate")
+    if not isinstance(dates, list) or len(dates) != len(accessions):
+        return ""
+    for index, candidate in enumerate(accessions):
+        if candidate == accession:
+            value = dates[index]
+            return value.strip() if isinstance(value, str) else ""
+    return ""
+
+
+def _order_accessions(recent: dict[str, Any], first: str, second: str) -> tuple[str, str]:
+    left = _filing_date(recent, first)
+    right = _filing_date(recent, second)
+    if left and right and left > right:
+        return second, first
+    return first, second
+
+
+def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tuple[str, str]:
+    found = _ACCESSION_PATTERN.findall(query)
+    if query.strip():
+        if len(found) >= 2:
+            return found[0], found[1]
+        return "", ""
+    return plan_older, plan_newer
+
+
+def _section_choice(query: str, fallback: str) -> str:
+    normalized = query.strip().casefold()
+    if not normalized:
+        return fallback
+    if "risk" in normalized and (
+        "md&a" in normalized or "mda" in normalized or "both" in normalized
+    ):
+        return "mda and risk_factors"
+    if "risk" in normalized:
+        return "risk_factors"
+    if "md&a" in normalized or "mda" in normalized or "management discussion" in normalized:
+        return "mda"
+    return fallback
+
+
+def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
+    company = str(getattr(plan, "company", "") or "")
+    older, newer = _accessions_from_query(
+        query,
+        str(getattr(plan, "older_accession", "") or ""),
+        str(getattr(plan, "newer_accession", "") or ""),
+    )
+    sections = parse_sections(_section_choice(query, str(getattr(plan, "section", "mda"))))
+    traces = [
+        ToolTrace(
+            tool="filing_change",
+            args={
+                "company": company,
+                "older_accession": older,
+                "newer_accession": newer,
+                "sections": list(sections),
+            },
+        )
+    ]
+    if not company or not older or not newer:
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="Filing change needs one company and two accession numbers.",
+        )
+    try:
+        resolved = resolve_company(company, _tickers_payload(runtime))
+    except Exception as exc:
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    cik = resolved.cik
+    changes: list[DisclosureChange] = []
+    section_errors: list[str] = []
+    try:
+        recent = _submissions_recent(runtime, cik)
+        older, newer = _order_accessions(recent, older, newer)
+        traces[0] = traces[0].model_copy(
+            update={
+                "args": {
+                    **traces[0].args,
+                    "older_accession": older,
+                    "newer_accession": newer,
+                }
+            }
+        )
+        for section in sections:
+            older_doc = _primary_document(runtime, cik, older)
+            newer_doc = _primary_document(runtime, cik, newer)
+            older_html = _document_for(runtime, cik, older, older_doc)
+            newer_html = _document_for(runtime, cik, newer, newer_doc)
+            older_url = build_filing_document_url(cik, older, older_doc)
+            newer_url = build_filing_document_url(cik, newer, newer_doc)
+            older_section = extract_section(older_html, section)
+            newer_section = extract_section(newer_html, section)
+            if not older_section or not newer_section:
+                section_errors.append(f"{SECTION_LABELS[section]} was not found")
+                continue
+            changes.extend(
+                diff_paragraphs(
+                    older_section,
+                    newer_section,
+                    section=section,
+                    older_accession=older,
+                    newer_accession=newer,
+                    older_url=older_url,
+                    newer_url=newer_url,
+                )
+            )
+    except ProviderError as exc:
+        traces[0] = traces[0].model_copy(
+            update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
+        )
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=str(exc),
+        )
+    if not changes:
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="No reviewed-section changes were found between those filings.",
+        )
+    banners: list[str] = []
+    traces[0] = traces[0].model_copy(
+        update={
+            "provenance": {
+                "change_count": len(changes),
+                "cik": cik,
+                **({"section_errors": section_errors} if section_errors else {}),
+            }
+        }
+    )
+    if section_errors:
+        banners.append("Partial filing change: " + "; ".join(section_errors) + ".")
+    grounding = json.dumps(
+        [item.model_dump(mode="json") for item in changes],
+        default=str,
+    )
+    essay = None
+    extras: list[str] = []
+    if runtime.essay is not None and getattr(plan, "summarize", False):
+        from financial_analyst_agent.turn import _numeral_lock_extras
+
+        topic = (
+            f"Summarize only the following disclosure changes for {resolved.name}. "
+            "Do not invent numbers."
+        )
+        essay_completer = runtime.essay
+        try:
+            essay = call_provider(
+                "llm", lambda: essay_completer.complete_essay(topic, grounding)
+            )
+            extras = _numeral_lock_extras(essay, grounding)
+            banners.append(MODEL_ANALYSIS_BANNER)
+            if extras:
+                essay = None
+        except ProviderError:
+            essay = None
+    return TurnResult(
+        intent=Intent.FILING_CHANGE,
+        tool_traces=traces,
+        renderer=RendererKind.TABLE,
+        disclosure_changes=changes,
+        essay=essay,
+        banners=banners,
+        numeral_lock_extras=extras,
+    )
