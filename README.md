@@ -16,7 +16,7 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 ## Try it
 
-Hosted demo: not published yet. Fixture-first deploy steps are in [`docs/deploy.md`](docs/deploy.md).
+Hosted demo (guided fixture data, no keys): [financial-analyst-agent.streamlit.app](https://financial-analyst-agent.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
 
 Zero-key local path:
 

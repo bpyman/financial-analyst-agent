@@ -1,9 +1,12 @@
 # Hosted demo
 
+Public URL: [https://financial-analyst-agent.streamlit.app](https://financial-analyst-agent.streamlit.app).
+
 The public audience window is a Streamlit app that defaults to recorded adapters,
 isolated browser sessions, thread expiry, and cached SEC responses.
 
 Community Cloud installs from `requirements.txt` (exported from `uv.lock`).
+Free Community Cloud apps sleep when idle; the first visitor may need to wake it.
 
 ## Streamlit Community Cloud
 
