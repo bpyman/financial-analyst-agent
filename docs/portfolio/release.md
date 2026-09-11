@@ -14,9 +14,10 @@ Repo: https://github.com/bpyman/financial-analyst-agent
 Captured from https://financial-analyst-agent-project.streamlit.app:
 
 1. GIF: [`docs/portfolio/images/demo-walkthrough.gif`](images/demo-walkthrough.gif) — guided stories → four-quarter comparison chart → inspect exact 10-Q source.
-2. Screenshot: [`docs/portfolio/images/compare-four-quarters.png`](images/compare-four-quarters.png).
-3. Screenshot: [`docs/portfolio/images/inspect-exact-source.png`](images/inspect-exact-source.png).
-4. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640).
+2. Walkthrough: [`docs/portfolio/images/demo-walkthrough.mp4`](images/demo-walkthrough.mp4) — Compare four quarters → `add Apple` → chart → inspect filing.
+3. Screenshot: [`docs/portfolio/images/compare-four-quarters.png`](images/compare-four-quarters.png).
+4. Screenshot: [`docs/portfolio/images/inspect-exact-source.png`](images/inspect-exact-source.png).
+5. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640).
 
 Repository homepage: https://financial-analyst-agent-project.streamlit.app
 

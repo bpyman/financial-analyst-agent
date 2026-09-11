@@ -20,6 +20,8 @@ Hosted demo (guided fixture data, no keys): [financial-analyst-agent-project.str
 
 ![One-click four-quarter comparison, then inspect the exact 10-Q fact](docs/portfolio/images/demo-walkthrough.gif)
 
+[Walkthrough](docs/portfolio/images/demo-walkthrough.mp4) — one-click four-quarter compare, `add Apple`, chart, then inspect the 10-Q source.
+
 ![Microsoft quarterly revenue line chart from the hosted demo](docs/portfolio/images/compare-four-quarters.png)
 
 ![Evidence inspector with exact Decimal, accession, and Open filing](docs/portfolio/images/inspect-exact-source.png)
