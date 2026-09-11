@@ -35,6 +35,7 @@ packages = ["src/financial_analyst_agent"]
 "src/financial_analyst_agent/data/universe_snapshot.json" = "financial_analyst_agent/data/universe_snapshot.json"
 "src/financial_analyst_agent/data/fixture_universe_snapshot.json" = "financial_analyst_agent/data/fixture_universe_snapshot.json"
 "src/financial_analyst_agent/data/ineligible_issuers.json" = "financial_analyst_agent/data/ineligible_issuers.json"
+"src/financial_analyst_agent/data/sec_fixture_recordings.json" = "financial_analyst_agent/data/sec_fixture_recordings.json"
 
 [tool.ruff]
 target-version = "py312"

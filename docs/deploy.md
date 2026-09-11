@@ -3,6 +3,8 @@
 The public audience window is a Streamlit app that defaults to recorded adapters,
 isolated browser sessions, thread expiry, and cached SEC responses.
 
+Community Cloud installs from `requirements.txt` (exported from `uv.lock`).
+
 ## Streamlit Community Cloud
 
 1. Fork or connect `bpyman/financial-analyst-agent`.
