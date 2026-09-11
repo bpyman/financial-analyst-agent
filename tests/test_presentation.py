@@ -18,6 +18,7 @@ from financial_analyst_agent.presentation import (
 )
 from financial_analyst_agent.turn import (
     ComponentProvenance,
+    DisclosureChange,
     Intent,
     NewsHit,
     RendererKind,
@@ -831,3 +832,65 @@ def test_trend_chart_orders_periods_chronologically() -> None:
         "2024-12-31",
         "2026-03-31",
     ]
+
+
+def test_present_filing_change_omits_empty_table() -> None:
+    result = TurnResult(
+        intent=Intent.FILING_CHANGE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        disclosure_changes=[
+            DisclosureChange(
+                section="mda",
+                section_label="Management's Discussion and Analysis",
+                change_kind="changed",
+                before_text="Cloud demand was stable.",
+                after_text="Cloud demand increased.",
+                older_accession="0001193125-25-000099",
+                newer_accession="0001193125-26-191507",
+                older_url="https://www.sec.gov/older",
+                newer_url="https://www.sec.gov/newer",
+            )
+        ],
+    )
+
+    presented = present_turn(result)
+
+    assert presented.table is None
+    assert presented.chart is None
+    assert presented.fact_card is None
+    assert len(presented.disclosures) == 1
+    assert presented.disclosures[0].section_label == "Management's Discussion and Analysis"
+
+
+def test_comparison_bar_chart_keeps_table_order() -> None:
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name=name,
+                ticker=ticker,
+                cik=cik,
+                metric="research_and_development",
+                value=Decimal(value),
+                end_date=date(2026, 3, 31),
+                rank=rank,
+            )
+            for rank, (name, ticker, cik, value) in enumerate(
+                (
+                    ("Apple Inc.", "AAPL", "0000320193", "8042000000"),
+                    ("Microsoft Corporation", "MSFT", "0000789019", "8197000000"),
+                    ("Applied Materials, Inc.", "AMAT", "0000006951", "900000000"),
+                ),
+                start=1,
+            )
+        ],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "bar"
+    assert [record["Company"] for record in chart.records] == ["AAPL", "MSFT", "AMAT"]

@@ -722,6 +722,37 @@ def test_ask_uses_bottom_chat_input(
     assert placeholder == app._GOLD_QUERY
 
 
+def test_guided_stories_stay_hidden_while_a_story_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit(chat_values=(None,))
+    fake_streamlit.session_state["pending_query"] = app.GUIDED_STORIES[3][1]
+    result = TurnResult(
+        intent=Intent.FILING_CHANGE,
+        tool_traces=[],
+        renderer=RendererKind.TABLE,
+    )
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+    monkeypatch.setattr(
+        app,
+        "run_conversation_turn",
+        lambda thread_id, message, runtime, *, store, **_kwargs: ConversationTurn(
+            thread_id=thread_id,
+            result=result,
+            messages=(ThreadMessage(role="analyst", content=message),),
+            results=(result,),
+            last_result=result,
+        ),
+    )
+    monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
+
+    app.main()
+
+    assert "Verify a quarterly fact" not in fake_streamlit.buttons
+    assert "What changed in the 10-Q" not in fake_streamlit.buttons
+
+
 def test_history_autoscrolls_new_results(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

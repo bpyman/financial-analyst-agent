@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
@@ -256,8 +257,11 @@ def _render_chart(chart: object) -> None:
     kind = getattr(chart, "kind", "bar")
     if kind == "line":
         st.line_chart(records, x="Period")
-    else:
-        st.bar_chart(records, x="Company", y="Value")
+        return
+    frame = pd.DataFrame(records)
+    order = [str(record["Company"]) for record in records]
+    frame["Company"] = pd.Categorical(frame["Company"], categories=order, ordered=True)
+    st.bar_chart(frame, x="Company", y="Value")
 
 
 def _render_evidence_inspector(items: tuple[object, ...], *, turn_index: int) -> None:
@@ -330,6 +334,8 @@ def _value_column_format(table: DisplayTable) -> str:
 
 
 def _render_table(table: DisplayTable) -> None:
+    if not table.rows:
+        return
     hidden = {"cik", "taxonomy"}
     keep = [index for index, key in enumerate(table.keys) if key not in hidden]
     headers = tuple(table.headers[index] for index in keep)
@@ -560,16 +566,15 @@ def main() -> None:
     else:
         st.caption(banner)
 
-    if not st.session_state.get("history"):
-        _render_guided_stories()
-    _render_spec_chips(store)
-    _render_capabilities()
-    _render_metric_catalog()
-
     pending = str(st.session_state.pop("pending_query", "") or "")
     with st.bottom:
         typed = st.chat_input(_GOLD_QUERY, submit_mode="disable")
     query = pending or (typed.strip() if typed else "")
+    if not st.session_state.get("history") and not query:
+        _render_guided_stories()
+    _render_spec_chips(store)
+    _render_capabilities()
+    _render_metric_catalog()
     if query:
         if st.session_state.get("turn_in_flight"):
             st.info("A turn is already running.")

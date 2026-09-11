@@ -469,7 +469,7 @@ def present_turn(result: TurnResult) -> Presentation:
         and result.table_rows[0].end_date is not None
     ):
         fact_card = _fact_card(result.table_rows[0])
-    elif result.renderer is RendererKind.TABLE:
+    elif result.renderer is RendererKind.TABLE and result.table_rows:
         table = _display_table(result.table_rows)
     evidence = tuple(
         item
