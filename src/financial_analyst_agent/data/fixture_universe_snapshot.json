@@ -191,6 +191,76 @@
       "market_cap": "2200000000000",
       "is_etf": false,
       "is_fund": false
+    },
+    {
+      "cik": "0001045810",
+      "name": "NVIDIA Corporation",
+      "ticker": "NVDA",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "1800000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001730168",
+      "name": "Broadcom Inc.",
+      "ticker": "AVGO",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "900000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001341439",
+      "name": "Oracle Corporation",
+      "ticker": "ORCL",
+      "sector": "Technology",
+      "exchange": "NYSE",
+      "market_cap": "650000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000002488",
+      "name": "Advanced Micro Devices, Inc.",
+      "ticker": "AMD",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "600000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000858877",
+      "name": "Cisco Systems, Inc.",
+      "ticker": "CSCO",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "450000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0001321655",
+      "name": "Palantir Technologies Inc.",
+      "ticker": "PLTR",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "400000000000",
+      "is_etf": false,
+      "is_fund": false
+    },
+    {
+      "cik": "0000006951",
+      "name": "Applied Materials, Inc.",
+      "ticker": "AMAT",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "350000000000",
+      "is_etf": false,
+      "is_fund": false
     }
   ]
 }

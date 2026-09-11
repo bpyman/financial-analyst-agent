@@ -16,6 +16,7 @@ import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal
+from collections.abc import Callable
 
 from pydantic import BaseModel
 
@@ -138,10 +139,10 @@ def _resume_pending(
     runtime: Runtime,
     *,
     current_spec: AnalysisSpec | None,
-    on_progress: Any | None,
+    on_progress: Callable[[int, int], None] | None,
     max_workers: int,
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
-    from financial_analyst_agent.graph.spec_turn import run_spec_turn
+    from financial_analyst_agent.graph.spec_turn import TurnContext, run_spec_turn_context
 
     if pending.kind == "ambiguous_metric":
         if pending.metric_role == "remove":
@@ -152,24 +153,28 @@ def _resume_pending(
             patch = pending.patch.model_copy(update={"add_metrics": (answer,)})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
-        return run_spec_turn(
-            message,
+        return run_spec_turn_context(
+            TurnContext(
+                message=message,
+                current_spec=current_spec,
+                proposal=patch,
+                on_progress=on_progress,
+                max_workers=max_workers,
+            ),
             runtime,
-            current_spec=current_spec,
-            proposal=patch,
-            on_progress=on_progress,
-            max_workers=max_workers,
         )
     # ambiguous_mode
     mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
     patch = pending.patch.model_copy(update={"mode": mode})
-    return run_spec_turn(
-        message,
+    return run_spec_turn_context(
+        TurnContext(
+            message=message,
+            current_spec=current_spec,
+            proposal=patch,
+            on_progress=on_progress,
+            max_workers=max_workers,
+        ),
         runtime,
-        current_spec=current_spec,
-        proposal=patch,
-        on_progress=on_progress,
-        max_workers=max_workers,
     )
 
 
@@ -179,7 +184,7 @@ def run_conversation_turn(
     runtime: Runtime,
     *,
     store: ThreadStore,
-    on_progress: Any | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
     max_workers: int | None = None,
 ) -> ConversationTurn:
     """Run one analyst message on a conversation thread and persist thread state.
@@ -190,10 +195,11 @@ def run_conversation_turn(
     from financial_analyst_agent.graph import run_workflow_turn
     from financial_analyst_agent.graph.spec_turn import (
         DEFAULT_TASK_MAX_WORKERS,
+        TurnContext,
         is_filing_change_proposal,
         is_qualitative_proposal,
         is_structured_proposal,
-        run_spec_turn,
+        run_spec_turn_context,
     )
 
     finish = timed("conversation_turn", thread_id=thread_id)
@@ -260,13 +266,15 @@ def run_conversation_turn(
                 persist_spec = None
                 analysis_spec = None
             elif is_structured_proposal(proposal):
-                result, new_spec, proposed_patch = run_spec_turn(
-                    message,
+                result, new_spec, proposed_patch = run_spec_turn_context(
+                    TurnContext(
+                        message=message,
+                        current_spec=prior.analysis_spec,
+                        proposal=proposal,
+                        on_progress=on_progress,
+                        max_workers=workers,
+                    ),
                     turn_runtime,
-                    current_spec=prior.analysis_spec,
-                    proposal=proposal,
-                    on_progress=on_progress,
-                    max_workers=workers,
                 )
                 pending_from_result = _pending_from_clarify(
                     result, proposed_patch, message

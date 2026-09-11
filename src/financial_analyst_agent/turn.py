@@ -53,6 +53,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
+from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
@@ -184,11 +185,13 @@ def _hits_json(hits: list[NewsHit]) -> str:
     return json.dumps([hit.model_dump(mode="json") for hit in hits])
 
 
-def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
+def _news_grounded_essay_turn(
+    query: str, runtime: Runtime, *, intent: Intent, banners: list[str] | None = None
+) -> TurnResult:
     if runtime.news is None:
-        raise RuntimeError("news_and_explain intent requires a news adapter")
+        raise RuntimeError(f"{intent.value} intent requires a news adapter")
     if runtime.essay is None:
-        raise RuntimeError("news_and_explain intent requires an essay completer")
+        raise RuntimeError(f"{intent.value} intent requires an essay completer")
     news = runtime.news
     essay_completer = runtime.essay
     search_args = _search_news_args(query)
@@ -196,7 +199,7 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
         hits = _usable_news_hits(call_provider("news", lambda: news.search_news(query)))
     except ProviderError as exc:
         return TurnResult(
-            intent=Intent.NEWS_AND_EXPLAIN,
+            intent=intent,
             tool_traces=[
                 ToolTrace(
                     tool="search_news",
@@ -218,7 +221,7 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     ]
     if not hits:
         return TurnResult(
-            intent=Intent.NEWS_AND_EXPLAIN,
+            intent=intent,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
             message="No usable news hits for this query. Refusing rather than using training data.",
@@ -231,7 +234,7 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     if extras:
         invented = ", ".join(extras)
         return TurnResult(
-            intent=Intent.NEWS_AND_EXPLAIN,
+            intent=intent,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
             citations=hits,
@@ -239,81 +242,32 @@ def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
             message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
         )
     return TurnResult(
-        intent=Intent.NEWS_AND_EXPLAIN,
+        intent=intent,
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
         citations=hits,
+        banners=list(banners) if banners else [],
         essay=essay,
+    )
+
+
+def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
+    return _news_grounded_essay_turn(
+        query, runtime, intent=Intent.NEWS_AND_EXPLAIN
     )
 
 
 def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
     """Cited research draft via the constrained news wrapper; never structured rows."""
-    if runtime.news is None:
-        raise RuntimeError("exploratory_research intent requires a news adapter")
-    if runtime.essay is None:
-        raise RuntimeError("exploratory_research intent requires an essay completer")
-    news = runtime.news
-    essay_completer = runtime.essay
-    search_args = _search_news_args(query)
-    try:
-        hits = _usable_news_hits(call_provider("news", lambda: news.search_news(query)))
-    except ProviderError as exc:
-        return TurnResult(
-            intent=Intent.EXPLORATORY_RESEARCH,
-            tool_traces=[
-                ToolTrace(
-                    tool="search_news",
-                    args=search_args,
-                    provenance={
-                        "error": {"code": exc.code, "message": str(exc)},
-                    },
-                )
-            ],
-            renderer=RendererKind.REFUSE,
-            message=("News search is unavailable. Refusing rather than using training data."),
-        )
-    traces = [
-        ToolTrace(
-            tool="search_news",
-            args=search_args,
-            provenance={"hits": [hit.model_dump(mode="json") for hit in hits]},
-        )
-    ]
-    if not hits:
-        return TurnResult(
-            intent=Intent.EXPLORATORY_RESEARCH,
-            tool_traces=traces,
-            renderer=RendererKind.REFUSE,
-            message="No usable news hits for this query. Refusing rather than using training data.",
-        )
-    tool_json = _hits_json(hits)
-    essay = call_provider(
-        "llm", lambda: essay_completer.complete_essay(query, tool_json)
-    )
-    extras = _numeral_lock_extras(essay, tool_json, hit_count=len(hits))
-    if extras:
-        invented = ", ".join(extras)
-        return TurnResult(
-            intent=Intent.EXPLORATORY_RESEARCH,
-            tool_traces=traces,
-            renderer=RendererKind.REFUSE,
-            citations=hits,
-            numeral_lock_extras=extras,
-            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
-        )
-    return TurnResult(
+    return _news_grounded_essay_turn(
+        query,
+        runtime,
         intent=Intent.EXPLORATORY_RESEARCH,
-        tool_traces=traces,
-        renderer=RendererKind.ESSAY,
         banners=[EXPLORATORY_RESEARCH_BANNER],
-        citations=hits,
-        essay=essay,
-        table_rows=[],
     )
 
 
-def _table_row_from_fact(fact: Any) -> TableRow:
+def _table_row_from_fact(fact: FinancialFact) -> TableRow:
     metric = fact.metric
     metric_value = metric.value if hasattr(metric, "value") else metric
     return TableRow(
@@ -333,12 +287,12 @@ def _table_row_from_fact(fact: Any) -> TableRow:
     )
 
 
-def _fact_source_kind(fact: Any) -> str:
+def _fact_source_kind(fact: FinancialFact) -> str:
     source = getattr(fact, "source", None)
     return str(source) if source else "sec_xbrl"
 
 
-def _lookup_provenance(fact: Any) -> dict[str, Any]:
+def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
     return {
         "form": fact.form,
         "accession_number": fact.accession_number,
@@ -412,7 +366,7 @@ def _component_metrics(metric: str) -> tuple[str, ...]:
     return (metric,)
 
 
-def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
+def _provenance_from_fact(fact: FinancialFact, metric: str) -> ComponentProvenance:
     return ComponentProvenance(
         metric=metric,
         value=fact.value,
@@ -427,7 +381,7 @@ def _provenance_from_fact(fact: Any, metric: str) -> ComponentProvenance:
     )
 
 
-def _formula_value(metric: str, facts: list[Any]) -> Any:
+def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
     components = FORMULA_COMPONENTS.get(metric)
     if components is None:
         return facts[0].value
@@ -435,7 +389,7 @@ def _formula_value(metric: str, facts: list[Any]) -> Any:
     return numerator.value / denominator.value
 
 
-def _aligned_period(facts: list[Any]) -> tuple[date, date] | None:
+def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
     periods = {(fact.start_date, fact.end_date) for fact in facts}
     if len(periods) != 1:
         return None
@@ -809,15 +763,13 @@ def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult
 def execute_turn(query: str, runtime: Runtime) -> TurnResult:
     """Plan and run one one-shot analysis. Run state is not returned or persisted."""
     plan = runtime.completer.complete(query)
-    if plan.intent is Intent.EXPLAIN:
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.FILING_CHANGE:
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.NEWS_AND_EXPLAIN:
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.EXPLORATORY_RESEARCH:
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.RANK:
+    if plan.intent in (
+        Intent.EXPLAIN,
+        Intent.FILING_CHANGE,
+        Intent.NEWS_AND_EXPLAIN,
+        Intent.EXPLORATORY_RESEARCH,
+        Intent.RANK,
+    ):
         return _run_workflow(plan, runtime, query=query)
     resolved = resolve_metric_phrase(query)
     if resolved.kind == "ambiguous":

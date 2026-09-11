@@ -15,10 +15,17 @@ MICROSOFT_PRETAX_QUERY = "Microsoft pre-tax income"
 TSLA_GM_REVENUE_QUERY = "TSLA vs GM revenue"
 TECH_RD_QUERY = "Top 10 tech companies R&D spend"
 SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
-TECHNOLOGY_TOP_3 = (
+TECHNOLOGY_TOP_10 = (
     ("Apple Inc.", "AAPL", "0000320193", Decimal("3500000000000")),
     ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3100000000000")),
     ("Alphabet Inc.", "GOOG", "0001652044", Decimal("2200000000000")),
+    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("1800000000000")),
+    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("900000000000")),
+    ("Oracle Corporation", "ORCL", "0001341439", Decimal("650000000000")),
+    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("600000000000")),
+    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("450000000000")),
+    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("400000000000")),
+    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("350000000000")),
 )
 
 MICROSOFT_CIK = "0000789019"
@@ -40,7 +47,25 @@ GM_REVENUE = Decimal("44019000000")
 APPLE_RD = Decimal("8042000000")
 MICROSOFT_RD = Decimal("8197000000")
 ALPHABET_RD = Decimal("13838000000")
-TECH_RD_VALUES = (APPLE_RD, MICROSOFT_RD, ALPHABET_RD)
+NVIDIA_RD = Decimal("3900000000")
+BROADCOM_RD = Decimal("1500000000")
+ORACLE_RD = Decimal("2300000000")
+AMD_RD = Decimal("1600000000")
+CISCO_RD = Decimal("2000000000")
+PALANTIR_RD = Decimal("300000000")
+AMAT_RD = Decimal("900000000")
+TECH_RD_VALUES = (
+    APPLE_RD,
+    MICROSOFT_RD,
+    ALPHABET_RD,
+    NVIDIA_RD,
+    BROADCOM_RD,
+    ORACLE_RD,
+    AMD_RD,
+    CISCO_RD,
+    PALANTIR_RD,
+    AMAT_RD,
+)
 
 
 def test_gold_microsoft_pretax_income_through_kill_switch_runtime() -> None:
@@ -86,15 +111,23 @@ def test_gold_top_tech_rd_spend_through_kill_switch_runtime() -> None:
     assert result.intent is Intent.RANK_AND_LOOKUP
     assert result.renderer is RendererKind.TABLE
     assert result.banners == [f"Universe snapshot as of {SNAPSHOT_AS_OF}"]
+    rank_traces = [t for t in result.tool_traces if t.tool == "rank_companies"]
+    assert len(rank_traces) == 1
+    assert rank_traces[0].args["limit"] == 10
+    assert len(result.table_rows) == len(TECHNOLOGY_TOP_10) == 10
     assert [row.ticker for row in result.table_rows] == [
-        ticker for _name, ticker, _cik, _cap in TECHNOLOGY_TOP_3
+        ticker for _name, ticker, _cik, _cap in TECHNOLOGY_TOP_10
     ]
+    assert [row.cik for row in result.table_rows].count("0001652044") == 1
+    assert "GOOGL" not in [row.ticker for row in result.table_rows]
+    caps = [cap for _name, _ticker, _cik, cap in TECHNOLOGY_TOP_10]
+    assert caps == sorted(caps, reverse=True)
     lookup_ciks = [
         trace.args["company"] for trace in result.tool_traces if trace.tool == "get_financials"
     ]
-    assert lookup_ciks == [cik for _name, _ticker, cik, _cap in TECHNOLOGY_TOP_3]
+    assert lookup_ciks == [cik for _name, _ticker, cik, _cap in TECHNOLOGY_TOP_10]
     for row, (_name, ticker, cik, _cap), value in zip(
-        result.table_rows, TECHNOLOGY_TOP_3, TECH_RD_VALUES, strict=True
+        result.table_rows, TECHNOLOGY_TOP_10, TECH_RD_VALUES, strict=True
     ):
         assert row.ticker == ticker
         assert row.cik == cik

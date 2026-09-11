@@ -227,10 +227,17 @@ def test_run_turn_ranks_finance_alias_and_does_not_pad_short_sectors() -> None:
 
 
 TECHNOLOGY_TOP_10_QUERY = "What are the top 10 companies in technology?"
-TECHNOLOGY_TOP_3 = (
+TECHNOLOGY_TOP_10 = (
     ("Apple Inc.", "AAPL", "0000320193", Decimal("3500000000000")),
     ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3100000000000")),
     ("Alphabet Inc.", "GOOG", "0001652044", Decimal("2200000000000")),
+    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("1800000000000")),
+    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("900000000000")),
+    ("Oracle Corporation", "ORCL", "0001341439", Decimal("650000000000")),
+    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("600000000000")),
+    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("450000000000")),
+    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("400000000000")),
+    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("350000000000")),
 )
 
 
@@ -239,12 +246,12 @@ def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
-    assert len(result.table_rows) == 3
+    assert len(result.table_rows) == 10
     ciks = [row.cik for row in result.table_rows]
     assert ciks.count("0001652044") == 1
     tickers = [row.ticker for row in result.table_rows]
     assert "GOOGL" not in tickers
-    for index, (name, ticker, cik, market_cap) in enumerate(TECHNOLOGY_TOP_3, start=1):
+    for index, (name, ticker, cik, market_cap) in enumerate(TECHNOLOGY_TOP_10, start=1):
         row = result.table_rows[index - 1]
         assert row.rank == index
         assert row.company_name == name

@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
+from dataclasses import dataclass
 from datetime import date
 from functools import partial
 from types import SimpleNamespace
@@ -14,6 +15,8 @@ from typing import Any
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     MISSING_FACT,
+    QUALITATIVE_INTENTS,
+    STRUCTURED_INTENTS,
     ComponentProvenance,
     Intent,
     RendererKind,
@@ -86,6 +89,17 @@ _NUMBER_WORDS = {
 DEFAULT_TASK_MAX_WORKERS = 8
 
 ProgressCallback = Callable[[int, int], None]
+
+
+@dataclass(frozen=True)
+class TurnContext:
+    """Bundled inputs that travel together into a spec turn."""
+
+    message: str
+    current_spec: AnalysisSpec | None
+    proposal: Any
+    on_progress: ProgressCallback | None = None
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS
 
 
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
@@ -411,23 +425,14 @@ def is_qualitative_proposal(proposal: Any) -> bool:
     if isinstance(proposal, SpecPatch):
         return False
     intent = getattr(proposal, "intent", None)
-    return intent in (
-        Intent.EXPLAIN,
-        Intent.NEWS_AND_EXPLAIN,
-        Intent.EXPLORATORY_RESEARCH,
-    )
+    return intent in QUALITATIVE_INTENTS
 
 
 def is_structured_proposal(proposal: Any) -> bool:
     if isinstance(proposal, SpecPatch):
         return True
     intent = getattr(proposal, "intent", None)
-    return intent in (
-        Intent.LOOKUP,
-        Intent.COMPARE,
-        Intent.RANK,
-        Intent.RANK_AND_LOOKUP,
-    )
+    return intent in STRUCTURED_INTENTS
 
 
 def _rejection_result(rejection: SpecRejection) -> TurnResult:
@@ -729,16 +734,15 @@ def merge_task_results(
     )
 
 
-def run_spec_turn(
-    message: str,
-    runtime: Runtime,
-    *,
-    current_spec: AnalysisSpec | None,
-    proposal: Any,
-    on_progress: ProgressCallback | None = None,
-    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
+def run_spec_turn_context(
+    ctx: TurnContext, runtime: Runtime
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
     """Apply a structured proposal: patch → resolve → validate → compile → execute."""
+    message = ctx.message
+    current_spec = ctx.current_spec
+    proposal = ctx.proposal
+    on_progress = ctx.on_progress
+    max_workers = ctx.max_workers
     patch = (
         proposal
         if isinstance(proposal, SpecPatch)
@@ -850,3 +854,25 @@ def run_spec_turn(
     )
     across = "across_periods" in spec.operations
     return merge_task_results(tasks, results, across_periods=across), spec, patch
+
+
+def run_spec_turn(
+    message: str,
+    runtime: Runtime,
+    *,
+    current_spec: AnalysisSpec | None,
+    proposal: Any,
+    on_progress: ProgressCallback | None = None,
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
+) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
+    """Compatibility wrapper: bundle args into TurnContext and delegate."""
+    return run_spec_turn_context(
+        TurnContext(
+            message=message,
+            current_spec=current_spec,
+            proposal=proposal,
+            on_progress=on_progress,
+            max_workers=max_workers,
+        ),
+        runtime,
+    )

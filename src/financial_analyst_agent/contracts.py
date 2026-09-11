@@ -7,12 +7,16 @@ without loading those workflows.
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
+
+if TYPE_CHECKING:
+    from financial_analyst_agent.ranking import RankTable
+    from financial_analyst_agent.universe import UniverseCompany
 
 
 class Intent(StrEnum):
@@ -31,6 +35,19 @@ class RendererKind(StrEnum):
     ESSAY = "essay"
     REFUSE = "refuse"
     CLARIFY = "clarify"
+
+
+QUALITATIVE_INTENTS: tuple[Intent, ...] = (
+    Intent.EXPLAIN,
+    Intent.NEWS_AND_EXPLAIN,
+    Intent.EXPLORATORY_RESEARCH,
+)
+STRUCTURED_INTENTS: tuple[Intent, ...] = (
+    Intent.LOOKUP,
+    Intent.COMPARE,
+    Intent.RANK,
+    Intent.RANK_AND_LOOKUP,
+)
 
 
 REPORTED_METRICS: tuple[str, ...] = (
@@ -105,9 +122,9 @@ class FactsPort(Protocol):
 
 
 class RankingPort(Protocol):
-    def rank_companies(self, industry: str, limit: int) -> Any: ...
+    def rank_companies(self, industry: str, limit: int) -> "RankTable": ...
 
-    def lookup_member(self, company: str) -> Any: ...
+    def lookup_member(self, company: str) -> "UniverseCompany": ...
 
     def snapshot_as_of(self) -> str: ...
 

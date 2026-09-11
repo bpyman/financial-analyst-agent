@@ -18,7 +18,11 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import Intent, NewsHit, TurnResult
+from financial_analyst_agent.contracts import (
+    QUALITATIVE_INTENTS,
+    NewsHit,
+    TurnResult,
+)
 from financial_analyst_agent.domain.errors import ProviderError
 
 EvidenceKind = Literal["fact", "news", "result"]
@@ -359,11 +363,7 @@ def grounding_json_from_result(result: TurnResult | None) -> str:
     """
     if result is None:
         return ""
-    if result.intent in {
-        Intent.EXPLAIN,
-        Intent.NEWS_AND_EXPLAIN,
-        Intent.EXPLORATORY_RESEARCH,
-    }:
+    if result.intent in QUALITATIVE_INTENTS:
         return ""
     if not result.table_rows:
         return ""

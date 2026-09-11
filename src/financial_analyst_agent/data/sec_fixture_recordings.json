@@ -39,6 +39,41 @@
       "cik_str": 1467858,
       "ticker": "GM",
       "title": "General Motors Company"
+    },
+    "8": {
+      "cik_str": 1045810,
+      "ticker": "NVDA",
+      "title": "NVIDIA Corporation"
+    },
+    "9": {
+      "cik_str": 1730168,
+      "ticker": "AVGO",
+      "title": "Broadcom Inc."
+    },
+    "10": {
+      "cik_str": 1341439,
+      "ticker": "ORCL",
+      "title": "Oracle Corporation"
+    },
+    "11": {
+      "cik_str": 2488,
+      "ticker": "AMD",
+      "title": "Advanced Micro Devices, Inc."
+    },
+    "12": {
+      "cik_str": 858877,
+      "ticker": "CSCO",
+      "title": "Cisco Systems, Inc."
+    },
+    "13": {
+      "cik_str": 1321655,
+      "ticker": "PLTR",
+      "title": "Palantir Technologies Inc."
+    },
+    "14": {
+      "cik_str": 6951,
+      "ticker": "AMAT",
+      "title": "Applied Materials, Inc."
     }
   },
   "submissions": {
@@ -261,6 +296,188 @@
           ],
           "primaryDocument": [
             "gm-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0001045810": {
+      "cik": 1045810,
+      "name": "NVIDIA Corporation",
+      "tickers": [
+        "NVDA"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001045810-26-000015"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "nvda-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0001730168": {
+      "cik": 1730168,
+      "name": "Broadcom Inc.",
+      "tickers": [
+        "AVGO"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001730168-26-000011"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "avgo-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0001341439": {
+      "cik": 1341439,
+      "name": "Oracle Corporation",
+      "tickers": [
+        "ORCL"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001341439-26-000074"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "orcl-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0000002488": {
+      "cik": 2488,
+      "name": "Advanced Micro Devices, Inc.",
+      "tickers": [
+        "AMD"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000002488-26-000032"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "amd-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0000858877": {
+      "cik": 858877,
+      "name": "Cisco Systems, Inc.",
+      "tickers": [
+        "CSCO"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000858877-26-000009"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "csco-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0001321655": {
+      "cik": 1321655,
+      "name": "Palantir Technologies Inc.",
+      "tickers": [
+        "PLTR"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0001321655-26-000023"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "pltr-20260331.htm"
+          ]
+        }
+      }
+    },
+    "0000006951": {
+      "cik": 6951,
+      "name": "Applied Materials, Inc.",
+      "tickers": [
+        "AMAT"
+      ],
+      "filings": {
+        "recent": {
+          "form": [
+            "10-Q"
+          ],
+          "accessionNumber": [
+            "0000006951-26-000041"
+          ],
+          "filingDate": [
+            "2026-05-02"
+          ],
+          "reportDate": [
+            "2026-03-31"
+          ],
+          "primaryDocument": [
+            "amat-20260331.htm"
           ]
         }
       }
@@ -592,6 +809,160 @@
                   "accn": "0001467858-26-000033",
                   "form": "10-Q",
                   "filed": "2026-04-29"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0001045810": {
+      "cik": 1045810,
+      "entityName": "NVIDIA Corporation",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 3900000000,
+                  "accn": "0001045810-26-000015",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0001730168": {
+      "cik": 1730168,
+      "entityName": "Broadcom Inc.",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 1500000000,
+                  "accn": "0001730168-26-000011",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0001341439": {
+      "cik": 1341439,
+      "entityName": "Oracle Corporation",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 2300000000,
+                  "accn": "0001341439-26-000074",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0000002488": {
+      "cik": 2488,
+      "entityName": "Advanced Micro Devices, Inc.",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 1600000000,
+                  "accn": "0000002488-26-000032",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0000858877": {
+      "cik": 858877,
+      "entityName": "Cisco Systems, Inc.",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 2000000000,
+                  "accn": "0000858877-26-000009",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0001321655": {
+      "cik": 1321655,
+      "entityName": "Palantir Technologies Inc.",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 300000000,
+                  "accn": "0001321655-26-000023",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "0000006951": {
+      "cik": 6951,
+      "entityName": "Applied Materials, Inc.",
+      "facts": {
+        "us-gaap": {
+          "ResearchAndDevelopmentExpense": {
+            "units": {
+              "USD": [
+                {
+                  "start": "2026-01-01",
+                  "end": "2026-03-31",
+                  "val": 900000000,
+                  "accn": "0000006951-26-000041",
+                  "form": "10-Q",
+                  "filed": "2026-05-02"
                 }
               ]
             }

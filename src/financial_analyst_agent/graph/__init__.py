@@ -39,25 +39,23 @@ class WorkflowRunState(TypedDict):
     result: TurnResult | None
 
 
+_CLOSED_ROUTE: dict[Intent, ClosedWorkflow] = {
+    Intent.LOOKUP: "lookup",
+    Intent.COMPARE: "compare",
+    Intent.RANK: "rank",
+    Intent.RANK_AND_LOOKUP: "rank_and_lookup",
+    Intent.EXPLAIN: "explain",
+    Intent.NEWS_AND_EXPLAIN: "news_and_explain",
+    Intent.EXPLORATORY_RESEARCH: "exploratory_research",
+    Intent.FILING_CHANGE: "filing_change",
+}
+
+
 def _route_closed(state: WorkflowRunState) -> ClosedWorkflow:
-    intent = state["plan"].intent
-    if intent == Intent.LOOKUP:
-        return "lookup"
-    if intent == Intent.COMPARE:
-        return "compare"
-    if intent == Intent.RANK:
-        return "rank"
-    if intent == Intent.RANK_AND_LOOKUP:
-        return "rank_and_lookup"
-    if intent == Intent.EXPLAIN:
-        return "explain"
-    if intent == Intent.NEWS_AND_EXPLAIN:
-        return "news_and_explain"
-    if intent == Intent.EXPLORATORY_RESEARCH:
-        return "exploratory_research"
-    if intent == Intent.FILING_CHANGE:
-        return "filing_change"
-    raise ValueError(f"unsupported closed intent: {intent!r}")
+    try:
+        return _CLOSED_ROUTE[state["plan"].intent]
+    except KeyError:
+        raise ValueError(f"unsupported closed intent: {state['plan'].intent!r}") from None
 
 
 def _lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
