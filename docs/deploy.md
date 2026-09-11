@@ -1,6 +1,6 @@
 # Hosted demo
 
-Public URL: [https://financial-analyst-agent.streamlit.app](https://financial-analyst-agent.streamlit.app).
+Public URL: [https://financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app).
 
 The public audience window is a Streamlit app that defaults to recorded adapters,
 isolated browser sessions, thread expiry, and cached SEC responses.

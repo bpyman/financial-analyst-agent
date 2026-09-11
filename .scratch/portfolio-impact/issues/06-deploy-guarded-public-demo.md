@@ -13,7 +13,7 @@
 
 ## Answer
 
-Hosted demo: [https://financial-analyst-agent.streamlit.app](https://financial-analyst-agent.streamlit.app). Fixture-first, isolated threads, `APP_MODE=fixture` / `PUBLIC_DEMO=true`. README, `docs/deploy.md`, and the GitHub homepage point at that URL. `tests/test_demo_smoke.py` covers the first guided story locally; live smoke confirmed the pretax-income table.
+Hosted demo: [https://financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Fixture-first, isolated threads, `APP_MODE=fixture` / `PUBLIC_DEMO=true`. README, `docs/deploy.md`, and the GitHub homepage point at that URL. `tests/test_demo_smoke.py` covers the first guided story locally; live smoke confirmed the pretax-income table.
 
 ## Comments
 

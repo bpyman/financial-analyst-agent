@@ -13,7 +13,7 @@
 
 ## Answer
 
-Storefront, architecture, evaluation numbers (8/8), setup, and limitations are in README. LinkedIn draft is [`docs/portfolio/release.md`](../../../docs/portfolio/release.md). Hosted demo: https://financial-analyst-agent.streamlit.app. GIF, screenshots, and social preview still need a recording from that URL.
+Storefront, architecture, evaluation numbers (8/8), setup, and limitations are in README. LinkedIn draft is [`docs/portfolio/release.md`](../../../docs/portfolio/release.md). Hosted demo: https://financial-analyst-agent-project.streamlit.app. GIF, screenshots, and social preview still need a recording from that URL.
 
 ## Comments
 
