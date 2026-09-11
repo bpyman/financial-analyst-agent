@@ -93,7 +93,7 @@ def _cases() -> tuple[EvalCase, ...]:
             RendererKind.TABLE,
             follow_up="add Apple",
             expect_tickers=("MSFT",),
-            expect_companies=("Apple",),
+            expect_companies=("Apple Inc.",),
         ),
         EvalCase(
             "numeral_lock_explain",

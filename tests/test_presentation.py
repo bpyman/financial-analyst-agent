@@ -748,8 +748,8 @@ def test_single_metric_trend_preserves_each_period_value() -> None:
     assert chart is not None
     assert chart.kind == "line"
     assert chart.records == (
-        {"Period": "Mar 31, 2025", "Microsoft": 1000000000.0},
-        {"Period": "Mar 31, 2026", "Microsoft": 2000000000.0},
+        {"Period": "2025-03-31", "Microsoft": 1000000000.0},
+        {"Period": "2026-03-31", "Microsoft": 2000000000.0},
     )
 
 
@@ -792,6 +792,42 @@ def test_trend_chart_excludes_period_change_rows() -> None:
     assert chart is not None
     assert chart.kind == "line"
     assert chart.records == (
-        {"Period": "Mar 31, 2026", "Microsoft": 150.0},
-        {"Period": "Mar 31, 2025", "Microsoft": 100.0},
+        {"Period": "2025-03-31", "Microsoft": 100.0},
+        {"Period": "2026-03-31", "Microsoft": 150.0},
     )
+
+
+def test_trend_chart_orders_periods_chronologically() -> None:
+    """Line charts must not follow table order or alpha-sorted month names."""
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name="Microsoft",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal(value),
+                end_date=period,
+            )
+            for period, value in (
+                (date(2024, 12, 31), "70000000000"),
+                (date(2024, 6, 30), "65000000000"),
+                (date(2026, 3, 31), "83000000000"),
+                (date(2024, 9, 30), "66000000000"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert [record["Period"] for record in chart.records] == [
+        "2024-06-30",
+        "2024-09-30",
+        "2024-12-31",
+        "2026-03-31",
+    ]

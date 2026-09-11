@@ -18,6 +18,12 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 Hosted demo (guided fixture data, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
 
+![One-click four-quarter comparison, then inspect the exact 10-Q fact](docs/portfolio/images/demo-walkthrough.gif)
+
+![Microsoft quarterly revenue line chart from the hosted demo](docs/portfolio/images/compare-four-quarters.png)
+
+![Evidence inspector with exact Decimal, accession, and Open filing](docs/portfolio/images/inspect-exact-source.png)
+
 Zero-key local path:
 
 ```text
@@ -77,7 +83,7 @@ Full design: [`docs/design.md`](docs/design.md). ADRs: [`docs/adr/`](docs/adr/).
 
 ## Evaluation
 
-The offline suite (including gold rehearsal prompts) is the default CI gate. A generated scorecard with pass rate, latency, and live cost lands with the evaluation ticket; until then, run:
+The offline suite (including gold rehearsal prompts) is the default CI gate:
 
 ```text
 uv run python -m pytest -q
@@ -92,7 +98,7 @@ uv run python -m pytest tests/integration/test_live_sec_lookup.py -m network
 uv run python -m pytest tests/integration/test_live_tavily_news.py -m network
 ```
 
-The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **8/8** fixture cases passing, p50/p95 latency, and $0 live cost for the recorded path. Regenerate with:
+The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** fixture cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
 
 ```text
 uv run python -m financial_analyst_agent.evaluation

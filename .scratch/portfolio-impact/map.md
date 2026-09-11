@@ -14,7 +14,8 @@ Demo-first packaging of the financial analyst agent: storefront, CI, guarded pub
 - 07: Fixture scorecard is 8/8. See [07](issues/07-publish-evaluation-scorecard.md).
 - 08/09: Accession-pinned MD&A and Risk Factors diffs, numeral-locked summary. See [08](issues/08-ship-filing-change-tracer.md) and [09](issues/09-complete-flagship-filing-change.md).
 - 06: Hosted demo is https://financial-analyst-agent-project.streamlit.app. See [06](issues/06-deploy-guarded-public-demo.md).
+- 10: README GIF and stills are from the live demo. See [10](issues/10-publish-portfolio-release.md).
 
 ## Fog
 
-- 10 needs a recorded GIF and screenshots from the live URL.
+- 10 still needs a 45–60s screen recording (one-click four-quarter compare → add Apple → chart → inspect filing).

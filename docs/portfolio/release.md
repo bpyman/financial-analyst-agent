@@ -11,11 +11,13 @@ Repo: https://github.com/bpyman/financial-analyst-agent
 
 ## Visuals
 
-After the hosted URL is live, capture:
+Captured from https://financial-analyst-agent-project.streamlit.app:
 
-1. A 30–60s GIF: one-click four-quarter comparison → follow-up that adds a company → chart → inspect exact SEC evidence.
-2. Screenshot: multi-quarter comparison with the line chart.
-3. Screenshot: evidence inspector open on a filing link.
-4. GitHub social preview: still from the comparison screen.
+1. GIF: [`docs/portfolio/images/demo-walkthrough.gif`](images/demo-walkthrough.gif) — guided stories → four-quarter comparison chart → inspect exact 10-Q source.
+2. Screenshot: [`docs/portfolio/images/compare-four-quarters.png`](images/compare-four-quarters.png).
+3. Screenshot: [`docs/portfolio/images/inspect-exact-source.png`](images/inspect-exact-source.png).
+4. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640).
 
-Set the repository homepage to the Streamlit Cloud URL and upload the still as the social image.
+Repository homepage: https://financial-analyst-agent-project.streamlit.app
+
+The fixture recordings include Apple quarterly revenue for its 10-Q periods. After a Microsoft four-quarter compare, `add Apple` still has no 10-Q on 2024-09-30 (Apple's fiscal year-end is a 10-K), so that cell stays `missing_fact`.

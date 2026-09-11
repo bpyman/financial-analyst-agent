@@ -1,5 +1,6 @@
 """Smoke the fixture-first audience window and first guided story."""
 
+from datetime import date
 import os
 import tomllib
 from pathlib import Path
@@ -9,12 +10,14 @@ from streamlit.runtime.secrets import Secrets
 
 from financial_analyst_agent.app import GUIDED_STORIES
 from financial_analyst_agent.config import AppMode, Settings
+from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.runtime import (
     FIXTURE_FILING_NEWER,
     FIXTURE_FILING_OLDER,
     DemoCompleter,
     fixture_runtime,
 )
+from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 
 
@@ -24,6 +27,34 @@ def test_first_guided_story_returns_a_table() -> None:
     assert result.renderer is RendererKind.TABLE
     assert result.table_rows
     assert result.table_rows[0].value is not None
+
+
+def test_fixture_apple_last_four_quarters_revenue_has_values() -> None:
+    result = run_turn(
+        "What was Apple's latest quarterly revenue for the last four quarters?",
+        fixture_runtime(),
+    )
+    rows = [row for row in result.table_rows if row.comparison is None]
+    assert result.renderer is RendererKind.TABLE
+    assert [row.ticker for row in rows] == ["AAPL"] * 4
+    assert all(row.value is not None for row in rows)
+
+
+def test_add_apple_after_microsoft_four_quarters_returns_apple_revenue() -> None:
+    store = EphemeralThreadStore()
+    runtime = fixture_runtime()
+    _, question = GUIDED_STORIES[1]
+    run_conversation_turn("demo", question, runtime, store=store)
+    follow = run_conversation_turn("demo", "add Apple", runtime, store=store)
+    valued = {
+        row.end_date: row.value
+        for row in follow.result.table_rows
+        if row.ticker == "AAPL" and row.value is not None and row.comparison is None
+    }
+    assert valued[date(2026, 3, 31)] == 111_184_000_000
+    assert valued[date(2024, 12, 31)] == 124_300_000_000
+    assert valued[date(2024, 6, 30)] == 85_777_000_000
+    assert date(2024, 9, 30) not in valued
 
 
 def test_filing_change_without_accessions_refuses_instead_of_selecting() -> None:

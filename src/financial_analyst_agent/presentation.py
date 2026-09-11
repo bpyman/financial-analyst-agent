@@ -321,12 +321,6 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     return tuple(chips)
 
 
-def _period_key(row: TableRow) -> str:
-    if row.end_date is None:
-        return ""
-    return format_date(row.end_date)
-
-
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
     rows = [
         row
@@ -340,21 +334,21 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     periods = {row.end_date for row in rows if row.end_date is not None}
     companies = {row.company_name for row in rows}
     if len(periods) >= 2:
-        records = tuple(
-            {
-                "Period": _period_key(row),
-                row.company_name: float(row.value) if row.value is not None else None,
-            }
-            for row in rows
+        merged: dict[date, dict[str, object]] = {}
+        for row in rows:
+            if row.end_date is None:
+                continue
+            bucket = merged.setdefault(
+                row.end_date, {"Period": row.end_date.isoformat()}
+            )
+            bucket[row.company_name] = (
+                float(row.value) if row.value is not None else None
+            )
+        return ChartSpec(
+            kind="line",
+            title="Trend",
+            records=tuple(merged[key] for key in sorted(merged)),
         )
-        merged: dict[str, dict[str, object]] = {}
-        for record in records:
-            period = str(record["Period"])
-            bucket = merged.setdefault(period, {"Period": period})
-            for key, value in record.items():
-                if key != "Period":
-                    bucket[key] = value
-        return ChartSpec(kind="line", title="Trend", records=tuple(merged[key] for key in merged))
     if len(companies) >= 2:
         records = tuple(
             {
