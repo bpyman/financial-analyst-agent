@@ -140,6 +140,64 @@ def format_metric_value(metric: str, value: Decimal | None) -> str:
     return format_usd(value)
 
 
+_TOOL_HEADERS = {
+    "get_financials": "Looked up {what} in SEC filings",
+    "compare_metrics": "Compared {what} in SEC filings",
+    "rank_companies": "Ranked {what} in the universe snapshot",
+    "filing_change": "Compared 10-Q text for {what}",
+    "search_news": "Searched news for {what}",
+    "explain_topic": "Wrote a qualitative summary of {what}",
+}
+
+
+def _as_iso_date(raw: object) -> date | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        return raw.date()
+    if isinstance(raw, date):
+        return raw
+    text = str(raw)[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _trace_period(trace: Any) -> str:
+    provenance = getattr(trace, "provenance", None) or {}
+    start = _as_iso_date(provenance.get("start_date"))
+    end = _as_iso_date(provenance.get("end_date"))
+    labeled = _period_label(start, end)
+    if labeled:
+        return labeled
+    args = getattr(trace, "args", None) or {}
+    report = _as_iso_date(args.get("report_date"))
+    if report is None:
+        return ""
+    return format_date(report)
+
+
+def format_chart_amount(metric: str, value: object) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        return ""
+    if not amount.is_finite():
+        return ""
+    return format_metric_value(metric, amount)
+
+
+def chart_value_kind(metric: str) -> str:
+    if metric == "interest_coverage":
+        return "multiple"
+    if metric in PERCENT_FORMULAS:
+        return "percent"
+    return "usd"
+
+
 def try_parse_datetime(raw: str) -> datetime | None:
     text = raw.strip()
     if text.endswith("Z"):
@@ -168,6 +226,15 @@ _TABLE_KEYS = (
     "taxonomy",
     "concept",
     "source_url",
+    "reason",
+)
+_RANK_TABLE_KEYS = (
+    "rank",
+    "company_name",
+    "ticker",
+    "value",
+    "start_date",
+    "end_date",
     "reason",
 )
 _SNAPSHOT_PREFIX = "Universe snapshot as of "
@@ -258,6 +325,7 @@ _INTENT_LABELS = {
 _LATEST_QUARTER_RULE = "Latest standalone quarterly 10-Q; no year-to-date derivation."
 _SNAPSHOT_RULE = "Universe snapshot market cap; not a 10-Q filing fact."
 _FORMULA_RULE = "Calculated from the listed component facts; no LLM arithmetic."
+_MIXED_PERIOD_CAPTION = "Latest standalone quarter; periods differ by issuer."
 
 
 @dataclass(frozen=True)
@@ -265,6 +333,9 @@ class ChartSpec:
     kind: str
     title: str
     records: tuple[dict[str, object], ...]
+    metric: str = ""
+    caption: str = ""
+    horizontal: bool = False
 
 
 @dataclass(frozen=True)
@@ -322,18 +393,28 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
 
 
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
-    rows = [
-        row
-        for row in result.table_rows
-        if row.value is not None and row.comparison is None
+    comparison_free = [
+        row for row in result.table_rows if row.comparison is None
     ]
+    rank_cross_section = result.intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
+    rows = (
+        comparison_free
+        if rank_cross_section
+        else [row for row in comparison_free if row.value is not None]
+    )
     if table is None or len(rows) < 2:
         return None
     if len({row.metric for row in rows}) > 1:
         return None
-    periods = {row.end_date for row in rows if row.end_date is not None}
     companies = {row.company_name for row in rows}
-    if len(periods) >= 2:
+    periods_by_company: dict[str, set[date]] = {}
+    for row in rows:
+        if row.end_date is None:
+            continue
+        periods_by_company.setdefault(row.company_name, set()).add(row.end_date)
+    if not rank_cross_section and any(
+        len(periods) >= 2 for periods in periods_by_company.values()
+    ):
         merged: dict[date, dict[str, object]] = {}
         for row in rows:
             if row.end_date is None:
@@ -348,21 +429,60 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             kind="line",
             title="Trend",
             records=tuple(merged[key] for key in sorted(merged)),
+            metric=rows[0].metric,
         )
     if len(companies) >= 2:
-        records = tuple(
-            {
-                "Company": row.ticker or row.company_name,
-                "Value": float(row.value) if row.value is not None else None,
-            }
-            for row in rows
-        )
+        ends = {row.end_date for row in rows if row.end_date is not None}
+        mixed_periods = len(ends) >= 2
         return ChartSpec(
             kind="bar",
             title="Comparison",
-            records=tuple(dict(record) for record in records),
+            records=tuple(
+                _bar_record(row, ranked=rank_cross_section) for row in rows
+            ),
+            metric=rows[0].metric,
+            caption=_bar_caption(
+                ranked=rank_cross_section,
+                metric=rows[0].metric,
+                mixed_periods=mixed_periods,
+            ),
+            horizontal=rank_cross_section,
         )
     return None
+
+
+def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
+    ticker = row.ticker or row.company_name
+    name = f"#{row.rank} {ticker}" if ranked and row.rank is not None else ticker
+    missing = row.value is None
+    amount = "" if missing else format_chart_amount(row.metric, row.value)
+    reason = str(row.reason or "")
+    label = amount if not missing else _REASON_LABELS.get(reason, reason or "Missing")
+    record: dict[str, object] = {
+        "Company": name,
+        "Value": float(row.value) if row.value is not None else 0.0,
+        "Amount": amount,
+        "Label": label,
+        "Missing": missing,
+    }
+    period = _period_label(row.start_date, row.end_date)
+    if period:
+        record["Period"] = period
+    return record
+
+
+def _bar_caption(*, ranked: bool, metric: str, mixed_periods: bool) -> str:
+    if ranked and metric != "market_cap":
+        caption = (
+            "Ordered by market cap; bar length is latest-quarter "
+            f"{_humanize_field(metric)}."
+        )
+        if mixed_periods:
+            return f"{caption} Periods differ by issuer."
+        return caption
+    if mixed_periods:
+        return _MIXED_PERIOD_CAPTION
+    return ""
 
 
 def _period_label(start: date | None, end: date | None) -> str:
@@ -470,7 +590,7 @@ def present_turn(result: TurnResult) -> Presentation:
     ):
         fact_card = _fact_card(result.table_rows[0])
     elif result.renderer is RendererKind.TABLE and result.table_rows:
-        table = _display_table(result.table_rows)
+        table = _display_table(result.table_rows, intent=result.intent)
     evidence = tuple(
         item
         for row in result.table_rows
@@ -550,8 +670,13 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
     return None
 
 
-def _display_table(rows: list[TableRow]) -> DisplayTable:
-    keys = [key for key in _TABLE_KEYS if any(not _cell_empty(getattr(row, key)) for row in rows)]
+def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> DisplayTable:
+    allowed = (
+        _RANK_TABLE_KEYS
+        if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
+        else _TABLE_KEYS
+    )
+    keys = [key for key in allowed if any(not _cell_empty(getattr(row, key)) for row in rows)]
     headers = tuple(format_field_name(key) for key in keys)
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
     numbers = tuple(tuple(_numeric_cell(row, key) for key in keys) for row in rows)
@@ -649,7 +774,17 @@ def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
 
 def _display_trace(trace: Any) -> DisplayTrace:
     identity = _trace_identity(trace.args)
-    header = f"{trace.tool} · {identity}" if identity else trace.tool
+    period = _trace_period(trace)
+    what = identity or "this request"
+    template = _TOOL_HEADERS.get(str(trace.tool))
+    if template:
+        header = template.format(what=what)
+    elif identity:
+        header = f"{trace.tool} · {identity}"
+    else:
+        header = str(trace.tool)
+    if period:
+        header = f"{header} ({period})"
     return DisplayTrace(
         header=header,
         inputs=_trace_fields(trace.args),

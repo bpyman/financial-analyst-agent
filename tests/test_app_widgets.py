@@ -15,6 +15,16 @@ def _quarterly_evidence_app() -> None:
 def test_evidence_inspector_selects_the_requested_quarter() -> None:
     audience = AppTest.from_function(_quarterly_evidence_app).run(timeout=30)
     assert not audience.exception
+    markdowns = [str(item.value) for item in audience.markdown]
+    assert any("How this answer was fetched" in text for text in markdowns)
+    lookup_headers = [
+        expander.label
+        for expander in audience.expander
+        if expander.label.startswith("Looked up Microsoft · Revenue")
+    ]
+    assert len(lookup_headers) == 4
+    assert len(set(lookup_headers)) == 4
+    assert all("get_financials" not in label for label in lookup_headers)
     audience.selectbox[0].select_index(2).run(timeout=30)
     assert not audience.exception
     captions = [caption.value for caption in audience.caption]

@@ -31,7 +31,7 @@ def test_first_guided_story_returns_a_table() -> None:
 
 def test_fixture_apple_last_four_quarters_revenue_has_values() -> None:
     result = run_turn(
-        "What was Apple's latest quarterly revenue for the last four quarters?",
+        "What was Apple's quarterly revenue over the last four quarters?",
         fixture_runtime(),
     )
     rows = [row for row in result.table_rows if row.comparison is None]

@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from financial_analyst_agent.presentation import (
+    format_chart_amount,
     format_date,
     format_datetime_utc,
     format_field_name,
@@ -117,6 +118,13 @@ def test_format_metric_value_margin_is_percent() -> None:
     assert format_metric_value("operating_margin", ratio) == "36.1%"
 
 
+def test_format_chart_amount_matches_table_compact_units() -> None:
+    assert format_chart_amount("revenue", 82_886_000_000) == "$82.89 B"
+    assert format_chart_amount("net_margin", "0.245") == "24.5%"
+    assert format_chart_amount("interest_coverage", "12.3") == "12.3x"
+    assert format_chart_amount("revenue", float("nan")) == ""
+
+
 def test_format_metric_value_reported_is_usd() -> None:
     assert format_metric_value("net_income", Decimal("62578000000")) == "$62.58 B"
 
@@ -211,6 +219,10 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert "`0001652044-26-000048`" not in dict(trace.outputs)["Accession number"]
     assert all("(" not in label and "_" not in label for label, _ in trace.inputs)
     assert all("(" not in label and "_" not in label for label, _ in trace.outputs)
+    assert trace.header == (
+        "Looked up Google · Net income in SEC filings "
+        "(Jan 1, 2026 – Mar 31, 2026)"
+    )
 
 
 def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
@@ -357,18 +369,16 @@ def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
         "Rank",
         "Company",
         "Ticker",
-        "CIK",
-        "Metric",
         "Value",
-        "Currency",
     )
+    assert "cik" not in table.keys
+    assert "metric" not in table.keys
+    assert "accession_number" not in table.keys
     assert all("(" not in header and "_" not in header for header in table.headers)
     rank_index = table.keys.index("rank")
     value_index = table.keys.index("value")
-    metric_index = table.keys.index("metric")
     assert table.rows[0][rank_index] == "1"
     assert table.rows[0][value_index] == "$800.00 B"
-    assert table.rows[0][metric_index] == "Market cap"
     assert presented.banners == ("Universe snapshot as of Aug 17, 2026, 4:00 PM UTC",)
 
 
@@ -414,7 +424,9 @@ def test_present_compare_formats_percent_and_keeps_reason() -> None:
     assert table.rows[0][reason_index] == "missing_fact (Missing fact)"
     assert table.rows[0][value_index] == ""
     assert table.rows[1][value_index] == "36.1%"
-    assert presented.traces[0].header.startswith("compare_metrics ·")
+    assert presented.traces[0].header == (
+        "Compared Operating margin · Microsoft, Google in SEC filings"
+    )
 
 
 def test_present_news_keeps_unparseable_published() -> None:
@@ -748,6 +760,7 @@ def test_single_metric_trend_preserves_each_period_value() -> None:
 
     assert chart is not None
     assert chart.kind == "line"
+    assert chart.metric == "revenue"
     assert chart.records == (
         {"Period": "2025-03-31", "Microsoft": 1000000000.0},
         {"Period": "2026-03-31", "Microsoft": 2000000000.0},
@@ -893,4 +906,225 @@ def test_comparison_bar_chart_keeps_table_order() -> None:
 
     assert chart is not None
     assert chart.kind == "bar"
-    assert [record["Company"] for record in chart.records] == ["AAPL", "MSFT", "AMAT"]
+    assert chart.horizontal is True
+    assert chart.metric == "research_and_development"
+    assert [record["Company"] for record in chart.records] == [
+        "#1 AAPL",
+        "#2 MSFT",
+        "#3 AMAT",
+    ]
+
+
+def test_rank_and_lookup_with_staggered_periods_uses_bar_not_line() -> None:
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name=name,
+                ticker=ticker,
+                cik=cik,
+                metric="research_and_development",
+                value=Decimal(value),
+                start_date=start,
+                end_date=end,
+                rank=rank,
+            )
+            for rank, (name, ticker, cik, value, start, end) in enumerate(
+                (
+                    (
+                        "Apple Inc.",
+                        "AAPL",
+                        "0000320193",
+                        "8042000000",
+                        date(2025, 12, 28),
+                        date(2026, 3, 31),
+                    ),
+                    (
+                        "Microsoft Corporation",
+                        "MSFT",
+                        "0000789019",
+                        "8197000000",
+                        date(2026, 4, 1),
+                        date(2026, 6, 30),
+                    ),
+                    (
+                        "NVIDIA Corporation",
+                        "NVDA",
+                        "0001045810",
+                        "4291000000",
+                        date(2026, 4, 28),
+                        date(2026, 7, 27),
+                    ),
+                ),
+                start=1,
+            )
+        ],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "bar"
+    assert chart.horizontal is True
+    assert chart.caption == (
+        "Ordered by market cap; bar length is latest-quarter "
+        "Research and development. Periods differ by issuer."
+    )
+    assert [record["Company"] for record in chart.records] == [
+        "#1 AAPL",
+        "#2 MSFT",
+        "#3 NVDA",
+    ]
+    assert [record["Period"] for record in chart.records] == [
+        "Dec 28, 2025 – Mar 31, 2026",
+        "Apr 1, 2026 – Jun 30, 2026",
+        "Apr 28, 2026 – Jul 27, 2026",
+    ]
+
+
+def test_compare_staggered_latest_quarters_uses_vertical_bar() -> None:
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="revenue",
+                value=Decimal("70000000000"),
+                start_date=date(2026, 4, 1),
+                end_date=date(2026, 6, 30),
+            ),
+            TableRow(
+                company_name="NVIDIA Corporation",
+                ticker="NVDA",
+                cik="0001045810",
+                metric="revenue",
+                value=Decimal("44000000000"),
+                start_date=date(2026, 4, 28),
+                end_date=date(2026, 7, 27),
+            ),
+        ],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "bar"
+    assert chart.horizontal is False
+    assert chart.caption == "Latest standalone quarter; periods differ by issuer."
+    assert [record["Company"] for record in chart.records] == ["MSFT", "NVDA"]
+
+
+def test_rank_and_lookup_stays_bar_even_if_one_issuer_has_two_periods() -> None:
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Apple Inc.",
+                ticker="AAPL",
+                cik="0000320193",
+                metric="research_and_development",
+                value=Decimal("8000000000"),
+                end_date=date(2026, 3, 31),
+                rank=1,
+            ),
+            TableRow(
+                company_name="Apple Inc.",
+                ticker="AAPL",
+                cik="0000320193",
+                metric="research_and_development",
+                value=Decimal("8100000000"),
+                end_date=date(2026, 6, 27),
+                rank=1,
+            ),
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="research_and_development",
+                value=Decimal("8200000000"),
+                end_date=date(2026, 3, 31),
+                rank=2,
+            ),
+        ],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "bar"
+    assert chart.horizontal is True
+    assert [record["Company"] for record in chart.records] == [
+        "#1 AAPL",
+        "#1 AAPL",
+        "#2 MSFT",
+    ]
+
+
+def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="NVIDIA Corporation",
+                ticker="NVDA",
+                cik="0001045810",
+                metric="research_and_development",
+                value=Decimal("4291000000"),
+                start_date=date(2026, 4, 28),
+                end_date=date(2026, 7, 27),
+                rank=1,
+                form="10-Q",
+                accession_number="0001045810-26-000001",
+                concept="ResearchAndDevelopmentExpense",
+                source_url="https://www.sec.gov/nvda",
+            ),
+            TableRow(
+                company_name="Alphabet Inc.",
+                ticker="GOOG",
+                cik="0001652044",
+                metric="research_and_development",
+                rank=2,
+                reason="missing_fact",
+            ),
+        ],
+    )
+
+    presented = present_turn(result)
+    chart = presented.chart
+    table = presented.table
+
+    assert chart is not None
+    assert chart.kind == "bar"
+    assert chart.horizontal is True
+    assert chart.caption == (
+        "Ordered by market cap; bar length is latest-quarter Research and development."
+    )
+    assert chart.records[0]["Missing"] is False
+    assert chart.records[1]["Missing"] is True
+    assert chart.records[1]["Value"] == 0.0
+    assert chart.records[1]["Label"] == "Missing fact"
+    assert chart.records[0]["Label"] == "$4.29 B"
+    assert table is not None
+    assert table.keys == (
+        "rank",
+        "company_name",
+        "ticker",
+        "value",
+        "start_date",
+        "end_date",
+        "reason",
+    )
+    assert "accession_number" not in table.keys
+    assert "concept" not in table.keys
+    assert "source_url" not in table.keys
+    assert presented.evidence

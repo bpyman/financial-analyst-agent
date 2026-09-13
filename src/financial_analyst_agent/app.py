@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-import pandas as pd
+import altair as alt
+import pandas as pd  # type: ignore[import-untyped]
 import streamlit as st
 import streamlit_shadcn_ui as ui  # type: ignore[import-untyped]
 
@@ -19,6 +20,9 @@ from financial_analyst_agent.presentation import (
     DisplayTable,
     Presentation,
     QuarterlyFactCard,
+    chart_value_kind,
+    format_chart_amount,
+    format_date,
     format_field_name,
     metric_groups,
     present_turn,
@@ -44,7 +48,7 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     ),
     (
         "Compare four quarters",
-        "What was Microsoft's latest quarterly revenue for the last four quarters?",
+        "What was Microsoft's quarterly revenue over the last four quarters?",
     ),
     (
         "Rank then inspect filings",
@@ -161,13 +165,15 @@ def _render_presentation(
         st.error(presented.message)
     if presented.essay is not None:
         st.markdown(presented.essay)
+    if presented.traces:
+        st.markdown("**How this answer was fetched**")
     for trace in presented.traces:
         with st.expander(trace.header, expanded=False):
             groups = [
                 (title, fields)
                 for title, fields in (
-                    ("Query", trace.inputs),
-                    ("Result Provenance", trace.outputs),
+                    ("Request", trace.inputs),
+                    ("Result", trace.outputs),
                 )
                 if fields
             ]
@@ -250,18 +256,168 @@ def _render_fact_card(card: QuarterlyFactCard, *, turn_index: int = 0) -> None:
         st.link_button("Open filing", card.source_url)
 
 
+_USD_TICK = (
+    "datum.value >= 1e12 ? '$' + format(datum.value/1e12, '.2f') + ' T' "
+    ": datum.value >= 1e9 ? '$' + format(datum.value/1e9, '.2f') + ' B' "
+    ": datum.value >= 1e6 ? '$' + format(datum.value/1e6, '.2f') + ' M' "
+    ": '$' + format(datum.value, ',.0f')"
+)
+
+
+def _period_tick(raw: object) -> str:
+    text = str(raw)
+    try:
+        return format_date(date.fromisoformat(text[:10]))
+    except ValueError:
+        return text
+
+
+def _chart_y(metric: str) -> alt.Y:
+    kind = chart_value_kind(metric)
+    if kind == "multiple":
+        return alt.Y("Value:Q", title=None, axis=alt.Axis(format=".1f"))
+    if kind == "percent":
+        return alt.Y(
+            "Value:Q",
+            title=None,
+            axis=alt.Axis(format=".1%"),
+            scale=alt.Scale(zero=True),
+        )
+    return alt.Y(
+        "Value:Q",
+        title=None,
+        axis=alt.Axis(labelExpr=_USD_TICK),
+        scale=alt.Scale(zero=True),
+    )
+
+
+def _chart_x_value(metric: str) -> alt.X:
+    kind = chart_value_kind(metric)
+    if kind == "multiple":
+        return alt.X("Value:Q", title=None, axis=alt.Axis(format=".1f"))
+    if kind == "percent":
+        return alt.X(
+            "Value:Q",
+            title=None,
+            axis=alt.Axis(format=".1%"),
+            scale=alt.Scale(zero=True),
+        )
+    return alt.X(
+        "Value:Q",
+        title=None,
+        axis=alt.Axis(labelExpr=_USD_TICK),
+        scale=alt.Scale(zero=True),
+    )
+
+
 def _render_chart(chart: object) -> None:
     records = list(getattr(chart, "records", ()))
     if not records:
         return
+    metric = str(getattr(chart, "metric", "") or "")
     kind = getattr(chart, "kind", "bar")
     if kind == "line":
-        st.line_chart(records, x="Period")
+        frame = pd.DataFrame(records)
+        period_order = [str(record["Period"]) for record in records]
+        period_labels = [_period_tick(period) for period in period_order]
+        value_cols = [column for column in frame.columns if column != "Period"]
+        long = frame.melt(
+            id_vars=["Period"],
+            value_vars=value_cols,
+            var_name="Series",
+            value_name="Value",
+        )
+        remap = dict(zip(period_order, period_labels, strict=True))
+        long["Period"] = long["Period"].map(remap)
+        long["Amount"] = [format_chart_amount(metric, value) for value in long["Value"]]
+        series_count = int(long["Series"].nunique())
+        encoded = (
+            alt.Chart(long)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "Period:N",
+                    sort=period_labels,
+                    title=None,
+                    axis=alt.Axis(labelAngle=-35, labelLimit=140),
+                ),
+                y=_chart_y(metric),
+                color=alt.Color(
+                    "Series:N",
+                    title=None,
+                    legend=None if series_count == 1 else alt.Legend(),
+                ),
+                tooltip=[
+                    "Period",
+                    "Series",
+                    alt.Tooltip("Amount:N", title="Amount"),
+                ],
+            )
+        )
+        st.altair_chart(encoded, width="stretch")
+        _render_chart_caption(chart)
         return
     frame = pd.DataFrame(records)
     order = [str(record["Company"]) for record in records]
-    frame["Company"] = pd.Categorical(frame["Company"], categories=order, ordered=True)
-    st.bar_chart(frame, x="Company", y="Value")
+    if "Amount" not in frame.columns:
+        frame["Amount"] = [format_chart_amount(metric, value) for value in frame["Value"]]
+    if "Label" not in frame.columns:
+        frame["Label"] = frame["Amount"]
+    if "Missing" not in frame.columns:
+        frame["Missing"] = False
+    tooltips = [
+        "Company",
+        alt.Tooltip("Amount:N", title="Amount"),
+        alt.Tooltip("Label:N", title="Note"),
+    ]
+    if "Period" in frame.columns:
+        tooltips.append(alt.Tooltip("Period:N", title="Period"))
+    if getattr(chart, "horizontal", False):
+        y_enc = alt.Y("Company:N", sort=order, title=None)
+        bars = (
+            alt.Chart(frame)
+            .mark_bar()
+            .encode(
+                y=y_enc,
+                x=_chart_x_value(metric),
+                color=alt.condition(
+                    alt.datum.Missing,
+                    alt.value("#6b7280"),
+                    alt.value("#4C8BF5"),
+                ),
+                tooltip=tooltips,
+            )
+        )
+        labels = (
+            alt.Chart(frame)
+            .mark_text(align="left", baseline="middle", dx=4)
+            .encode(
+                y=y_enc,
+                x=_chart_x_value(metric),
+                text=alt.Text("Label:N"),
+            )
+        )
+        encoded = alt.layer(bars, labels).properties(
+            height=max(180, 32 * len(order))
+        )
+    else:
+        encoded = (
+            alt.Chart(frame)
+            .mark_bar()
+            .encode(
+                x=alt.X("Company:N", sort=order, title=None),
+                y=_chart_y(metric),
+                tooltip=tooltips,
+            )
+        )
+    st.altair_chart(encoded, width="stretch")
+    _render_chart_caption(chart)
+
+
+def _render_chart_caption(chart: object) -> None:
+    caption = str(getattr(chart, "caption", "") or "")
+    if caption:
+        st.caption(caption)
 
 
 def _render_evidence_inspector(items: tuple[object, ...], *, turn_index: int) -> None:

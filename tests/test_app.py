@@ -14,7 +14,7 @@ from financial_analyst_agent import app
 from financial_analyst_agent.config import AppMode
 from financial_analyst_agent.conversation import ConversationTurn
 from financial_analyst_agent.domain.errors import ConfigurationError
-from financial_analyst_agent.presentation import DisplayTable
+from financial_analyst_agent.presentation import ChartSpec, DisplayTable
 from financial_analyst_agent.thread_store import LocalThreadStore, ThreadMessage, ThreadState
 from financial_analyst_agent.turn import (
     Intent,
@@ -69,7 +69,7 @@ class _Streamlit:
         self.reruns = 0
         self.bottom = self
         self.selectboxes: list[tuple[str, list[str]]] = []
-        self.charts: list[str] = []
+        self.charts: list[Any] = []
         self.link_buttons: list[tuple[str, str]] = []
         self.button_disabled: list[tuple[str, bool]] = []
         self.pills: list[object] = []
@@ -164,6 +164,9 @@ class _Streamlit:
 
     def bar_chart(self, *args: Any, **kwargs: Any) -> None:
         self.charts.append("bar")
+
+    def altair_chart(self, *args: Any, **kwargs: Any) -> None:
+        self.charts.append(args[0] if args else "altair")
 
     def pills(self, *args: Any, **kwargs: Any) -> None:
         self.pills.append(args)
@@ -952,8 +955,18 @@ def test_render_lookup_trace_uses_query_and_result_provenance_captions(
     app.render_turn_result(_google_lookup_trace_result())
     output = _trace_output(fake_streamlit)
 
-    assert "Query" in fake_streamlit.markdowns
-    assert "Result Provenance" in fake_streamlit.markdowns
+    assert "**How this answer was fetched**" in fake_streamlit.markdowns
+    assert fake_streamlit.expanders == [
+        (
+            "Looked up Google · Net income in SEC filings "
+            "(Jan 1, 2026 – Mar 31, 2026)",
+            False,
+        )
+    ]
+    assert "Request" in fake_streamlit.markdowns
+    assert "Result" in fake_streamlit.markdowns
+    assert "Query" not in fake_streamlit.markdowns
+    assert "Result Provenance" not in fake_streamlit.markdowns
     assert "Results Provenance" not in output
     assert "Query fields" not in output
     assert "Inputs" not in output
@@ -1057,7 +1070,8 @@ def test_render_formula_trace_uses_lookup_provenance_rows(
     app.render_turn_result(result)
     output = _trace_output(fake_streamlit)
 
-    assert "Result Provenance" in fake_streamlit.markdowns
+    assert "Result" in fake_streamlit.markdowns
+    assert "Result Provenance" not in fake_streamlit.markdowns
     assert "<strong>Net income</strong>" in output
     assert "$100.00 M" in output
     assert "**Net income — $100.00 M**" not in output
@@ -1107,3 +1121,131 @@ def test_render_news_citations_are_numbered(monkeypatch: pytest.MonkeyPatch) -> 
     assert "[1] [First hit](https://example.com/first) (Jan 1, 2026)" in fake_streamlit.markdowns
     assert "[2] [Second hit](https://example.com/second)" in fake_streamlit.markdowns
     assert not any(item.startswith("- [") for item in fake_streamlit.markdowns)
+
+
+def test_line_chart_formats_usd_ticks_and_readable_dates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
+    app._render_chart(
+        ChartSpec(
+            kind="line",
+            title="Trend",
+            metric="revenue",
+            records=(
+                {"Period": "2024-06-30", "Microsoft": 65_585_000_000.0},
+                {"Period": "2024-09-30", "Microsoft": 65_585_000_000.0},
+                {"Period": "2024-12-31", "Microsoft": 69_632_000_000.0},
+                {"Period": "2026-03-31", "Microsoft": 82_886_000_000.0},
+            ),
+        )
+    )
+
+    spec = fake_streamlit.charts[0].to_dict()
+    assert spec["encoding"]["y"]["axis"]["labelExpr"] == app._USD_TICK
+    assert spec["encoding"]["x"]["sort"] == [
+        "Jun 30, 2024",
+        "Sep 30, 2024",
+        "Dec 31, 2024",
+        "Mar 31, 2026",
+    ]
+    rows = spec["datasets"][spec["data"]["name"]]
+    tooltip_amounts = [row["Amount"] for row in rows]
+    assert "$65.59 B" in tooltip_amounts
+    assert "$82.89 B" in tooltip_amounts
+
+
+def test_bar_chart_formats_usd_ticks_and_keeps_rank_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
+    app._render_chart(
+        ChartSpec(
+            kind="bar",
+            title="Comparison",
+            metric="research_and_development",
+            records=(
+                {"Company": "AAPL", "Value": 8_042_000_000.0},
+                {"Company": "MSFT", "Value": 8_197_000_000.0},
+                {"Company": "AMAT", "Value": 900_000_000.0},
+            ),
+        )
+    )
+
+    spec = fake_streamlit.charts[0].to_dict()
+    assert spec["encoding"]["y"]["axis"]["labelExpr"] == app._USD_TICK
+    assert spec["encoding"]["x"]["sort"] == ["AAPL", "MSFT", "AMAT"]
+
+
+def test_rank_bar_chart_is_horizontal_with_period_tooltip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_streamlit = _Streamlit()
+    _patch_render_streamlit(monkeypatch, fake_streamlit)
+    app._render_chart(
+        ChartSpec(
+            kind="bar",
+            title="Comparison",
+            metric="research_and_development",
+            caption=(
+                "Ordered by market cap; bar length is latest-quarter "
+                "Research and development. Periods differ by issuer."
+            ),
+            horizontal=True,
+            records=(
+                {
+                    "Company": "#1 AAPL",
+                    "Value": 8_042_000_000.0,
+                    "Period": "Dec 28, 2025 – Mar 31, 2026",
+                    "Amount": "$8.04 B",
+                    "Label": "$8.04 B",
+                    "Missing": False,
+                },
+                {
+                    "Company": "#2 MSFT",
+                    "Value": 8_197_000_000.0,
+                    "Period": "Apr 1, 2026 – Jun 30, 2026",
+                    "Amount": "$8.20 B",
+                    "Label": "$8.20 B",
+                    "Missing": False,
+                },
+                {
+                    "Company": "#3 GOOG",
+                    "Value": 0.0,
+                    "Amount": "",
+                    "Label": "Missing fact",
+                    "Missing": True,
+                },
+            ),
+        )
+    )
+
+    spec = fake_streamlit.charts[0].to_dict()
+    layers = spec.get("layer", [spec])
+    bar = next(
+        layer
+        for layer in layers
+        if layer.get("mark") == "bar"
+        or (isinstance(layer.get("mark"), dict) and layer["mark"].get("type") == "bar")
+    )
+    text = next(
+        layer
+        for layer in layers
+        if layer.get("mark") == "text"
+        or (isinstance(layer.get("mark"), dict) and layer["mark"].get("type") == "text")
+    )
+    # Streamlit/Vega-Lite draws this sort list top-to-bottom.
+    assert bar["encoding"]["y"]["sort"] == ["#1 AAPL", "#2 MSFT", "#3 GOOG"]
+    assert bar["encoding"]["x"]["axis"]["labelExpr"] == app._USD_TICK
+    tooltip_titles = [
+        item.get("title") or item.get("field") for item in bar["encoding"]["tooltip"]
+    ]
+    assert "Period" in tooltip_titles
+    assert text["encoding"]["text"]["field"] == "Label"
+    assert (
+        "Ordered by market cap; bar length is latest-quarter "
+        "Research and development. Periods differ by issuer."
+        in fake_streamlit.markdowns
+    )
