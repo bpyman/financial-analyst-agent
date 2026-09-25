@@ -28,7 +28,7 @@ FIXTURE_RESEARCH_QUERY = (
 )
 
 
-class FixtureNewsSearch:
+class RecordedNewsSearch:
     """Recorded Tavily-shaped hits so news_and_explain stays offline."""
 
     def search_news(self, query: str) -> list[NewsHit]:
