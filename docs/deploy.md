@@ -229,12 +229,20 @@ Going live settled several of the open points below against the real services:
   which the dashboard fills in when you import a Blueprint from a repo; the file now
   names it so the standalone validator passes too.
 - **"After CI Checks Pass" on the free plan.** Render's API accepted
-  `autoDeployTrigger: checksPass` for the free web service, so the deploy-hook
-  fallback for Render is not needed. The `deploy` job still skips it while
-  `RENDER_DEPLOY_HOOK_URL` is unset.
+  `autoDeployTrigger: checksPass` for the free web service. The `deploy` job still
+  skips the Render hook while `RENDER_DEPLOY_HOOK_URL` is unset.
 - **How the service was created.** The API service was created through Render's REST
   API with the Blueprint's settings, not through a Blueprint sync. `render.yaml` stays
   the record of those settings.
+- **Auto-deploy needs Render's GitHub App.** Created from the public repo URL, the
+  service built its first deploy but received no pushes: merging the cutover
+  (`3516afd`) left Render on the previous commit, with no event for the push. Render
+  hears about pushes through its GitHub App. The dashboard's Blueprint flow has you
+  connect GitHub; creating the service through the REST API skipped that step. The
+  app was then installed on this repository (**Only select repositories**), and the
+  missed commit was deployed by hand (`POST /v1/services/<id>/deploys` with its
+  `commitId`, or **Manual Deploy** in the dashboard). If Render still misses a push that touches the build filter, set
+  `RENDER_DEPLOY_HOOK_URL` so CI's `deploy` job triggers it.
 - **Vercel production through a deploy hook.** With `git.deploymentEnabled.master:
   false`, a Deploy Hook for `master` produced a `production` deployment that became
   the live domain. Production deploys therefore need the `VERCEL_DEPLOY_HOOK_URL`
