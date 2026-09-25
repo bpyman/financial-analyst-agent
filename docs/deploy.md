@@ -21,8 +21,8 @@ Neither host puts a commit on the public demo before CI passes on it (ADR 0006,
 "Hosting"): Render waits for GitHub's checks, and Vercel production deploys only
 when CI calls its deploy hook. See [production waits for CI](#production-waits-for-ci).
 
-The Streamlit Community Cloud app is still the public URL until cutover (ticket 11
-onward); its notes are [at the end](#legacy-streamlit-community-cloud).
+The Streamlit window is gone from `master`. The old Community Cloud URL shows a
+["This demo has moved" page](#repointing-the-streamlit-app) that links to the new window.
 
 ## Going live: the wizard
 
@@ -220,6 +220,35 @@ service. The window says "Waking the analysis service…" in the meantime.
 
 ## What was checked against current docs
 
+### Verified at go-live (25 September 2026)
+
+Going live settled several of the open points below against the real services:
+
+- **Blueprint schema.** `render blueprints validate` (Render CLI, built from
+  render-oss/cli) accepts `render.yaml`. Its only complaint was a missing `repo:`,
+  which the dashboard fills in when you import a Blueprint from a repo; the file now
+  names it so the standalone validator passes too.
+- **"After CI Checks Pass" on the free plan.** Render's API accepted
+  `autoDeployTrigger: checksPass` for the free web service, so the deploy-hook
+  fallback for Render is not needed. The `deploy` job still skips it while
+  `RENDER_DEPLOY_HOOK_URL` is unset.
+- **How the service was created.** The API service was created through Render's REST
+  API with the Blueprint's settings, not through a Blueprint sync. `render.yaml` stays
+  the record of those settings.
+- **Vercel production through a deploy hook.** With `git.deploymentEnabled.master:
+  false`, a Deploy Hook for `master` produced a `production` deployment that became
+  the live domain. Production deploys therefore need the `VERCEL_DEPLOY_HOOK_URL`
+  repository secret for CI's `deploy` job.
+- **Deployment Protection.** The project's default protection
+  (`all_except_custom_domains`) protects preview and per-deployment URLs. The
+  production domain, `financial-analyst-agent-ten.vercel.app`, is public (200 without
+  a login). The unsuffixed `financial-analyst-agent.vercel.app` belongs to another
+  project.
+- **End to end.** The API refuses calls without the proxy token (401). A guided story
+  runs through the Vercel proxy, and the Playwright suite can run against the hosted URL
+  with `PLAYWRIGHT_BASE_URL`.
+
+
 This configuration was written on 25 September 2026. render.com and vercel.com were not
 reachable from the build environment, so the fields were checked against these
 sources:
@@ -285,31 +314,62 @@ sources:
   window answers 401 or 403, the wizard names the Deployment Protection setting to
   change.
 
-## Legacy: Streamlit Community Cloud
+## Repointing the Streamlit app
 
-> Legacy until cutover (tickets 11–14). The public URL is still
-> [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app).
-> At cutover the app is repointed at a `streamlit-redirect` branch that shows "This demo
-> has moved", and `app.py` is deleted from `master`.
+Links to the old URL,
+[financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app),
+keep working after cutover. The orphan `streamlit-redirect` branch holds one page,
+`streamlit_app.py`, that says "This demo has moved", with a button to the new window.
+It also holds its own `requirements.txt` (Streamlit only), the dark theme in
+`.streamlit/config.toml`, and a README. It shares no history with `master` and is never
+merged. The button opens the `DEMO_URL` secret. Until that is set, or if it is not an
+`https://` URL, the button opens the GitHub repo and the page says the new address is
+not live yet.
 
-The Streamlit window defaults to the recorded runtime, with isolated browser sessions,
-thread expiry, and cached SEC responses. Community Cloud installs from
-`requirements.txt` (exported from `uv.lock`). Free Community Cloud apps sleep when idle,
-so the first visitor may have to wake the app.
+**When:** after the Next.js window is live (ticket 11) and **before** the PR that
+deletes Streamlit (ticket 14) is merged. Community Cloud redeploys on every push to the
+app's branch, so an app still on `master` would break when `app.py` is deleted.
 
-1. Fork or connect `bpyman/financial-analyst-agent`.
-2. Main file: `src/financial_analyst_agent/app.py`.
-3. Copy `.streamlit/secrets.toml.example` into the app's secrets. Keep
-   `APP_MODE=recorded` and `PUBLIC_DEMO=true`.
-4. Check that the first guided story (`Verify a quarterly fact`) returns a table.
+Community Cloud cannot change a deployed app's branch or main file. You delete the app
+and deploy it again with the same subdomain:
 
-Keep the boolean flags quoted in the secrets template. Streamlit exports top-level
-strings and numbers to environment variables, but not TOML booleans, and the app's
-settings read those environment variables.
+1. Check that `streamlit-redirect` is on GitHub:
+   `git ls-remote origin streamlit-redirect` prints one line.
+2. Open [share.streamlit.io](https://share.streamlit.io). On the
+   `financial-analyst-agent-project` app, open the **⋮** menu → **Delete**, and confirm.
+   The old app's secrets are not needed again.
+3. **Create app** → deploy a public app from GitHub, and fill in:
+   - Repository: `bpyman/financial-analyst-agent`
+   - Branch: `streamlit-redirect`
+   - Main file path: `streamlit_app.py`
+   - App URL: `financial-analyst-agent-project`
+4. **Advanced settings** → **Secrets**: paste the hosted window's URL as a quoted
+   top-level string, then **Save** and **Deploy**:
 
-Local smoke:
+   ```toml
+   DEMO_URL = "https://<project>.vercel.app"
+   ```
 
-```text
-uv run python -m pytest tests/test_demo_smoke.py -q
-uv run python -m streamlit run src/financial_analyst_agent/app.py
-```
+5. Open the old URL. It should say "This demo has moved", and **Open the new demo**
+   should land on the Next.js window. If the button reads **View the project on
+   GitHub** instead, `DEMO_URL` is missing, unquoted, or not `https://`.
+
+If the App URL field says the subdomain is taken, the deleted app has not released it
+yet. Deploy under any name, wait a few minutes, then set it in the app's **Settings** →
+**General**. The subdomain can be changed at any time. To change the address later,
+edit `DEMO_URL` in the app's **Settings** → **Secrets**. If the page still shows the
+old value after a minute, **Reboot** the app from the **⋮** menu.
+
+The page is a free Community Cloud app too, so after a long idle spell a visitor may
+first see the button that wakes it.
+
+These steps come from search excerpts of Streamlit's Community Cloud docs ("Rename or
+change your app's GitHub coordinates": delete, change, redeploy; subdomains can be
+changed at any time), because docs.streamlit.io was not reachable from the build
+environment. To run the page locally, see the branch's README.
+
+**Done on 25 September 2026.** The steps above worked as written. The deleted app's
+subdomain was free at once, so the fallback was not needed. **Advanced settings**
+defaulted to Python 3.14; the redirect was deployed on 3.12, the old app's version.
+`DEMO_URL` is `https://financial-analyst-agent-ten.vercel.app`, and the old URL's
+**Open the new demo** button opens it.

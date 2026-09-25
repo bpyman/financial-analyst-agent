@@ -30,12 +30,13 @@ VERCEL_JSON = ROOT / "web" / "vercel.json"
 IGNORE_BUILD = ROOT / "web" / "scripts" / "ignore-build.sh"
 PROXY_ROUTE = ROOT / "web" / "app" / "api" / "[...path]" / "route.ts"
 CI_YAML = ROOT / ".github" / "workflows" / "ci.yml"
+DEPLOY_NOTES = ROOT / "docs" / "deploy.md"
 
 # Service fields from Render's Blueprint reference (render-oss/skills,
 # render-blueprints/references/field-reference.md), so a misspelt field fails
 # here rather than at Blueprint sync.
 RENDER_SERVICE_FIELDS = {
-    "name", "type", "runtime", "region", "plan", "branch", "rootDir",
+    "name", "type", "runtime", "region", "plan", "repo", "branch", "rootDir",
     "buildCommand", "startCommand", "preDeployCommand", "autoDeployTrigger",
     "maxShutdownDelaySeconds", "healthCheckPath", "domains", "envVars",
     "buildFilter", "disk", "scaling", "numInstances", "registryCredential",
@@ -70,6 +71,7 @@ def test_render_blueprint_is_one_free_docker_web_service_in_virginia() -> None:
     assert service["plan"] == "free"
     assert service["region"] in RENDER_REGIONS
     assert service["region"] == "virginia"
+    assert service["repo"] == "https://github.com/bpyman/financial-analyst-agent"
     assert service["branch"] == "master"
     assert (ROOT / service["dockerfilePath"]).is_file()
     assert (ROOT / service["dockerContext"]).resolve() == ROOT
@@ -187,6 +189,47 @@ def test_vercel_production_deploys_only_through_the_ci_hook() -> None:
     # and pull request previews.
     assert config["git"] == {"deploymentEnabled": {production: False}}
     assert f"refs/heads/{production}" in _deploy_job()[1]["if"]
+
+
+def test_deploy_notes_repoint_the_old_streamlit_url_at_the_redirect_branch() -> None:
+    # Ticket 13: Community Cloud cannot change an app's branch in place, so the
+    # notes delete and redeploy it on the moved page, keeping the old subdomain.
+    notes = DEPLOY_NOTES.read_text(encoding="utf-8")
+    section = notes.split("## Repointing the Streamlit app", 1)[1].split("\n## ", 1)[0]
+
+    for step in (
+        "`streamlit-redirect`",
+        "`streamlit_app.py`",
+        "financial-analyst-agent-project",
+        'DEMO_URL = "https://',
+        "Delete",
+        "This demo has moved",
+    ):
+        assert step in section, step
+
+
+def test_deploy_notes_keep_no_legacy_streamlit_hosting() -> None:
+    # Ticket 14: the Community Cloud app now serves only the redirect branch.
+    notes = DEPLOY_NOTES.read_text(encoding="utf-8")
+
+    assert "## Legacy" not in notes
+    assert "#legacy-streamlit-community-cloud" not in notes
+    assert "src/financial_analyst_agent/app.py" not in notes
+    assert "secrets.toml.example" not in notes
+
+
+def test_the_streamlit_window_and_its_dependencies_are_gone() -> None:
+    # Ticket 14 (ADR 0006 cutover): the Next.js window is the only audience window.
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    locked = set(re.findall(r'^name = "([^"]+)"$', lock, flags=re.MULTILINE))
+
+    assert not locked & {"streamlit", "streamlit-shadcn-ui", "altair", "pandas", "pyarrow"}
+    for path in (
+        "src/financial_analyst_agent/app.py",
+        ".streamlit",
+        "requirements.txt",
+    ):
+        assert not (ROOT / path).exists(), path
 
 
 def test_vercel_config_runs_the_ignored_build_step_on_fluid_compute_in_iad1() -> None:

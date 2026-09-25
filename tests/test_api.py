@@ -8,6 +8,7 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -15,11 +16,12 @@ from fastapi.testclient import TestClient
 
 from api_server import smoke
 from financial_analyst_agent import api
-from financial_analyst_agent.api import create_app
+from financial_analyst_agent.api import PUBLIC_FAILURE_MESSAGE, create_app
 from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.contracts import Runtime, RuntimeKind
+from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.runtime import recorded_runtime, resolve_runtime_kind
-from financial_analyst_agent.storefront import GUIDED_STORIES, PUBLIC_FAILURE_MESSAGE
+from financial_analyst_agent.storefront import EXAMPLE_QUERY, GUIDED_STORIES
 from financial_analyst_agent.thread_store import LocalThreadStore
 
 # Keys the web client reads (web/lib/types.ts). Renaming one is a client break.
@@ -201,6 +203,119 @@ def test_turn_quota_streams_public_error(tmp_path: Path) -> None:
     kind, data = _events(_post_turn(client, thread_id, "add Apple"))[-1]
     assert kind == "error"
     assert "turn limit" in data["message"]
+
+
+def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient) -> None:
+    meta = client.get("/api/meta").json()
+
+    assert meta["example_query"] == EXAMPLE_QUERY
+    descriptions = [item["description"] for item in meta["capabilities"]]
+    assert descriptions == [
+        "Look up quarterly 10-Q financial facts or market cap for any "
+        "operating publicly-listed US company",
+        "Compare companies on metrics, rank by market cap, or combine rank and lookup",
+        "Access and analyze relevant financial news linked to specific companies",
+        "Answer general queries and provide qualitative industry analysis",
+        "Stay on the same thread to extend the current analysis, or start a new one",
+    ]
+    examples = [example for item in meta["capabilities"] for example in item["examples"]]
+    assert examples == [
+        "What was Microsoft's latest quarterly revenue?",
+        "What is Apple's market cap?",
+        "Compare Eli Lilly and Merck net margins",
+        "What are the top 10 tech companies and R&D spend for each?",
+        "What's going on with Eli Lilly's obesity drugs?",
+        "How could AI change bank underwriting?",
+        "add Apple",
+        "now add operating margin",
+        "make that the last four quarters",
+        "show year-over-year",
+    ]
+    groups = {group["title"]: group["names"] for group in meta["metric_groups"]}
+    assert list(groups) == ["Reported (SEC EDGAR)", "Calculated", "Daily snapshot (FMP)"]
+    assert groups["Reported (SEC EDGAR)"][0] == "Revenue"
+    assert "Gross margin" in groups["Calculated"]
+    assert groups["Daily snapshot (FMP)"] == ["Market cap"]
+    assert not any("_" in name for names in groups.values() for name in names)
+
+
+@pytest.mark.parametrize(
+    ("failure", "shown"),
+    [
+        (RuntimeError("provider failed"), PUBLIC_FAILURE_MESSAGE),
+        (ConfigurationError("SEC_USER_AGENT is not set"), "SEC_USER_AGENT is not set"),
+    ],
+)
+def test_failed_turn_streams_a_public_error_and_keeps_prior_turns(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+    shown: str,
+) -> None:
+    thread_id = _new_thread(client)
+    before = _ask(client, thread_id, GUIDED_STORIES[0][1])
+
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        raise failure
+
+    monkeypatch.setattr(api, "run_conversation_turn", fail)
+    kind, data = _events(_post_turn(client, thread_id, "add Apple"))[-1]
+
+    assert (kind, data) == ("error", {"message": shown})
+    after = client.get(f"/api/threads/{thread_id}").json()
+    assert after["turns"] == before["turns"]
+
+
+def test_failed_turn_still_counts_against_the_thread_budget(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[0][1])
+    monkeypatch.setattr(
+        api,
+        "runtime_for",
+        lambda _kind, *, settings, budget: SimpleNamespace(budget=budget),
+    )
+
+    def spend_then_fail(_thread_id: str, _message: str, runtime: Any, **_: Any) -> None:
+        runtime.budget.consume_live_sec()
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(api, "run_conversation_turn", spend_then_fail)
+    assert _events(_post_turn(client, thread_id, "add Apple"))[-1][0] == "error"
+
+    saved = LocalThreadStore(tmp_path / "threads").load(thread_id)
+    assert saved is not None
+    assert saved.turn_count == 2
+    assert saved.live_sec_requests == 1
+    assert [message.content for message in saved.messages] == [GUIDED_STORIES[0][1]]
+
+
+def test_thread_survives_an_api_restart(tmp_path: Path) -> None:
+    root = tmp_path / "threads"
+    first = TestClient(create_app(_settings(), store_root=root))
+    thread_id = _new_thread(first)
+    _ask(first, thread_id, GUIDED_STORIES[1][1])
+    view = _ask(first, thread_id, "add Apple")
+
+    restarted = TestClient(create_app(_settings(), store_root=root))
+
+    assert restarted.get(f"/api/threads/{thread_id}").json() == view
+
+
+def test_expired_thread_reloads_empty_and_is_purged(client: TestClient, tmp_path: Path) -> None:
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[0][1])
+    store = LocalThreadStore(tmp_path / "threads")
+    state = store.load(thread_id)
+    assert state is not None
+    store.save(state.model_copy(update={"updated_at": datetime(2020, 1, 1, tzinfo=UTC)}))
+
+    view = client.get(f"/api/threads/{thread_id}").json()
+
+    assert view["turns"] == []
+    assert view["turn_count"] == 0
+    assert store.load(thread_id) is None
 
 
 def test_blank_message_is_rejected(client: TestClient) -> None:

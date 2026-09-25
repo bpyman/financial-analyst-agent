@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/UI-Streamlit-ff4b4b.svg)](https://streamlit.io)
+[![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
+[![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)
 
 **An evidence-first financial research agent that answers from SEC filings without letting the model touch the numbers.**
 
@@ -16,55 +17,48 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 ## Try it
 
-Hosted demo (recorded runtime, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
+Hosted demo (recorded runtime, no keys): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. Or [run it locally](#run-it-locally) in two commands.
 
-![One-click four-quarter comparison, then inspect the exact 10-Q fact](docs/portfolio/images/demo-walkthrough.gif)
+![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
-[Walkthrough](docs/portfolio/images/demo-walkthrough.mp4) — one-click four-quarter compare, `add Apple`, chart, then inspect the 10-Q source.
+[Walkthrough video](docs/portfolio/images/demo-walkthrough.mp4) — one-click four-quarter compare, `add Apple`, the two-company chart, then the exact 10-Q source behind an Apple value.
 
-![Microsoft quarterly revenue line chart from the hosted demo](docs/portfolio/images/compare-four-quarters.png)
+![Microsoft quarterly revenue trend and its table, with the filing link on every row](docs/portfolio/images/compare-four-quarters.png)
 
-![Evidence inspector with exact Decimal, accession, and Open filing](docs/portfolio/images/inspect-exact-source.png)
+![Evidence inspector with the exact amount, CIK, accession, concept, selection rule, and Open filing](docs/portfolio/images/inspect-exact-source.png)
 
-Zero-key local path:
+The images are captured from the window by a Playwright script against the recorded runtime, so they can be regenerated whenever the window changes (see [Portfolio images](#portfolio-images)).
+
+## Run it locally
+
+The window is a Next.js app (`web/`) that proxies `/api/*` to a Python API ([ADR 0006](docs/adr/0006-react-audience-window.md)). You need [uv](https://docs.astral.sh/uv/) and Node 22 (`.nvmrc`). One-time setup:
 
 ```text
 uv sync
+npm --prefix web install
+cp .env.example .env        # Windows: copy .env.example .env
 ```
 
-Windows:
+`.env.example` sets `APP_MODE=recorded` (`fixture` still works as a deprecated alias), so no keys are needed. Then run the API and the window, each in its own terminal:
 
 ```text
-copy .env.example .env
+uv run serve-api            # the API on http://127.0.0.1:8000
+npm --prefix web run dev    # the window on http://localhost:3000
 ```
 
-macOS / Linux:
+Open http://localhost:3000 and click a guided story. [`web/README.md`](web/README.md) lists the window's environment variables, checks, and the browser check.
 
-```text
-cp .env.example .env
-```
+Beyond the guided stories, try these. Follow-ups such as `add Apple` patch the analysis instead of starting over.
 
-Set `APP_MODE=recorded` in `.env` (`fixture` still works as a deprecated alias), then:
+1. What was Microsoft's latest quarterly pretax income?
+2. Compare Tesla and GM revenue
+3. What are the top 10 tech companies and R&D spend for each?
+4. add Apple
+5. make that the last four quarters
 
-```text
-uv run python -m streamlit run src/financial_analyst_agent/app.py
-```
+The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness. `APP_MODE=live` with the keys in `.env` runs the live runtime.
 
-The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness.
-
-The new Next.js window ([ADR 0006](docs/adr/0006-react-audience-window.md)) runs as two processes: the Python API and the web app, which proxies `/api/*` to it. The web app needs Node 22 (`.nvmrc`).
-
-```text
-# terminal 1, repo root: the API on http://127.0.0.1:8000
-APP_MODE=recorded uv run serve-api
-
-# terminal 2
-cd web
-npm install
-npm run dev
-```
-
-Open http://localhost:3000. No secrets are needed locally; [`web/README.md`](web/README.md) lists the web app's environment variables and checks.
+## Deploy
 
 The API also ships as a Docker image. It installs from `uv.lock`, runs as a non-root user, listens on `$PORT` (default 8000) on all interfaces, starts on the recorded runtime unless `APP_MODE=live` is set, and has a health check on `/api/health`. The image holds only the installed package: no tests, `web/`, or dev tooling.
 
@@ -80,21 +74,16 @@ The same script checks an API that is already running: `--base-url https://<host
 
 The hosted setup is the Next.js window on Vercel (`web/vercel.json`) and this image on Render (`render.yaml`). Render deploys a commit only after CI passes. [`docs/deploy.md`](docs/deploy.md) lists every environment variable for each service and where it is set. To go live, run `scripts/deploy_wizard.sh`. It walks through the account steps and checks each one.
 
-Example questions:
-
-1. What was Microsoft's latest quarterly pretax income?
-2. Compare Tesla and GM revenue
-3. What are the top 10 tech companies and R&D spend for each?
-4. add Apple
-5. make that the last four quarters
-
 ## Architecture
 
-One Streamlit window. A persisted **conversation thread** carries a patchable **analysis spec**. Follow-ups edit companies, metrics, periods, and operations instead of restarting. `run_turn` remains a compatibility wrapper over a one-message thread so the gold suite stays green.
+The audience window is a Next.js app. The browser only calls the window's own `/api/*`; a route handler proxies each call to a small FastAPI service (`financial_analyst_agent.api`), so the Python origin is never a second public entry point. The API adds no financial logic: it is a transport over the conversation seam, the thread store, and `present_turn`, which turns a result into display records. Every amount shown as text is formatted in Python, and a turn streams progress over server-sent events. See [ADR 0006](docs/adr/0006-react-audience-window.md).
+
+Behind the seam, a persisted **conversation thread** carries a patchable **analysis spec**. Follow-ups edit companies, metrics, periods, and operations instead of restarting. `run_turn` remains a compatibility wrapper over a one-message thread so the gold suite stays green.
 
 ```mermaid
 flowchart TB
-    Q["Analyst message"] --> C["Conversation seam"]
+    W["Next.js window (web/)"] -->|"/api/* proxy route"| A["FastAPI: threads, turns (SSE), meta"]
+    A --> C["Conversation seam"]
     C --> P["Planner proposes spec patch or qualitative intent"]
     P --> G["Guard: metric phrases, catalogs, mode"]
     G -->|"structured"| S["Resolve and validate analysis spec"]
@@ -106,7 +95,8 @@ flowchart TB
     X --> R
     CL --> R
     RF --> R
-    R --> O["Table · essay · clarify · refuse"]
+    R --> PR["present_turn: fact card · chart · table · essay · clarify · refuse"]
+    PR -->|"JSON"| W
 ```
 
 Full design: [`docs/design.md`](docs/design.md). ADRs: [`docs/adr/`](docs/adr/).
@@ -128,7 +118,7 @@ uv run python -m pytest tests/integration/test_live_sec_lookup.py -m network
 uv run python -m pytest tests/integration/test_live_tavily_news.py -m network
 ```
 
-The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** fixture cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
+The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** recorded-runtime cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
 
 ```text
 uv run python -m financial_analyst_agent.evaluation
@@ -145,6 +135,18 @@ MCP tools (same contracts as in-process) can be served locally:
 ```text
 uv run python -m financial_analyst_agent.mcp_server
 ```
+
+## Portfolio images
+
+`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source, and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview, and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
+
+```text
+cd web
+npm run build
+npm run capture
+```
+
+It starts the recorded API and the built window itself, as the browser check does, or reuses them if they are already running.
 
 ## Limitations
 

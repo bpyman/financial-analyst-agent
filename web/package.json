@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "capture": "playwright test --config playwright.capture.config.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

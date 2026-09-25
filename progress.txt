@@ -608,3 +608,72 @@ Blockers / next:
 - It was verified with `bash -n`, shellcheck 0.11 (`uvx --from shellcheck-py shellcheck`, clean), pytest (`--help` and `--check` against in-process stand-ins), and a pty-driven run of the fresh and re-run paths against in-process APIs. It was not run against the real dashboards or on macOS bash 3.2.
 - Open question: whether Vercel Standard Protection gates `<name>.vercel.app` (the July 2025 changelog says "all except production custom domains"). The wizard's 401/403 hint points to Settings → Deployment Protection.
 - The template's `_clear` exits the script under `TERM=dumb`, because `tput clear` fails under `set -e`. Real terminals are unaffected. Fix it in the skill template, not here.
+
+
+## 2026-09-25 — react-audience-window 12 Recapture the portfolio images and rewrite the README
+
+Task completed: `.scratch/react-audience-window/issues/12-recapture-portfolio-and-readme.md`
+
+Key decisions:
+- The capture is a Playwright "test" with its own config (`web/playwright.capture.config.ts`, spreading `playwright.config.ts`), so it gets TypeScript, the `Analyst` page object, and the same recorded API and built-app servers for free. It runs with `npm run capture`, and `npm run test:e2e` never picks it up (different testDir). Node's type stripping could not load `e2e/analyst.ts`, because it uses parameter properties.
+- There are two passes on fresh threads. Stills are taken at dsf 2 at 1280×1000, and the social preview at 1280×640 with `scale: "css"`. The recording is 1280×800 at dsf 1. Taking screenshots during the recording would stutter the video.
+- Framing scrolls each target to just under the sticky header and status line. It measures the sticky and fixed elements in the top third of the screen and waits out the window's own smooth scroll first. The inspector shows Apple's standalone 10-Q item (found by selecting options until "Standalone 10-Q" appears), not the "Calculated from the listed component facts" item, which is first.
+- The video trims the page load with `-ss`, measured from context creation to the landing page being ready. The GIF uses 8 fps, 880 px, a 64-colour palette, no dither, and diff_mode=rectangle. It is about 4.6 MB (it was 8 MB at 10 fps, 960 px, and 128 colours with bayer dither). The MP4 is libx264 crf 24 yuv420p with faststart.
+- The README hosted URL is a `HOSTED_DEMO_URL` marker plus a grey "coming soon" badge (see the ticket Answer for every location). Local run is one-time setup (`uv sync`, `npm --prefix web install`, `cp .env.example .env`), then two commands.
+
+Files changed:
+- `web/scripts/capture-portfolio.ts`, `web/scripts/portfolio-media.ts`, `web/scripts/portfolio-media.test.ts`, `web/playwright.capture.config.ts` (new); `web/package.json` (`capture` script), `web/README.md`
+- `docs/portfolio/images/*` (all six regenerated), `docs/portfolio/release.md`, `README.md`
+- `tests/test_readme.py` (new)
+- ticket 12 resolved
+
+Blockers / next:
+- Ticket 11: replace `HOSTED_DEMO_URL` in README.md and docs/portfolio/release.md, and re-upload the social preview.
+- Ticket 13 (streamlit-redirect branch) is next, then ticket 14. Ticket 14 must keep `tests/test_readme.py` green. docs/deploy.md still has the legacy Streamlit notes; ticket 13 adds the repoint steps there.
+- To recapture in the cloud container: `FFMPEG=$(uvx --from imageio-ffmpeg python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")`, then `npm run build && npm run capture` from `web/`. It takes about 40s.
+
+
+## 2026-09-25 — react-audience-window 13 Old Streamlit links land on a "moved" page
+
+Task completed: `.scratch/react-audience-window/issues/13-streamlit-redirect-page.md`
+
+Key decisions:
+- `streamlit-redirect` is an orphan branch (`489a291`), created locally in a separate worktree and not pushed. It holds `streamlit_app.py`, `requirements.txt` (streamlit==1.61.1 only), `.streamlit/config.toml` (the window's dark palette), and `README.md`.
+- The page reads `DEMO_URL` from the environment (Community Cloud exports top-level string secrets). When it is unset or not https, the button opens the GitHub repo and the page says the new address is not live yet.
+- The entry point is `streamlit_app.py` at the root. Community Cloud cannot change branch or main file in place, so the repoint is delete, then redeploy on the same subdomain.
+- The repoint steps sit in their own `docs/deploy.md` section, before the legacy notes, so ticket 14 can delete the legacy section and keep them. A test in `tests/test_deploy_config.py` pins them.
+
+Files changed:
+- `docs/deploy.md`, `tests/test_deploy_config.py`
+- ticket 13 resolved
+- branch `streamlit-redirect`: `streamlit_app.py`, `requirements.txt`, `.streamlit/config.toml`, `README.md`
+
+Blockers / next:
+- `streamlit-redirect` must be pushed (`git push origin streamlit-redirect`) before Blake repoints.
+- Ticket 11: when the window is live, follow "Repointing the Streamlit app" in `docs/deploy.md` and set `DEMO_URL`. Do this before the ticket 14 PR merges.
+- Ticket 14: keep the "Repointing the Streamlit app" section and its test. Delete only the "Legacy: Streamlit Community Cloud" section, and the intro and callout links that point to it.
+
+
+
+## 2026-09-25 — react-audience-window 14 Delete the Streamlit window
+
+Task completed: `.scratch/react-audience-window/issues/14-delete-streamlit.md`
+
+Key decisions:
+- Deleted `app.py`, `tests/test_app.py`, `tests/test_app_widgets.py`, `.streamlit/`, and the root `requirements.txt`. Nothing but the legacy deploy notes read `requirements.txt`, and Docker installs from `uv.lock`. `uv remove streamlit streamlit-shadcn-ui` took the lock from 131 to 111 packages, and altair, pandas, pyarrow, and numpy left with them.
+- Streamlit tests that guarded behaviour the API still has moved to the API seam (meta catalog, public errors keep prior turns, a failed turn still spends budget, restart, expiry) and the presentation seam (numeric table cells, the four-quarter and filing-change stories). The rest were Streamlit widget or Altair details.
+- `docs/deploy.md` loses only the legacy Community Cloud section and the intro link. Two new guards in `tests/test_deploy_config.py` pin that and the dependency removal.
+- `prd.md` marks story 34 superseded (struck through, not rewritten) and notes ADR 0006 wherever it named Streamlit. `docs/design.md` describes the Next.js window and the FastAPI seam.
+- The API image went from 981 MB to 413 MB (216 MB to 88.3 MB compressed). The smoke test passed against it.
+
+Files changed:
+- deleted: `src/financial_analyst_agent/app.py`, `tests/test_app.py`, `tests/test_app_widgets.py`, `.streamlit/config.toml`, `.streamlit/secrets.toml.example`, `requirements.txt`
+- `pyproject.toml`, `uv.lock`
+- `src/financial_analyst_agent/storefront.py`, `src/financial_analyst_agent/observability.py` (docstrings)
+- `tests/test_api.py`, `tests/test_presentation.py`, `tests/test_demo_smoke.py`, `tests/test_deploy_config.py`
+- `docs/deploy.md`, `docs/design.md`, `prd.md`
+- ticket 14 resolved
+
+Blockers / next:
+- The PR stays a draft until ticket 11 is resolved. Before it merges, push `streamlit-redirect` and repoint the Community Cloud app ("Repointing the Streamlit app" in `docs/deploy.md`). An app still on `master` breaks once `app.py` is gone.
+- Only ticket 11 (ready-for-human) remains in this feature.
