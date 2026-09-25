@@ -1154,6 +1154,7 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
     assert chart.records[1]["Label"] == "Missing fact"
     assert chart.records[0]["Label"] == "$4.29 B"
     assert table is not None
+    # Ranked facts carry their filing provenance so each row links its 10-Q.
     assert table.keys == (
         "rank",
         "company_name",
@@ -1161,11 +1162,14 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
         "value",
         "start_date",
         "end_date",
+        "form",
+        "accession_number",
+        "concept",
+        "source_url",
         "reason",
     )
     assert table.headers[table.keys.index("value")] == "Research and development"
     assert "Value" not in table.headers
-    assert "accession_number" not in table.keys
-    assert "concept" not in table.keys
-    assert "source_url" not in table.keys
+    assert table.rows[0][table.keys.index("source_url")] == "https://www.sec.gov/nvda"
+    assert table.rows[1][table.keys.index("source_url")] == ""
     assert presented.evidence

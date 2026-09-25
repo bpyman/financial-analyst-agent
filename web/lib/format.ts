@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]): string {
  */
 export function axisTick(value: number, kind: ValueKind): string {
   if (!Number.isFinite(value)) return "";
-  if (kind === "percent") return `${(value * 100).toFixed(0)}%`;
+  if (kind === "percent") return `${Number((value * 100).toFixed(1))}%`;
   if (kind === "multiple") return `${value.toFixed(1)}x`;
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);

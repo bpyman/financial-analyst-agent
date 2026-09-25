@@ -228,6 +228,8 @@ _TABLE_KEYS = (
     "source_url",
     "reason",
 )
+# A ranking stays narrow: no CIK, currency, or taxonomy. Rank-and-lookup rows
+# keep their filing provenance so each ranked fact links to its 10-Q.
 _RANK_TABLE_KEYS = (
     "rank",
     "company_name",
@@ -235,6 +237,10 @@ _RANK_TABLE_KEYS = (
     "value",
     "start_date",
     "end_date",
+    "form",
+    "accession_number",
+    "concept",
+    "source_url",
     "reason",
 )
 _SNAPSHOT_PREFIX = "Universe snapshot as of "

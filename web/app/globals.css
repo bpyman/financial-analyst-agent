@@ -23,11 +23,13 @@
   --warning-soft: rgb(202 138 4 / 0.1);
   --grid: rgb(13 17 23 / 0.045);
   --glow: rgb(37 99 235 / 0.1);
+  /* Categorical slots, in an order validated for colour-vision deficiency on
+     --surface (adjacent pairs, both themes). Keep the order when changing a hue. */
   --chart-1: #2563eb;
-  --chart-2: #0d9488;
-  --chart-3: #7c3aed;
-  --chart-4: #d97706;
-  --chart-5: #e11d48;
+  --chart-2: #d97706;
+  --chart-3: #0d9488;
+  --chart-4: #e11d48;
+  --chart-5: #7c3aed;
   --chart-6: #65a30d;
   --chart-muted: #9ca3af;
   color-scheme: light;
@@ -54,12 +56,13 @@
   --warning-soft: rgb(251 191 36 / 0.09);
   --grid: rgb(255 255 255 / 0.028);
   --glow: rgb(59 130 246 / 0.14);
-  --chart-1: #60a5fa;
-  --chart-2: #2dd4bf;
-  --chart-3: #a78bfa;
-  --chart-4: #fbbf24;
-  --chart-5: #fb7185;
-  --chart-6: #a3e635;
+  /* The same hues stepped into the dark lightness band, validated on --surface. */
+  --chart-1: #3b82f6;
+  --chart-2: #d97706;
+  --chart-3: #0d9488;
+  --chart-4: #f43f5e;
+  --chart-5: #8b5cf6;
+  --chart-6: #65a30d;
   --chart-muted: #4b5563;
   color-scheme: dark;
 }
@@ -133,9 +136,12 @@ body {
   background: var(--primary-soft);
 }
 
-:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+/* In the base layer so a component's own focus utilities (the composer's ring) win. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
 }
 
 .num {

@@ -6,7 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
+import { AnswerChart } from "./answer-chart";
 import { CopyButton } from "./copy-button";
+import { DataTable } from "./data-table";
 import { Badge, Callout, ExternalLink, FilingButton, SectionLabel } from "./ui";
 
 /**
@@ -14,7 +16,7 @@ import { Badge, Callout, ExternalLink, FilingButton, SectionLabel } from "./ui";
  * presentation mapping (ADR 0006); nothing is formatted in the browser.
  */
 export function Answer({ presentation }: { presentation: Presentation }) {
-  const { fact_card, message, evidence, traces, banners } = presentation;
+  const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
   return (
     <div className="min-w-0 space-y-4">
       <div className="flex items-center gap-2">
@@ -26,6 +28,8 @@ export function Answer({ presentation }: { presentation: Presentation }) {
         </Callout>
       ))}
       {fact_card && <FactCard card={fact_card} />}
+      {chart && <AnswerChart chart={chart} />}
+      {table && table.rows.length > 0 && <DataTable table={table} />}
       {message && <Callout kind="warning">{message}</Callout>}
       {evidence.length > 0 && <EvidenceInspector items={evidence} />}
       {traces.length > 0 && <Traces traces={traces} />}

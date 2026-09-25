@@ -476,3 +476,24 @@ Blockers / next:
 - Screenshot runs used the global Playwright at `/opt/node22/lib/node_modules/playwright`; 07 needs Playwright added as a web dev dependency.
 - Do not `pkill -f` a pattern that is also in your own command line: it kills the tool shell.
 
+
+## 2026-09-25 — react-audience-window 05 Comparisons and rankings render as tables and charts
+
+Task completed: `.scratch/react-audience-window/issues/05-tables-and-charts.md`
+
+Key decisions:
+- `web/lib/table-view.ts` decides columns. The compact view shows rank, company, value, end date, reason, and the filing link. The full view adds CIK, currency, start date, form, accession, taxonomy, and concept. The ticker is merged into the company cell, and the filing link always comes last. `web/lib/chart-data.ts` builds rows with positional series keys (`s0`, `s1`), because a name like "Apple Inc." reads as a Recharts property path. It also assigns colours in a fixed order and pads domains; `niceTicks` gives 1-2-5 steps. Both files have vitest tests.
+- `components/answer-chart.tsx`: every amount written on a chart is the server's string. Bars and their labels are one custom `shape`, because LabelList misplaced the labels after a zero-width (missing) bar. A missing value draws no bar, only its muted reason.
+- The rank-and-lookup table now includes form, accession, concept, and source URL (`_RANK_TABLE_KEYS`), so the ranking story has filing links. Market-cap rankings are unchanged. Streamlit's rank-and-lookup table shows these columns too.
+- The chart palette slots were re-ordered to blue, amber, teal, rose, violet, lime. The dark steps now pass the dataviz validator: lightness band plus adjacent colour-blind separation on `--surface`.
+- `:focus-visible` in globals.css moved into `@layer base`, so a component's own focus utilities win. The composer no longer shows a square outline inside its ring.
+- The axisTick tests moved from `sse.test.ts` to `format.test.ts`. Percent ticks keep one decimal when they need it.
+
+Files changed:
+- `src/financial_analyst_agent/presentation.py`, `tests/test_presentation.py`
+- `web/components/answer-chart.tsx`, `web/components/data-table.tsx` (new), `web/components/answer.tsx`, `web/app/globals.css`
+- `web/lib/chart-data.ts`, `web/lib/table-view.ts` and their tests (new), `web/lib/format.ts`, `web/lib/format.test.ts` (new), `web/lib/sse.test.ts`
+
+Blockers / next:
+- 06 (qualitative, filing change, clarify) plugs into `components/answer.tsx` after the table. 07's Playwright check can find a chart with `getByRole("figure")`, the table with `getByRole("region", { name: "Answer table" })`, and the column switch with `getByRole("radio", { name: "Full" })`.
+- `sr-only` text inside a horizontal scroller needs a `relative` ancestor; otherwise it widens the page on phones.
