@@ -17,7 +17,7 @@ import threading
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -29,7 +29,15 @@ from pydantic import BaseModel, Field
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.observability import configure_logging
-from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
+from financial_analyst_agent.presentation import (
+    chart_value_kind,
+    format_chart_amount,
+    format_date,
+    format_field_name,
+    metric_groups,
+    present_turn,
+    spec_chips,
+)
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
@@ -51,6 +59,7 @@ from financial_analyst_agent.storefront import (
     thread_store_root,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
+from financial_analyst_agent.turn import TurnResult
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
 MAX_MESSAGE_CHARS = 2000
@@ -86,6 +95,44 @@ def _snapshot_as_of(recorded: bool) -> str:
     return SnapshotRanking.from_path(path).snapshot_as_of()
 
 
+def _period_label(raw: object) -> str:
+    text = str(raw)
+    try:
+        return format_date(date.fromisoformat(text[:10]))
+    except ValueError:
+        return text
+
+
+def presentation_json(result: TurnResult) -> dict[str, Any]:
+    """``present_turn`` as JSON, with chart text the client would otherwise format.
+
+    Charts gain ``value_kind`` (axis tick style), ``metric_label`` (axis title),
+    and for trend lines ``period_labels`` plus server-formatted ``amounts`` per
+    series, so tooltips show the same strings as the table.
+    """
+    presented = asdict(present_turn(result))
+    chart = presented.get("chart")
+    if chart is not None:
+        metric = str(chart.get("metric") or "")
+        chart["value_kind"] = chart_value_kind(metric)
+        chart["metric_label"] = format_field_name(metric) if metric else ""
+        if chart.get("kind") == "line":
+            records = chart["records"]
+            chart["period_labels"] = [_period_label(record["Period"]) for record in records]
+            chart["series"] = [
+                key for key in (records[0] if records else {}) if key != "Period"
+            ]
+            chart["amounts"] = [
+                {
+                    key: format_chart_amount(metric, value)
+                    for key, value in record.items()
+                    if key != "Period"
+                }
+                for record in records
+            ]
+    return presented
+
+
 def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> dict[str, Any]:
     """Everything the window needs to draw one thread, as JSON-safe display records."""
     state = store.load(thread_id, ttl_seconds=settings.thread_ttl_seconds)
@@ -107,7 +154,7 @@ def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> 
                 {
                     "index": index,
                     "message": message.content,
-                    "presentation": asdict(present_turn(result)),
+                    "presentation": presentation_json(result),
                     "candidate_slugs": list(result.candidates),
                     "clarify_enabled": pending and index == last,
                 }

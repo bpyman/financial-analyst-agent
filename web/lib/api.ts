@@ -1,0 +1,85 @@
+import { createSseParser } from "./sse";
+import type { Meta, ThreadView, TurnEvent } from "./types";
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function detail(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+  } catch {
+    // fall through
+  }
+  return response.status >= 500
+    ? "The analysis service is unavailable. Please try again."
+    : `Request failed (${response.status}).`;
+}
+
+async function json<T>(input: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, { cache: "no-store", ...init });
+  if (!response.ok) throw new ApiError(await detail(response), response.status);
+  return (await response.json()) as T;
+}
+
+export function getMeta(recorded: boolean): Promise<Meta> {
+  return json<Meta>(`/api/meta?recorded=${recorded}`);
+}
+
+export async function createThread(): Promise<string> {
+  const body = await json<{ thread_id: string }>("/api/threads", { method: "POST" });
+  return body.thread_id;
+}
+
+export function getThread(threadId: string): Promise<ThreadView> {
+  return json<ThreadView>(`/api/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function deleteThread(threadId: string): Promise<void> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new ApiError(await detail(response), response.status);
+  }
+}
+
+/** POST a turn and yield server-sent events until `thread` or `error`. */
+export async function* runTurn(
+  threadId: string,
+  message: string,
+  recorded: boolean,
+  signal?: AbortSignal,
+): AsyncGenerator<TurnEvent> {
+  const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/turns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ message, recorded }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new ApiError(await detail(response), response.status);
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  const parse = createSseParser();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const message of parse(value)) {
+        const event = { event: message.event, data: JSON.parse(message.data) } as TurnEvent;
+        yield event;
+        if (event.event === "thread" || event.event === "error") return;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  throw new ApiError("The connection closed before the analysis finished.", 502);
+}

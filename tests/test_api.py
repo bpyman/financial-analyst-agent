@@ -122,6 +122,16 @@ def test_follow_up_extends_thread_and_reload_returns_history(client: TestClient)
     assert "AAPL" in view["spec_chips"]
     chart = view["turns"][-1]["presentation"]["chart"]
     assert chart["kind"] == "line"
+    assert chart["value_kind"] == "usd"
+    assert chart["metric_label"] == "Revenue"
+    assert len(chart["period_labels"]) == len(chart["records"]) == len(chart["amounts"])
+    assert chart["period_labels"][0].startswith(("Mar", "Jun", "Sep", "Dec"))
+    assert set(chart["series"]) == {"Microsoft Corporation", "Apple Inc."}
+    assert all(
+        amount.startswith("$") or amount == ""
+        for row in chart["amounts"]
+        for amount in row.values()
+    )
     reloaded = client.get(f"/api/threads/{thread_id}").json()
     assert reloaded == view
 
