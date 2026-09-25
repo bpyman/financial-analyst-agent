@@ -52,7 +52,7 @@ uv run python -m streamlit run src/financial_analyst_agent/app.py
 
 The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness.
 
-The new Next.js window ([ADR 0006](docs/adr/0006-react-audience-window.md)) runs as two processes: the Python API and the web app, which proxies `/api/*` to it. Node 20+ is needed for the web app.
+The new Next.js window ([ADR 0006](docs/adr/0006-react-audience-window.md)) runs as two processes: the Python API and the web app, which proxies `/api/*` to it. The web app needs Node 22 (`.nvmrc`).
 
 ```text
 # terminal 1, repo root: the API on http://127.0.0.1:8000

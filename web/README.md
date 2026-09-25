@@ -44,5 +44,33 @@ Both variables are read by the proxy route on the server; neither is
 ## Checks
 
 ```bash
-npm run lint && npx tsc --noEmit && npx vitest run && npm run build
+npm run lint && npm test && npm run build && npx tsc --noEmit
 ```
+
+CI (`.github/workflows/ci.yml`, job `web`, Node 22 from `.nvmrc`) runs these,
+then the browser check.
+
+## Browser check
+
+`e2e/` is a Playwright suite that drives the window the way an analyst does:
+each guided story (fact card, chart, table, filing changes), compare four
+quarters then "add Apple", a clarify-button round trip, and reload plus Start
+over. Selectors are roles and accessible names only.
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+With `PLAYWRIGHT_BASE_URL` unset, it starts the Python API on the recorded
+runtime (port 8100, from the repo root with `uv run serve-api`) and the built
+app (`npm start`, port 3100), reusing either if it is already running outside
+CI. Set `PLAYWRIGHT_BASE_URL` to run the same suite against a deployed window
+instead, for example the hosted demo:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://<your-deploy>.vercel.app npm run test:e2e
+```
+
+`@playwright/test` is pinned to 1.56.1. CI installs its own Chromium with
+`npx playwright install --with-deps chromium`.

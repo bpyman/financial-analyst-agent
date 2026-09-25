@@ -520,3 +520,24 @@ Blockers / next:
 - The recorded runtime has essays only for "How can AI disrupt healthcare?", the Hormuz news and research queries, and "Summarize what changed …". Its news essay has no `[n]` markers; live briefs do.
 - The recorded runtime never returns the extend/replace clarification; it was checked by rewriting the thread response in the browser.
 
+
+
+## 2026-09-25 — react-audience-window 07 A browser check in CI guards the window
+
+Task completed: `.scratch/react-audience-window/issues/07-browser-check-in-ci.md`
+
+Key decisions:
+- Playwright (`@playwright/test` pinned to 1.56.1, which matches the container's /opt/pw-browsers builds) lives in `web/e2e/`. `window.spec.ts` covers the four guided stories, compare-then-add-Apple, the clarify-button round trip, and reload + Start over. `analyst.ts` is a page object using roles and accessible names only; a turn is done when "Turns used" reaches the next count and the send button reads "Send" again.
+- `web/playwright.config.ts` starts the API (`uv run serve-api` from the repo root, `APP_MODE=recorded`, `PUBLIC_DEMO=false`, empty `API_PROXY_TOKEN`, port 8100) and the built app (`npm start`, port 3100, `API_ORIGIN` pointed at 8100). Outside CI it reuses running servers. `PLAYWRIGHT_BASE_URL` skips both and targets a deployed window (2 workers, 90 s expect timeout).
+- The recorded "What changed in the 10-Q" story has no summary essay, so the check asserts the two filing-change articles (MD&A, Risk Factors) and their filing links, not a "Summary of changes" region.
+- CI `web` job: Node from `.nvmrc` (22), `npm ci`, lint, `npm test`, build, then `tsc --noEmit` (after the build writes `next-env.d.ts`, which is gitignored), uv + Python 3.12, `npx playwright install --with-deps chromium`, `npm run test:e2e`, report artifact on failure. The Python job is unchanged.
+- `web/vitest.config.ts` excludes `e2e/` so vitest does not load Playwright specs. `engines.node` is `22.x`.
+
+Files changed:
+- `.github/workflows/ci.yml`, `.nvmrc` (new), `README.md` (Node 22)
+- `web/e2e/{analyst.ts,window.spec.ts}`, `web/playwright.config.ts`, `web/vitest.config.ts` (new), `web/package.json` + lockfile, `web/.gitignore`, `web/README.md`
+
+Blockers / next:
+- The suite runs in about 10 s locally. Against the hosted demo (tickets 09/10): `PLAYWRIGHT_BASE_URL=https://<deploy> npm run test:e2e`.
+- ADR 0006 cutover also wants `web/scripts/capture-portfolio.ts`; it can reuse `e2e/analyst.ts` to drive the walkthrough.
+- The API's JSON logs go to stderr, so they appear in the Playwright output as `[API]` lines; that helps when CI fails.
