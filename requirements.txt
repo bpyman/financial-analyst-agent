@@ -1,0 +1,2 @@
+# The moved page needs Streamlit and nothing else.
+streamlit==1.61.1
