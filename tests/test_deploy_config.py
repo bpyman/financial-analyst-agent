@@ -30,6 +30,7 @@ VERCEL_JSON = ROOT / "web" / "vercel.json"
 IGNORE_BUILD = ROOT / "web" / "scripts" / "ignore-build.sh"
 PROXY_ROUTE = ROOT / "web" / "app" / "api" / "[...path]" / "route.ts"
 CI_YAML = ROOT / ".github" / "workflows" / "ci.yml"
+DEPLOY_NOTES = ROOT / "docs" / "deploy.md"
 
 # Service fields from Render's Blueprint reference (render-oss/skills,
 # render-blueprints/references/field-reference.md), so a misspelt field fails
@@ -143,6 +144,23 @@ def test_ci_deploy_hook_fallback_waits_for_every_other_job() -> None:
     assert "refs/heads/master" in deploy["if"]
     assert "push" in deploy["if"]
     assert deploy["env"]["RENDER_DEPLOY_HOOK_URL"] == "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+
+def test_deploy_notes_repoint_the_old_streamlit_url_at_the_redirect_branch() -> None:
+    # Ticket 13: Community Cloud cannot change an app's branch in place, so the
+    # notes delete and redeploy it on the moved page, keeping the old subdomain.
+    notes = DEPLOY_NOTES.read_text(encoding="utf-8")
+    section = notes.split("## Repointing the Streamlit app", 1)[1].split("\n## ", 1)[0]
+
+    for step in (
+        "`streamlit-redirect`",
+        "`streamlit_app.py`",
+        "financial-analyst-agent-project",
+        'DEMO_URL = "https://',
+        "Delete",
+        "This demo has moved",
+    ):
+        assert step in section, step
 
 
 def test_vercel_config_runs_the_ignored_build_step_on_fluid_compute_in_iad1() -> None:

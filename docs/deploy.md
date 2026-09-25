@@ -17,7 +17,8 @@ and `web/scripts/ignore-build.sh`. A person only connects accounts and pastes on
 secret. `tests/test_deploy_config.py` pins that configuration.
 
 The Streamlit Community Cloud app is still the public URL until cutover (ticket 11
-onward); its notes are [at the end](#legacy-streamlit-community-cloud).
+onward); its notes are [at the end](#legacy-streamlit-community-cloud). At cutover it is
+[repointed at a "This demo has moved" page](#repointing-the-streamlit-app).
 
 ## Going live: the wizard
 
@@ -217,12 +218,69 @@ sources:
   window answers 401 or 403, the wizard names the Deployment Protection setting to
   change.
 
+## Repointing the Streamlit app
+
+Links to the old URL,
+[financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app),
+keep working after cutover. The orphan `streamlit-redirect` branch holds one page,
+`streamlit_app.py`, that says "This demo has moved", with a button to the new window.
+It also holds its own `requirements.txt` (Streamlit only), the dark theme in
+`.streamlit/config.toml`, and a README. It shares no history with `master` and is never
+merged. The button opens the `DEMO_URL` secret. Until that is set, or if it is not an
+`https://` URL, the button opens the GitHub repo and the page says the new address is
+not live yet.
+
+**When:** after the Next.js window is live (ticket 11) and **before** the PR that
+deletes Streamlit (ticket 14) is merged. Community Cloud redeploys on every push to the
+app's branch, so an app still on `master` would break when `app.py` is deleted.
+
+Community Cloud cannot change a deployed app's branch or main file. You delete the app
+and deploy it again with the same subdomain:
+
+1. Check that `streamlit-redirect` is on GitHub:
+   `git ls-remote origin streamlit-redirect` prints one line.
+2. Open [share.streamlit.io](https://share.streamlit.io). On the
+   `financial-analyst-agent-project` app, open the **⋮** menu → **Delete**, and confirm.
+   The old app's secrets are not needed again.
+3. **Create app** → deploy a public app from GitHub, and fill in:
+   - Repository: `bpyman/financial-analyst-agent`
+   - Branch: `streamlit-redirect`
+   - Main file path: `streamlit_app.py`
+   - App URL: `financial-analyst-agent-project`
+4. **Advanced settings** → **Secrets**: paste the hosted window's URL as a quoted
+   top-level string, then **Save** and **Deploy**:
+
+   ```toml
+   DEMO_URL = "https://<project>.vercel.app"
+   ```
+
+5. Open the old URL. It should say "This demo has moved", and **Open the new demo**
+   should land on the Next.js window. If the button reads **View the project on
+   GitHub** instead, `DEMO_URL` is missing, unquoted, or not `https://`.
+
+If the App URL field says the subdomain is taken, the deleted app has not released it
+yet. Deploy under any name, wait a few minutes, then set it in the app's **Settings** →
+**General**. The subdomain can be changed at any time. To change the address later,
+edit `DEMO_URL` in the app's **Settings** → **Secrets**. If the page still shows the
+old value after a minute, **Reboot** the app from the **⋮** menu.
+
+The page is a free Community Cloud app too, so after a long idle spell a visitor may
+first see the button that wakes it.
+
+These steps come from search excerpts of Streamlit's Community Cloud docs ("Rename or
+change your app's GitHub coordinates": delete, change, redeploy; subdomains can be
+changed at any time), because docs.streamlit.io was not reachable from the build
+environment. Whether a deleted app's subdomain is free at once was not confirmed,
+which is why the fallback above exists. To run the page locally, see the branch's
+README.
+
 ## Legacy: Streamlit Community Cloud
 
 > Legacy until cutover (tickets 11–14). The public URL is still
 > [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app).
-> At cutover the app is repointed at a `streamlit-redirect` branch that shows "This demo
-> has moved", and `app.py` is deleted from `master`.
+> At cutover the app is [repointed](#repointing-the-streamlit-app) at the
+> `streamlit-redirect` branch, which shows "This demo has moved", and `app.py` is
+> deleted from `master`.
 
 The Streamlit window defaults to the recorded runtime, with isolated browser sessions,
 thread expiry, and cached SEC responses. Community Cloud installs from

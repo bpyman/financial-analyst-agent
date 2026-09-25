@@ -631,3 +631,25 @@ Blockers / next:
 - Ticket 11: replace `HOSTED_DEMO_URL` in README.md and docs/portfolio/release.md, and re-upload the social preview.
 - Ticket 13 (streamlit-redirect branch) is next, then ticket 14. Ticket 14 must keep `tests/test_readme.py` green. docs/deploy.md still has the legacy Streamlit notes; ticket 13 adds the repoint steps there.
 - To recapture in the cloud container: `FFMPEG=$(uvx --from imageio-ffmpeg python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")`, then `npm run build && npm run capture` from `web/`. It takes about 40s.
+
+
+## 2026-09-25 — react-audience-window 13 Old Streamlit links land on a "moved" page
+
+Task completed: `.scratch/react-audience-window/issues/13-streamlit-redirect-page.md`
+
+Key decisions:
+- `streamlit-redirect` is an orphan branch (`489a291`), created locally in a separate worktree and not pushed. It holds `streamlit_app.py`, `requirements.txt` (streamlit==1.61.1 only), `.streamlit/config.toml` (the window's dark palette), and `README.md`.
+- The page reads `DEMO_URL` from the environment (Community Cloud exports top-level string secrets). When it is unset or not https, the button opens the GitHub repo and the page says the new address is not live yet.
+- The entry point is `streamlit_app.py` at the root. Community Cloud cannot change branch or main file in place, so the repoint is delete, then redeploy on the same subdomain.
+- The repoint steps sit in their own `docs/deploy.md` section, before the legacy notes, so ticket 14 can delete the legacy section and keep them. A test in `tests/test_deploy_config.py` pins them.
+
+Files changed:
+- `docs/deploy.md`, `tests/test_deploy_config.py`
+- ticket 13 resolved
+- branch `streamlit-redirect`: `streamlit_app.py`, `requirements.txt`, `.streamlit/config.toml`, `README.md`
+
+Blockers / next:
+- `streamlit-redirect` must be pushed (`git push origin streamlit-redirect`) before Blake repoints.
+- Ticket 11: when the window is live, follow "Repointing the Streamlit app" in `docs/deploy.md` and set `DEMO_URL`. Do this before the ticket 14 PR merges.
+- Ticket 14: keep the "Repointing the Streamlit app" section and its test. Delete only the "Legacy: Streamlit Community Cloud" section, and the intro and callout links that point to it.
+
