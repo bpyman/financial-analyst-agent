@@ -141,6 +141,8 @@ export interface ThreadView {
   pending_clarification: boolean;
   turn_count: number;
   max_turns: number;
+  /** A turn is running on this thread (a reload mid-turn polls until it ends). */
+  turn_in_flight: boolean;
 }
 
 export interface Meta {

@@ -15,7 +15,9 @@ import {
   THREAD_STORAGE_KEY,
   browserStore,
   resumeThread,
+  startOverIfLocked,
   startThread,
+  waitForTurn,
   type ThreadApi,
 } from "@/lib/thread-session";
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
@@ -30,6 +32,7 @@ import { Callout } from "./ui";
 const threadApi: ThreadApi = { createThread, getThread, deleteThread };
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
 const FALLBACK_PLACEHOLDER = "Ask about a company's latest quarterly results…";
+const UNFINISHED = "Your last question could not be completed. Please ask it again.";
 
 type Notice = { kind: "info" | "error"; text: string };
 
@@ -67,28 +70,72 @@ export function AnalystWindow() {
 
   const runtime: RuntimeKind =
     view?.runtime ?? chosenRuntime ?? (meta && !meta.recorded.default ? "live" : "recorded");
+  const locked = meta?.recorded.locked ?? false;
   const busy = turn.status === "running" || switching;
 
-  // Wake on visit, then resume the stored thread.
+  // Wake on visit, then resume the stored thread. A reload mid-turn finds the
+  // turn still in flight: show it running and poll until the answer lands.
   useEffect(() => {
     pingHealth();
-    let cancelled = false;
+    const aborted = new AbortController();
+    const { signal } = aborted;
+
+    async function reattach(resumed: ThreadView) {
+      inFlight.current = true;
+      dispatch({ type: "reattach" });
+      try {
+        const finished = await waitForTurn(getThread, resumed.thread_id, { signal });
+        setView(finished);
+        dispatch({ type: "event", event: { event: "thread", data: finished } });
+        if (finished.turns.length === resumed.turns.length) {
+          setNotice({ kind: "error", text: UNFINISHED });
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        dispatch({ type: "reset" });
+        setNotice({ kind: "error", text: errorText(error) });
+      } finally {
+        inFlight.current = false;
+      }
+    }
+
     resumeThread(threadApi, store)
       .then((resumed) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         setView(resumed.view);
         if (resumed.notice) setNotice({ kind: "info", text: resumed.notice });
+        if (resumed.view?.turn_in_flight) void reattach(resumed.view);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setNotice({ kind: "error", text: errorText(error) });
+        if (!signal.aborted) setNotice({ kind: "error", text: errorText(error) });
       })
       .finally(() => {
-        if (!cancelled) setBooted(true);
+        if (!signal.aborted) setBooted(true);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => aborted.abort();
   }, [store]);
+
+  // A live thread on a deployment locked to the recorded runtime would refuse
+  // every turn: Start over on the recorded runtime and say why.
+  useEffect(() => {
+    if (!locked || view?.runtime !== "live" || inFlight.current) return;
+    inFlight.current = true;
+    startOverIfLocked(threadApi, store, view, locked)
+      .then((started) => {
+        if (!started) return;
+        shownTurns.current = 0;
+        dispatch({ type: "reset" });
+        setView(started.view);
+        if (started.notice) setNotice({ kind: "info", text: started.notice });
+      })
+      .catch((error: unknown) => {
+        setView(null);
+        setNotice({ kind: "error", text: errorText(error) });
+      })
+      .finally(() => {
+        inFlight.current = false;
+      });
+  }, [locked, view, store]);
 
   // Storefront copy, and the snapshot banner for the runtime in use.
   useEffect(() => {
@@ -137,7 +184,8 @@ export function AnalystWindow() {
     try {
       let threadId = view?.thread_id;
       if (!threadId) {
-        const started = await startThread(threadApi, store, runtime);
+        // Before the analyst picks a runtime, the server applies its deployment default.
+        const started = await startThread(threadApi, store, chosenRuntime ?? undefined);
         setView(started.view);
         threadId = started.view.thread_id;
         if (started.notice) setNotice({ kind: "info", text: started.notice });
@@ -190,7 +238,7 @@ export function AnalystWindow() {
     <div className="flex min-h-dvh flex-col">
       <Header
         runtime={runtime}
-        locked={meta?.recorded.locked ?? false}
+        locked={locked}
         lockedNotice={meta?.runtime_copy.locked ?? ""}
         busy={busy}
         onSwitchRuntime={restart}

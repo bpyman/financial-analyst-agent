@@ -107,3 +107,47 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
   await expect(analyst.story("Verify a quarterly fact")).toBeEnabled();
   await expect(analyst.conversation()).toBeHidden();
 });
+
+test("a question sent before the storefront loads leaves the runtime to the deployment", async ({ page }) => {
+  let releaseMeta = () => {};
+  const metaHeld = new Promise<void>((resolve) => (releaseMeta = resolve));
+  await page.route("**/api/meta**", async (route) => {
+    await metaHeld;
+    await route.continue();
+  });
+  const analyst = new Analyst(page);
+  await page.goto("/");
+
+  const created = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/threads",
+  );
+  await page.getByRole("textbox", { name: "Ask a question" }).fill("What was Microsoft's latest quarterly pretax income?");
+  await page.keyboard.press("Enter");
+  expect((await created).postDataJSON()).toEqual({});
+
+  releaseMeta();
+  await analyst.waitForTurn(1);
+});
+
+test("a reload while a turn runs picks the answer up when it lands", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Verify a quarterly fact");
+
+  // The server reports the turn still in flight for the first two reads after the reload.
+  let inFlightReads = 2;
+  await page.route(/\/api\/threads\/[0-9a-f-]+$/, async (route) => {
+    if (route.request().method() !== "GET" || inFlightReads === 0) return route.continue();
+    inFlightReads -= 1;
+    const response = await route.fetch();
+    const view = await response.json();
+    await route.fulfill({ response, json: { ...view, turns: [], turn_in_flight: true } });
+  });
+  await page.reload();
+
+  await expect(page.getByText("Finishing your last question…")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Analysis running" })).toBeDisabled();
+  await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(analyst.counter()).toHaveText(/^1 of /);
+});
