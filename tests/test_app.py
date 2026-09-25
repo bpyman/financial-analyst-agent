@@ -40,9 +40,9 @@ class _Streamlit:
         *,
         chat_values: tuple[str | None, ...] = ("What was Google's net income?", None),
         start_over_values: tuple[bool, ...] = (),
-        kill_switch_values: tuple[bool, ...] = (True, True),
+        recorded_values: tuple[bool, ...] = (True, True),
     ) -> None:
-        self.sidebar = _Sidebar(kill_switch_values)
+        self.sidebar = _Sidebar(recorded_values)
         self.session_state: dict[str, object] = {}
         self._chat_values = iter(chat_values)
         self._start_over_values = iter(start_over_values)
@@ -72,7 +72,7 @@ class _Streamlit:
         self.charts: list[Any] = []
         self.link_buttons: list[tuple[str, str]] = []
         self.button_disabled: list[tuple[str, bool]] = []
-        self.pills: list[object] = []
+        self.pill_calls: list[object] = []
         self.warnings: list[str] = []
 
     def __enter__(self) -> "_Streamlit":
@@ -169,7 +169,7 @@ class _Streamlit:
         self.charts.append(args[0] if args else "altair")
 
     def pills(self, *args: Any, **kwargs: Any) -> None:
-        self.pills.append(args)
+        self.pill_calls.append(args)
 
     def chat_input(self, *args: Any, **kwargs: Any) -> str | None:
         self.chat_inputs.append((args, kwargs))
@@ -230,7 +230,7 @@ def _patch_main_shell(
         app,
         "get_settings",
         lambda: SimpleNamespace(
-            app_mode=AppMode.FIXTURE,
+            app_mode=AppMode.RECORDED,
             public_demo=False,
             demo_live_sec=False,
             thread_ttl_seconds=7200,
@@ -239,7 +239,7 @@ def _patch_main_shell(
             snapshot_stale_after_days=30,
         ),
     )
-    monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
+    monkeypatch.setattr(app, "runtime_for", lambda *args, **kwargs: object())
     if store_root is not None:
         monkeypatch.setattr(app, "thread_store_root", lambda: store_root)
 
@@ -339,37 +339,60 @@ def test_main_runs_only_on_submit_and_renders_cached_history(
     assert "cost_of_revenue" not in catalog
 
 
-def test_main_clears_history_when_runtime_mode_changes(
+def test_flipping_the_runtime_switch_starts_over_on_the_other_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_streamlit = _Streamlit(kill_switch_values=(True, False))
-    result = TurnResult(
-        intent=Intent.LOOKUP,
-        tool_traces=[],
-        renderer=RendererKind.TABLE,
+    from dataclasses import replace
+
+    from financial_analyst_agent.contracts import RuntimeKind
+    from financial_analyst_agent.runtime import recorded_runtime
+
+    fake_streamlit = _Streamlit(
+        chat_values=("What was Google's net income?", "What was Apple's net income?"),
+        recorded_values=(True, False),
     )
     rendered: list[TurnResult] = []
-
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
         app,
-        "run_conversation_turn",
-        lambda thread_id, message, runtime, *, store, **_kwargs: ConversationTurn(
-            thread_id=thread_id,
-            result=result,
-            messages=(ThreadMessage(role="analyst", content=message),),
-            results=(result,),
-            last_result=result,
-        ),
+        "runtime_for",
+        lambda kind, **_kwargs: replace(recorded_runtime(), kind=kind),
     )
     monkeypatch.setattr(app, "render_turn_result", _capture_renders(rendered))
 
     app.main()
+    recorded_thread = str(fake_streamlit.session_state["thread_id"])
     app.main()
 
-    assert rendered == [result]
-    assert fake_streamlit.session_state.get("history") in (None, [])
+    live_thread = str(fake_streamlit.session_state["thread_id"])
+    store = LocalThreadStore(tmp_path)
+    assert fake_streamlit.errors == []
+    assert live_thread != recorded_thread
+    assert store.load(recorded_thread) is None
+    live_state = store.load(live_thread)
+    assert live_state is not None
+    assert live_state.runtime is RuntimeKind.LIVE
+    assert [message.content for message in live_state.messages] == [
+        "What was Apple's net income?"
+    ]
+    history = fake_streamlit.session_state["history"]
+    assert [message for message, _ in history] == ["What was Apple's net income?"]
+
+
+def test_flipping_the_switch_before_any_turn_keeps_the_empty_thread(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_streamlit = _Streamlit(chat_values=(None, None), recorded_values=(True, False))
+    _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
+
+    app.main()
+    thread_id = fake_streamlit.session_state["thread_id"]
+    app.main()
+
+    assert fake_streamlit.session_state["thread_id"] == thread_id
+    assert fake_streamlit.session_state.get("history") == []
 
 
 def test_main_keeps_prior_history_when_replacement_fails(
@@ -428,7 +451,6 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     )
     fake_streamlit.session_state["thread_id"] = "thread-a"
     fake_streamlit.session_state["history"] = [("prior question", previous)]
-    fake_streamlit.session_state["history_kill_switch"] = True
     rendered: list[TurnResult] = []
 
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
@@ -483,8 +505,8 @@ def test_main_persists_quota_reservation_when_turn_fails(
 
     monkeypatch.setattr(
         app,
-        "runtime_for_kill_switch",
-        lambda **kwargs: SimpleNamespace(budget=kwargs.get("budget"), ranking=None),
+        "runtime_for",
+        lambda *args, **kwargs: SimpleNamespace(budget=kwargs.get("budget"), ranking=None),
     )
     monkeypatch.setattr(app, "run_conversation_turn", fake_turn)
     monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
@@ -627,7 +649,6 @@ def test_main_clears_in_memory_history_when_thread_expires(
     fake_streamlit = _Streamlit(chat_values=(None,))
     fake_streamlit.session_state["thread_id"] = "expired"
     fake_streamlit.session_state["history"] = [("prior question", previous)]
-    fake_streamlit.session_state["history_kill_switch"] = True
     rendered: list[TurnResult] = []
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(
@@ -804,7 +825,7 @@ def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None
     app.render_turn_result(result)
 
     assert fake_streamlit.errors == []
-    assert fake_streamlit.infos == ["Ambiguous metric. Choose one of these names."]
+    assert fake_streamlit.infos == ["Which metric do you mean?"]
     assert "Gross profit" in fake_streamlit.buttons
     assert "Operating income" in fake_streamlit.buttons
     assert "Net income" in fake_streamlit.buttons

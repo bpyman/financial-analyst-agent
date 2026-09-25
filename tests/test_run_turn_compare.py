@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import RecordedSECDataSource
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_lookup import ALLOWED_METRICS
@@ -53,7 +53,7 @@ ALPHABET_SOURCE_URL = (
 
 
 def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margins() -> None:
-    result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, fixture_runtime())
+    result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.TABLE
@@ -406,7 +406,7 @@ def test_run_turn_compare_does_not_pick_one_conflicting_concept() -> None:
 
 
 def test_run_turn_refuses_unknown_compare_ratio_with_allowed_list() -> None:
-    result = run_turn(UNKNOWN_RATIO_QUERY, fixture_runtime())
+    result = run_turn(UNKNOWN_RATIO_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.REFUSE
@@ -424,7 +424,7 @@ ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("2200000000000")
 
 
 def test_run_turn_compare_snapshot_market_caps() -> None:
-    result = run_turn(MSFT_GOOG_MARKET_CAP_QUERY, fixture_runtime())
+    result = run_turn(MSFT_GOOG_MARKET_CAP_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.TABLE

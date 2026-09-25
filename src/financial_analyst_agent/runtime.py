@@ -1,4 +1,4 @@
-"""Fixture and live runtimes for run_turn."""
+"""The recorded runtime and the live runtime, and the builders that choose between them."""
 
 import json
 import re
@@ -12,7 +12,7 @@ from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.news import (
     FIXTURE_NEWS_QUERY,
     FIXTURE_RESEARCH_QUERY,
-    FixtureNewsSearch,
+    RecordedNewsSearch,
     TavilyNewsSearch,
 )
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
@@ -21,7 +21,7 @@ from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.session import SessionBudget
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime
+from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime, RuntimeKind
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
@@ -68,8 +68,8 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("gm", "GM"),
 )
 _ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
-FIXTURE_FILING_OLDER = "0001193125-25-000099"
-FIXTURE_FILING_NEWER = "0001193125-26-191507"
+RECORDED_FILING_OLDER = "0001193125-25-000099"
+RECORDED_FILING_NEWER = "0001193125-26-191507"
 
 
 def _company_from_query(normalized: str) -> str:
@@ -197,7 +197,7 @@ FIXTURE_EXPLAIN_ESSAY = (
 FIXTURE_EXPLAIN_QUERY = "How can AI disrupt healthcare?"
 
 
-class FixtureEssayCompleter:
+class RecordedEssayCompleter:
     """Recorded essay so explain and news_and_explain turns stay offline."""
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
@@ -282,13 +282,15 @@ class DemoCompleter:
         )
 
 
-def fixture_runtime() -> Runtime:
+def recorded_runtime() -> Runtime:
+    """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
         ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
-        news=FixtureNewsSearch(),
-        essay=FixtureEssayCompleter(),
+        news=RecordedNewsSearch(),
+        essay=RecordedEssayCompleter(),
+        kind=RuntimeKind.RECORDED,
     )
 
 
@@ -301,8 +303,8 @@ def live_runtime(
     use_openai = not resolved.public_demo or resolved.allow_public_openai
     use_tavily = not resolved.public_demo or resolved.allow_public_tavily
     completer = OpenAIStructuredCompleter.from_settings(resolved) if use_openai else DemoCompleter()
-    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else FixtureEssayCompleter()
-    news = TavilyNewsSearch(resolved) if use_tavily else FixtureNewsSearch()
+    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else RecordedEssayCompleter()
+    news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
     client = CachingSECDataSource(SECClient(resolved), Path(cache_dir), budget=budget)
     return Runtime(
@@ -311,24 +313,54 @@ def live_runtime(
         ranking=SnapshotRanking.from_path(),
         news=news,
         essay=essay,
+        kind=RuntimeKind.LIVE,
     )
 
 
-def runtime_for_kill_switch(
+def runtime_locked(settings: Settings | None = None) -> bool:
+    """Whether this deployment serves only the recorded runtime.
+
+    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked.
+    """
+    resolved = settings or get_settings()
+    return bool(resolved.public_demo) and not resolved.demo_live_sec
+
+
+def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:
+    """The runtime this deployment serves when ``kind`` is asked for.
+
+    A locked deployment (see ``runtime_locked``) serves recorded for every request.
+    """
+    if runtime_locked(settings):
+        return RuntimeKind.RECORDED
+    return kind
+
+
+def default_runtime_kind(settings: Settings | None = None) -> RuntimeKind:
+    """The runtime ``APP_MODE`` selects, after the public-demo lock."""
+    resolved = settings or get_settings()
+    kind = RuntimeKind.RECORDED if resolved.app_mode is AppMode.RECORDED else RuntimeKind.LIVE
+    return resolve_runtime_kind(kind, resolved)
+
+
+def runtime_for(
+    kind: RuntimeKind,
     *,
-    enabled: bool,
     settings: Settings | None = None,
     budget: SessionBudget | None = None,
 ) -> Runtime:
+    """Build the runtime asked for.
+
+    A locked public demo builds the recorded runtime even when the live one is asked
+    for (see ``resolve_runtime_kind``); read ``Runtime.kind`` for the answer.
+    """
     resolved = settings or get_settings()
-    if enabled or (resolved.public_demo and not resolved.demo_live_sec):
-        return fixture_runtime()
+    if resolve_runtime_kind(kind, resolved) is RuntimeKind.RECORDED:
+        return recorded_runtime()
     return live_runtime(resolved, budget=budget)
 
 
 def build_runtime(settings: Settings | None = None) -> Runtime:
+    """Build the runtime ``APP_MODE`` selects."""
     resolved = settings or get_settings()
-    return runtime_for_kill_switch(
-        enabled=resolved.app_mode is AppMode.FIXTURE,
-        settings=resolved,
-    )
+    return runtime_for(default_runtime_kind(resolved), settings=resolved)

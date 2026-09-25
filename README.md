@@ -16,7 +16,7 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 ## Try it
 
-Hosted demo (guided fixture data, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
+Hosted demo (recorded runtime, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
 
 ![One-click four-quarter comparison, then inspect the exact 10-Q fact](docs/portfolio/images/demo-walkthrough.gif)
 
@@ -44,13 +44,27 @@ macOS / Linux:
 cp .env.example .env
 ```
 
-Set `APP_MODE=fixture` in `.env`, then:
+Set `APP_MODE=recorded` in `.env` (`fixture` still works as a deprecated alias), then:
 
 ```text
 uv run python -m streamlit run src/financial_analyst_agent/app.py
 ```
 
-Fixture mode uses recorded adapters and the same renderer as live. It proves orchestration, not EDGAR freshness.
+The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness.
+
+The new Next.js window ([ADR 0006](docs/adr/0006-react-audience-window.md)) runs as two processes: the Python API and the web app, which proxies `/api/*` to it. The web app needs Node 22 (`.nvmrc`).
+
+```text
+# terminal 1, repo root: the API on http://127.0.0.1:8000
+APP_MODE=recorded uv run serve-api
+
+# terminal 2
+cd web
+npm install
+npm run dev
+```
+
+Open http://localhost:3000. No secrets are needed locally; [`web/README.md`](web/README.md) lists the web app's environment variables and checks.
 
 Example questions:
 

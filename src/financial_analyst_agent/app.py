@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 import re
 from datetime import UTC, date, datetime
-from pathlib import Path
 
 import altair as alt
 import pandas as pd  # type: ignore[import-untyped]
@@ -30,87 +29,31 @@ from financial_analyst_agent.presentation import (
 )
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
-    FIXTURE_FILING_NEWER,
-    FIXTURE_FILING_OLDER,
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
-    runtime_for_kill_switch,
+    runtime_for,
 )
-from financial_analyst_agent.session import SessionBudget, new_thread_id, snapshot_status
+from financial_analyst_agent.session import (
+    SessionBudget,
+    new_thread_id,
+    persist_session_budget,
+    snapshot_status,
+)
+from financial_analyst_agent.storefront import (
+    CAPABILITIES,
+    EXAMPLE_QUERY,
+    GUIDED_STORIES,
+    LIVE_RUNTIME_CAPTION,
+    PUBLIC_FAILURE_MESSAGE,  # noqa: F401 - re-exported for tests
+    RECORDED_BANNER,
+    public_error_message,
+    thread_store_root,
+)
 from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
-from financial_analyst_agent.turn import TurnResult
+from financial_analyst_agent.turn import RuntimeKind, TurnResult
 
-_GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
 _MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
-GUIDED_STORIES: tuple[tuple[str, str], ...] = (
-    (
-        "Verify a quarterly fact",
-        "What was Microsoft's latest quarterly pretax income?",
-    ),
-    (
-        "Compare four quarters",
-        "What was Microsoft's quarterly revenue over the last four quarters?",
-    ),
-    (
-        "Rank then inspect filings",
-        "What are the top 10 tech companies and R&D spend for each?",
-    ),
-    (
-        "What changed in the 10-Q",
-        "What changed in Microsoft's MD&A and Risk Factors between "
-        f"{FIXTURE_FILING_OLDER} and {FIXTURE_FILING_NEWER}?",
-    ),
-)
-PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
-_CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "Look up quarterly 10-Q financial facts or market cap for any "
-        "operating publicly-listed US company",
-        (
-            "What was Microsoft's latest quarterly revenue?",
-            "What is Apple's market cap?",
-        ),
-    ),
-    (
-        "Compare companies on metrics, rank by market cap, or combine rank and lookup",
-        (
-            "Compare Eli Lilly and Merck net margins",
-            "What are the top 10 tech companies and R&D spend for each?",
-        ),
-    ),
-    (
-        "Access and analyze relevant financial news linked to specific companies",
-        ("What's going on with Eli Lilly's obesity drugs?",),
-    ),
-    (
-        "Answer general queries and provide qualitative industry analysis",
-        ("How could AI change bank underwriting?",),
-    ),
-    (
-        "Stay on the same thread to extend the current analysis, or start a new one",
-        (
-            "add Apple",
-            "now add operating margin",
-            "make that the last four quarters",
-            "show year-over-year",
-        ),
-    ),
-)
-KILL_SWITCH_BANNER = (
-    "Guided demo data — recorded SEC facts, not a live EDGAR pull. "
-    "Numbers are still produced by the same deterministic renderer."
-)
-LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."
-
-
-def public_error_message(exc: BaseException) -> str:
-    if isinstance(exc, (ConfigurationError, SessionQuotaError)):
-        return str(exc)
-    return PUBLIC_FAILURE_MESSAGE
-
-
-def thread_store_root() -> Path:
-    """Durable local root for conversation threads (no database server)."""
-    return Path(".cache") / "threads"
+_GOLD_QUERY = EXAMPLE_QUERY
+_CAPABILITIES = CAPABILITIES
 
 
 def render_turn_result(
@@ -148,10 +91,8 @@ def _render_presentation(
         published = f" ({hit.published})" if hit.published else ""
         st.markdown(f"[{hit.index}] [{hit.title}]({hit.url}){published}")
     if presented.candidates:
-        if tuple(c.casefold() for c in presented.candidates) == ("extend", "replace"):
-            st.info("Ambiguous follow-up scope. Choose extend or replace.")
-        else:
-            st.info("Ambiguous metric. Choose one of these names.")
+        if presented.clarify_prompt:
+            st.info(presented.clarify_prompt)
         slugs = result.candidates if result is not None else presented.candidates
         for slug, label in zip(slugs, presented.candidates, strict=False):
             if st.button(
@@ -572,9 +513,15 @@ def _history_pairs(state: ThreadState, store: LocalThreadStore) -> list[tuple[st
     return pairs
 
 
+def _thread_runtime(store: LocalThreadStore) -> RuntimeKind | None:
+    """The runtime the current thread is bound to, or None before its first turn."""
+    thread_id = str(st.session_state.get("thread_id") or "")
+    state = store.load(thread_id) if thread_id else None
+    return state.runtime if state is not None else None
+
+
 def _ensure_thread_and_history(
     store: LocalThreadStore,
-    kill_switch: bool,
     *,
     ttl_seconds: int,
 ) -> None:
@@ -587,7 +534,6 @@ def _ensure_thread_and_history(
     if state is None:
         if existed and st.session_state.get("history"):
             st.session_state["history"] = []
-            st.session_state.pop("history_kill_switch", None)
             st.session_state.pop("pending_query", None)
             st.session_state["thread_id"] = new_thread_id()
         elif "history" not in st.session_state:
@@ -599,7 +545,6 @@ def _ensure_thread_and_history(
         st.session_state["history"] = []
         return
     st.session_state["history"] = _history_pairs(state, store)
-    st.session_state["history_kill_switch"] = kill_switch
 
 
 def _start_over(store: LocalThreadStore) -> None:
@@ -608,7 +553,6 @@ def _start_over(store: LocalThreadStore) -> None:
         store.clear(thread_id)
     st.session_state["thread_id"] = new_thread_id()
     st.session_state["history"] = []
-    st.session_state.pop("history_kill_switch", None)
     st.session_state.pop("turn_in_flight", None)
     st.session_state.pop("pending_query", None)
 
@@ -640,27 +584,7 @@ def _render_guided_stories() -> None:
                 st.rerun()
 
 
-def _persist_session_budget(
-    store: LocalThreadStore, thread_id: str, budget: SessionBudget
-) -> None:
-    saved = store.load(thread_id)
-    if saved is None:
-        store.save(
-            ThreadState(
-                thread_id=thread_id,
-                turn_count=budget.turns,
-                live_sec_requests=budget.live_sec_requests,
-            )
-        )
-        return
-    store.save(
-        saved.model_copy(
-            update={
-                "turn_count": max(saved.turn_count, budget.turns),
-                "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
-            }
-        )
-    )
+_persist_session_budget = persist_session_budget
 
 
 def _render_spec_chips(store: LocalThreadStore) -> None:
@@ -687,25 +611,25 @@ def main() -> None:
     )
     settings = get_settings()
     public_demo = bool(getattr(settings, "public_demo", False))
-    force_fixture = settings.app_mode is AppMode.FIXTURE or (
+    default_recorded = settings.app_mode is AppMode.RECORDED or (
         public_demo and not settings.demo_live_sec
     )
-    kill_switch = st.sidebar.toggle(
+    recorded = st.sidebar.toggle(
         "Recorded demo data",
-        value=force_fixture,
+        value=default_recorded,
         help="Recorded adapters. Numbers still come from the deterministic renderer.",
         disabled=public_demo and not settings.demo_live_sec,
     )
     with st.container(horizontal=True, vertical_alignment="center"):
         st.title("Financial analyst agent")
         ui.badge(
-            "Guided demo" if kill_switch else "Live SEC",
-            variant="destructive" if kill_switch else "default",
+            "Guided demo" if recorded else "Live SEC",
+            variant="destructive" if recorded else "default",
             key="runtime-status",
         )
         start_over = st.button("Start over", icon=":material/refresh:")
-    if kill_switch:
-        st.warning(KILL_SWITCH_BANNER)
+    if recorded:
+        st.warning(RECORDED_BANNER)
     else:
         st.caption(LIVE_RUNTIME_CAPTION)
 
@@ -713,17 +637,14 @@ def main() -> None:
     if start_over:
         _start_over(store)
         st.rerun()
-    _ensure_thread_and_history(store, kill_switch, ttl_seconds=settings.thread_ttl_seconds)
-
-    if (
-        st.session_state.get("history")
-        and st.session_state.get("history_kill_switch") != kill_switch
-    ):
-        st.session_state["history"] = []
-        st.session_state.pop("history_kill_switch", None)
+    runtime_kind = RuntimeKind.RECORDED if recorded else RuntimeKind.LIVE
+    if _thread_runtime(store) not in (None, runtime_kind):
+        # A thread is bound to one runtime: flipping the switch is Start over.
+        _start_over(store)
+    _ensure_thread_and_history(store, ttl_seconds=settings.thread_ttl_seconds)
 
     ranking = SnapshotRanking.from_path(
-        FIXTURE_UNIVERSE_SNAPSHOT_PATH if kill_switch else None
+        FIXTURE_UNIVERSE_SNAPSHOT_PATH if recorded else None
     )
     banner, stale = snapshot_status(
         ranking.snapshot_as_of(),
@@ -778,8 +699,8 @@ def main() -> None:
                 turn = run_conversation_turn(
                     thread_id,
                     query,
-                    runtime_for_kill_switch(
-                        enabled=kill_switch,
+                    runtime_for(
+                        runtime_kind,
                         settings=settings,
                         budget=budget,
                     ),
@@ -799,7 +720,6 @@ def main() -> None:
                         strict=False,
                     )
                 )
-                st.session_state["history_kill_switch"] = kill_switch
             finally:
                 if reserved:
                     _persist_session_budget(store, thread_id, budget)

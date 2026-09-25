@@ -8,6 +8,7 @@ from threading import Lock
 
 from financial_analyst_agent.domain.errors import SessionQuotaError
 from financial_analyst_agent.presentation import format_datetime_utc, try_parse_datetime
+from financial_analyst_agent.thread_store import ThreadState, ThreadStore
 
 
 def new_thread_id() -> str:
@@ -42,7 +43,7 @@ class SessionBudget:
         with self._lock:
             if self.turns >= self.max_turns:
                 raise SessionQuotaError(
-                    "This session has reached its turn limit. Start over to continue."
+                    "This thread has reached its turn limit. Start over to continue."
                 )
             self.turns += 1
 
@@ -50,8 +51,8 @@ class SessionBudget:
         with self._lock:
             if self.live_sec_requests >= self.max_live_sec_requests:
                 raise SessionQuotaError(
-                    "This session has reached its live SEC request limit. "
-                    "Retry later or use recorded demo data."
+                    "This thread has reached its live SEC request limit. "
+                    "Retry later, or start over on the recorded runtime."
                 )
             self.live_sec_requests += 1
 
@@ -73,3 +74,25 @@ def snapshot_status(
     if stale:
         banner = f"{banner} — freeze is older than {stale_after_days} days"
     return banner, stale
+
+
+def persist_session_budget(store: ThreadStore, thread_id: str, budget: SessionBudget) -> None:
+    """Write turn and live-SEC counts to the thread so quotas survive reloads."""
+    saved = store.load(thread_id)
+    if saved is None:
+        store.save(
+            ThreadState(
+                thread_id=thread_id,
+                turn_count=budget.turns,
+                live_sec_requests=budget.live_sec_requests,
+            )
+        )
+        return
+    store.save(
+        saved.model_copy(
+            update={
+                "turn_count": max(saved.turn_count, budget.turns),
+                "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
+            }
+        )
+    )

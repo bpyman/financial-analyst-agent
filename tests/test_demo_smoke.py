@@ -1,8 +1,8 @@
 """Smoke the fixture-first audience window and first guided story."""
 
-from datetime import date
 import os
 import tomllib
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -12,10 +12,10 @@ from financial_analyst_agent.app import GUIDED_STORIES
 from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.runtime import (
-    FIXTURE_FILING_NEWER,
-    FIXTURE_FILING_OLDER,
+    RECORDED_FILING_NEWER,
+    RECORDED_FILING_OLDER,
     DemoCompleter,
-    fixture_runtime,
+    recorded_runtime,
 )
 from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
@@ -23,7 +23,7 @@ from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 
 def test_first_guided_story_returns_a_table() -> None:
     _, question = GUIDED_STORIES[0]
-    result = run_turn(question, fixture_runtime())
+    result = run_turn(question, recorded_runtime())
     assert result.renderer is RendererKind.TABLE
     assert result.table_rows
     assert result.table_rows[0].value is not None
@@ -32,7 +32,7 @@ def test_first_guided_story_returns_a_table() -> None:
 def test_fixture_apple_last_four_quarters_revenue_has_values() -> None:
     result = run_turn(
         "What was Apple's quarterly revenue over the last four quarters?",
-        fixture_runtime(),
+        recorded_runtime(),
     )
     rows = [row for row in result.table_rows if row.comparison is None]
     assert result.renderer is RendererKind.TABLE
@@ -42,7 +42,7 @@ def test_fixture_apple_last_four_quarters_revenue_has_values() -> None:
 
 def test_add_apple_after_microsoft_four_quarters_returns_apple_revenue() -> None:
     store = EphemeralThreadStore()
-    runtime = fixture_runtime()
+    runtime = recorded_runtime()
     _, question = GUIDED_STORIES[1]
     run_conversation_turn("demo", question, runtime, store=store)
     follow = run_conversation_turn("demo", "add Apple", runtime, store=store)
@@ -62,7 +62,7 @@ def test_filing_change_without_accessions_refuses_instead_of_selecting() -> None
     assert plan.intent is Intent.FILING_CHANGE
     assert plan.older_accession == ""
     assert plan.newer_accession == ""
-    result = run_turn("What changed in Microsoft's MD&A", fixture_runtime())
+    result = run_turn("What changed in Microsoft's MD&A", recorded_runtime())
     assert result.intent is Intent.FILING_CHANGE
     assert result.renderer is RendererKind.REFUSE
     assert "accession" in (result.message or "").lower()
@@ -70,15 +70,15 @@ def test_filing_change_without_accessions_refuses_instead_of_selecting() -> None
 
 def test_guided_filing_change_story_pins_both_accessions() -> None:
     _, question = GUIDED_STORIES[-1]
-    result = run_turn(question, fixture_runtime())
+    result = run_turn(question, recorded_runtime())
     assert result.intent is Intent.FILING_CHANGE
     assert result.renderer is RendererKind.TABLE
     assert result.disclosure_changes
     assert {item.older_accession for item in result.disclosure_changes} == {
-        FIXTURE_FILING_OLDER
+        RECORDED_FILING_OLDER
     }
     assert {item.newer_accession for item in result.disclosure_changes} == {
-        FIXTURE_FILING_NEWER
+        RECORDED_FILING_NEWER
     }
 
 
@@ -89,7 +89,7 @@ def test_hosted_secrets_enable_guarded_fixture_settings(monkeypatch: pytest.Monk
     secrets.merge_programmatic_secrets(tomllib.loads(template.read_text(encoding="utf-8")))
 
     settings = Settings(_env_file=None)
-    assert settings.app_mode is AppMode.FIXTURE
+    assert settings.app_mode is AppMode.RECORDED
     assert settings.public_demo is True
     assert settings.demo_live_sec is False
     assert settings.allow_public_openai is False

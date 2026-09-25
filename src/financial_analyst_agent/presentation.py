@@ -8,7 +8,9 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
+    EXPLORATORY_RESEARCH_BANNER,
     FORMULA_METRICS,
+    MODEL_ANALYSIS_BANNER,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
     SNAPSHOT_METRICS,
@@ -228,6 +230,8 @@ _TABLE_KEYS = (
     "source_url",
     "reason",
 )
+# A ranking stays narrow: no CIK, currency, or taxonomy. Rank-and-lookup rows
+# keep their filing provenance so each ranked fact links to its 10-Q.
 _RANK_TABLE_KEYS = (
     "rank",
     "company_name",
@@ -235,9 +239,27 @@ _RANK_TABLE_KEYS = (
     "value",
     "start_date",
     "end_date",
+    "form",
+    "accession_number",
+    "concept",
+    "source_url",
     "reason",
 )
 _SNAPSHOT_PREFIX = "Universe snapshot as of "
+# Banner codes a qualitative turn carries, in the words the window shows.
+_BANNER_COPY = {
+    MODEL_ANALYSIS_BANNER: (
+        "Model analysis — written by the model, not quoted from a filing. "
+        "It may only repeat numbers the tools returned."
+    ),
+    EXPLORATORY_RESEARCH_BANNER: (
+        "Exploratory research — a read-only brief from the cited sources. "
+        "It reports no financial facts or computed values."
+    ),
+}
+_METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
+_SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
+_SCOPE_CANDIDATES = ("extend", "replace")
 
 
 @dataclass(frozen=True)
@@ -291,6 +313,8 @@ class Presentation:
     chart: ChartSpec | None = None
     evidence: tuple[EvidenceItem, ...] = ()
     disclosures: tuple[DisplayDisclosure, ...] = ()
+    # The question a clarification asks; set only when candidates are offered.
+    clarify_prompt: str | None = None
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -330,12 +354,25 @@ _MIXED_PERIOD_CAPTION = "Latest standalone quarter; periods differ by issuer."
 
 @dataclass(frozen=True)
 class ChartSpec:
+    """A chart plus every piece of text it shows, so no client formats a number.
+
+    ``value_kind`` picks the axis tick style and ``metric_label`` titles the axis.
+    Trend lines also carry ``period_labels`` (one per record), ``series`` (the
+    company keys of each record), and ``amounts`` (each record's values as the
+    table formats them), so tooltips read the same strings as the table.
+    """
+
     kind: str
     title: str
     records: tuple[dict[str, object], ...]
     metric: str = ""
     caption: str = ""
     horizontal: bool = False
+    value_kind: str = "usd"
+    metric_label: str = ""
+    period_labels: tuple[str, ...] = ()
+    series: tuple[str, ...] = ()
+    amounts: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -425,28 +462,46 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             bucket[row.company_name] = (
                 float(row.value) if row.value is not None else None
             )
+        metric = rows[0].metric
+        periods = sorted(merged)
+        records = tuple(merged[period] for period in periods)
         return ChartSpec(
             kind="line",
             title="Trend",
-            records=tuple(merged[key] for key in sorted(merged)),
-            metric=rows[0].metric,
+            records=records,
+            metric=metric,
+            value_kind=chart_value_kind(metric),
+            metric_label=_humanize_field(metric),
+            period_labels=tuple(format_date(period) for period in periods),
+            series=tuple(dict.fromkeys(row.company_name for row in rows)),
+            amounts=tuple(
+                {
+                    key: format_chart_amount(metric, value)
+                    for key, value in record.items()
+                    if key != "Period"
+                }
+                for record in records
+            ),
         )
     if len(companies) >= 2:
         ends = {row.end_date for row in rows if row.end_date is not None}
         mixed_periods = len(ends) >= 2
+        metric = rows[0].metric
         return ChartSpec(
             kind="bar",
             title="Comparison",
             records=tuple(
                 _bar_record(row, ranked=rank_cross_section) for row in rows
             ),
-            metric=rows[0].metric,
+            metric=metric,
             caption=_bar_caption(
                 ranked=rank_cross_section,
-                metric=rows[0].metric,
+                metric=metric,
                 mixed_periods=mixed_periods,
             ),
             horizontal=rank_cross_section,
+            value_kind=chart_value_kind(metric),
+            metric_label=_humanize_field(metric),
         )
     return None
 
@@ -626,7 +681,16 @@ def present_turn(result: TurnResult) -> Presentation:
         essay=result.essay,
         message=result.message if result.renderer is not RendererKind.CLARIFY else None,
         candidates=tuple(_humanize_field(name) for name in result.candidates),
+        clarify_prompt=_clarify_prompt(result),
     )
+
+
+def _clarify_prompt(result: TurnResult) -> str | None:
+    if result.renderer is not RendererKind.CLARIFY or not result.candidates:
+        return None
+    if tuple(result.candidates) == _SCOPE_CANDIDATES:
+        return _SCOPE_CLARIFY_PROMPT
+    return _METRIC_CLARIFY_PROMPT
 
 
 def _fact_card(row: TableRow) -> QuarterlyFactCard:
@@ -716,6 +780,8 @@ def _format_cell(row: TableRow, key: str) -> str:
 
 
 def _format_banner(banner: str) -> str:
+    if banner in _BANNER_COPY:
+        return _BANNER_COPY[banner]
     if not banner.startswith(_SNAPSHOT_PREFIX):
         return banner
     parsed = try_parse_datetime(banner[len(_SNAPSHOT_PREFIX) :])

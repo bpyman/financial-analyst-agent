@@ -13,7 +13,7 @@ Free Community Cloud apps sleep when idle; the first visitor may need to wake it
 1. Fork or connect `bpyman/financial-analyst-agent`.
 2. Main file: `src/financial_analyst_agent/app.py`.
 3. Copy `.streamlit/secrets.toml.example` into the app's secrets. Keep
-   `APP_MODE=fixture` and `PUBLIC_DEMO=true`.
+   `APP_MODE=recorded` and `PUBLIC_DEMO=true`.
 4. Confirm the first guided story (`Verify a quarterly fact`) returns a table.
 
 Keep the boolean flags quoted in the secrets template. Streamlit exports top-level

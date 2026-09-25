@@ -391,3 +391,153 @@ Blockers / next:
 - Issue 05 (explain + numeral lock) is unblocked and is the next tracer. 07 still waits on 05 and 06.
 - Completer is still keyword `DemoCompleter`; "income" maps to `net_income` so the composed prompt works until the structured planner.
 - Fixture ranking snapshot is still the small test freeze; packaged snapshot + live SEC will fill more rows at demo time.
+
+## 2026-09-25 — react-audience-window 01 Name the recorded and live runtimes in code
+
+Task completed: `.scratch/react-audience-window/issues/01-name-the-runtimes-in-code.md`
+
+Key decisions:
+- `RuntimeKind` (`recorded`/`live`) in `contracts.py`. `Runtime.kind` defaults to recorded, since test-double runtimes replay canned answers; the live builder and the live integration tests set `LIVE`.
+- `runtime_for(kind, *, settings, budget)` replaces `runtime_for_kill_switch(enabled=...)`, and `recorded_runtime()` replaces `fixture_runtime()`. A locked public demo still coerces live to recorded; callers read `Runtime.kind` to learn which runtime they got.
+- `AppMode` is `LIVE`/`RECORDED`. `AppMode._missing_` maps `fixture` to `RECORDED` with a logged deprecation warning, so pydantic accepts old `.env` files.
+- "Fixture" stays on test/data vocabulary (snapshot data file, `FixtureNewsSearch`, `FixtureEssayCompleter`, `FIXTURE_NEWS_QUERY`).
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py`, `turn.py`, `runtime.py`, `config.py`, `api.py`, `app.py`, `evaluation.py`
+- `tests/test_runtime_choice.py` (was `test_kill_switch.py`), `tests/conftest.py`, `test_app.py`, `test_api.py`, `test_demo_smoke.py`, `test_gold.py`, `test_openai_planner.py`, `test_app_widgets.py`, `test_run_turn_*.py`, `tests/unit/test_observability.py`, `tests/integration/test_live_*.py`
+- `.env.example`, `.streamlit/secrets.toml.example`, `README.md`, `docs/deploy.md`, `docs/design.md`, `docs/adr/0006-react-audience-window.md`
+
+Blockers / next:
+- Ticket 02 (bind each thread to one runtime) is unblocked: record `runtime.kind` on the thread and refuse a mismatch. The API `TurnRequest.recorded` flag and `recorded_mode()` still exist; 02 replaces them with create-thread `{runtime}`.
+- Streamlit badge copy still says "Guided demo" / "Live SEC"; the web window's labels are owned by the window tickets.
+- `contracts.py`, `turn.py`, and `tests/test_gold.py` use CRLF line endings; preserve them when editing.
+
+## 2026-09-25 — react-audience-window 02 Bind each conversation thread to one runtime
+
+Task completed: `.scratch/react-audience-window/issues/02-bind-each-thread-to-one-runtime.md`
+
+Key decisions:
+- The rule is in `run_conversation_turn`: `ThreadState.runtime` binds on `start_thread` or the first turn; a turn on the other runtime raises `RuntimeMismatchError` before provider calls or persistence. A checkpoint with no `runtime` key is unbound and binds on its next turn.
+- `resolve_runtime_kind` / `default_runtime_kind` in `runtime.py` hold the locked-demo coercion and the `APP_MODE` default. `runtime_for` and `build_runtime` use them.
+- API: `POST /api/threads {runtime?}` returns `{thread_id, runtime, notice}`. Turn body is `{message}` only (extra keys forbidden). Thread view reports `runtime`. A mismatch streams a public `error` and does not use up a turn.
+- Streamlit: a switch flip on a bound thread does Start over; `history_recorded` is gone.
+
+Files changed:
+- `src/financial_analyst_agent/conversation.py`, `thread_store.py`, `domain/errors.py`, `runtime.py`, `api.py`, `app.py`, `storefront.py`
+- `tests/unit/test_thread_runtime.py` (new), `tests/unit/test_conversation_seam.py`, `tests/test_api.py`, `tests/test_app.py` (fake `pills` no longer shadowed by a list)
+- `web/lib/types.ts`, `web/lib/api.ts`
+- `docs/adr/0006-react-audience-window.md` (error event list)
+
+Blockers / next:
+- Ticket 03 (proxy-only API) and 04 (ask and see a quarterly fact) are unblocked. 04 should call `createThread(runtime)` and show `notice` next to the locked switch.
+- `/api/meta` still takes `?recorded=` for the snapshot banner and reports `recorded: {default, locked}`; the window can read the thread's `runtime` instead once it exists.
+- Package imports in new unit tests must stay inside functions: `test_contracts_import` drops the package from `sys.modules`.
+- `web/.next` can hold stale route types (a deleted `app/page`); run `npm run build` before `npx tsc --noEmit`.
+
+
+## 2026-09-25 — react-audience-window 03 Only the window's proxy may call the API
+
+Task completed: `.scratch/react-audience-window/issues/03-proxy-only-api.md`
+
+Key decisions:
+- `API_PROXY_TOKEN` is `Settings.api_proxy_token: SecretStr`. When set, `create_app` adds `ProxyTokenGuard` (pure ASGI, so SSE streams are untouched): every path except `/api/health` needs `X-Proxy-Token` to match, compared with `hmac.compare_digest`, or it gets `401 {"detail": "Not authorized."}`. OpenAPI docs are guarded too.
+- Unset token means no middleware. `PUBLIC_DEMO=true` without a token logs a warning at app build.
+- `web/lib/proxy.ts` holds the header rules (unit-tested in `proxy.test.ts`): upstream headers come from an allowlist plus the token when configured (a forged browser header is dropped); browser response headers are an allowlist, so the token can never be echoed back.
+
+Files changed:
+- `src/financial_analyst_agent/config.py`, `api.py`
+- `tests/test_api.py`
+- `web/lib/proxy.ts`, `web/lib/proxy.test.ts` (new), `web/app/api/[...path]/route.ts`
+- `.env.example`, `web/.env.example` (new; `web/.gitignore` exception), `web/README.md`, `docs/adr/0006-react-audience-window.md`
+
+Blockers / next:
+- Ticket 04 (ask and see a quarterly fact) is next. It needs no token locally.
+- Tickets 09/10 must set the same `API_PROXY_TOKEN` on Render and Vercel. Render's health check path should be `/api/health`, which stays open.
+
+## 2026-09-25 — react-audience-window 04 Ask the new window a question and see a quarterly fact
+
+Task completed: `.scratch/react-audience-window/issues/04-ask-and-see-a-quarterly-fact.md`
+
+Key decisions:
+- The thread rules live in `web/lib/thread-session.ts` (`resumeThread`, `startThread`, with injectable api and storage) and the turn lifecycle in `web/lib/turn-state.ts` (a reducer). Both have vitest tests; the components only wire them up.
+- A thread is created lazily on the first question, and eagerly on Start over or a runtime switch. The stored id key is `financial-analyst-agent.thread-id`.
+- An expired thread is recognised from `GET /api/threads/{id}` returning `runtime: null` with no turns, or a 404.
+- `/api/meta` `runtime_copy.locked` supplies the locked-switch tooltip. `RECORDED_BANNER` now uses ADR 0006's wording (Streamlit shows it too).
+- The first ticket renders the fact card, evidence, traces, banners, and message only. Tables and charts are 05's; essays, citations, disclosures, and clarify buttons are 06's. They are not drawn yet, even when present in the presentation.
+
+Files changed:
+- `src/financial_analyst_agent/api.py`, `storefront.py`; `tests/test_api.py`, `tests/test_runtime_choice.py`
+- `web/app/page.tsx` (new), `web/app/globals.css`, `web/components/{analyst-window,header,status-line,landing,composer,thread,answer,copy-button}.tsx` (new), `web/components/ui.tsx` (LogoMark, FilingButton emphasis, Callout body flex-1), `web/lib/{thread-session,turn-state}.ts` and tests (new), `web/lib/api.ts` (pingHealth, optional getMeta flag), `web/lib/types.ts`
+- `README.md`, `web/README.md`
+
+Blockers / next:
+- 05 (tables and charts) and 06 (qualitative, filing change, clarify) plug into `components/answer.tsx` `Answer`; the thread and shell need no change.
+- The refusal text for an unknown metric is the planner's ("Unknown metric 'unknown'. Allowed: …"); the window shows it as sent.
+- Screenshot runs used the global Playwright at `/opt/node22/lib/node_modules/playwright`; 07 needs Playwright added as a web dev dependency.
+- Do not `pkill -f` a pattern that is also in your own command line: it kills the tool shell.
+
+
+## 2026-09-25 — react-audience-window 05 Comparisons and rankings render as tables and charts
+
+Task completed: `.scratch/react-audience-window/issues/05-tables-and-charts.md`
+
+Key decisions:
+- `web/lib/table-view.ts` decides columns. The compact view shows rank, company, value, end date, reason, and the filing link. The full view adds CIK, currency, start date, form, accession, taxonomy, and concept. The ticker is merged into the company cell, and the filing link always comes last. `web/lib/chart-data.ts` builds rows with positional series keys (`s0`, `s1`), because a name like "Apple Inc." reads as a Recharts property path. It also assigns colours in a fixed order and pads domains; `niceTicks` gives 1-2-5 steps. Both files have vitest tests.
+- `components/answer-chart.tsx`: every amount written on a chart is the server's string. Bars and their labels are one custom `shape`, because LabelList misplaced the labels after a zero-width (missing) bar. A missing value draws no bar, only its muted reason.
+- The rank-and-lookup table now includes form, accession, concept, and source URL (`_RANK_TABLE_KEYS`), so the ranking story has filing links. Market-cap rankings are unchanged. Streamlit's rank-and-lookup table shows these columns too.
+- The chart palette slots were re-ordered to blue, amber, teal, rose, violet, lime. The dark steps now pass the dataviz validator: lightness band plus adjacent colour-blind separation on `--surface`.
+- `:focus-visible` in globals.css moved into `@layer base`, so a component's own focus utilities win. The composer no longer shows a square outline inside its ring.
+- The axisTick tests moved from `sse.test.ts` to `format.test.ts`. Percent ticks keep one decimal when they need it.
+
+Files changed:
+- `src/financial_analyst_agent/presentation.py`, `tests/test_presentation.py`
+- `web/components/answer-chart.tsx`, `web/components/data-table.tsx` (new), `web/components/answer.tsx`, `web/app/globals.css`
+- `web/lib/chart-data.ts`, `web/lib/table-view.ts` and their tests (new), `web/lib/format.ts`, `web/lib/format.test.ts` (new), `web/lib/sse.test.ts`
+
+Blockers / next:
+- 06 (qualitative, filing change, clarify) plugs into `components/answer.tsx` after the table. 07's Playwright check can find a chart with `getByRole("figure")`, the table with `getByRole("region", { name: "Answer table" })`, and the column switch with `getByRole("radio", { name: "Full" })`.
+- `sr-only` text inside a horizontal scroller needs a `relative` ancestor; otherwise it widens the page on phones.
+
+
+## 2026-09-25 — react-audience-window 06 Qualitative answers, filing changes, and clarification
+
+Task completed: `.scratch/react-audience-window/issues/06-qualitative-filing-change-and-clarify.md`
+
+Key decisions:
+- Essays, disclosure text, and multi-line trace values all go through `web/components/markdown.tsx` `SafeMarkdown`. It uses `skipHtml`, draws images as their alt text, and renders only http(s) links. A vitest test (`markdown.test.tsx`, rendered with react-dom/server) pins this. The component imports `../lib/...` relatively because vitest has no `@/` alias.
+- `[n]` markers link only when source n exists and its URL is safe; otherwise they stay as text (`lib/essay.ts`).
+- The copy stays server-side: `Presentation.clarify_prompt` (new key, pinned in `tests/test_api.py`), plus the sentences for the `model-analysis` and `exploratory-research` banner codes. Streamlit reads `clarify_prompt` in place of its hard-coded strings.
+- The clarify rule is still the server's: `turn.clarify_enabled` (latest turn plus pending clarification), with buttons also disabled while a turn runs. `lib/clarify.ts` marks the chosen candidate from the next turn's message and shows that message as the label.
+- Answer order: banners, fact card, chart, table, message, essay + sources, filing changes, clarify, evidence, traces.
+
+Files changed:
+- `src/financial_analyst_agent/presentation.py`, `app.py`; `tests/test_presentation.py`, `test_api.py`, `test_app.py`
+- `web/components/{markdown,written-answer,filing-changes,clarify}.tsx` (new), `markdown.test.tsx` (new), `answer.tsx`, `thread.tsx`, `analyst-window.tsx`, `app/globals.css`
+- `web/lib/{essay,clarify}.ts` and tests (new), `web/lib/types.ts`
+
+Blockers / next:
+- 07's Playwright check can find: filing changes by `getByRole("region", { name: "Filing changes" })` (sections are `article`s named "<section>, <kind>"); the clarify card by region "Clarify", with buttons by name (`/Net income/`); and essays by region "Analysis", "Brief", or "Summary of changes".
+- The recorded runtime has essays only for "How can AI disrupt healthcare?", the Hormuz news and research queries, and "Summarize what changed …". Its news essay has no `[n]` markers; live briefs do.
+- The recorded runtime never returns the extend/replace clarification; it was checked by rewriting the thread response in the browser.
+
+
+
+## 2026-09-25 — react-audience-window 07 A browser check in CI guards the window
+
+Task completed: `.scratch/react-audience-window/issues/07-browser-check-in-ci.md`
+
+Key decisions:
+- Playwright (`@playwright/test` pinned to 1.56.1, which matches the container's /opt/pw-browsers builds) lives in `web/e2e/`. `window.spec.ts` covers the four guided stories, compare-then-add-Apple, the clarify-button round trip, and reload + Start over. `analyst.ts` is a page object using roles and accessible names only; a turn is done when "Turns used" reaches the next count and the send button reads "Send" again.
+- `web/playwright.config.ts` starts the API (`uv run serve-api` from the repo root, `APP_MODE=recorded`, `PUBLIC_DEMO=false`, empty `API_PROXY_TOKEN`, port 8100) and the built app (`npm start`, port 3100, `API_ORIGIN` pointed at 8100). Outside CI it reuses running servers. `PLAYWRIGHT_BASE_URL` skips both and targets a deployed window (2 workers, 90 s expect timeout).
+- The recorded "What changed in the 10-Q" story has no summary essay, so the check asserts the two filing-change articles (MD&A, Risk Factors) and their filing links, not a "Summary of changes" region.
+- CI `web` job: Node from `.nvmrc` (22), `npm ci`, lint, `npm test`, build, then `tsc --noEmit` (after the build writes `next-env.d.ts`, which is gitignored), uv + Python 3.12, `npx playwright install --with-deps chromium`, `npm run test:e2e`, report artifact on failure. The Python job is unchanged.
+- `web/vitest.config.ts` excludes `e2e/` so vitest does not load Playwright specs. `engines.node` is `22.x`.
+
+Files changed:
+- `.github/workflows/ci.yml`, `.nvmrc` (new), `README.md` (Node 22)
+- `web/e2e/{analyst.ts,window.spec.ts}`, `web/playwright.config.ts`, `web/vitest.config.ts` (new), `web/package.json` + lockfile, `web/.gitignore`, `web/README.md`
+
+Blockers / next:
+- The suite runs in about 10 s locally. Against the hosted demo (tickets 09/10): `PLAYWRIGHT_BASE_URL=https://<deploy> npm run test:e2e`.
+- ADR 0006 cutover also wants `web/scripts/capture-portfolio.ts`; it can reuse `e2e/analyst.ts` to drive the walkthrough.
+- The API's JSON logs go to stderr, so they appear in the Playwright output as `[API]` lines; that helps when CI fails.

@@ -675,6 +675,44 @@ def test_present_clarify_lists_humanized_candidates() -> None:
     assert presented.table is None
     assert presented.fact_card is None
     assert presented.message is None
+    assert presented.clarify_prompt == "Which metric do you mean?"
+
+
+def test_present_scope_clarify_asks_extend_or_replace() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.CLARIFY,
+        candidates=("extend", "replace"),
+        tool_traces=[],
+    )
+    presented = present_turn(result)
+    assert presented.candidates == ("Extend", "Replace")
+    assert presented.clarify_prompt == "Add to the current analysis, or start a new one?"
+
+
+def test_present_non_clarify_has_no_clarify_prompt() -> None:
+    result = TurnResult(intent=Intent.EXPLAIN, renderer=RendererKind.ESSAY, tool_traces=[])
+    assert present_turn(result).clarify_prompt is None
+
+
+@pytest.mark.parametrize(
+    ("code", "opening"),
+    [
+        ("model-analysis", "Model analysis — "),
+        ("exploratory-research", "Exploratory research — "),
+    ],
+)
+def test_present_qualitative_banner_codes_become_sentences(code: str, opening: str) -> None:
+    result = TurnResult(
+        intent=Intent.EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        tool_traces=[],
+        essay="An essay.",
+        banners=[code],
+    )
+    (banner,) = present_turn(result).banners
+    assert banner.startswith(opening)
+    assert code not in banner
 
 
 def test_metric_legend_lists_closed_catalog() -> None:
@@ -886,6 +924,65 @@ def test_trend_chart_orders_periods_chronologically() -> None:
     ]
 
 
+def test_trend_chart_carries_its_text_formatted_like_the_table() -> None:
+    """Axis title, tick style, period labels, and tooltip amounts come from here, not the client."""
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name=name, ticker=ticker, cik=cik,
+                metric="net_margin", value=Decimal(value), end_date=period,
+            )
+            for name, ticker, cik, period, value in (
+                ("Microsoft", "MSFT", "0000789019", date(2025, 12, 31), "0.3542"),
+                ("Microsoft", "MSFT", "0000789019", date(2026, 3, 31), "0.361"),
+                ("Apple", "AAPL", "0000320193", date(2025, 12, 31), "0.2449"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.value_kind == "percent"
+    assert chart.metric_label == "Net margin"
+    assert chart.period_labels == ("Dec 31, 2025", "Mar 31, 2026")
+    assert chart.series == ("Microsoft", "Apple")
+    assert chart.amounts == (
+        {"Microsoft": "35.4%", "Apple": "24.5%"},
+        {"Microsoft": "36.1%"},
+    )
+
+
+def test_trend_chart_keeps_a_company_missing_from_the_first_period() -> None:
+    """A company whose facts start later still gets its own line."""
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name=name, ticker=ticker, cik=cik,
+                metric="revenue", value=Decimal(value), end_date=period,
+            )
+            for name, ticker, cik, period, value in (
+                ("Microsoft", "MSFT", "0000789019", date(2025, 12, 31), "81000000000"),
+                ("Microsoft", "MSFT", "0000789019", date(2026, 3, 31), "83000000000"),
+                ("Apple", "AAPL", "0000320193", date(2026, 3, 31), "111000000000"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.series == ("Microsoft", "Apple")
+
+
 def test_present_filing_change_omits_empty_table() -> None:
     result = TurnResult(
         intent=Intent.FILING_CHANGE,
@@ -947,6 +1044,9 @@ def test_comparison_bar_chart_keeps_table_order() -> None:
     assert chart.kind == "bar"
     assert chart.horizontal is True
     assert chart.metric == "research_and_development"
+    assert chart.value_kind == "usd"
+    assert chart.metric_label == "Research and development"
+    assert (chart.period_labels, chart.series, chart.amounts) == ((), (), ())
     assert [record["Company"] for record in chart.records] == [
         "#1 AAPL",
         "#2 MSFT",
@@ -1154,6 +1254,7 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
     assert chart.records[1]["Label"] == "Missing fact"
     assert chart.records[0]["Label"] == "$4.29 B"
     assert table is not None
+    # Ranked facts carry their filing provenance so each row links its 10-Q.
     assert table.keys == (
         "rank",
         "company_name",
@@ -1161,11 +1262,14 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
         "value",
         "start_date",
         "end_date",
+        "form",
+        "accession_number",
+        "concept",
+        "source_url",
         "reason",
     )
     assert table.headers[table.keys.index("value")] == "Research and development"
     assert "Value" not in table.headers
-    assert "accession_number" not in table.keys
-    assert "concept" not in table.keys
-    assert "source_url" not in table.keys
+    assert table.rows[0][table.keys.index("source_url")] == "https://www.sec.gov/nvda"
+    assert table.rows[1][table.keys.index("source_url")] == ""
     assert presented.evidence

@@ -195,6 +195,7 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     } <= set(dumped)
     assert set(dumped) <= {
         "thread_id",
+        "runtime",
         "messages",
         "evidence_refs",
         "last_result_ref",
@@ -209,7 +210,8 @@ def test_run_state_is_not_persisted_between_turns(tmp_path: Path) -> None:
     assert state.last_result_ref is not None
     assert store.resolve_last_result(state) is not None
     assert "plan" not in dumped
-    assert "runtime" not in dumped
+    # Only the runtime's name is thread state; its providers are not.
+    assert dumped["runtime"] == "recorded"
     assert "compiled_tasks" not in dumped
     assert "proposed_patch" not in dumped
 

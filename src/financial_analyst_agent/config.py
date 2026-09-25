@@ -1,11 +1,12 @@
 """Application configuration."""
 
+import logging
 import math
 import re
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from financial_analyst_agent.domain.errors import ConfigurationError
@@ -15,9 +16,31 @@ _USER_AGENT_EMAIL_PATTERN = re.compile(
 )
 
 
+_LOGGER = logging.getLogger("financial_analyst_agent")
+_DEPRECATED_APP_MODES = {"fixture": "recorded"}
+
+
 class AppMode(StrEnum):
+    """Which runtime `APP_MODE` selects: the recorded runtime or the live runtime."""
+
     LIVE = "live"
-    FIXTURE = "fixture"
+    RECORDED = "recorded"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "AppMode | None":
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().casefold()
+        replacement = _DEPRECATED_APP_MODES.get(normalized)
+        if replacement is not None:
+            _LOGGER.warning(
+                "APP_MODE=%s is deprecated; use APP_MODE=%s", normalized, replacement
+            )
+            normalized = replacement
+        for member in cls:
+            if member.value == normalized:
+                return member
+        return None
 
 
 def _reject_non_finite(value: float, field_name: str) -> float:
@@ -46,6 +69,7 @@ class Settings(BaseSettings):
     demo_live_sec: bool = False
     allow_public_openai: bool = False
     allow_public_tavily: bool = False
+    api_proxy_token: SecretStr = SecretStr("")
     thread_ttl_seconds: int = 7200
     max_turns_per_thread: int = 25
     max_live_sec_requests_per_thread: int = 25

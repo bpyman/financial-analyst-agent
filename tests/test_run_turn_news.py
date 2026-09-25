@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.turn import (
     Intent,
     NewsHit,
@@ -255,8 +255,8 @@ def test_run_turn_news_and_explain_drops_hits_missing_title_or_url() -> None:
     assert [hit.url for hit in result.citations] == [FIXTURE_HIT.url]
 
 
-def test_fixture_runtime_news_and_explain_uses_recorded_hits() -> None:
-    result = run_turn(FIXTURE_NEWS_QUERY, fixture_runtime())
+def test_recorded_runtime_news_and_explain_uses_recorded_hits() -> None:
+    result = run_turn(FIXTURE_NEWS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.NEWS_AND_EXPLAIN
     assert result.renderer is RendererKind.ESSAY
@@ -274,8 +274,8 @@ def test_fixture_runtime_news_and_explain_uses_recorded_hits() -> None:
     assert trace.args["max_results"] == 5
 
 
-def test_fixture_runtime_refuses_news_without_matching_recording() -> None:
-    result = run_turn(MICROSOFT_NEWS_QUERY, fixture_runtime())
+def test_recorded_runtime_refuses_news_without_matching_recording() -> None:
+    result = run_turn(MICROSOFT_NEWS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.NEWS_AND_EXPLAIN
     assert result.renderer is RendererKind.REFUSE

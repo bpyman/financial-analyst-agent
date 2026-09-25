@@ -7,20 +7,25 @@ Evidence bodies live in the store's EvidenceStore; thread state keeps refs.
 Pending clarification is thread state: an ambiguous metric or ambiguous
 extend/replace scope holds the planned patch until the analyst answers or
 asks something unrelated (which discards it explicitly).
+
+A thread is bound to one runtime (ADR 0006): ``start_thread`` binds it up front,
+otherwise its first turn does. A turn on the other runtime raises
+``RuntimeMismatchError`` before anything is read from providers or persisted.
 """
 
 from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal
-from collections.abc import Callable
 
 from pydantic import BaseModel
 
-from financial_analyst_agent.contracts import RendererKind, Runtime, TurnResult
+from financial_analyst_agent.contracts import RendererKind, Runtime, RuntimeKind, TurnResult
+from financial_analyst_agent.domain.errors import RuntimeMismatchError
 from financial_analyst_agent.evidence_store import (
     EvidenceCachedFacts,
     grounding_json_from_result,
@@ -178,6 +183,22 @@ def _resume_pending(
     )
 
 
+def start_thread(thread_id: str, runtime: RuntimeKind, *, store: ThreadStore) -> ThreadState:
+    """Create an empty conversation thread bound to ``runtime`` and persist it."""
+    state = ThreadState(thread_id=thread_id, runtime=runtime)
+    store.save(state)
+    return state
+
+
+def _check_runtime(prior: ThreadState, runtime: Runtime) -> None:
+    if prior.runtime is not None and prior.runtime != runtime.kind:
+        raise RuntimeMismatchError(
+            f"This thread runs on the {prior.runtime.value} runtime and cannot take "
+            f"a {runtime.kind.value} turn. Start over to switch runtime.",
+            {"thread": prior.runtime.value, "turn": runtime.kind.value},
+        )
+
+
 def run_conversation_turn(
     thread_id: str,
     message: str,
@@ -191,6 +212,8 @@ def run_conversation_turn(
 
     ``on_progress(done, total)`` is invoked as independent compiled cells finish.
     ``max_workers`` caps concurrent provider fan-out for structured analyses.
+    Raises ``RuntimeMismatchError`` when the thread is bound to the other runtime;
+    an unbound thread binds to ``runtime.kind``.
     """
     from financial_analyst_agent.graph import run_workflow_turn
     from financial_analyst_agent.graph.spec_turn import (
@@ -204,6 +227,7 @@ def run_conversation_turn(
 
     finish = timed("conversation_turn", thread_id=thread_id)
     prior = store.load(thread_id) or ThreadState(thread_id=thread_id)
+    _check_runtime(prior, runtime)
     workers = DEFAULT_TASK_MAX_WORKERS if max_workers is None else max_workers
     context_token = bind_log_context(thread_id=thread_id, turn=prior.turn_count + 1)
     try:
@@ -319,6 +343,7 @@ def run_conversation_turn(
         messages = (*prior.messages, ThreadMessage(role="analyst", content=message))
         state = ThreadState(
             thread_id=thread_id,
+            runtime=runtime.kind,
             messages=messages,
             evidence_refs=evidence_refs,
             last_result_ref=result_ref,
