@@ -562,3 +562,25 @@ Blockers / next:
 - The image is about 980 MB unpacked, and roughly 400 MB of that is the Streamlit stack (pyarrow, pandas, streamlit, pydeck). The API never imports it. Ticket 14 (delete Streamlit) shrinks the image with no Dockerfile change.
 - For local builds in the cloud container, Docker Hub pulls hit 429. Pull `mirror.gcr.io/library/python:3.12-slim-bookworm` and tag it as `python:3.12-slim-bookworm`, then build with `--network host --build-arg HTTPS_PROXY=$HTTPS_PROXY` (predefined arg; not kept in the image history). ghcr blob downloads are forbidden by the proxy.
 - 09: `render.yaml` should point at this `Dockerfile` with `healthCheckPath: /api/health`; Render sets `PORT` itself. `API_PROXY_TOKEN` is a dashboard variable, not synced from `render.yaml`. After a deploy: `python3 scripts/smoke_api_image.py --base-url https://<render host> --proxy-token <token>`.
+
+
+## 2026-09-25 — react-audience-window 09 Render and Vercel deploy configuration
+
+Task completed: `.scratch/react-audience-window/issues/09-render-and-vercel-config.md`
+
+Key decisions:
+- `render.yaml`: one free Docker web service in `virginia` on `main`, with `healthCheckPath: /api/health`, `numInstances: 1`, and `autoDeployTrigger: checksPass` (it replaces the deprecated `autoDeploy`). `buildFilter.paths` is Dockerfile, .dockerignore, pyproject.toml, uv.lock, and src/**. The public-demo env values are quoted strings. `API_PROXY_TOKEN` is `sync: false`, and PORT is left to Render.
+- A `deploy-api` CI job is a dormant fallback: it needs all other jobs, runs only on pushes to `main`, and curls `RENDER_DEPLOY_HOOK_URL` only when that secret is set. It is there because nothing confirmed that `checksPass` exists on the free instance.
+- `web/vercel.json`: `ignoreCommand` runs `sh scripts/ignore-build.sh`, plus `fluid: true` and `regions: ["iad1"]`. The script compares `VERCEL_GIT_PREVIOUS_SHA..HEAD -- .` from `web/`; with no previous SHA, or one outside the shallow clone, it builds. maxDuration stays in route.ts (300, the Hobby cap), and a test pins it.
+- `tests/api_server.py` now holds the in-process uvicorn `serve()` and the loaded smoke script, shared by `test_api_image_smoke.py` and the new `test_deploy_config.py`.
+- PyYAML comes in through langchain-core (langgraph), so the test adds no dependency.
+
+Files changed:
+- `render.yaml`, `web/vercel.json`, `web/scripts/ignore-build.sh` (new)
+- `.github/workflows/ci.yml` (deploy-api job), `docs/deploy.md` (rewritten), `README.md`, `web/README.md`
+- `tests/test_deploy_config.py`, `tests/api_server.py` (new), `tests/test_api_image_smoke.py`
+- ticket 09 resolved
+
+Blockers / next:
+- render.com and vercel.com are blocked by the container proxy. Blueprint fields come from Render's `render-oss/skills` reference (raw.githubusercontent.com works); `docs/deploy.md` says what was and was not verified. The Vercel CLI's bundled config validator (`npm pack vercel`, chunks/config-validator.mjs) does not check top-level keys, so it cannot catch typos there.
+- 10 (wizard): run `render blueprints validate` or read the Blueprint sync result. Check that the service's Auto-Deploy reads "After CI Checks Pass"; if the free plan lacks it, set the repo secret and change `autoDeployTrigger` to `off`. In Vercel, set Root Directory `web` and both env vars for Production and Preview. Verify with `scripts/smoke_api_image.py --base-url` on the Render URL (with the token) and on the Vercel URL (without it), and check that `/api/meta` on Render without the token returns 401.

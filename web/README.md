@@ -41,6 +41,11 @@ Both variables are read by the proxy route on the server; neither is
 | `API_ORIGIN` | `http://127.0.0.1:8000` | Base URL of the Python API. |
 | `API_PROXY_TOKEN` | unset | Shared secret sent upstream as `X-Proxy-Token`. Set it to the API's `API_PROXY_TOKEN` on a hosted deploy; the API then refuses any call but `/api/health` that did not come through this proxy. Unset, no header is sent. |
 
+On Vercel the project's Root Directory is `web/`. `vercel.json` turns on Fluid
+compute, pins functions to `iad1`, and runs `scripts/ignore-build.sh` as the Ignored
+Build Step, which skips the build when nothing under `web/` changed. See
+[`docs/deploy.md`](../docs/deploy.md).
+
 ## Checks
 
 ```bash

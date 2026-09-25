@@ -76,3 +76,21 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
+
+  # Fallback for Render's "deploy after checks pass" (render.yaml
+  # autoDeployTrigger: checksPass). Dormant until the RENDER_DEPLOY_HOOK_URL
+  # repository secret is set; then set autoDeployTrigger to off so a commit is
+  # not deployed twice. See docs/deploy.md.
+  deploy-api:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, image, web]
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Call the Render deploy hook
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: curl --fail --silent --show-error --output /dev/null --request POST "$RENDER_DEPLOY_HOOK_URL"
+      - name: No deploy hook set
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: echo "RENDER_DEPLOY_HOOK_URL is not set; Render deploys on its own after checks pass."

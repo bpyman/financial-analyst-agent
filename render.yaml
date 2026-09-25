@@ -1,0 +1,46 @@
+# Render Blueprint for the analysis API (ADR 0006 "Hosting", docs/deploy.md).
+# Schema: https://render.com/schema/render.yaml.json
+#
+# One free Docker web service in Virginia, next to Vercel's iad1 functions. The
+# browser never calls it directly: the Vercel proxy does, with X-Proxy-Token.
+services:
+  - type: web
+    name: financial-analyst-api
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    # One process, always: the file-backed thread store and the per-thread
+    # turn lock only work if every request for a thread reaches it.
+    numInstances: 1
+    # Deploy a commit only once its GitHub checks pass (lint, types, tests,
+    # the image smoke test, and the Playwright check).
+    autoDeployTrigger: checksPass
+    # Rebuild only when something the image is built from changes, so a
+    # web-only commit does not redeploy (and wake) the API.
+    buildFilter:
+      paths:
+        - Dockerfile
+        - .dockerignore
+        - pyproject.toml
+        - uv.lock
+        - src/**
+    envVars:
+      # The public demo: recorded runtime, live runtime locked off.
+      - key: APP_MODE
+        value: "recorded"
+      - key: PUBLIC_DEMO
+        value: "true"
+      - key: DEMO_LIVE_SEC
+        value: "false"
+      - key: ALLOW_PUBLIC_OPENAI
+        value: "false"
+      - key: ALLOW_PUBLIC_TAVILY
+        value: "false"
+      # Shared secret with the Vercel proxy. Set in the Render dashboard (the
+      # Blueprint prompts for it on first sync) and never committed.
+      - key: API_PROXY_TOKEN
+        sync: false
