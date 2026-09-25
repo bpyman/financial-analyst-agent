@@ -70,7 +70,7 @@ def test_render_blueprint_is_one_free_docker_web_service_in_virginia() -> None:
     assert service["plan"] == "free"
     assert service["region"] in RENDER_REGIONS
     assert service["region"] == "virginia"
-    assert service["branch"] == "main"
+    assert service["branch"] == "master"
     assert (ROOT / service["dockerfilePath"]).is_file()
     assert (ROOT / service["dockerContext"]).resolve() == ROOT
     assert service["healthCheckPath"] == HEALTH_PATH
@@ -140,7 +140,7 @@ def test_ci_deploy_hook_fallback_waits_for_every_other_job() -> None:
     deploy = jobs["deploy-api"]
 
     assert set(deploy["needs"]) == set(jobs) - {"deploy-api"}
-    assert "refs/heads/main" in deploy["if"]
+    assert "refs/heads/master" in deploy["if"]
     assert "push" in deploy["if"]
     assert deploy["env"]["RENDER_DEPLOY_HOOK_URL"] == "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
 

@@ -82,7 +82,7 @@ jobs:
   # repository secret is set; then set autoDeployTrigger to off so a commit is
   # not deployed twice. See docs/deploy.md.
   deploy-api:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: [check, image, web]
     runs-on: ubuntu-latest
     env:

@@ -49,14 +49,14 @@ on the public demo.
 | `type` / `runtime` | `web` / `docker` | Builds the repo's `Dockerfile` (context `.`). Both are fixed once the service exists. |
 | `plan` | `free` | No card on file. 512 MB of RAM and a fraction of a CPU. It sleeps after 15 idle minutes and takes about a minute to wake. |
 | `region` | `virginia` | Next to Vercel's `iad1` functions. Fixed once the service exists. |
-| `branch` | `main` | Deploys only `main`. |
+| `branch` | `master` | Deploys only `master`, the default branch. |
 | `healthCheckPath` | `/api/health` | Open without the proxy token. |
 | `numInstances` | `1` | Required: the file-backed thread store and per-thread turn lock need one process. |
 | `autoDeployTrigger` | `checksPass` | Deploys a commit only after all its GitHub checks pass. |
 | `buildFilter.paths` | `Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock`, `src/**` | Commits that change only `web/`, docs, or tests do not rebuild the API. |
 
 Create it once: Render dashboard → **New** → **Blueprint** → connect the GitHub repo →
-pick `main`. Render reads `render.yaml`, asks for `API_PROXY_TOKEN`, and creates
+pick `master`. Render reads `render.yaml`, asks for `API_PROXY_TOKEN`, and creates
 `financial-analyst-api`. Later edits to `render.yaml` sync on push. The deploy wizard
 (ticket 10) walks through each click.
 
@@ -78,7 +78,7 @@ If `checksPass` is not offered for the free instance, CI can deploy instead:
    `RENDER_DEPLOY_HOOK_URL`.
 3. In `render.yaml`, set `autoDeployTrigger: off`, so a commit is not deployed twice.
 
-The `deploy-api` job in CI then POSTs to the hook on pushes to `main`, after `check`,
+The `deploy-api` job in CI then POSTs to the hook on pushes to `master`, after `check`,
 `image`, and `web` pass. Without the secret, the job does nothing.
 
 ## Vercel: the window
@@ -167,7 +167,7 @@ sources:
 > Legacy until cutover (tickets 11–14). The public URL is still
 > [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app).
 > At cutover the app is repointed at a `streamlit-redirect` branch that shows "This demo
-> has moved", and `app.py` is deleted from `main`.
+> has moved", and `app.py` is deleted from `master`.
 
 The Streamlit window defaults to the recorded runtime, with isolated browser sessions,
 thread expiry, and cached SEC responses. Community Cloud installs from
