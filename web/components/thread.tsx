@@ -82,14 +82,17 @@ function Exchange({
 }) {
   return (
     <div className="animate-fade-up">
-      <div className="flex justify-end">
-        <p
-          title={sent && sent !== message ? `Sent as ${sent}` : undefined}
-          className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
-          {message}
-        </p>
-      </div>
-      <div className="mt-5 flex gap-3">
+      {/* No bubble for a turn reattached after a reload: its message is not known yet. */}
+      {message && (
+        <div className="flex justify-end">
+          <p
+            title={sent && sent !== message ? `Sent as ${sent}` : undefined}
+            className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
+            {message}
+          </p>
+        </div>
+      )}
+      <div className={message ? "mt-5 flex gap-3" : "flex gap-3"}>
         <div className="relative hidden shrink-0 sm:block">
           <LogoMark className="size-7" />
           {working && (

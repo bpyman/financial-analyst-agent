@@ -354,12 +354,25 @@ _MIXED_PERIOD_CAPTION = "Latest standalone quarter; periods differ by issuer."
 
 @dataclass(frozen=True)
 class ChartSpec:
+    """A chart plus every piece of text it shows, so no client formats a number.
+
+    ``value_kind`` picks the axis tick style and ``metric_label`` titles the axis.
+    Trend lines also carry ``period_labels`` (one per record), ``series`` (the
+    company keys of each record), and ``amounts`` (each record's values as the
+    table formats them), so tooltips read the same strings as the table.
+    """
+
     kind: str
     title: str
     records: tuple[dict[str, object], ...]
     metric: str = ""
     caption: str = ""
     horizontal: bool = False
+    value_kind: str = "usd"
+    metric_label: str = ""
+    period_labels: tuple[str, ...] = ()
+    series: tuple[str, ...] = ()
+    amounts: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -449,28 +462,46 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             bucket[row.company_name] = (
                 float(row.value) if row.value is not None else None
             )
+        metric = rows[0].metric
+        periods = sorted(merged)
+        records = tuple(merged[period] for period in periods)
         return ChartSpec(
             kind="line",
             title="Trend",
-            records=tuple(merged[key] for key in sorted(merged)),
-            metric=rows[0].metric,
+            records=records,
+            metric=metric,
+            value_kind=chart_value_kind(metric),
+            metric_label=_humanize_field(metric),
+            period_labels=tuple(format_date(period) for period in periods),
+            series=tuple(dict.fromkeys(row.company_name for row in rows)),
+            amounts=tuple(
+                {
+                    key: format_chart_amount(metric, value)
+                    for key, value in record.items()
+                    if key != "Period"
+                }
+                for record in records
+            ),
         )
     if len(companies) >= 2:
         ends = {row.end_date for row in rows if row.end_date is not None}
         mixed_periods = len(ends) >= 2
+        metric = rows[0].metric
         return ChartSpec(
             kind="bar",
             title="Comparison",
             records=tuple(
                 _bar_record(row, ranked=rank_cross_section) for row in rows
             ),
-            metric=rows[0].metric,
+            metric=metric,
             caption=_bar_caption(
                 ranked=rank_cross_section,
-                metric=rows[0].metric,
+                metric=metric,
                 mixed_periods=mixed_periods,
             ),
             horizontal=rank_cross_section,
+            value_kind=chart_value_kind(metric),
+            metric_label=_humanize_field(metric),
         )
     return None
 

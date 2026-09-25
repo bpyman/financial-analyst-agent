@@ -9,6 +9,7 @@ from financial_analyst_agent.runtime import (
     live_runtime,
     recorded_runtime,
     runtime_for,
+    runtime_locked,
 )
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 from test_run_turn_lookup import ACCESSION, GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, NET_INCOME
@@ -49,6 +50,18 @@ def test_locked_public_demo_builds_recorded_when_live_is_asked_for() -> None:
     settings = _settings(public_demo=True, demo_live_sec=False)
 
     assert runtime_for(RuntimeKind.LIVE, settings=settings).kind is RuntimeKind.RECORDED
+
+
+@pytest.mark.parametrize(
+    ("public_demo", "demo_live_sec", "locked"),
+    [(True, False, True), (True, True, False), (False, False, False)],
+)
+def test_only_a_public_demo_without_live_sec_is_locked(
+    public_demo: bool, demo_live_sec: bool, locked: bool
+) -> None:
+    settings = _settings(public_demo=public_demo, demo_live_sec=demo_live_sec)
+
+    assert runtime_locked(settings) is locked
 
 
 @pytest.mark.parametrize(

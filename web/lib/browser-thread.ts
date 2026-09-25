@@ -6,6 +6,10 @@ import type { CreatedThread, RuntimeKind, ThreadView } from "./types";
 
 export const THREAD_STORAGE_KEY = "financial-analyst-agent.thread-id";
 export const EXPIRED_NOTICE = "Your previous thread has expired, so this is a fresh start.";
+export const LOCKED_LIVE_NOTICE =
+  "Live runtime is off on this deployment, so your live thread was replaced with a fresh start on the recorded runtime.";
+export const TURN_WAIT_TIMEOUT =
+  "Your last question is taking too long to finish. Please try again shortly.";
 
 export interface KeyValueStore {
   getItem(key: string): string | null;
@@ -81,11 +85,13 @@ function forget(store: KeyValueStore): ThreadOutcome<null> {
 /**
  * Start a new thread bound to `runtime`, clearing `previousId` first. Start
  * over is this on the same runtime; switching runtime is this on the other.
+ * `undefined` leaves the runtime to the deployment default (the analyst has
+ * not chosen one).
  */
 export async function startThread(
   api: ThreadApi,
   store: KeyValueStore,
-  runtime: RuntimeKind,
+  runtime: RuntimeKind | undefined,
   previousId?: string | null,
 ): Promise<ThreadOutcome<ThreadView>> {
   if (previousId) {
@@ -100,4 +106,66 @@ export async function startThread(
   store.setItem(THREAD_STORAGE_KEY, created.thread_id);
   const view = await api.getThread(created.thread_id);
   return { view, notice: created.notice };
+}
+
+/**
+ * A thread bound to the live runtime cannot take a turn on a deployment locked
+ * to the recorded runtime (a preview talking to the public demo), so Start over
+ * on the recorded runtime and say why. `null` when the thread can stay.
+ */
+export async function startOverIfLocked(
+  api: ThreadApi,
+  store: KeyValueStore,
+  view: ThreadView | null,
+  locked: boolean,
+): Promise<ThreadOutcome<ThreadView> | null> {
+  if (!locked || view?.runtime !== "live") return null;
+  const started = await startThread(api, store, "recorded", view.thread_id);
+  return { view: started.view, notice: LOCKED_LIVE_NOTICE };
+}
+
+export interface WaitOptions {
+  sleep?: (ms: number) => Promise<void>;
+  firstDelayMs?: number;
+  maxDelayMs?: number;
+  /** Stop waiting after this long in total and report the turn as stuck. */
+  maxWaitMs?: number;
+  signal?: AbortSignal;
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Poll a thread whose turn is in flight (a reload mid-turn) until it ends,
+ * backing off from `firstDelayMs` by half again each time up to `maxDelayMs`.
+ * A failed poll is retried; the wait gives up after `maxWaitMs`.
+ */
+export async function waitForTurn(
+  getThread: (threadId: string) => Promise<ThreadView>,
+  threadId: string,
+  {
+    sleep = pause,
+    firstDelayMs = 1500,
+    maxDelayMs = 8000,
+    maxWaitMs = 6 * 60_000,
+    signal,
+  }: WaitOptions = {},
+): Promise<ThreadView> {
+  let delay = firstDelayMs;
+  let waited = 0;
+  while (waited < maxWaitMs) {
+    signal?.throwIfAborted();
+    await sleep(delay);
+    waited += delay;
+    delay = Math.min(maxDelayMs, delay * 1.5);
+    signal?.throwIfAborted();
+    try {
+      const view = await getThread(threadId);
+      if (!view.turn_in_flight) return view;
+    } catch {
+      // A blip while the turn runs (a waking host, a dropped connection): keep waiting.
+    }
+    signal?.throwIfAborted();
+  }
+  throw new ApiError(TURN_WAIT_TIMEOUT, 504);
 }

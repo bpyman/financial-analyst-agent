@@ -18,35 +18,28 @@ import threading
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from financial_analyst_agent.config import AppMode, Settings, get_settings
+from financial_analyst_agent.config import Settings, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import RuntimeMismatchError
 from financial_analyst_agent.observability import configure_logging
-from financial_analyst_agent.presentation import (
-    chart_value_kind,
-    format_chart_amount,
-    format_date,
-    format_field_name,
-    metric_groups,
-    present_turn,
-    spec_chips,
-)
+from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     default_runtime_kind,
     resolve_runtime_kind,
     runtime_for,
+    runtime_locked,
 )
 from financial_analyst_agent.session import (
     SessionBudget,
@@ -104,6 +97,38 @@ class ProxyTokenGuard:
         await self._app(scope, receive, send)
 
 
+class TurnLocks:
+    """The per-thread turn lock: at most one turn, or one Start over, per thread at a time.
+
+    Acquisition never blocks (a busy thread answers 409), so a lock is just
+    membership in a set: an entry exists only while its holder runs, and the
+    map cannot grow with every thread id a caller names.
+    """
+
+    def __init__(self) -> None:
+        self._held: set[str] = set()
+        self._guard = threading.Lock()
+
+    def try_acquire(self, thread_id: str) -> bool:
+        with self._guard:
+            if thread_id in self._held:
+                return False
+            self._held.add(thread_id)
+            return True
+
+    def release(self, thread_id: str) -> None:
+        with self._guard:
+            self._held.discard(thread_id)
+
+    def held(self, thread_id: str) -> bool:
+        with self._guard:
+            return thread_id in self._held
+
+    def __len__(self) -> int:
+        with self._guard:
+            return len(self._held)
+
+
 class CreateThreadRequest(BaseModel):
     """``runtime`` omitted means the deployment default (``APP_MODE``)."""
 
@@ -128,59 +153,31 @@ def _valid_thread_id(thread_id: str) -> str:
     return str(parsed)
 
 
-def recorded_mode(settings: Settings) -> tuple[bool, bool]:
-    """(default recorded, switch locked) for this deployment."""
-    locked = bool(settings.public_demo) and not settings.demo_live_sec
-    return settings.app_mode is AppMode.RECORDED or locked, locked
-
-
 @lru_cache(maxsize=2)
-def _snapshot_as_of(recorded: bool) -> str:
-    path = FIXTURE_UNIVERSE_SNAPSHOT_PATH if recorded else None
+def _snapshot_as_of(kind: RuntimeKind) -> str:
+    path = FIXTURE_UNIVERSE_SNAPSHOT_PATH if kind is RuntimeKind.RECORDED else None
     return SnapshotRanking.from_path(path).snapshot_as_of()
 
 
-def _period_label(raw: object) -> str:
-    text = str(raw)
-    try:
-        return format_date(date.fromisoformat(text[:10]))
-    except ValueError:
-        return text
-
-
 def presentation_json(result: TurnResult) -> dict[str, Any]:
-    """``present_turn`` as JSON, with chart text the client would otherwise format.
+    """``present_turn`` as JSON: chart text and amounts arrive already formatted."""
+    return asdict(present_turn(result))
 
-    Charts gain ``value_kind`` (axis tick style), ``metric_label`` (axis title),
-    and for trend lines ``period_labels`` plus server-formatted ``amounts`` per
-    series, so tooltips show the same strings as the table.
+
+def thread_view(
+    store: LocalThreadStore,
+    thread_id: str,
+    settings: Settings,
+    *,
+    turn_in_flight: bool = False,
+) -> dict[str, Any]:
+    """Everything the window needs to draw one thread, as JSON-safe display records.
+
+    ``turn_in_flight`` says a turn is running on the thread (a reloaded window
+    polls until it ends); such a thread is not expired however old its last save.
     """
-    presented = asdict(present_turn(result))
-    chart = presented.get("chart")
-    if chart is not None:
-        metric = str(chart.get("metric") or "")
-        chart["value_kind"] = chart_value_kind(metric)
-        chart["metric_label"] = format_field_name(metric) if metric else ""
-        if chart.get("kind") == "line":
-            records = chart["records"]
-            chart["period_labels"] = [_period_label(record["Period"]) for record in records]
-            chart["series"] = [
-                key for key in (records[0] if records else {}) if key != "Period"
-            ]
-            chart["amounts"] = [
-                {
-                    key: format_chart_amount(metric, value)
-                    for key, value in record.items()
-                    if key != "Period"
-                }
-                for record in records
-            ]
-    return presented
-
-
-def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> dict[str, Any]:
-    """Everything the window needs to draw one thread, as JSON-safe display records."""
-    state = store.load(thread_id, ttl_seconds=settings.thread_ttl_seconds)
+    ttl = None if turn_in_flight else settings.thread_ttl_seconds
+    state = store.load(thread_id, ttl_seconds=ttl)
     turns: list[dict[str, Any]] = []
     chips: tuple[str, ...] = ()
     pending = False
@@ -212,6 +209,7 @@ def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> 
         "pending_clarification": pending,
         "turn_count": turn_count,
         "max_turns": settings.max_turns_per_thread,
+        "turn_in_flight": turn_in_flight,
     }
 
 
@@ -227,18 +225,14 @@ def create_app(
     configure_logging()
     resolved = settings or get_settings()
     store = LocalThreadStore(store_root or thread_store_root())
-    locks: dict[str, threading.Lock] = {}
-    locks_guard = threading.Lock()
-
-    def thread_lock(thread_id: str) -> threading.Lock:
-        with locks_guard:
-            return locks.setdefault(thread_id, threading.Lock())
+    turn_locks = TurnLocks()
 
     app = FastAPI(
         title="Financial analyst agent",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    app.state.turn_locks = turn_locks
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
         app.add_middleware(ProxyTokenGuard, token=proxy_token)
@@ -253,15 +247,15 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/api/meta")
-    def meta(recorded: bool | None = Query(default=None)) -> dict[str, Any]:
-        default_recorded, locked = recorded_mode(resolved)
-        use_recorded = locked or (default_recorded if recorded is None else recorded)
+    def meta(runtime: RuntimeKind | None = None) -> dict[str, Any]:
+        """Storefront copy; ``runtime`` picks whose snapshot banner to report."""
+        default = default_runtime_kind(resolved)
         banner, stale = snapshot_status(
-            _snapshot_as_of(use_recorded),
+            _snapshot_as_of(resolve_runtime_kind(runtime or default, resolved)),
             stale_after_days=resolved.snapshot_stale_after_days,
         )
         return {
-            "recorded": {"default": default_recorded, "locked": locked},
+            "runtime": {"default": default.value, "locked": runtime_locked(resolved)},
             "runtime_copy": {
                 "recorded": RECORDED_BANNER,
                 "live": LIVE_RUNTIME_CAPTION,
@@ -297,15 +291,23 @@ def create_app(
 
     @app.get("/api/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
-        store.purge_expired(now=datetime.now(UTC), ttl_seconds=resolved.thread_ttl_seconds)
-        return thread_view(store, _valid_thread_id(thread_id), resolved)
+        valid = _valid_thread_id(thread_id)
+        store.purge_expired(
+            now=datetime.now(UTC),
+            ttl_seconds=resolved.thread_ttl_seconds,
+            keep=turn_locks.held,
+        )
+        return thread_view(store, valid, resolved, turn_in_flight=turn_locks.held(valid))
 
     @app.delete("/api/threads/{thread_id}", status_code=204)
     def delete_thread(thread_id: str) -> Response:
         valid = _valid_thread_id(thread_id)
-        if thread_lock(valid).locked():
+        if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
-        store.clear(valid)
+        try:
+            store.clear(valid)
+        finally:
+            turn_locks.release(valid)
         return Response(status_code=204)
 
     @app.post("/api/threads/{thread_id}/turns")
@@ -314,8 +316,7 @@ def create_app(
         message = body.message.strip()
         if not message:
             raise HTTPException(status_code=422, detail="Ask a question.")
-        lock = thread_lock(valid)
-        if not lock.acquire(blocking=False):
+        if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
 
         loop = asyncio.get_running_loop()
@@ -324,14 +325,10 @@ def create_app(
         def emit(event: str, data: dict[str, Any]) -> None:
             loop.call_soon_threadsafe(events.put_nowait, (event, data))
 
-        def work() -> None:
-            reserved = False
-            budget = SessionBudget.from_counts(
-                turns=0,
-                live_sec_requests=0,
-                max_turns=resolved.max_turns_per_thread,
-                max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
-            )
+        def run_turn() -> tuple[str, dict[str, Any]]:
+            """The turn's terminal event: the thread view, or a public error."""
+            # The budget once its turn is reserved: saved even when the turn fails.
+            reserved: SessionBudget | None = None
             try:
                 prior = store.load(valid, ttl_seconds=resolved.thread_ttl_seconds)
                 budget = SessionBudget.from_counts(
@@ -341,7 +338,7 @@ def create_app(
                     max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
                 )
                 budget.consume_turn()
-                reserved = True
+                reserved = budget
                 bound = prior.runtime if prior is not None else None
                 run_conversation_turn(
                     valid,
@@ -359,17 +356,33 @@ def create_app(
             except RuntimeMismatchError as exc:
                 # Refused before anything ran: the turn does not count against the quota.
                 _LOGGER.warning("api_turn_runtime_mismatch", extra={"details": exc.details})
-                emit("error", {"message": public_error_message(exc)})
+                return "error", {"message": public_error_message(exc)}
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
-                if reserved:
-                    persist_session_budget(store, valid, budget)
-                emit("error", {"message": public_error_message(exc)})
-            else:
-                persist_session_budget(store, valid, budget)
-                emit("thread", thread_view(store, valid, resolved))
+                failed = {"message": public_error_message(exc)}
+                if reserved is not None:
+                    try:
+                        persist_session_budget(store, valid, reserved)
+                    except Exception:
+                        _LOGGER.exception("api_turn_budget_not_saved")
+                return "error", failed
+            persist_session_budget(store, valid, budget)
+            return "thread", thread_view(store, valid, resolved)
+
+        def work() -> None:
+            # Exactly one terminal event per turn, whatever raises; the lock is
+            # released first so the analyst's next turn is never refused.
+            terminal: tuple[str, dict[str, Any]] = (
+                "error",
+                {"message": public_error_message(Exception())},
+            )
+            try:
+                terminal = run_turn()
+            except Exception:
+                _LOGGER.exception("api_turn_failed_after_run")
             finally:
-                lock.release()
+                turn_locks.release(valid)
+                emit(*terminal)
 
         worker = threading.Thread(target=work, name=f"turn-{valid}", daemon=True)
         worker.start()

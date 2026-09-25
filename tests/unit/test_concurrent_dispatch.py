@@ -210,7 +210,7 @@ def test_session_quota_error_is_not_isolated_as_missing_fact(tmp_path: Path) -> 
 
     class _QuotaFacts(_SlowFacts):
         def get_financials(self, company: str, metric: str, *, report_date: date | None = None):
-            raise SessionQuotaError("This session has reached its live SEC request limit.")
+            raise SessionQuotaError("This thread has reached its live SEC request limit.")
 
     store = LocalThreadStore(tmp_path)
     with pytest.raises(SessionQuotaError, match="live SEC"):

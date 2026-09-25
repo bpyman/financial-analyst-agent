@@ -56,3 +56,30 @@ def test_smoke_check_fails_when_the_api_refuses_the_turn(guarded_api: str) -> No
 def test_smoke_check_fails_when_nothing_answers_health() -> None:
     with pytest.raises(smoke.SmokeFailure, match="health"):
         smoke.check_api(f"http://127.0.0.1:{free_port()}", timeout=1)
+
+
+def test_smoke_script_reads_the_proxy_token_from_the_environment(
+    guarded_api: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scripts pass the token in the environment, where ``ps`` does not show it."""
+    monkeypatch.setenv("SMOKE_PROXY_TOKEN", "s3cret")
+
+    assert smoke.main(["--base-url", guarded_api, "--timeout", "30"]) == 0
+
+
+def test_smoke_script_prefers_the_proxy_token_argument(
+    guarded_api: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SMOKE_PROXY_TOKEN", "stale")
+
+    args = ["--base-url", guarded_api, "--timeout", "30", "--proxy-token", "s3cret"]
+    assert smoke.main(args) == 0
+
+
+def test_smoke_script_sends_no_token_when_the_variable_is_empty(
+    guarded_api: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("SMOKE_PROXY_TOKEN", "")
+
+    assert smoke.main(["--base-url", guarded_api, "--timeout", "30"]) == 1
+    assert "401" in capsys.readouterr().err

@@ -208,15 +208,16 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/deploy_wizard.sh [--check | --help]
 
-Walks you through putting the hosted demo live (docs/deploy.md), in 8 stages:
+Walks you through putting the hosted demo live (docs/deploy.md), in 9 stages:
   1. Before you start   tools, and the deploy files on master
   2. Proxy token        generate the shared proxy token (kept on re-runs)
   3. Render             create the API from the Blueprint, paste the proxy token
   4. Render Auto-Deploy confirm "After CI Checks Pass", or wire the deploy hook
   5. Vercel             import the repo with Root Directory web
-  6. Vercel variables   set API_ORIGIN and API_PROXY_TOKEN, then redeploy
-  7. Proxy check        health through the Vercel URL; Render refuses direct calls
-  8. Browser check      run the browser check (Playwright) against the hosted window
+  6. Vercel Deploy Hook production deploys only after CI: store the hook for CI
+  7. Vercel variables   set API_ORIGIN and API_PROXY_TOKEN, then redeploy
+  8. Proxy check        health through the Vercel URL; Render refuses direct calls
+  9. Browser check      run the browser check (Playwright) against the hosted window
 
 Values are saved to .env.deploy (gitignored). Re-running skips or re-verifies
 stages that are already done.
@@ -281,6 +282,29 @@ ask_url() {
 }
 
 mask() { printf '%s…%s' "${1:0:4}" "${1: -4}"; }
+
+# store_secret NAME VALUE — set a GitHub Actions secret with gh, or say exactly
+# where to paste it on github.com when gh is missing or signed out.
+store_secret() {
+  local name="$1" before=${#SKIPPED[@]}
+  set_secret "$name" "$2"
+  if (( ${#SKIPPED[@]} > before )); then
+    note "Or on github.com: $REPO_SLUG → Settings → Secrets and variables → Actions →"
+    note "New repository secret, name $name, value the URL you just pasted."
+  fi
+}
+
+# has_secret NAME — gh confirms the repository has that Actions secret.
+has_secret() {
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then return 1; fi
+  gh secret list 2>/dev/null | awk '{print $1}' | grep -qx "$1"
+}
+
+# post_hook URL — POST to a deploy hook. curl reads the URL from stdin, so the
+# hook's secret key never appears in the process list.
+post_hook() {
+  printf 'url = "%s"\n' "$1" | curl -fsS --max-time 30 --request POST --config - 2>&1
+}
 
 new_token() {
   if command -v openssl >/dev/null 2>&1; then
@@ -359,11 +383,12 @@ wait_healthy() {
   return 1
 }
 
-# smoke BASE [TOKEN] — take the "Verify a quarterly fact" guided story.
+# smoke BASE [TOKEN] — take the "Verify a quarterly fact" guided story. The
+# token goes in the environment, not on the command line where ps shows it.
+# Without one, SMOKE_PROXY_TOKEN is set empty, so a value exported in your shell
+# cannot stand in for the one the Vercel proxy should add.
 smoke() {
-  local args=("$SMOKE" --base-url "$1" --timeout 180)
-  if [[ -n "${2:-}" ]]; then args+=(--proxy-token "$2"); fi
-  SMOKE_OUT=$("$PYTHON" "${args[@]}" 2>&1)
+  SMOKE_OUT=$(SMOKE_PROXY_TOKEN="${2:-}" "$PYTHON" "$SMOKE" --base-url "$1" --timeout 180 2>&1)
 }
 
 # check LABEL FN — run one check, print ✓ or ✗ with its detail, count failures.
@@ -463,6 +488,7 @@ load API_PROXY_TOKEN
 load RENDER_API_URL
 load VERCEL_URL
 load RENDER_AUTO_DEPLOY
+load VERCEL_DEPLOY_HOOK_URL
 load BROWSER_CHECK_PASSED
 RENDER_API_URL=$(normalize_url "$RENDER_API_URL")
 VERCEL_URL=$(normalize_url "$VERCEL_URL")
@@ -508,15 +534,15 @@ stage_preflight() {
     warn "Python 3.8+ not found: the guided-story checks will be skipped"
   fi
   if command -v npm >/dev/null 2>&1; then
-    ok "npm (runs the browser check in stage 8)"
+    ok "npm (runs the browser check in stage 9)"
   else
-    warn "npm not found: install Node 22 (see .nvmrc) for the browser check in stage 8"
+    warn "npm not found: install Node 22 (see .nvmrc) for the browser check in stage 9"
   fi
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    ok "gh, signed in (only needed if stage 4 falls back to the deploy hook)"
+    ok "gh, signed in (stores the deploy hook secrets in stages 4 and 6)"
   else
-    note "gh (GitHub CLI) missing or signed out: only needed if stage 4 falls back to"
-    note "the deploy hook, and then you can paste the secret on github.com instead."
+    note "gh (GitHub CLI) missing or signed out: it stores the deploy hook secrets in"
+    note "stages 4 and 6. Without it, the wizard says where to paste them on github.com."
   fi
 
   local path missing=""
@@ -636,7 +662,7 @@ stage_autodeploy() {
   done
   if [[ "$choice" == 1 ]]; then
     write_env RENDER_AUTO_DEPLOY checksPass
-    ok "Render deploys a commit once CI passes; CI's deploy-api job stays dormant"
+    ok "Render deploys a commit once CI passes; CI's deploy job leaves Render alone"
     pause "Press Enter to continue"
     return
   fi
@@ -645,13 +671,9 @@ stage_autodeploy() {
   note "(it looks like https://api.render.com/deploy/srv-…?key=…; keep it secret)."
   ask_secret RENDER_DEPLOY_HOOK_URL "Paste the deploy hook URL:"
   write_env RENDER_DEPLOY_HOOK_URL "$RENDER_DEPLOY_HOOK_URL"
-  set_secret RENDER_DEPLOY_HOOK_URL "$RENDER_DEPLOY_HOOK_URL"
-  if (( ${#SKIPPED[@]} )) && [[ "${SKIPPED[${#SKIPPED[@]}-1]}" == *RENDER_DEPLOY_HOOK_URL* ]]; then
-    note "Or on github.com: $REPO_SLUG → Settings → Secrets and variables → Actions →"
-    note "New repository secret, name RENDER_DEPLOY_HOOK_URL."
-  fi
+  store_secret RENDER_DEPLOY_HOOK_URL "$RENDER_DEPLOY_HOOK_URL"
   write_env RENDER_AUTO_DEPLOY hook
-  SKIPPED+=("render.yaml: set autoDeployTrigger: off (and its pin in tests/test_deploy_config.py), then merge to master, so only CI's deploy-api job deploys")
+  SKIPPED+=("render.yaml: set autoDeployTrigger: off (and its pin in tests/test_deploy_config.py), then merge to master, so only CI's deploy job deploys")
   pause "Press Enter to continue"
 }
 
@@ -668,9 +690,11 @@ stage_vercel_import() {
   note "Not listed? Use Adjust GitHub App Permissions (or Install) to give Vercel access."
   step "Project Name: financial-analyst-agent (your URL becomes <name>.vercel.app)."
   step "Root Directory: click Edit, pick web, click Continue. Framework Preset: Next.js."
-  step "Leave Build and Output Settings and Environment Variables as they are: stage 6"
+  step "Leave Build and Output Settings and Environment Variables as they are: stage 7"
   step "sets the variables. Click Deploy and wait for the build (a few minutes)."
-  pause "Press Enter once the deployment is Ready"
+  note "If no build starts, carry on: web/vercel.json turns off Vercel's Git deploys of"
+  note "master, and stage 6 deploys it through a deploy hook instead."
+  pause "Press Enter once the deployment is Ready (or once you've clicked Deploy)"
   step "Project → Settings → Domains: copy the <name>.vercel.app domain."
   note "Use that production domain, not a deployment URL (<name>-<hash>-<team>.vercel.app),"
   note "which Vercel puts behind a login. If the name was taken, Vercel added a suffix."
@@ -678,10 +702,81 @@ stage_vercel_import() {
   write_env VERCEL_URL "$VERCEL_URL"
   until check "the window loads at $VERCEL_URL" c_vercel_page; do
     if ! confirm "Fix that, then check again?"; then
-      SKIPPED+=("Vercel: the window did not load at $VERCEL_URL")
+      note "Stage 6 deploys master through the deploy hook and checks the window again."
+      WINDOW_PENDING=1
+      pause "Press Enter to continue"
       return
     fi
   done
+  pause "Press Enter to continue"
+}
+
+WINDOW_PENDING=""
+
+stage_vercel_hook() {
+  stage "Vercel — deploy production only after CI passes"
+  say "web/vercel.json turns off Vercel's own deploys of master; pull request previews"
+  say "still build. Production deploys when CI's deploy job, after every check passes,"
+  say "calls a Vercel Deploy Hook kept in the VERCEL_DEPLOY_HOOK_URL GitHub secret."
+  say "Until that secret is set, merges to master never reach the hosted window."
+  if has_secret VERCEL_DEPLOY_HOOK_URL; then
+    ok "GitHub has the VERCEL_DEPLOY_HOOK_URL secret"
+    if ! confirm "Create and store a new hook anyway?"; then deploy_now; return; fi
+  elif [[ -n "$VERCEL_DEPLOY_HOOK_URL" ]]; then
+    note "$ENV_FILE has a hook, but gh could not confirm the GitHub secret."
+    if confirm "Store the saved hook as the GitHub secret?"; then
+      store_secret VERCEL_DEPLOY_HOOK_URL "$VERCEL_DEPLOY_HOOK_URL"
+      deploy_now
+      return
+    fi
+  fi
+  open_url "https://vercel.com/dashboard"
+  step "Open the project → Settings → Git → Deploy Hooks."
+  step "Name: ci-master. Branch: master. Create the hook, then copy its URL."
+  note "(it looks like https://api.vercel.com/v1/integrations/deploy/prj_…/…; keep it secret)."
+  note "Or, with Vercel CLI 60+ linked to the project: vercel deploy-hooks create ci-master --ref master"
+  local tries=0
+  while :; do
+    ask_secret VERCEL_DEPLOY_HOOK_URL "Paste the deploy hook URL:"
+    VERCEL_DEPLOY_HOOK_URL=$(normalize_url "$VERCEL_DEPLOY_HOOK_URL")
+    if [[ "$VERCEL_DEPLOY_HOOK_URL" == https://*/* ]]; then break; fi
+    tries=$((tries + 1))
+    if (( tries >= 5 )); then fail "no hook URL given"; exit 1; fi
+    warn "that isn't an https:// URL; try again"
+  done
+  if [[ "$VERCEL_DEPLOY_HOOK_URL" != https://api.vercel.com/* ]]; then
+    warn "that isn't an api.vercel.com URL; using it anyway"
+  fi
+  write_env VERCEL_DEPLOY_HOOK_URL "$VERCEL_DEPLOY_HOOK_URL"
+  store_secret VERCEL_DEPLOY_HOOK_URL "$VERCEL_DEPLOY_HOOK_URL"
+  deploy_now
+}
+
+# deploy_now — offer to call the hook once, so master is live now and the URL is
+# known to work, then check the window loads.
+deploy_now() {
+  if [[ -z "$VERCEL_DEPLOY_HOOK_URL" ]]; then
+    note "The hook URL is not in $ENV_FILE: CI's next deploy job on master calls it."
+  elif confirm "Call the hook once now, to deploy master and prove the URL works?"; then
+    local out
+    if out=$(post_hook "$VERCEL_DEPLOY_HOOK_URL"); then
+      ok "Vercel accepted the hook${out:+ ($(printf '%s' "$out" | head -c 120))}"
+      step "Vercel → the project → Deployments shows the build. Wait until it is Ready."
+      pause "Press Enter once it is Ready"
+    else
+      fail "the hook call failed: $out"
+      note "Check the URL in Settings → Git → Deploy Hooks, then re-run the wizard."
+      SKIPPED+=("Vercel deploy hook: the test call failed")
+    fi
+  fi
+  if [[ -n "$WINDOW_PENDING" && -n "$VERCEL_URL" ]]; then
+    until check "the window loads at $VERCEL_URL" c_vercel_page; do
+      if ! confirm "Fix that, then check again?"; then
+        SKIPPED+=("Vercel: the window did not load at $VERCEL_URL")
+        break
+      fi
+    done
+  fi
   pause "Press Enter to continue"
 }
 
@@ -728,7 +823,7 @@ stage_proxy_check() {
   check_render || true
   check_vercel || true
   while (( FAILED )); do
-    note "Stage 3 covers Render and stage 6 covers Vercel; re-run the wizard to redo one."
+    note "Stage 3 covers Render and stage 7 covers Vercel; re-run the wizard to redo one."
     if ! confirm "Check again?"; then
       SKIPPED+=("proxy checks (scripts/deploy_wizard.sh --check)")
       return
@@ -776,7 +871,7 @@ stage_browser_check() {
   pause "Press Enter to finish"
 }
 
-TOTAL_STAGES=8
+TOTAL_STAGES=9
 
 banner "Go live: the window on Vercel, the API on Render"
 
@@ -785,6 +880,7 @@ stage_token
 stage_render
 stage_autodeploy
 stage_vercel_import
+stage_vercel_hook
 stage_vercel_env
 stage_proxy_check
 stage_browser_check

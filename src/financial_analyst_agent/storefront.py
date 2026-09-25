@@ -12,7 +12,7 @@ from financial_analyst_agent.domain.errors import (
     RuntimeMismatchError,
     SessionQuotaError,
 )
-from financial_analyst_agent.runtime import FIXTURE_FILING_NEWER, FIXTURE_FILING_OLDER
+from financial_analyst_agent.runtime import RECORDED_FILING_NEWER, RECORDED_FILING_OLDER
 
 EXAMPLE_QUERY = "What was Google's net income based on their latest quarterly report?"
 GUIDED_STORIES: tuple[tuple[str, str], ...] = (
@@ -31,7 +31,7 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     (
         "What changed in the 10-Q",
         "What changed in Microsoft's MD&A and Risk Factors between "
-        f"{FIXTURE_FILING_OLDER} and {FIXTURE_FILING_NEWER}?",
+        f"{RECORDED_FILING_OLDER} and {RECORDED_FILING_NEWER}?",
     ),
 )
 PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."

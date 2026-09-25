@@ -70,7 +70,6 @@ class SessionQuotaError(FinancialAnalystError):
     code = "session_quota"
 
 
-
 class RuntimeMismatchError(FinancialAnalystError):
     """A turn asked to run on a thread bound to the other runtime."""
 

@@ -9,7 +9,10 @@ EvidenceStore so checkpoints stay small and threads do not share evidence.
 
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
@@ -105,11 +108,8 @@ class LocalThreadStore:
         now: datetime | None = None,
         ttl_seconds: int | None = None,
     ) -> ThreadState | None:
-        path = self._path(thread_id)
-        if not path.is_file():
-            return None
-        state = ThreadState.model_validate_json(path.read_text(encoding="utf-8"))
-        if ttl_seconds is None:
+        state = self._read(self._path(thread_id))
+        if state is None or ttl_seconds is None:
             return state
         clock = now or datetime.now(UTC)
         updated = state.updated_at
@@ -120,16 +120,38 @@ class LocalThreadStore:
             return None
         return state
 
-    def save(self, state: ThreadState) -> None:
-        path = self._path(state.thread_id)
-        path.write_text(state.model_dump_json(), encoding="utf-8")
+    @staticmethod
+    def _read(path: Path) -> ThreadState | None:
+        """The checkpoint at ``path``; a missing or unreadable file reads as no thread."""
+        try:
+            return ThreadState.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
 
-    def purge_expired(self, *, now: datetime, ttl_seconds: int) -> int:
+    def save(self, state: ThreadState) -> None:
+        """Write the whole checkpoint or nothing: readers never see a torn file."""
+        path = self._path(state.thread_id)
+        handle, temp_name = tempfile.mkstemp(dir=self._root, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as temp:
+                temp.write(state.model_dump_json())
+            os.replace(temp_name, path)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise
+
+    def purge_expired(
+        self,
+        *,
+        now: datetime,
+        ttl_seconds: int,
+        keep: Callable[[str], bool] = lambda _thread_id: False,
+    ) -> int:
+        """Clear threads idle past the TTL, except those ``keep`` names (a turn in flight)."""
         removed = 0
         for path in self._root.glob("*.json"):
-            try:
-                state = ThreadState.model_validate_json(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+            state = self._read(path)
+            if state is None or keep(state.thread_id):
                 continue
             updated = state.updated_at
             if updated.tzinfo is None:

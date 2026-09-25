@@ -34,6 +34,7 @@ describe("turnReducer", () => {
         pending_clarification: false,
         turn_count: 1,
         max_turns: 25,
+        turn_in_flight: false,
       },
     };
     expect(turnReducer(run(), { type: "event", event: thread })).toEqual(IDLE);
@@ -54,6 +55,17 @@ describe("turnReducer", () => {
       status: "running",
     });
     expect(turnReducer(failed, { type: "reset" })).toEqual(IDLE);
+  });
+});
+
+describe("a turn already in flight after a reload", () => {
+  it("runs without a message until the thread arrives", () => {
+    const reattached = turnReducer(IDLE, { type: "reattach" });
+    expect(reattached).toEqual({ status: "running", message: "", progress: null, waking: false });
+    expect(progressLabel(reattached as Extract<TurnState, { status: "running" }>)).toBe(
+      "Finishing your last question…",
+    );
+    expect(turnReducer(run(), { type: "reattach" })).toMatchObject({ message: expect.any(String) });
   });
 });
 
