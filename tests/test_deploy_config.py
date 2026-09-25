@@ -134,15 +134,59 @@ def test_render_env_serves_the_guided_story_only_through_the_proxy(render_api: s
         smoke.check_api(render_api, timeout=30)
 
 
-def test_ci_deploy_hook_fallback_waits_for_every_other_job() -> None:
+def _deploy_job() -> tuple[dict[str, Any], dict[str, Any]]:
     workflow = yaml.safe_load(CI_YAML.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-    deploy = jobs["deploy-api"]
+    jobs: dict[str, Any] = workflow["jobs"]
+    return jobs, jobs["deploy"]
 
-    assert set(deploy["needs"]) == set(jobs) - {"deploy-api"}
+
+def test_ci_deploy_job_runs_on_master_pushes_after_every_other_job() -> None:
+    jobs, deploy = _deploy_job()
+
+    assert set(deploy["needs"]) == set(jobs) - {"deploy"}
     assert "refs/heads/master" in deploy["if"]
     assert "push" in deploy["if"]
-    assert deploy["env"]["RENDER_DEPLOY_HOOK_URL"] == "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+    assert deploy["env"] == {
+        "RENDER_DEPLOY_HOOK_URL": "${{ secrets.RENDER_DEPLOY_HOOK_URL }}",
+        "VERCEL_DEPLOY_HOOK_URL": "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}",
+    }
+
+
+def test_ci_calls_each_deploy_hook_only_when_set_and_the_commit_is_still_the_tip() -> None:
+    """A hook builds the branch's latest commit, so a stale run must not call it."""
+    _, deploy = _deploy_job()
+    steps = {step["name"]: step for step in deploy["steps"]}
+    tip = next(step for step in deploy["steps"] if step.get("id") == "tip")
+
+    assert deploy["steps"].index(tip) == 0
+    assert '"$GITHUB_SHA"' in tip["run"]
+    assert "commits/master" in tip["run"]
+    hooks = [
+        steps["Call the Render deploy hook"],  # the API first, then the window
+        steps["Call the Vercel deploy hook"],
+    ]
+    assert [deploy["steps"].index(step) for step in hooks] == sorted(
+        deploy["steps"].index(step) for step in hooks
+    )
+    for step, secret in zip(
+        hooks, ["RENDER_DEPLOY_HOOK_URL", "VERCEL_DEPLOY_HOOK_URL"], strict=True
+    ):
+        assert "steps.tip.outputs.current == 'true'" in step["if"]
+        assert f"env.{secret} != ''" in step["if"]
+        assert f'"${secret}"' in step["run"]
+        assert "--fail" in step["run"]
+        assert "--request POST" in step["run"]
+
+
+def test_vercel_production_deploys_only_through_the_ci_hook() -> None:
+    """Git pushes to master do not deploy; pull request branches still get previews."""
+    config = yaml.safe_load(VERCEL_JSON.read_text(encoding="utf-8"))  # JSON is YAML
+    production = _render_service()["branch"]
+
+    # The per-branch object form: the global `false` also blocks deploy hooks
+    # and pull request previews.
+    assert config["git"] == {"deploymentEnabled": {production: False}}
+    assert f"refs/heads/{production}" in _deploy_job()[1]["if"]
 
 
 def test_vercel_config_runs_the_ignored_build_step_on_fluid_compute_in_iad1() -> None:
@@ -152,6 +196,7 @@ def test_vercel_config_runs_the_ignored_build_step_on_fluid_compute_in_iad1() ->
     assert config["ignoreCommand"] == "sh scripts/ignore-build.sh"
     assert config["fluid"] is True
     assert config["regions"] == ["iad1"]
+    assert set(config) == {"$schema", "ignoreCommand", "fluid", "regions", "git"}
 
 
 def test_proxy_route_runs_as_long_as_vercel_hobby_allows() -> None:
@@ -219,6 +264,8 @@ def test_ignored_build_skips_a_python_only_commit(monorepo: Path) -> None:
 
 
 def test_ignored_build_builds_when_web_changed_since_the_last_deploy(monorepo: Path) -> None:
+    """Also the deploy-hook case: a web/ commit whose CI failed never deployed, and
+    the hook build for the next passing commit still ships it."""
     deployed = _git(monorepo, "rev-parse", "HEAD")
     _commit(monorepo, "web/app/page.tsx", "export default 1\n")
     _commit(monorepo, "src/app.py", "print('api v2')\n")

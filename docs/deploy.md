@@ -13,8 +13,13 @@ forwards `/api/*` to `API_ORIGIN` and sends the shared secret. When the API has
 wake-up pings and Render's health check.
 
 Everything a host reads is checked in: `render.yaml`, `Dockerfile`, `web/vercel.json`,
-and `web/scripts/ignore-build.sh`. A person only connects accounts and pastes one
-secret. `tests/test_deploy_config.py` pins that configuration.
+and `web/scripts/ignore-build.sh`, plus the `deploy` job in `.github/workflows/ci.yml`.
+A person only connects accounts, pastes one secret into both hosts, and stores
+Vercel's deploy hook for CI. `tests/test_deploy_config.py` pins that configuration.
+
+Neither host puts a commit on the public demo before CI passes on it (ADR 0006,
+"Hosting"): Render waits for GitHub's checks, and Vercel production deploys only
+when CI calls its deploy hook. See [production waits for CI](#production-waits-for-ci).
 
 The Streamlit Community Cloud app is still the public URL until cutover (ticket 11
 onward); its notes are [at the end](#legacy-streamlit-community-cloud).
@@ -28,7 +33,7 @@ scripts/deploy_wizard.sh --check   # re-verify the saved deploy, no prompts
 
 The account steps only a person can do are in `scripts/deploy_wizard.sh`. It runs on
 macOS, Linux, or WSL and needs `bash` and `curl`. Python 3.8+ runs the guided-story
-checks, and npm runs the browser check. `gh` is optional. Its eight stages:
+checks, and npm runs the browser check. `gh` is optional. Its nine stages:
 
 1. **Before you start**: checks the tools, and that `master` has `render.yaml`,
    the `Dockerfile`, and `web/`. Both hosts build `master`, so the parity and deploy
@@ -46,17 +51,23 @@ checks, and npm runs the browser check. `gh` is optional. Its eight stages:
    `autoDeployTrigger: off` yourself.
 5. **Vercel**: imports the repo with Root Directory `web`, then checks that the
    production `*.vercel.app` domain loads.
-6. **Vercel variables**: sets `API_ORIGIN` and `API_PROXY_TOKEN` (Sensitive) for
+6. **Vercel Deploy Hook**: creates a Deploy Hook for `master` (Settings → Git →
+   Deploy Hooks) and stores it as the `VERCEL_DEPLOY_HOOK_URL` secret with `gh`, or
+   says where to paste it on github.com. It can call the hook once, which deploys
+   `master` and proves the URL works. Its `curl` reads the URL from stdin, so the
+   hook's key stays out of the process list.
+7. **Vercel variables**: sets `API_ORIGIN` and `API_PROXY_TOKEN` (Sensitive) for
    Production and Preview, and redeploys. It then checks the health route and a
    guided story through the proxy.
-7. **Proxy check**: runs every check again, as for `--check`.
-8. **Browser check**: runs `PLAYWRIGHT_BASE_URL=<vercel url> npm run test:e2e`.
+8. **Proxy check**: runs every check again, as for `--check`.
+9. **Browser check**: runs `PLAYWRIGHT_BASE_URL=<vercel url> npm run test:e2e`.
 
 Values go to `.env.deploy`, which is gitignored: the token, both URLs, and the hook
-URL if one is used. They never go to `.env`, because the API reads `.env`, and a token
+URLs. They never go to `.env`, because the API reads `.env`, and a token
 there would make the local API refuse the local window. A stage whose result already
 checks out says so and moves on, so re-running after a partial run is safe.
-`--check` exits 1 if any check fails.
+`--check` exits 1 if any check fails. It does not look for the GitHub secrets;
+`gh secret list` shows them.
 
 Where the wizard names a dashboard control it could not confirm, it says what to
 look for instead. See [what was checked](#what-was-checked-against-current-docs).
@@ -75,6 +86,7 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 | Render (API) | `HOST`, `PYTHONUNBUFFERED` | `0.0.0.0`, `1` | `Dockerfile` |
 | Vercel (window) | `API_ORIGIN` | `https://<render service>.onrender.com` (no trailing slash) | Vercel dashboard, Production **and** Preview |
 | Vercel (window) | `API_PROXY_TOKEN` | the same secret as on Render | Vercel dashboard, Production **and** Preview, marked Sensitive |
+| GitHub Actions | `VERCEL_DEPLOY_HOOK_URL` | Vercel's Deploy Hook URL for `master` | Repository secret. Required: without it, merges to `master` never reach the hosted window. |
 | GitHub Actions | `RENDER_DEPLOY_HOOK_URL` | Render's deploy hook URL | Repository secret. Only for the [fallback](#fallback-deploy-hook-from-ci); leave unset otherwise. |
 
 Neither Vercel variable is `NEXT_PUBLIC_`, so neither reaches the browser bundle.
@@ -105,8 +117,8 @@ pick `master`. Render reads `render.yaml`, asks for `API_PROXY_TOKEN`, and creat
 ### Deploys wait for CI
 
 With `autoDeployTrigger: checksPass`, Render waits for every GitHub check on the
-commit: the `check`, `image`, and `web` jobs in `.github/workflows/ci.yml`, plus any
-check another app posts (Vercel's). Render counts a check as passed when it ends in
+commit: the `check`, `image`, `web`, and `deploy` jobs in `.github/workflows/ci.yml`,
+plus any check another app posts (Vercel's, on pull request branches). Render counts a check as passed when it ends in
 success, neutral, or skipped. A commit with **no** checks is never auto-deployed, and
 neither is one where any check fails. A commit message containing `[skip render]`
 skips the deploy.
@@ -120,8 +132,9 @@ If `checksPass` is not offered for the free instance, CI can deploy instead:
    `RENDER_DEPLOY_HOOK_URL`.
 3. In `render.yaml`, set `autoDeployTrigger: off`, so a commit is not deployed twice.
 
-The `deploy-api` job in CI then POSTs to the hook on pushes to `master`, after `check`,
-`image`, and `web` pass. Without the secret, the job does nothing.
+The `deploy` job in CI then POSTs to the hook on pushes to `master`, after `check`,
+`image`, and `web` pass, before it calls Vercel's. Without the secret, it skips that
+step.
 
 ## Vercel: the window
 
@@ -131,6 +144,8 @@ The `deploy-api` job in CI then POSTs to the hook on pushes to `master`, after `
 | Root Directory | `web` | Vercel dashboard → Project → **Settings** → **Build and Deployment** (asked when importing the repo) |
 | Node.js | 22.x | `web/package.json` `engines`, matching `.nvmrc` |
 | Ignored Build Step | `sh scripts/ignore-build.sh` | `web/vercel.json` `ignoreCommand`, which overrides the dashboard field |
+| Git deploys of `master` | off | `web/vercel.json` `git.deploymentEnabled` `{"master": false}`. Production deploys through the Deploy Hook; other branches still get previews. |
+| Deploy Hook | `ci-master`, branch `master` | Vercel dashboard → Project → **Settings** → **Git** → **Deploy Hooks**; its URL is the `VERCEL_DEPLOY_HOOK_URL` secret |
 | Fluid compute | on | `web/vercel.json` `"fluid": true`. It is already the default for new projects. |
 | Function region | `iad1` (Washington, D.C.) | `web/vercel.json` `regions`. Hobby runs functions in one region, and `iad1` is its default. |
 | Proxy duration | 300 s | `export const maxDuration = 300` in the proxy route. That is the Hobby maximum under Fluid compute, enough for a long streamed turn. |
@@ -143,14 +158,43 @@ each build. It compares `HEAD` with `VERCEL_GIT_PREVIOUS_SHA`, the commit of the
 branch's last successful deployment, and skips the build (exit 0) only when nothing
 under `web/` changed. Python-only commits therefore do not rebuild the window. It
 builds (exit 1) when that is unknown: a branch's first deployment, or a previous commit
-outside Vercel's shallow clone.
+outside Vercel's shallow clone. Production builds come from the deploy hook, and users
+report Vercel runs this step for them too. The comparison is still with `master`'s
+last successful deployment, not the parent commit, so a `web/` change from a commit
+whose CI failed ships with the next commit that passes. A hook call after
+Python-only commits is skipped, and production keeps serving the same window. To
+rebuild anyway, use **Redeploy** on the production deployment.
 
 **Previews call the production API.** Set `API_ORIGIN` and `API_PROXY_TOKEN` for the
 Preview environment too, with the same values. A preview then talks to the production
 Render service. That is safe because every hosted thread runs the recorded runtime, and
-the three-PR order lands API changes before the UI that depends on them. Vercel does
-not wait for GitHub CI; a preview or production build can go live before CI finishes on
-the same commit.
+the three-PR order lands API changes before the UI that depends on them. Previews
+still build on push, before CI finishes; they sit behind Vercel's login (Deployment
+Protection) and are not the public demo.
+
+### Production waits for CI
+
+`web/vercel.json` sets `"git": {"deploymentEnabled": {"master": false}}`, so a push to
+`master` does not deploy the window. Instead, the `deploy` job in
+`.github/workflows/ci.yml` runs on pushes to `master` once `check`, `image`, and `web`
+pass (lint, types, tests, the image smoke test, and the Playwright check), and POSTs
+to the `VERCEL_DEPLOY_HOOK_URL` secret. Vercel then builds `master` as a production
+deployment. One job calls both hooks: Render's (only in the
+[fallback](#fallback-deploy-hook-from-ci)) and then Vercel's, so one gate decides
+when the API and then the window go out.
+
+A deploy hook builds the branch's latest commit, not a given one. The job therefore
+first checks that its commit is still the tip of `master`. If a newer commit has
+landed, it calls no hook, and the newer commit's own run deploys once its checks
+pass. A push that lands in the seconds between that check and the POST can still
+ship before its own CI finishes; nothing on Vercel's side closes that gap without a
+deploy token in CI.
+
+The per-branch form matters. A plain `"deploymentEnabled": false` would also turn
+off previews, and one user reports it blocked a production Deploy Hook as well.
+
+Until `VERCEL_DEPLOY_HOOK_URL` is set, the job skips that step and merges to
+`master` do not reach the hosted window. Stage 6 of the wizard sets it.
 
 ## Checking a deploy
 
@@ -198,6 +242,26 @@ sources:
   wake are from ADR 0006. The CPU share was not confirmed: ADR 0006 says 0.1 CPU, and
   one secondary reference (OpenAI's `render-deploy` skill) lists 0.5. Check Render's
   pricing page if it matters.
+- **Vercel production gated on CI** (checked 25 September 2026, from search excerpts
+  of vercel.com/docs/project-configuration/git-configuration and
+  vercel.com/docs/deploy-hooks, plus public GitHub pull requests; vercel.com and
+  community.vercel.com were blocked): `git.deploymentEnabled` takes `false` or an
+  object of branch names or globs, and `{"<branch>": false}` turns off automatic
+  deploys of that branch only. Deploy Hooks live under Settings → Git → Deploy
+  Hooks, are bound to one branch, accept GET or POST with no payload, and build the
+  branch's latest commit. `vercel deploy-hooks create <name> --ref <branch>` exists
+  in Vercel CLI 60.0.1 (its `--help` was run). A September 2026 pull request
+  (VNCHub/nossa-conta#19) reports that the object form `{"main": false}` kept a
+  production Deploy Hook working while the global `false` blocked it. **Not
+  verified**: that a hook build of the production branch becomes the production
+  deployment (docs imply it but excerpts did not say so outright); whether the
+  project import's first deploy runs despite the setting (the wizard handles both);
+  and what `VERCEL_GIT_PREVIOUS_SHA` holds in a hook build. Forum reports say the
+  Ignored Build Step runs for hook builds; `ignore-build.sh` builds whenever that
+  variable is empty or unknown, so the worst case is an unneeded build. Vercel CLI's
+  config validator accepts any `git` value, and the published schema
+  (openapi.vercel.sh) was unreachable, so `git.deploymentEnabled` was **not**
+  schema-validated.
 - **Vercel**: from search excerpts of vercel.com docs and changelogs. Fluid compute on
   Hobby has a 300 s default and maximum duration. `"fluid": true` in `vercel.json` turns
   it on per deployment, and it is the default for new projects since 23 April 2025.
@@ -211,7 +275,8 @@ sources:
   deployment-protection docs, not from the dashboards themselves. These are: New →
   Blueprint → Connect → Deploy Blueprint; the `sync: false` prompt on first creation;
   Settings → Auto-Deploy and Deploy Hook; Import → Root Directory → Edit; Settings →
-  Environment Variables with the Sensitive switch; Redeploy. Each step the wizard
+  Git → Deploy Hooks; Settings → Environment Variables with the Sensitive switch;
+  Redeploy. Each step the wizard
   could not confirm also says where else to look.
 - **Deployment Protection**: Standard Protection is on by default and puts deployment
   URLs behind a Vercel login. Sources disagree on whether the project's own

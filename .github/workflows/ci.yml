@@ -77,20 +77,44 @@ jobs:
           path: web/playwright-report/
           retention-days: 7
 
-  # Fallback for Render's "deploy after checks pass" (render.yaml
-  # autoDeployTrigger: checksPass). Dormant until the RENDER_DEPLOY_HOOK_URL
-  # repository secret is set; then set autoDeployTrigger to off so a commit is
-  # not deployed twice. See docs/deploy.md.
-  deploy-api:
+  # Production deploys wait for CI (ADR 0006 "Hosting"; docs/deploy.md).
+  # web/vercel.json turns off Vercel's Git deploys of master, so the window
+  # reaches production only through VERCEL_DEPLOY_HOOK_URL, called here once
+  # every other job passes. RENDER_DEPLOY_HOOK_URL is the fallback for Render's
+  # own "deploy after checks pass" (render.yaml autoDeployTrigger: checksPass);
+  # set autoDeployTrigger to off with it so a commit is not deployed twice. Each
+  # hook is skipped while its repository secret is unset. Render goes first, so
+  # the API is ahead of a window that depends on it.
+  deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: [check, image, web]
     runs-on: ubuntu-latest
     env:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
     steps:
+      # A deploy hook builds the branch's latest commit, not a given one. If
+      # master has moved on, a hook call now would ship a commit CI has not
+      # passed; that commit's own run deploys it once its checks pass.
+      - name: Check this commit is still the tip of master
+        id: tip
+        if: env.RENDER_DEPLOY_HOOK_URL != '' || env.VERCEL_DEPLOY_HOOK_URL != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/master" --jq .sha)
+          if [ "$tip" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "master is at $tip, not $GITHUB_SHA: its own CI run deploys it."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Call the Render deploy hook
-        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        if: steps.tip.outputs.current == 'true' && env.RENDER_DEPLOY_HOOK_URL != ''
         run: curl --fail --silent --show-error --output /dev/null --request POST "$RENDER_DEPLOY_HOOK_URL"
+      - name: Call the Vercel deploy hook
+        if: steps.tip.outputs.current == 'true' && env.VERCEL_DEPLOY_HOOK_URL != ''
+        run: curl --fail --silent --show-error --output /dev/null --request POST "$VERCEL_DEPLOY_HOOK_URL"
       - name: No deploy hook set
-        if: env.RENDER_DEPLOY_HOOK_URL == ''
-        run: echo "RENDER_DEPLOY_HOOK_URL is not set; Render deploys on its own after checks pass."
+        if: env.RENDER_DEPLOY_HOOK_URL == '' && env.VERCEL_DEPLOY_HOOK_URL == ''
+        run: echo "No deploy hook secret is set. Render deploys on its own after checks pass; Vercel production does not deploy until VERCEL_DEPLOY_HOOK_URL is set."

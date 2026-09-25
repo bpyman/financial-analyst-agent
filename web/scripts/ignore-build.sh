@@ -6,6 +6,13 @@
 # deployment, so Python-only commits do not rebuild the window. When that is
 # unknown (a branch's first deploy, or a commit outside the shallow clone),
 # build.
+#
+# Production builds of master come from CI's deploy hook, since web/vercel.json
+# turns off Vercel's Git deploys of master. Users report Vercel runs this step
+# for hook builds too. Then the comparison is with master's last successful
+# deployment, not the parent commit, so web/ changes from commits that never
+# deployed (their CI failed) still build when a later commit passes; and if
+# Vercel leaves VERCEL_GIT_PREVIOUS_SHA unset there, it builds.
 
 previous="${VERCEL_GIT_PREVIOUS_SHA:-}"
 
