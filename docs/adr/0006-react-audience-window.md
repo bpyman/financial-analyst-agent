@@ -33,7 +33,7 @@ Streamlit stays runnable alongside until cutover (its switch now does Start over
 
 Cutover needs all three: the hosted Next.js URL serves the recorded runtime; a Playwright check in CI clicks each guided story and the compare-then-add-Apple walkthrough and finds the expected fact card, chart, table, or disclosure; and the README's portfolio images are re-captured from the new window by a Playwright script (`web/scripts/capture-portfolio.ts`) that drives the same walkthrough, so they can be regenerated whenever the window changes. The Playwright check replaces what `tests/test_app.py` guarded; there are no visual snapshot tests.
 
-At cutover the Community Cloud app is repointed at a `streamlit-redirect` branch holding a single "This demo has moved" page with its own minimal requirements, so links already sent out keep working while `main` sheds every Streamlit dependency.
+At cutover the Community Cloud app is repointed at a `streamlit-redirect` branch holding a single "This demo has moved" page with its own minimal requirements, so links already sent out keep working while `master` sheds every Streamlit dependency.
 
 Delivery is three PRs, tracked as tickets under `.scratch/react-audience-window/issues/`: parity locally (runtime binding, vocabulary, proxy token, the finished window, the Playwright check in CI); deploy (Dockerfile, `render.yaml`, Vercel config, deploy docs, and a wizard for the account steps only a human can do); cutover (recaptured images, README, redirect branch, Streamlit deletion).
 
