@@ -1,5 +1,5 @@
 import { createSseParser } from "./sse";
-import type { Meta, ThreadView, TurnEvent } from "./types";
+import type { CreatedThread, Meta, RuntimeKind, ThreadView, TurnEvent } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -32,9 +32,13 @@ export function getMeta(recorded: boolean): Promise<Meta> {
   return json<Meta>(`/api/meta?recorded=${recorded}`);
 }
 
-export async function createThread(): Promise<string> {
-  const body = await json<{ thread_id: string }>("/api/threads", { method: "POST" });
-  return body.thread_id;
+/** Start a thread bound to `runtime` (the deployment default when omitted). */
+export function createThread(runtime?: RuntimeKind): Promise<CreatedThread> {
+  return json<CreatedThread>("/api/threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(runtime ? { runtime } : {}),
+  });
 }
 
 export function getThread(threadId: string): Promise<ThreadView> {
@@ -50,17 +54,16 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
-/** POST a turn and yield server-sent events until `thread` or `error`. */
+/** POST a turn on the thread's own runtime and yield server-sent events until `thread` or `error`. */
 export async function* runTurn(
   threadId: string,
   message: string,
-  recorded: boolean,
   signal?: AbortSignal,
 ): AsyncGenerator<TurnEvent> {
   const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/turns`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ message, recorded }),
+    body: JSON.stringify({ message }),
     signal,
   });
   if (!response.ok || !response.body) {

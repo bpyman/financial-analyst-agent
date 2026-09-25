@@ -24,10 +24,11 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
-from financial_analyst_agent.conversation import run_conversation_turn
+from financial_analyst_agent.conversation import run_conversation_turn, start_thread
+from financial_analyst_agent.domain.errors import RuntimeMismatchError
 from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import (
     chart_value_kind,
@@ -41,6 +42,8 @@ from financial_analyst_agent.presentation import (
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
+    default_runtime_kind,
+    resolve_runtime_kind,
     runtime_for,
 )
 from financial_analyst_agent.session import (
@@ -54,6 +57,7 @@ from financial_analyst_agent.storefront import (
     EXAMPLE_QUERY,
     GUIDED_STORIES,
     LIVE_RUNTIME_CAPTION,
+    LIVE_RUNTIME_LOCKED_NOTICE,
     RECORDED_BANNER,
     public_error_message,
     thread_store_root,
@@ -70,9 +74,20 @@ _SSE_HEADERS = {
 }
 
 
+class CreateThreadRequest(BaseModel):
+    """``runtime`` omitted means the deployment default (``APP_MODE``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    runtime: RuntimeKind | None = None
+
+
 class TurnRequest(BaseModel):
+    """A turn runs on its thread's runtime, so it carries no runtime flag."""
+
+    model_config = ConfigDict(extra="forbid")
+
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
-    recorded: bool = True
 
 
 def _valid_thread_id(thread_id: str) -> str:
@@ -161,6 +176,7 @@ def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> 
             )
     return {
         "thread_id": thread_id,
+        "runtime": state.runtime.value if state is not None and state.runtime else None,
         "turns": turns,
         "spec_chips": list(chips),
         "pending_clarification": pending,
@@ -225,8 +241,17 @@ def create_app(
         }
 
     @app.post("/api/threads", status_code=201)
-    def create_thread() -> dict[str, str]:
-        return {"thread_id": new_thread_id()}
+    def create_thread(
+        body: CreateThreadRequest | None = None,
+    ) -> dict[str, str | None]:
+        requested = (body.runtime if body else None) or default_runtime_kind(resolved)
+        kind = resolve_runtime_kind(requested, resolved)
+        state = start_thread(new_thread_id(), kind, store=store)
+        return {
+            "thread_id": state.thread_id,
+            "runtime": kind.value,
+            "notice": LIVE_RUNTIME_LOCKED_NOTICE if kind != requested else None,
+        }
 
     @app.get("/api/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
@@ -275,11 +300,12 @@ def create_app(
                 )
                 budget.consume_turn()
                 reserved = True
+                bound = prior.runtime if prior is not None else None
                 run_conversation_turn(
                     valid,
                     message,
                     runtime_for(
-                        RuntimeKind.RECORDED if body.recorded else RuntimeKind.LIVE,
+                        bound or default_runtime_kind(resolved),
                         settings=resolved,
                         budget=budget,
                     ),
@@ -288,6 +314,10 @@ def create_app(
                         "progress", {"done": done, "total": total}
                     ),
                 )
+            except RuntimeMismatchError as exc:
+                # Refused before anything ran: the turn does not count against the quota.
+                _LOGGER.warning("api_turn_runtime_mismatch", extra={"details": exc.details})
+                emit("error", {"message": public_error_message(exc)})
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
                 if reserved:

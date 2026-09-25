@@ -412,3 +412,25 @@ Blockers / next:
 - Streamlit badge copy still says "Guided demo" / "Live SEC"; the web window's labels are owned by the window tickets.
 - `contracts.py`, `turn.py`, and `tests/test_gold.py` use CRLF line endings; preserve them when editing.
 
+## 2026-09-25 — react-audience-window 02 Bind each conversation thread to one runtime
+
+Task completed: `.scratch/react-audience-window/issues/02-bind-each-thread-to-one-runtime.md`
+
+Key decisions:
+- The rule is in `run_conversation_turn`: `ThreadState.runtime` binds on `start_thread` or the first turn; a turn on the other runtime raises `RuntimeMismatchError` before provider calls or persistence. A checkpoint with no `runtime` key is unbound and binds on its next turn.
+- `resolve_runtime_kind` / `default_runtime_kind` in `runtime.py` hold the locked-demo coercion and the `APP_MODE` default. `runtime_for` and `build_runtime` use them.
+- API: `POST /api/threads {runtime?}` returns `{thread_id, runtime, notice}`. Turn body is `{message}` only (extra keys forbidden). Thread view reports `runtime`. A mismatch streams a public `error` and does not use up a turn.
+- Streamlit: a switch flip on a bound thread does Start over; `history_recorded` is gone.
+
+Files changed:
+- `src/financial_analyst_agent/conversation.py`, `thread_store.py`, `domain/errors.py`, `runtime.py`, `api.py`, `app.py`, `storefront.py`
+- `tests/unit/test_thread_runtime.py` (new), `tests/unit/test_conversation_seam.py`, `tests/test_api.py`, `tests/test_app.py` (fake `pills` no longer shadowed by a list)
+- `web/lib/types.ts`, `web/lib/api.ts`
+- `docs/adr/0006-react-audience-window.md` (error event list)
+
+Blockers / next:
+- Ticket 03 (proxy-only API) and 04 (ask and see a quarterly fact) are unblocked. 04 should call `createThread(runtime)` and show `notice` next to the locked switch.
+- `/api/meta` still takes `?recorded=` for the snapshot banner and reports `recorded: {default, locked}`; the window can read the thread's `runtime` instead once it exists.
+- Package imports in new unit tests must stay inside functions: `test_contracts_import` drops the package from `sys.modules`.
+- `web/.next` can hold stale route types (a deleted `app/page`); run `npm run build` before `npx tsc --noEmit`.
+

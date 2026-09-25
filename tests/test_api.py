@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from financial_analyst_agent import api
 from financial_analyst_agent.api import create_app
 from financial_analyst_agent.config import AppMode, Settings
+from financial_analyst_agent.contracts import Runtime, RuntimeKind
+from financial_analyst_agent.runtime import recorded_runtime, resolve_runtime_kind
 from financial_analyst_agent.storefront import GUIDED_STORIES
 
 # Keys the web client reads (web/lib/types.ts). Renaming one is a client break.
@@ -50,16 +54,19 @@ def _events(response: Any) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def _new_thread(client: TestClient) -> str:
-    response = client.post("/api/threads")
+def _new_thread(client: TestClient, runtime: str | None = None) -> str:
+    body = None if runtime is None else {"runtime": runtime}
+    response = client.post("/api/threads", json=body)
     assert response.status_code == 201
     return str(response.json()["thread_id"])
 
 
+def _post_turn(client: TestClient, thread_id: str, message: str) -> Any:
+    return client.post(f"/api/threads/{thread_id}/turns", json={"message": message})
+
+
 def _ask(client: TestClient, thread_id: str, message: str) -> dict[str, Any]:
-    response = client.post(
-        f"/api/threads/{thread_id}/turns", json={"message": message, "recorded": True}
-    )
+    response = _post_turn(client, thread_id, message)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     events = _events(response)
@@ -164,17 +171,100 @@ def test_turn_quota_streams_public_error(tmp_path: Path) -> None:
     )
     thread_id = _new_thread(client)
     _ask(client, thread_id, GUIDED_STORIES[0][1])
-    response = client.post(
-        f"/api/threads/{thread_id}/turns", json={"message": "add Apple", "recorded": True}
-    )
-    kind, data = _events(response)[-1]
+    kind, data = _events(_post_turn(client, thread_id, "add Apple"))[-1]
     assert kind == "error"
     assert "turn limit" in data["message"]
 
 
 def test_blank_message_is_rejected(client: TestClient) -> None:
     thread_id = _new_thread(client)
+    assert _post_turn(client, thread_id, "   ").status_code == 422
+
+
+@pytest.fixture
+def runtimes_built(monkeypatch: pytest.MonkeyPatch) -> list[RuntimeKind]:
+    """Record the runtime each turn asks for; serve recorded providers so tests stay offline."""
+    built: list[RuntimeKind] = []
+
+    def fake_runtime_for(kind: RuntimeKind, *, settings: Settings, **_: Any) -> Runtime:
+        built.append(kind)
+        return replace(recorded_runtime(), kind=resolve_runtime_kind(kind, settings))
+
+    monkeypatch.setattr(api, "runtime_for", fake_runtime_for)
+    return built
+
+
+def test_thread_is_created_on_the_runtime_asked_for(
+    client: TestClient, runtimes_built: list[RuntimeKind]
+) -> None:
+    recorded = client.post("/api/threads", json={"runtime": "recorded"}).json()
+    live = client.post("/api/threads", json={"runtime": "live"}).json()
+
+    assert recorded["runtime"] == "recorded"
+    assert live["runtime"] == "live"
+    assert recorded["notice"] is None and live["notice"] is None
+    assert client.get(f"/api/threads/{recorded['thread_id']}").json()["runtime"] == "recorded"
+    assert client.get(f"/api/threads/{live['thread_id']}").json()["runtime"] == "live"
+
+
+def test_thread_without_a_runtime_takes_the_deployment_default(tmp_path: Path) -> None:
+    client = TestClient(create_app(_settings(app_mode=AppMode.LIVE), store_root=tmp_path))
+    assert client.post("/api/threads").json()["runtime"] == "live"
+
+
+def test_turns_follow_the_thread_runtime(
+    client: TestClient, runtimes_built: list[RuntimeKind]
+) -> None:
+    live = _new_thread(client, "live")
+    recorded = _new_thread(client, "recorded")
+
+    _ask(client, live, GUIDED_STORIES[0][1])
+    _ask(client, recorded, GUIDED_STORIES[0][1])
+    view = _ask(client, live, "add Apple")
+
+    assert runtimes_built == [RuntimeKind.LIVE, RuntimeKind.RECORDED, RuntimeKind.LIVE]
+    assert view["runtime"] == "live"
+    assert len(view["turns"]) == 2
+
+
+def test_locked_public_demo_creates_live_request_as_recorded(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(_settings(app_mode=AppMode.LIVE, public_demo=True), store_root=tmp_path)
+    )
+    created = client.post("/api/threads", json={"runtime": "live"}).json()
+
+    assert created["runtime"] == "recorded"
+    assert created["notice"] == "Live runtime is off on the public demo"
+    view = _ask(client, created["thread_id"], GUIDED_STORIES[0][1])
+    assert view["runtime"] == "recorded"
+
+
+def test_turn_on_a_thread_bound_to_the_other_runtime_streams_a_public_error(
+    tmp_path: Path, runtimes_built: list[RuntimeKind]
+) -> None:
+    open_demo = TestClient(create_app(_settings(), store_root=tmp_path))
+    thread_id = _new_thread(open_demo, "live")
+    locked_demo = TestClient(
+        create_app(_settings(app_mode=AppMode.LIVE, public_demo=True), store_root=tmp_path)
+    )
+
+    events = _events(_post_turn(locked_demo, thread_id, GUIDED_STORIES[0][1]))
+
+    kind, data = events[-1]
+    assert kind == "error"
+    assert data["message"] == (
+        "This thread runs on the live runtime and cannot take a recorded turn. "
+        "Start over to switch runtime."
+    )
+    view = locked_demo.get(f"/api/threads/{thread_id}").json()
+    assert view["turns"] == []
+    assert view["turn_count"] == 0
+    assert view["runtime"] == "live"
+
+
+def test_turn_request_no_longer_carries_a_runtime_flag(client: TestClient) -> None:
+    thread_id = _new_thread(client)
     response = client.post(
-        f"/api/threads/{thread_id}/turns", json={"message": "   ", "recorded": True}
+        f"/api/threads/{thread_id}/turns", json={"message": "hi", "recorded": False}
     )
     assert response.status_code == 422

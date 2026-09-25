@@ -17,7 +17,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import Intent, TurnResult
+from financial_analyst_agent.contracts import Intent, RuntimeKind, TurnResult
 from financial_analyst_agent.evidence_store import (
     EvidenceStore,
     InMemoryEvidenceStore,
@@ -42,9 +42,14 @@ class PendingClarification(BaseModel):
 
 
 class ThreadState(BaseModel):
-    """Persisted conversation-thread state (not run state, not evidence bodies)."""
+    """Persisted conversation-thread state (not run state, not evidence bodies).
+
+    ``runtime`` is the runtime the thread is bound to. ``None`` means not yet bound:
+    a thread saved before binding existed binds on its next turn.
+    """
 
     thread_id: str
+    runtime: RuntimeKind | None = None
     messages: tuple[ThreadMessage, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     last_result_ref: str | None = None

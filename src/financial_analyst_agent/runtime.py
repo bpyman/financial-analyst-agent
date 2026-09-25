@@ -317,6 +317,25 @@ def live_runtime(
     )
 
 
+def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:
+    """The runtime this deployment serves when ``kind`` is asked for.
+
+    A locked public demo (``PUBLIC_DEMO`` on, ``DEMO_LIVE_SEC`` off) serves recorded
+    for every request.
+    """
+    resolved = settings or get_settings()
+    if resolved.public_demo and not resolved.demo_live_sec:
+        return RuntimeKind.RECORDED
+    return kind
+
+
+def default_runtime_kind(settings: Settings | None = None) -> RuntimeKind:
+    """The runtime ``APP_MODE`` selects, after the public-demo lock."""
+    resolved = settings or get_settings()
+    kind = RuntimeKind.RECORDED if resolved.app_mode is AppMode.RECORDED else RuntimeKind.LIVE
+    return resolve_runtime_kind(kind, resolved)
+
+
 def runtime_for(
     kind: RuntimeKind,
     *,
@@ -325,11 +344,11 @@ def runtime_for(
 ) -> Runtime:
     """Build the runtime asked for.
 
-    A locked public demo (``PUBLIC_DEMO`` on, ``DEMO_LIVE_SEC`` off) builds the recorded
-    runtime even when the live one is asked for; read ``Runtime.kind`` for the answer.
+    A locked public demo builds the recorded runtime even when the live one is asked
+    for (see ``resolve_runtime_kind``); read ``Runtime.kind`` for the answer.
     """
     resolved = settings or get_settings()
-    if kind is RuntimeKind.RECORDED or (resolved.public_demo and not resolved.demo_live_sec):
+    if resolve_runtime_kind(kind, resolved) is RuntimeKind.RECORDED:
         return recorded_runtime()
     return live_runtime(resolved, budget=budget)
 
@@ -337,5 +356,4 @@ def runtime_for(
 def build_runtime(settings: Settings | None = None) -> Runtime:
     """Build the runtime ``APP_MODE`` selects."""
     resolved = settings or get_settings()
-    kind = RuntimeKind.RECORDED if resolved.app_mode is AppMode.RECORDED else RuntimeKind.LIVE
-    return runtime_for(kind, settings=resolved)
+    return runtime_for(default_runtime_kind(resolved), settings=resolved)

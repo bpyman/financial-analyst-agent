@@ -120,8 +120,20 @@ export interface Turn {
   clarify_enabled: boolean;
 }
 
+/** The provider set a thread is bound to for its whole life. */
+export type RuntimeKind = "recorded" | "live";
+
+/** POST /api/threads. `notice` is set when the deployment served another runtime. */
+export interface CreatedThread {
+  thread_id: string;
+  runtime: RuntimeKind;
+  notice: string | null;
+}
+
 export interface ThreadView {
   thread_id: string;
+  /** null until the thread is bound (a thread saved before binding existed). */
+  runtime: RuntimeKind | null;
   turns: Turn[];
   spec_chips: string[];
   pending_clarification: boolean;

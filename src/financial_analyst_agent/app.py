@@ -515,9 +515,15 @@ def _history_pairs(state: ThreadState, store: LocalThreadStore) -> list[tuple[st
     return pairs
 
 
+def _thread_runtime(store: LocalThreadStore) -> RuntimeKind | None:
+    """The runtime the current thread is bound to, or None before its first turn."""
+    thread_id = str(st.session_state.get("thread_id") or "")
+    state = store.load(thread_id) if thread_id else None
+    return state.runtime if state is not None else None
+
+
 def _ensure_thread_and_history(
     store: LocalThreadStore,
-    recorded: bool,
     *,
     ttl_seconds: int,
 ) -> None:
@@ -530,7 +536,6 @@ def _ensure_thread_and_history(
     if state is None:
         if existed and st.session_state.get("history"):
             st.session_state["history"] = []
-            st.session_state.pop("history_recorded", None)
             st.session_state.pop("pending_query", None)
             st.session_state["thread_id"] = new_thread_id()
         elif "history" not in st.session_state:
@@ -542,7 +547,6 @@ def _ensure_thread_and_history(
         st.session_state["history"] = []
         return
     st.session_state["history"] = _history_pairs(state, store)
-    st.session_state["history_recorded"] = recorded
 
 
 def _start_over(store: LocalThreadStore) -> None:
@@ -551,7 +555,6 @@ def _start_over(store: LocalThreadStore) -> None:
         store.clear(thread_id)
     st.session_state["thread_id"] = new_thread_id()
     st.session_state["history"] = []
-    st.session_state.pop("history_recorded", None)
     st.session_state.pop("turn_in_flight", None)
     st.session_state.pop("pending_query", None)
 
@@ -636,14 +639,11 @@ def main() -> None:
     if start_over:
         _start_over(store)
         st.rerun()
-    _ensure_thread_and_history(store, recorded, ttl_seconds=settings.thread_ttl_seconds)
-
-    if (
-        st.session_state.get("history")
-        and st.session_state.get("history_recorded") != recorded
-    ):
-        st.session_state["history"] = []
-        st.session_state.pop("history_recorded", None)
+    runtime_kind = RuntimeKind.RECORDED if recorded else RuntimeKind.LIVE
+    if _thread_runtime(store) not in (None, runtime_kind):
+        # A thread is bound to one runtime: flipping the switch is Start over.
+        _start_over(store)
+    _ensure_thread_and_history(store, ttl_seconds=settings.thread_ttl_seconds)
 
     ranking = SnapshotRanking.from_path(
         FIXTURE_UNIVERSE_SNAPSHOT_PATH if recorded else None
@@ -702,7 +702,7 @@ def main() -> None:
                     thread_id,
                     query,
                     runtime_for(
-                        RuntimeKind.RECORDED if recorded else RuntimeKind.LIVE,
+                        runtime_kind,
                         settings=settings,
                         budget=budget,
                     ),
@@ -722,7 +722,6 @@ def main() -> None:
                         strict=False,
                     )
                 )
-                st.session_state["history_recorded"] = recorded
             finally:
                 if reserved:
                     _persist_session_budget(store, thread_id, budget)

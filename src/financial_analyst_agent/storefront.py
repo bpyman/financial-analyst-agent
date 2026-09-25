@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from financial_analyst_agent.domain.errors import ConfigurationError, SessionQuotaError
+from financial_analyst_agent.domain.errors import (
+    ConfigurationError,
+    RuntimeMismatchError,
+    SessionQuotaError,
+)
 from financial_analyst_agent.runtime import FIXTURE_FILING_NEWER, FIXTURE_FILING_OLDER
 
 EXAMPLE_QUERY = "What was Google's net income based on their latest quarterly report?"
@@ -70,10 +74,11 @@ RECORDED_BANNER = (
     "Numbers are still produced by the same deterministic renderer."
 )
 LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."
+LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
 
 
 def public_error_message(exc: BaseException) -> str:
-    if isinstance(exc, (ConfigurationError, SessionQuotaError)):
+    if isinstance(exc, (ConfigurationError, SessionQuotaError, RuntimeMismatchError)):
         return str(exc)
     return PUBLIC_FAILURE_MESSAGE
 
