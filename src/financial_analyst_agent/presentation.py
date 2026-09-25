@@ -473,7 +473,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             value_kind=chart_value_kind(metric),
             metric_label=_humanize_field(metric),
             period_labels=tuple(format_date(period) for period in periods),
-            series=tuple(key for key in records[0] if key != "Period"),
+            series=tuple(dict.fromkeys(row.company_name for row in rows)),
             amounts=tuple(
                 {
                     key: format_chart_amount(metric, value)
