@@ -8,6 +8,7 @@ from threading import Lock
 
 from financial_analyst_agent.domain.errors import SessionQuotaError
 from financial_analyst_agent.presentation import format_datetime_utc, try_parse_datetime
+from financial_analyst_agent.thread_store import ThreadState, ThreadStore
 
 
 def new_thread_id() -> str:
@@ -73,3 +74,25 @@ def snapshot_status(
     if stale:
         banner = f"{banner} — freeze is older than {stale_after_days} days"
     return banner, stale
+
+
+def persist_session_budget(store: ThreadStore, thread_id: str, budget: SessionBudget) -> None:
+    """Write turn and live-SEC counts to the thread so quotas survive reloads."""
+    saved = store.load(thread_id)
+    if saved is None:
+        store.save(
+            ThreadState(
+                thread_id=thread_id,
+                turn_count=budget.turns,
+                live_sec_requests=budget.live_sec_requests,
+            )
+        )
+        return
+    store.save(
+        saved.model_copy(
+            update={
+                "turn_count": max(saved.turn_count, budget.turns),
+                "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
+            }
+        )
+    )

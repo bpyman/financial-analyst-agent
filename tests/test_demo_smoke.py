@@ -1,8 +1,8 @@
 """Smoke the fixture-first audience window and first guided story."""
 
-from datetime import date
 import os
 import tomllib
+from datetime import date
 from pathlib import Path
 
 import pytest

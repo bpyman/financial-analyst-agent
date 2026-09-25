@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 import re
 from datetime import UTC, date, datetime
-from pathlib import Path
 
 import altair as alt
 import pandas as pd  # type: ignore[import-untyped]
@@ -30,87 +29,32 @@ from financial_analyst_agent.presentation import (
 )
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
-    FIXTURE_FILING_NEWER,
-    FIXTURE_FILING_OLDER,
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     runtime_for_kill_switch,
 )
-from financial_analyst_agent.session import SessionBudget, new_thread_id, snapshot_status
+from financial_analyst_agent.session import (
+    SessionBudget,
+    new_thread_id,
+    persist_session_budget,
+    snapshot_status,
+)
+from financial_analyst_agent.storefront import (
+    CAPABILITIES,
+    EXAMPLE_QUERY,
+    GUIDED_STORIES,
+    LIVE_RUNTIME_CAPTION,
+    PUBLIC_FAILURE_MESSAGE,  # noqa: F401 - re-exported for tests
+    RECORDED_BANNER,
+    public_error_message,
+    thread_store_root,
+)
 from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
 from financial_analyst_agent.turn import TurnResult
 
-_GOLD_QUERY = "What was Google's net income based on their latest quarterly report?"
 _MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
-GUIDED_STORIES: tuple[tuple[str, str], ...] = (
-    (
-        "Verify a quarterly fact",
-        "What was Microsoft's latest quarterly pretax income?",
-    ),
-    (
-        "Compare four quarters",
-        "What was Microsoft's quarterly revenue over the last four quarters?",
-    ),
-    (
-        "Rank then inspect filings",
-        "What are the top 10 tech companies and R&D spend for each?",
-    ),
-    (
-        "What changed in the 10-Q",
-        "What changed in Microsoft's MD&A and Risk Factors between "
-        f"{FIXTURE_FILING_OLDER} and {FIXTURE_FILING_NEWER}?",
-    ),
-)
-PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
-_CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "Look up quarterly 10-Q financial facts or market cap for any "
-        "operating publicly-listed US company",
-        (
-            "What was Microsoft's latest quarterly revenue?",
-            "What is Apple's market cap?",
-        ),
-    ),
-    (
-        "Compare companies on metrics, rank by market cap, or combine rank and lookup",
-        (
-            "Compare Eli Lilly and Merck net margins",
-            "What are the top 10 tech companies and R&D spend for each?",
-        ),
-    ),
-    (
-        "Access and analyze relevant financial news linked to specific companies",
-        ("What's going on with Eli Lilly's obesity drugs?",),
-    ),
-    (
-        "Answer general queries and provide qualitative industry analysis",
-        ("How could AI change bank underwriting?",),
-    ),
-    (
-        "Stay on the same thread to extend the current analysis, or start a new one",
-        (
-            "add Apple",
-            "now add operating margin",
-            "make that the last four quarters",
-            "show year-over-year",
-        ),
-    ),
-)
-KILL_SWITCH_BANNER = (
-    "Guided demo data — recorded SEC facts, not a live EDGAR pull. "
-    "Numbers are still produced by the same deterministic renderer."
-)
-LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."
-
-
-def public_error_message(exc: BaseException) -> str:
-    if isinstance(exc, (ConfigurationError, SessionQuotaError)):
-        return str(exc)
-    return PUBLIC_FAILURE_MESSAGE
-
-
-def thread_store_root() -> Path:
-    """Durable local root for conversation threads (no database server)."""
-    return Path(".cache") / "threads"
+_GOLD_QUERY = EXAMPLE_QUERY
+_CAPABILITIES = CAPABILITIES
+KILL_SWITCH_BANNER = RECORDED_BANNER
 
 
 def render_turn_result(
@@ -640,27 +584,7 @@ def _render_guided_stories() -> None:
                 st.rerun()
 
 
-def _persist_session_budget(
-    store: LocalThreadStore, thread_id: str, budget: SessionBudget
-) -> None:
-    saved = store.load(thread_id)
-    if saved is None:
-        store.save(
-            ThreadState(
-                thread_id=thread_id,
-                turn_count=budget.turns,
-                live_sec_requests=budget.live_sec_requests,
-            )
-        )
-        return
-    store.save(
-        saved.model_copy(
-            update={
-                "turn_count": max(saved.turn_count, budget.turns),
-                "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
-            }
-        )
-    )
+_persist_session_budget = persist_session_budget
 
 
 def _render_spec_chips(store: LocalThreadStore) -> None:

@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal
-from collections.abc import Callable
 
 from pydantic import BaseModel
 

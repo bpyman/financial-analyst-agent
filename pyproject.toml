@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Evidence-first financial research agent: SEC XBRL facts, constrained planning, numeral-locked answers"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.120",
     "fastmcp>=2.12.0",
     "httpx>=0.28.1",
     "langgraph>=1.2.11",
@@ -12,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "streamlit>=1.61.1",
     "streamlit-shadcn-ui>=1.0.0",
+    "uvicorn>=0.30",
 ]
 
 [dependency-groups]
@@ -27,6 +29,7 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 build-universe-snapshot = "financial_analyst_agent.snapshot_builder:main"
+serve-api = "financial_analyst_agent.api:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/financial_analyst_agent"]
