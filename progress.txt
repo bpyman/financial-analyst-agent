@@ -541,3 +541,70 @@ Blockers / next:
 - The suite runs in about 10 s locally. Against the hosted demo (tickets 09/10): `PLAYWRIGHT_BASE_URL=https://<deploy> npm run test:e2e`.
 - ADR 0006 cutover also wants `web/scripts/capture-portfolio.ts`; it can reuse `e2e/analyst.ts` to drive the walkthrough.
 - The API's JSON logs go to stderr, so they appear in the Playwright output as `[API]` lines; that helps when CI fails.
+
+
+## 2026-09-25 — react-audience-window 08 Containerize the analysis API
+
+Task completed: `.scratch/react-audience-window/issues/08-containerize-the-api.md`
+
+Key decisions:
+- Two-stage `Dockerfile` on `python:3.12-slim-bookworm`. uv 0.8.17 is pip-installed from PyPI rather than copied from ghcr, so PyPI is the only source the build downloads from. `uv sync --locked --no-dev`: dependencies first, then the package as a non-editable wheel. The runtime stage holds only `/app/.venv` and runs as uid 10001. It sets `HOST=0.0.0.0`, `PORT=8000`, `APP_MODE=recorded`, and `WORKDIR /app`, which the app user owns, so the thread store's `.cache/threads` is writable. The HEALTHCHECK uses Python urllib against `$PORT`.
+- `.dockerignore` is an allow-list (pyproject, lockfile, package), so new top-level folders stay out by default.
+- `scripts/smoke_api_image.py` is stdlib-only, so CI runs it with the runner's python3. `--image` runs the container on PORT=10000 (Render's default, and proof that `$PORT` is honoured), waits for Docker's health status, takes the guided "Verify a quarterly fact" turn, and checks the image contents. `--base-url` / `--proxy-token` run the same HTTP check against a deployed API, which 09/10 can reuse. `tests/test_api_image_smoke.py` loads the script by path and runs it against in-process uvicorn.
+- CI `image` job: `docker build` + smoke script.
+
+Files changed:
+- `Dockerfile`, `.dockerignore` (new), `scripts/smoke_api_image.py` (new), `tests/test_api_image_smoke.py` (new)
+- `.github/workflows/ci.yml`, `README.md`
+- ticket 08 resolved
+
+Blockers / next:
+- The image is about 980 MB unpacked, and roughly 400 MB of that is the Streamlit stack (pyarrow, pandas, streamlit, pydeck). The API never imports it. Ticket 14 (delete Streamlit) shrinks the image with no Dockerfile change.
+- For local builds in the cloud container, Docker Hub pulls hit 429. Pull `mirror.gcr.io/library/python:3.12-slim-bookworm` and tag it as `python:3.12-slim-bookworm`, then build with `--network host --build-arg HTTPS_PROXY=$HTTPS_PROXY` (predefined arg; not kept in the image history). ghcr blob downloads are forbidden by the proxy.
+- 09: `render.yaml` should point at this `Dockerfile` with `healthCheckPath: /api/health`; Render sets `PORT` itself. `API_PROXY_TOKEN` is a dashboard variable, not synced from `render.yaml`. After a deploy: `python3 scripts/smoke_api_image.py --base-url https://<render host> --proxy-token <token>`.
+
+
+## 2026-09-25 — react-audience-window 09 Render and Vercel deploy configuration
+
+Task completed: `.scratch/react-audience-window/issues/09-render-and-vercel-config.md`
+
+Key decisions:
+- `render.yaml`: one free Docker web service in `virginia` on `master`, with `healthCheckPath: /api/health`, `numInstances: 1`, and `autoDeployTrigger: checksPass` (it replaces the deprecated `autoDeploy`). `buildFilter.paths` is Dockerfile, .dockerignore, pyproject.toml, uv.lock, and src/**. The public-demo env values are quoted strings. `API_PROXY_TOKEN` is `sync: false`, and PORT is left to Render.
+- A `deploy-api` CI job is a dormant fallback: it needs all other jobs, runs only on pushes to `master`, and curls `RENDER_DEPLOY_HOOK_URL` only when that secret is set. It is there because nothing confirmed that `checksPass` exists on the free instance.
+- `web/vercel.json`: `ignoreCommand` runs `sh scripts/ignore-build.sh`, plus `fluid: true` and `regions: ["iad1"]`. The script compares `VERCEL_GIT_PREVIOUS_SHA..HEAD -- .` from `web/`; with no previous SHA, or one outside the shallow clone, it builds. maxDuration stays in route.ts (300, the Hobby cap), and a test pins it.
+- `tests/api_server.py` now holds the in-process uvicorn `serve()` and the loaded smoke script, shared by `test_api_image_smoke.py` and the new `test_deploy_config.py`.
+- PyYAML comes in through langchain-core (langgraph), so the test adds no dependency.
+
+Files changed:
+- `render.yaml`, `web/vercel.json`, `web/scripts/ignore-build.sh` (new)
+- `.github/workflows/ci.yml` (deploy-api job), `docs/deploy.md` (rewritten), `README.md`, `web/README.md`
+- `tests/test_deploy_config.py`, `tests/api_server.py` (new), `tests/test_api_image_smoke.py`
+- ticket 09 resolved
+
+Blockers / next:
+- render.com and vercel.com are blocked by the container proxy. Blueprint fields come from Render's `render-oss/skills` reference (raw.githubusercontent.com works); `docs/deploy.md` says what was and was not verified. The Vercel CLI's bundled config validator (`npm pack vercel`, chunks/config-validator.mjs) does not check top-level keys, so it cannot catch typos there.
+- 10 (wizard): run `render blueprints validate` or read the Blueprint sync result. Check that the service's Auto-Deploy reads "After CI Checks Pass"; if the free plan lacks it, set the repo secret and change `autoDeployTrigger` to `off`. In Vercel, set Root Directory `web` and both env vars for Production and Preview. Verify with `scripts/smoke_api_image.py --base-url` on the Render URL (with the token) and on the Vercel URL (without it), and check that `/api/meta` on Render without the token returns 401.
+
+
+## 2026-09-25 — react-audience-window 10 Deploy wizard
+
+Task completed: `.scratch/react-audience-window/issues/10-deploy-wizard.md`
+
+Key decisions:
+- `scripts/deploy_wizard.sh` comes from the wizard skill's template. The library above the STAGES marker is byte-identical to the template, so edit only below it. It has eight stages: preflight (tools, deploy files on `origin/master`, optional `render blueprints validate`), proxy token, Render Blueprint, Render Auto-Deploy (checksPass, or the deploy-hook fallback via `gh secret set`), Vercel import (Root Directory `web`), Vercel variables plus Redeploy, the proxy check, and the browser check (`PLAYWRIGHT_BASE_URL=... npm run test:e2e`).
+- Values are saved to `.env.deploy` (gitignored, overridable with `DEPLOY_ENV_FILE`), never `.env`: pydantic settings read `.env`, and a token there would make the local API refuse the local window.
+- Re-runs are safe. The saved token is kept, and each stage first checks its result and says "nothing to do here" when it passes. Stage 6 tries the proxy once quietly, so a first run does not wait out the wake timeout on a 502.
+- The checks are shared by the stages and by `--check` (no prompts, exit 1 on failure): Render health, Render `/api/meta` without the token → 401, the guided story on Render with the token, health through the Vercel proxy, and the guided story through the proxy (`scripts/smoke_api_image.py`, stdlib, Python 3.8+). Failures print fix hints in wizard mode.
+- It is portable to macOS bash 3.2 and WSL: no associative arrays or `mapfile`, clipboard through pbcopy / clip.exe / wl-copy / xclip, and secrets are shown only if you ask. Without `gh`, the fallback secret lands on the closing to-do list with the github.com path.
+- Dashboard UI steps come from WebSearch excerpts, because render.com and vercel.com are blocked. Every unverified control has an "if you don't see X, look for Y" note.
+
+Files changed:
+- `scripts/deploy_wizard.sh` (new, executable), `tests/test_deploy_wizard.py` (new)
+- `.gitignore` (`.env.deploy`), `docs/deploy.md` (wizard section, what was checked), `README.md`
+- ticket 10 resolved
+
+Blockers / next:
+- Ticket 11 (ready-for-human): Blake runs `scripts/deploy_wizard.sh` after PRs 1 and 2 merge into `master`. Its preflight warns until then.
+- It was verified with `bash -n`, shellcheck 0.11 (`uvx --from shellcheck-py shellcheck`, clean), pytest (`--help` and `--check` against in-process stand-ins), and a pty-driven run of the fresh and re-run paths against in-process APIs. It was not run against the real dashboards or on macOS bash 3.2.
+- Open question: whether Vercel Standard Protection gates `<name>.vercel.app` (the July 2025 changelog says "all except production custom domains"). The wizard's 401/403 hint points to Settings → Deployment Protection.
+- The template's `_clear` exits the script under `TERM=dumb`, because `tput clear` fails under `set -e`. Real terminals are unaffected. Fix it in the skill template, not here.

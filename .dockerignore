@@ -1,0 +1,8 @@
+# The API image needs only the lockfile, the project metadata, and the package.
+# Allow-list, so tests, web/, .git, caches, and local .env never reach the build.
+*
+!pyproject.toml
+!uv.lock
+!src/financial_analyst_agent/
+**/__pycache__
+**/*.py[cod]

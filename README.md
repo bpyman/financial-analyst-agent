@@ -66,6 +66,20 @@ npm run dev
 
 Open http://localhost:3000. No secrets are needed locally; [`web/README.md`](web/README.md) lists the web app's environment variables and checks.
 
+The API also ships as a Docker image. It installs from `uv.lock`, runs as a non-root user, listens on `$PORT` (default 8000) on all interfaces, starts on the recorded runtime unless `APP_MODE=live` is set, and has a health check on `/api/health`. The image holds only the installed package: no tests, `web/`, or dev tooling.
+
+```text
+docker build -t financial-analyst-api .
+docker run --rm -p 8000:8000 financial-analyst-api
+
+# what CI runs: health check, a recorded thread, and the "Verify a quarterly fact" turn
+python3 scripts/smoke_api_image.py --image financial-analyst-api
+```
+
+The same script checks an API that is already running: `--base-url https://<host>`, plus `--proxy-token` when `API_PROXY_TOKEN` is set.
+
+The hosted setup is the Next.js window on Vercel (`web/vercel.json`) and this image on Render (`render.yaml`). Render deploys a commit only after CI passes. [`docs/deploy.md`](docs/deploy.md) lists every environment variable for each service and where it is set. To go live, run `scripts/deploy_wizard.sh`. It walks through the account steps and checks each one.
+
 Example questions:
 
 1. What was Microsoft's latest quarterly pretax income?

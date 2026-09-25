@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "sh scripts/ignore-build.sh",
+  "fluid": true,
+  "regions": ["iad1"],
+  "git": {
+    "deploymentEnabled": {
+      "master": false
+    }
+  }
+}
