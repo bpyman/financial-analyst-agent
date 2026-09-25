@@ -144,6 +144,13 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Hero amounts: the sans face with tabular figures reads cleaner than mono at display size. */
+.figure {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 .shimmer {
   background: linear-gradient(
     90deg,
@@ -221,6 +228,15 @@ body {
 }
 .prose-answer > :last-child {
   margin-bottom: 0;
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -16,7 +16,20 @@ npm install
 npm run dev   # http://localhost:3000
 ```
 
-No secrets are needed locally.
+No secrets are needed locally. Open http://localhost:3000 and click "Verify a
+quarterly fact" for the Microsoft pretax-income fact card.
+
+## How the window behaves
+
+- One thread per browser. Its id is kept in `localStorage`, so a reload resumes
+  it; an expired thread is dropped with a quiet notice.
+- Start over clears the thread and starts a new one on the same runtime. Flipping
+  the Recorded / Live switch is Start over on the other runtime. On a locked
+  public demo the switch is disabled and its tooltip says why.
+- The landing page pings `/api/health` on load, and a turn that shows no progress
+  after about 3 seconds says "Waking the analysis service…".
+- Every amount shown as text comes from the API's presentation mapping; the
+  browser formats nothing but chart axis ticks.
 
 ## Environment
 

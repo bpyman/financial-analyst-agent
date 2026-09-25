@@ -262,7 +262,11 @@ def create_app(
         )
         return {
             "recorded": {"default": default_recorded, "locked": locked},
-            "runtime_copy": {"recorded": RECORDED_BANNER, "live": LIVE_RUNTIME_CAPTION},
+            "runtime_copy": {
+                "recorded": RECORDED_BANNER,
+                "live": LIVE_RUNTIME_CAPTION,
+                "locked": LIVE_RUNTIME_LOCKED_NOTICE,
+            },
             "snapshot": {"banner": banner, "stale": stale},
             "example_query": EXAMPLE_QUERY,
             "guided_stories": [

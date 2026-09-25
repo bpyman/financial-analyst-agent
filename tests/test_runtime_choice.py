@@ -82,6 +82,8 @@ def test_app_mode_rejects_unknown_values() -> None:
 def test_recorded_banner_discloses_recorded_data() -> None:
     from financial_analyst_agent.storefront import RECORDED_BANNER
 
-    text = RECORDED_BANNER.casefold()
-    assert "recorded" in text
-    assert "edgar" in text or "live" in text
+    # ADR 0006: the window's glossary words; "Guided demo data" is retired.
+    assert RECORDED_BANNER.startswith(
+        "Recorded runtime — captured SEC filings, not a live EDGAR pull."
+    )
+    assert "guided demo" not in RECORDED_BANNER.casefold()

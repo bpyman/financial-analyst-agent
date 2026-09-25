@@ -87,6 +87,8 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
     assert meta["snapshot"]["banner"].startswith("Universe snapshot as of ")
     assert meta["metric_groups"][0]["title"] == "Reported (SEC EDGAR)"
     assert "Net income" in meta["metric_groups"][0]["names"]
+    assert meta["runtime_copy"]["recorded"].startswith("Recorded runtime — ")
+    assert meta["runtime_copy"]["locked"] == "Live runtime is off on the public demo"
 
 
 def test_public_demo_locks_recorded_mode(tmp_path: Path) -> None:

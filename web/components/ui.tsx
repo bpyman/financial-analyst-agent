@@ -61,14 +61,28 @@ export function ExternalLink({
   );
 }
 
-export function FilingButton({ href, label = "Open filing" }: { href: string; label?: string }) {
+export function FilingButton({
+  href,
+  label = "Open filing",
+  emphasis = false,
+}: {
+  href: string;
+  label?: string;
+  /** The primary action of a card, tinted in the primary colour. */
+  emphasis?: boolean;
+}) {
   if (!safeHref(href)) return null;
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-fg transition-colors hover:border-primary/50 hover:text-primary"
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-medium transition-colors",
+        emphasis
+          ? "border-primary/30 bg-primary-soft text-primary hover:border-primary/60"
+          : "border-border bg-surface text-fg hover:border-primary/50 hover:text-primary",
+      )}
     >
       {label}
       <ArrowUpRight className="size-3.5" aria-hidden />
@@ -146,7 +160,7 @@ export function Callout({
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -161,5 +175,23 @@ export function SectionLabel({ children, className }: { children: ReactNode; cla
     >
       {children}
     </div>
+  );
+}
+
+/** The app mark: a rising filing line in the primary colour. */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden className={cn("size-7", className)}>
+      <rect width="32" height="32" rx="8" className="fill-surface-2 stroke-border" strokeWidth="1" />
+      <path
+        d="M8 22l5-6 4 3 7-9"
+        fill="none"
+        className="stroke-primary"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="24" cy="10" r="2" className="fill-primary" />
+    </svg>
   );
 }

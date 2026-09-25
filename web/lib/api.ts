@@ -28,8 +28,14 @@ async function json<T>(input: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getMeta(recorded: boolean): Promise<Meta> {
-  return json<Meta>(`/api/meta?recorded=${recorded}`);
+/** Storefront copy; `recorded` picks which runtime's snapshot banner to report. */
+export function getMeta(recorded?: boolean): Promise<Meta> {
+  return json<Meta>(recorded === undefined ? "/api/meta" : `/api/meta?recorded=${recorded}`);
+}
+
+/** Wake the hosted API while the visitor reads the landing page (ADR 0006). */
+export function pingHealth(): void {
+  fetch("/api/health", { cache: "no-store" }).catch(() => undefined);
 }
 
 /** Start a thread bound to `runtime` (the deployment default when omitted). */

@@ -453,3 +453,26 @@ Files changed:
 Blockers / next:
 - Ticket 04 (ask and see a quarterly fact) is next. It needs no token locally.
 - Tickets 09/10 must set the same `API_PROXY_TOKEN` on Render and Vercel. Render's health check path should be `/api/health`, which stays open.
+
+## 2026-09-25 — react-audience-window 04 Ask the new window a question and see a quarterly fact
+
+Task completed: `.scratch/react-audience-window/issues/04-ask-and-see-a-quarterly-fact.md`
+
+Key decisions:
+- The thread rules live in `web/lib/thread-session.ts` (`resumeThread`, `startThread`, with injectable api and storage) and the turn lifecycle in `web/lib/turn-state.ts` (a reducer). Both have vitest tests; the components only wire them up.
+- A thread is created lazily on the first question, and eagerly on Start over or a runtime switch. The stored id key is `financial-analyst-agent.thread-id`.
+- An expired thread is recognised from `GET /api/threads/{id}` returning `runtime: null` with no turns, or a 404.
+- `/api/meta` `runtime_copy.locked` supplies the locked-switch tooltip. `RECORDED_BANNER` now uses ADR 0006's wording (Streamlit shows it too).
+- The first ticket renders the fact card, evidence, traces, banners, and message only. Tables and charts are 05's; essays, citations, disclosures, and clarify buttons are 06's. They are not drawn yet, even when present in the presentation.
+
+Files changed:
+- `src/financial_analyst_agent/api.py`, `storefront.py`; `tests/test_api.py`, `tests/test_runtime_choice.py`
+- `web/app/page.tsx` (new), `web/app/globals.css`, `web/components/{analyst-window,header,status-line,landing,composer,thread,answer,copy-button}.tsx` (new), `web/components/ui.tsx` (LogoMark, FilingButton emphasis, Callout body flex-1), `web/lib/{thread-session,turn-state}.ts` and tests (new), `web/lib/api.ts` (pingHealth, optional getMeta flag), `web/lib/types.ts`
+- `README.md`, `web/README.md`
+
+Blockers / next:
+- 05 (tables and charts) and 06 (qualitative, filing change, clarify) plug into `components/answer.tsx` `Answer`; the thread and shell need no change.
+- The refusal text for an unknown metric is the planner's ("Unknown metric 'unknown'. Allowed: …"); the window shows it as sent.
+- Screenshot runs used the global Playwright at `/opt/node22/lib/node_modules/playwright`; 07 needs Playwright added as a web dev dependency.
+- Do not `pkill -f` a pattern that is also in your own command line: it kills the tool shell.
+

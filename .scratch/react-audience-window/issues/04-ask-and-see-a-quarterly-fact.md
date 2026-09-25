@@ -25,10 +25,22 @@ Spec: ADR 0006.
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Running the API in the recorded runtime and the web app locally, "Verify a quarterly fact" shows the Microsoft pretax-income fact card with traces and evidence
-- [ ] Reload keeps the thread; Start over clears it; switching runtime starts a new thread; the locked switch shows its tooltip
-- [ ] A refused question (unknown metric) shows the refusal message; an API outage shows a friendly error
-- [ ] Web lint, typecheck, unit tests, and production build pass
-- [ ] The README says how to run the API and the web app locally
+- [x] Running the API in the recorded runtime and the web app locally, "Verify a quarterly fact" shows the Microsoft pretax-income fact card with traces and evidence
+- [x] Reload keeps the thread; Start over clears it; switching runtime starts a new thread; the locked switch shows its tooltip
+- [x] A refused question (unknown metric) shows the refusal message; an API outage shows a friendly error
+- [x] Web lint, typecheck, unit tests, and production build pass
+- [x] The README says how to run the API and the web app locally
+
+## Answer
+
+Shipped 2026-09-25.
+
+- **Window:** `web/app/page.tsx` renders `components/analyst-window.tsx`, which owns meta, the thread view, and the turn. Around it: `header.tsx` (Recorded / Live switch with a lock icon and a tooltip when locked; System / Light / Dark theme control; Start over), `status-line.tsx` (runtime banner, snapshot banner in amber when stale, active-analysis chips, "N of M turns"), `landing.tsx` (guided stories, "What you can ask", supported metrics), `composer.tsx` (pinned to the bottom, Enter sends, Shift+Enter adds a line, send blocked while a turn runs), `thread.tsx` (question bubbles, progress, a failed turn with Try again), and `answer.tsx` (fact card, refusal/message callout, banners, evidence inspector, "How this answer was fetched" traces with Request and Result). `copy-button.tsx` copies accession numbers and CIKs.
+- **Seams, unit-tested in vitest:** `lib/thread-session.ts` holds the one-thread-per-browser rules. `resumeThread` resumes the stored id, and forgets a thread that comes back unknown or empty (`runtime: null`, no turns) with a quiet notice; an outage keeps the id. `startThread` deletes the old thread (best effort), creates one on the requested runtime, and stores its id; Start over and a runtime switch both call it. `lib/turn-state.ts` is the turn reducer (one turn at a time; "Waking the analysis service…" only while nothing has come back after `WAKE_AFTER_MS` = 3 s; failure keeps the question and the public message), plus the progress and turn-counter labels.
+- **Wake on visit:** `pingHealth()` runs on load. The landing page also says the service is waking if the storefront copy takes more than 3 s.
+- **API:** `/api/meta` `runtime_copy` gains `locked` (the locked-switch tooltip, `LIVE_RUNTIME_LOCKED_NOTICE`). `RECORDED_BANNER` now opens "Recorded runtime — captured SEC filings, not a live EDGAR pull." per ADR 0006; "Guided demo data" is gone. `getMeta()` takes an optional `recorded` flag, and the window asks for the snapshot banner of the runtime in use.
+- **No client formatting:** amounts, periods, labels, and the refusal text are all server strings. The fact card's hero amount uses the sans face with tabular figures (`.figure`); identifiers use Geist Mono.
+- **Checked by hand** in Chromium against `APP_MODE=recorded uv run serve-api` and `npm start`, at 1440px and 390px, dark and light: the "Verify a quarterly fact" story shows the MSFT pretax-income card ($32.01 B, 10-Q, 0001193125-26-191507, PretaxIncomeLoss) with evidence and traces. A reload keeps the thread id; Start over and the Live switch each mint a new thread, and the switched one is bound `live`. A locked meta shows the tooltip. An unknown metric (EBITDA) shows the refusal. A 502 from the proxy shows "The analysis service is unreachable. Please try again shortly." with Try again. A made-up stored id shows the expired notice.
+- The root README and `web/README.md` say how to run the API and the web app locally.

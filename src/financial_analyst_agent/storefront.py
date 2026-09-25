@@ -70,7 +70,7 @@ CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
 )
 RECORDED_BANNER = (
-    "Guided demo data — recorded SEC facts, not a live EDGAR pull. "
+    "Recorded runtime — captured SEC filings, not a live EDGAR pull. "
     "Numbers are still produced by the same deterministic renderer."
 )
 LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."

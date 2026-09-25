@@ -143,7 +143,8 @@ export interface ThreadView {
 
 export interface Meta {
   recorded: { default: boolean; locked: boolean };
-  runtime_copy: { recorded: string; live: string };
+  /** Status-line copy per runtime, and the tooltip for a locked runtime switch. */
+  runtime_copy: { recorded: string; live: string; locked: string };
   snapshot: { banner: string; stale: boolean };
   example_query: string;
   guided_stories: { label: string; question: string }[];
