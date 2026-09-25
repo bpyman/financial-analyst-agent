@@ -222,7 +222,7 @@ export function AnalystWindow() {
         {resuming ? (
           <ResumeSkeleton />
         ) : hasThread ? (
-          <Thread turns={view?.turns ?? []} turn={turn} onRetry={send} />
+          <Thread turns={view?.turns ?? []} turn={turn} onRetry={send} onAsk={send} />
         ) : (
           <Landing
             meta={meta}

@@ -33,6 +33,7 @@ PRESENTATION_KEYS = {
     "essay",
     "message",
     "candidates",
+    "clarify_prompt",
 }
 
 
@@ -154,6 +155,7 @@ def test_ambiguous_metric_offers_live_candidates_on_last_turn_only(client: TestC
     assert turn["clarify_enabled"] is True
     assert turn["candidate_slugs"] == ["gross_profit", "operating_income", "net_income"]
     assert turn["presentation"]["candidates"] == ["Gross profit", "Operating income", "Net income"]
+    assert turn["presentation"]["clarify_prompt"] == "Which metric do you mean?"
 
     answered = _ask(client, thread_id, "net_income")
     assert answered["pending_clarification"] is False

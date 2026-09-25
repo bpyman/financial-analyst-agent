@@ -91,10 +91,8 @@ def _render_presentation(
         published = f" ({hit.published})" if hit.published else ""
         st.markdown(f"[{hit.index}] [{hit.title}]({hit.url}){published}")
     if presented.candidates:
-        if tuple(c.casefold() for c in presented.candidates) == ("extend", "replace"):
-            st.info("Ambiguous follow-up scope. Choose extend or replace.")
-        else:
-            st.info("Ambiguous metric. Choose one of these names.")
+        if presented.clarify_prompt:
+            st.info(presented.clarify_prompt)
         slugs = result.candidates if result is not None else presented.candidates
         for slug, label in zip(slugs, presented.candidates, strict=False):
             if st.button(

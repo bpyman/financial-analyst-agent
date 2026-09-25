@@ -2,21 +2,38 @@
 
 import { ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import type { ClarifyChoice } from "@/lib/clarify";
 import { cn, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerChart } from "./answer-chart";
+import { Clarify } from "./clarify";
 import { CopyButton } from "./copy-button";
 import { DataTable } from "./data-table";
+import { FilingChanges } from "./filing-changes";
+import { SafeMarkdown } from "./markdown";
 import { Badge, Callout, ExternalLink, FilingButton, SectionLabel } from "./ui";
+import { WrittenAnswer } from "./written-answer";
+
+/** A clarification's buttons, as the thread wires them. */
+export interface ClarifyControls {
+  choices: ClarifyChoice[];
+  live: boolean;
+  onChoose: (slug: string) => void;
+}
 
 /**
  * One answer. Every amount and label here is a string from the server's
  * presentation mapping (ADR 0006); nothing is formatted in the browser.
  */
-export function Answer({ presentation }: { presentation: Presentation }) {
+export function Answer({
+  presentation,
+  clarify,
+}: {
+  presentation: Presentation;
+  clarify?: ClarifyControls;
+}) {
   const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
+  const { essay, citations, disclosures } = presentation;
   return (
     <div className="min-w-0 space-y-4">
       <div className="flex items-center gap-2">
@@ -31,6 +48,22 @@ export function Answer({ presentation }: { presentation: Presentation }) {
       {chart && <AnswerChart chart={chart} />}
       {table && table.rows.length > 0 && <DataTable table={table} />}
       {message && <Callout kind="warning">{message}</Callout>}
+      {essay && (
+        <WrittenAnswer
+          essay={essay}
+          citations={citations}
+          title={disclosures.length > 0 ? "Summary of changes" : citations.length > 0 ? "Brief" : "Analysis"}
+        />
+      )}
+      {disclosures.length > 0 && <FilingChanges items={disclosures} />}
+      {clarify && clarify.choices.length > 0 && (
+        <Clarify
+          prompt={presentation.clarify_prompt}
+          choices={clarify.choices}
+          live={clarify.live}
+          onChoose={clarify.onChoose}
+        />
+      )}
       {evidence.length > 0 && <EvidenceInspector items={evidence} />}
       {traces.length > 0 && <Traces traces={traces} />}
     </div>
@@ -265,10 +298,8 @@ function TraceRow({ label, value }: { label: string; value: string }) {
     return (
       <div className="col-span-2 min-w-0">
         {label && <dt className="mb-1 font-medium text-fg">{label}</dt>}
-        <dd className="prose-answer text-[12.5px] text-muted">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: MarkdownLink }}>
-            {value}
-          </ReactMarkdown>
+        <dd>
+          <SafeMarkdown text={value} className="text-[12.5px] text-muted" />
         </dd>
       </div>
     );
@@ -287,14 +318,5 @@ function TraceRow({ label, value }: { label: string; value: string }) {
         )}
       </dd>
     </>
-  );
-}
-
-function MarkdownLink({ href, children }: { href?: string; children?: ReactNode }) {
-  if (!href || !safeHref(href)) return <>{children}</>;
-  return (
-    <a href={href} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
   );
 }

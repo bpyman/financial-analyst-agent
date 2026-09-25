@@ -8,7 +8,9 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
+    EXPLORATORY_RESEARCH_BANNER,
     FORMULA_METRICS,
+    MODEL_ANALYSIS_BANNER,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
     SNAPSHOT_METRICS,
@@ -244,6 +246,20 @@ _RANK_TABLE_KEYS = (
     "reason",
 )
 _SNAPSHOT_PREFIX = "Universe snapshot as of "
+# Banner codes a qualitative turn carries, in the words the window shows.
+_BANNER_COPY = {
+    MODEL_ANALYSIS_BANNER: (
+        "Model analysis — written by the model, not quoted from a filing. "
+        "It may only repeat numbers the tools returned."
+    ),
+    EXPLORATORY_RESEARCH_BANNER: (
+        "Exploratory research — a read-only brief from the cited sources. "
+        "It reports no financial facts or computed values."
+    ),
+}
+_METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
+_SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
+_SCOPE_CANDIDATES = ("extend", "replace")
 
 
 @dataclass(frozen=True)
@@ -297,6 +313,8 @@ class Presentation:
     chart: ChartSpec | None = None
     evidence: tuple[EvidenceItem, ...] = ()
     disclosures: tuple[DisplayDisclosure, ...] = ()
+    # The question a clarification asks; set only when candidates are offered.
+    clarify_prompt: str | None = None
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -632,7 +650,16 @@ def present_turn(result: TurnResult) -> Presentation:
         essay=result.essay,
         message=result.message if result.renderer is not RendererKind.CLARIFY else None,
         candidates=tuple(_humanize_field(name) for name in result.candidates),
+        clarify_prompt=_clarify_prompt(result),
     )
+
+
+def _clarify_prompt(result: TurnResult) -> str | None:
+    if result.renderer is not RendererKind.CLARIFY or not result.candidates:
+        return None
+    if tuple(result.candidates) == _SCOPE_CANDIDATES:
+        return _SCOPE_CLARIFY_PROMPT
+    return _METRIC_CLARIFY_PROMPT
 
 
 def _fact_card(row: TableRow) -> QuarterlyFactCard:
@@ -722,6 +749,8 @@ def _format_cell(row: TableRow, key: str) -> str:
 
 
 def _format_banner(banner: str) -> str:
+    if banner in _BANNER_COPY:
+        return _BANNER_COPY[banner]
     if not banner.startswith(_SNAPSHOT_PREFIX):
         return banner
     parsed = try_parse_datetime(banner[len(_SNAPSHOT_PREFIX) :])

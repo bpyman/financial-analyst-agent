@@ -675,6 +675,44 @@ def test_present_clarify_lists_humanized_candidates() -> None:
     assert presented.table is None
     assert presented.fact_card is None
     assert presented.message is None
+    assert presented.clarify_prompt == "Which metric do you mean?"
+
+
+def test_present_scope_clarify_asks_extend_or_replace() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.CLARIFY,
+        candidates=("extend", "replace"),
+        tool_traces=[],
+    )
+    presented = present_turn(result)
+    assert presented.candidates == ("Extend", "Replace")
+    assert presented.clarify_prompt == "Add to the current analysis, or start a new one?"
+
+
+def test_present_non_clarify_has_no_clarify_prompt() -> None:
+    result = TurnResult(intent=Intent.EXPLAIN, renderer=RendererKind.ESSAY, tool_traces=[])
+    assert present_turn(result).clarify_prompt is None
+
+
+@pytest.mark.parametrize(
+    ("code", "opening"),
+    [
+        ("model-analysis", "Model analysis — "),
+        ("exploratory-research", "Exploratory research — "),
+    ],
+)
+def test_present_qualitative_banner_codes_become_sentences(code: str, opening: str) -> None:
+    result = TurnResult(
+        intent=Intent.EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        tool_traces=[],
+        essay="An essay.",
+        banners=[code],
+    )
+    (banner,) = present_turn(result).banners
+    assert banner.startswith(opening)
+    assert code not in banner
 
 
 def test_metric_legend_lists_closed_catalog() -> None:

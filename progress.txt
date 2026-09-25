@@ -497,3 +497,26 @@ Files changed:
 Blockers / next:
 - 06 (qualitative, filing change, clarify) plugs into `components/answer.tsx` after the table. 07's Playwright check can find a chart with `getByRole("figure")`, the table with `getByRole("region", { name: "Answer table" })`, and the column switch with `getByRole("radio", { name: "Full" })`.
 - `sr-only` text inside a horizontal scroller needs a `relative` ancestor; otherwise it widens the page on phones.
+
+
+## 2026-09-25 — react-audience-window 06 Qualitative answers, filing changes, and clarification
+
+Task completed: `.scratch/react-audience-window/issues/06-qualitative-filing-change-and-clarify.md`
+
+Key decisions:
+- Essays, disclosure text, and multi-line trace values all go through `web/components/markdown.tsx` `SafeMarkdown`. It uses `skipHtml`, draws images as their alt text, and renders only http(s) links. A vitest test (`markdown.test.tsx`, rendered with react-dom/server) pins this. The component imports `../lib/...` relatively because vitest has no `@/` alias.
+- `[n]` markers link only when source n exists and its URL is safe; otherwise they stay as text (`lib/essay.ts`).
+- The copy stays server-side: `Presentation.clarify_prompt` (new key, pinned in `tests/test_api.py`), plus the sentences for the `model-analysis` and `exploratory-research` banner codes. Streamlit reads `clarify_prompt` in place of its hard-coded strings.
+- The clarify rule is still the server's: `turn.clarify_enabled` (latest turn plus pending clarification), with buttons also disabled while a turn runs. `lib/clarify.ts` marks the chosen candidate from the next turn's message and shows that message as the label.
+- Answer order: banners, fact card, chart, table, message, essay + sources, filing changes, clarify, evidence, traces.
+
+Files changed:
+- `src/financial_analyst_agent/presentation.py`, `app.py`; `tests/test_presentation.py`, `test_api.py`, `test_app.py`
+- `web/components/{markdown,written-answer,filing-changes,clarify}.tsx` (new), `markdown.test.tsx` (new), `answer.tsx`, `thread.tsx`, `analyst-window.tsx`, `app/globals.css`
+- `web/lib/{essay,clarify}.ts` and tests (new), `web/lib/types.ts`
+
+Blockers / next:
+- 07's Playwright check can find: filing changes by `getByRole("region", { name: "Filing changes" })` (sections are `article`s named "<section>, <kind>"); the clarify card by region "Clarify", with buttons by name (`/Net income/`); and essays by region "Analysis", "Brief", or "Summary of changes".
+- The recorded runtime has essays only for "How can AI disrupt healthcare?", the Hormuz news and research queries, and "Summarize what changed …". Its news essay has no `[n]` markers; live briefs do.
+- The recorded runtime never returns the extend/replace clarification; it was checked by rewriting the thread response in the browser.
+

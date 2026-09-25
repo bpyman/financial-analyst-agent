@@ -110,6 +110,8 @@ export interface Presentation {
   essay: string | null;
   message: string | null;
   candidates: string[];
+  /** The question a clarification asks; null unless candidates are offered. */
+  clarify_prompt: string | null;
 }
 
 export interface Turn {

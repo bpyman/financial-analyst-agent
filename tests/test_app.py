@@ -825,7 +825,7 @@ def test_render_clarify_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None
     app.render_turn_result(result)
 
     assert fake_streamlit.errors == []
-    assert fake_streamlit.infos == ["Ambiguous metric. Choose one of these names."]
+    assert fake_streamlit.infos == ["Which metric do you mean?"]
     assert "Gross profit" in fake_streamlit.buttons
     assert "Operating income" in fake_streamlit.buttons
     assert "Net income" in fake_streamlit.buttons

@@ -167,73 +167,105 @@ body {
   background-size: 200% 100%;
 }
 
-.prose-answer {
-  line-height: 1.7;
-  color: var(--fg);
-}
-.prose-answer p {
-  margin: 0.75em 0;
-}
-.prose-answer h1,
-.prose-answer h2,
-.prose-answer h3 {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 1.2em 0 0.4em;
-}
-.prose-answer h1 {
-  font-size: 1.25rem;
-}
-.prose-answer h2 {
-  font-size: 1.1rem;
-}
-.prose-answer h3 {
-  font-size: 1rem;
-}
-.prose-answer ul,
-.prose-answer ol {
-  padding-left: 1.25rem;
-  margin: 0.6em 0;
-}
-.prose-answer ul {
-  list-style: disc;
-}
-.prose-answer ol {
-  list-style: decimal;
-}
-.prose-answer li {
-  margin: 0.25em 0;
-}
-.prose-answer li::marker {
-  color: var(--subtle);
-}
-.prose-answer a {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
-}
-.prose-answer code {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.05em 0.35em;
-}
-.prose-answer blockquote {
-  border-left: 2px solid var(--border-strong);
-  padding-left: 0.9rem;
-  color: var(--muted);
-}
-.prose-answer strong {
-  font-weight: 600;
-}
-.prose-answer > :first-child {
-  margin-top: 0;
-}
-.prose-answer > :last-child {
-  margin-bottom: 0;
+/* In the components layer so a caller's colour and size utilities win. */
+@layer components {
+  .prose-answer {
+    line-height: 1.7;
+    color: var(--fg);
+  }
+  .prose-answer p {
+    margin: 0.75em 0;
+  }
+  .prose-answer h1,
+  .prose-answer h2,
+  .prose-answer h3 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 1.2em 0 0.4em;
+  }
+  .prose-answer h1 {
+    font-size: 1.25rem;
+  }
+  .prose-answer h2 {
+    font-size: 1.1rem;
+  }
+  .prose-answer h3 {
+    font-size: 1rem;
+  }
+  .prose-answer ul,
+  .prose-answer ol {
+    padding-left: 1.25rem;
+    margin: 0.6em 0;
+  }
+  .prose-answer ul {
+    list-style: disc;
+  }
+  .prose-answer ol {
+    list-style: decimal;
+  }
+  .prose-answer li {
+    margin: 0.25em 0;
+  }
+  .prose-answer li::marker {
+    color: var(--subtle);
+  }
+  .prose-answer a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+  .prose-answer code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+  }
+  .prose-answer blockquote {
+    border-left: 2px solid var(--border-strong);
+    padding-left: 0.9rem;
+    color: var(--muted);
+  }
+  .prose-answer strong {
+    font-weight: 600;
+  }
+  .prose-answer > :first-child {
+    margin-top: 0;
+  }
+  .prose-answer > :last-child {
+    margin-bottom: 0;
+  }
+
+  /* An essay's [n] marker, linked to its numbered source. */
+  .prose-answer a.cite {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    margin: 0 0.1em;
+    padding: 0 0.3em;
+    border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+    border-radius: 0.3rem;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-family: var(--font-mono);
+    font-size: 0.66em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: 0.3em;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+  }
+  .prose-answer a.cite:hover {
+    border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
+  }
 }
 
 @keyframes indeterminate {

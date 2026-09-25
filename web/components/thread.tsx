@@ -2,6 +2,7 @@
 
 import { Loader2, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { clarifyChoices, shownMessage } from "@/lib/clarify";
 import { progressLabel, type TurnState } from "@/lib/turn-state";
 import type { Turn } from "@/lib/types";
 import { Answer } from "./answer";
@@ -12,11 +13,15 @@ export function Thread({
   turns,
   turn,
   onRetry,
+  onAsk,
 }: {
   turns: Turn[];
   turn: TurnState;
   onRetry: (message: string) => void;
+  /** Sends a clarify candidate's slug as the next analyst message. */
+  onAsk: (message: string) => void;
 }) {
+  const running = turn.status === "running";
   return (
     <ol className="space-y-12 pt-8 sm:pt-10" aria-label="Conversation">
       {turns.map((item, index) => (
@@ -25,21 +30,28 @@ export function Thread({
           data-turn={index}
           className="scroll-mt-20 sm:scroll-mt-40"
         >
-          <Exchange message={item.message}>
-            <Answer presentation={item.presentation} />
+          <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message}>
+            <Answer
+              presentation={item.presentation}
+              clarify={{
+                choices: clarifyChoices(item, turns[index + 1]),
+                live: item.clarify_enabled && !running,
+                onChoose: onAsk,
+              }}
+            />
           </Exchange>
         </li>
       ))}
       {turn.status === "running" && (
         <li data-turn="pending" className="scroll-mt-20 sm:scroll-mt-40">
-          <Exchange message={turn.message} working>
+          <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message} working>
             <Working state={turn} />
           </Exchange>
         </li>
       )}
       {turn.status === "failed" && (
         <li data-turn="pending" className="scroll-mt-20 sm:scroll-mt-40">
-          <Exchange message={turn.message}>
+          <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message}>
             <Callout kind="error">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span>{turn.error}</span>
@@ -58,17 +70,22 @@ export function Thread({
 
 function Exchange({
   message,
+  sent,
   working = false,
   children,
 }: {
   message: string;
+  /** The message as sent, when the thread shows it differently (a clarify slug). */
+  sent?: string;
   working?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="animate-fade-up">
       <div className="flex justify-end">
-        <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
+        <p
+          title={sent && sent !== message ? `Sent as ${sent}` : undefined}
+          className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
           {message}
         </p>
       </div>
