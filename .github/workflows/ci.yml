@@ -24,6 +24,16 @@ jobs:
       - name: Gold
         run: uv run python -m pytest -m gold -q
 
+  # The API image a host deploys: build it, then run it and take one recorded turn.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build --tag financial-analyst-api:ci .
+      - name: Smoke test
+        run: python3 scripts/smoke_api_image.py --image financial-analyst-api:ci
+
   web:
     runs-on: ubuntu-latest
     defaults:

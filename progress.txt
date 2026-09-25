@@ -541,3 +541,24 @@ Blockers / next:
 - The suite runs in about 10 s locally. Against the hosted demo (tickets 09/10): `PLAYWRIGHT_BASE_URL=https://<deploy> npm run test:e2e`.
 - ADR 0006 cutover also wants `web/scripts/capture-portfolio.ts`; it can reuse `e2e/analyst.ts` to drive the walkthrough.
 - The API's JSON logs go to stderr, so they appear in the Playwright output as `[API]` lines; that helps when CI fails.
+
+
+## 2026-09-25 — react-audience-window 08 Containerize the analysis API
+
+Task completed: `.scratch/react-audience-window/issues/08-containerize-the-api.md`
+
+Key decisions:
+- Two-stage `Dockerfile` on `python:3.12-slim-bookworm`. uv 0.8.17 is pip-installed from PyPI rather than copied from ghcr, so PyPI is the only source the build downloads from. `uv sync --locked --no-dev`: dependencies first, then the package as a non-editable wheel. The runtime stage holds only `/app/.venv` and runs as uid 10001. It sets `HOST=0.0.0.0`, `PORT=8000`, `APP_MODE=recorded`, and `WORKDIR /app`, which the app user owns, so the thread store's `.cache/threads` is writable. The HEALTHCHECK uses Python urllib against `$PORT`.
+- `.dockerignore` is an allow-list (pyproject, lockfile, package), so new top-level folders stay out by default.
+- `scripts/smoke_api_image.py` is stdlib-only, so CI runs it with the runner's python3. `--image` runs the container on PORT=10000 (Render's default, and proof that `$PORT` is honoured), waits for Docker's health status, takes the guided "Verify a quarterly fact" turn, and checks the image contents. `--base-url` / `--proxy-token` run the same HTTP check against a deployed API, which 09/10 can reuse. `tests/test_api_image_smoke.py` loads the script by path and runs it against in-process uvicorn.
+- CI `image` job: `docker build` + smoke script.
+
+Files changed:
+- `Dockerfile`, `.dockerignore` (new), `scripts/smoke_api_image.py` (new), `tests/test_api_image_smoke.py` (new)
+- `.github/workflows/ci.yml`, `README.md`
+- ticket 08 resolved
+
+Blockers / next:
+- The image is about 980 MB unpacked, and roughly 400 MB of that is the Streamlit stack (pyarrow, pandas, streamlit, pydeck). The API never imports it. Ticket 14 (delete Streamlit) shrinks the image with no Dockerfile change.
+- For local builds in the cloud container, Docker Hub pulls hit 429. Pull `mirror.gcr.io/library/python:3.12-slim-bookworm` and tag it as `python:3.12-slim-bookworm`, then build with `--network host --build-arg HTTPS_PROXY=$HTTPS_PROXY` (predefined arg; not kept in the image history). ghcr blob downloads are forbidden by the proxy.
+- 09: `render.yaml` should point at this `Dockerfile` with `healthCheckPath: /api/health`; Render sets `PORT` itself. `API_PROXY_TOKEN` is a dashboard variable, not synced from `render.yaml`. After a deploy: `python3 scripts/smoke_api_image.py --base-url https://<render host> --proxy-token <token>`.
