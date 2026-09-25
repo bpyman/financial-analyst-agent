@@ -19,7 +19,7 @@ import {
   startThread,
   waitForTurn,
   type ThreadApi,
-} from "@/lib/thread-session";
+} from "@/lib/browser-thread";
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
 import type { Meta, RuntimeKind, ThreadView } from "@/lib/types";
 import { Composer } from "./composer";

@@ -10,7 +10,7 @@ import {
   startThread,
   waitForTurn,
   type ThreadApi,
-} from "./thread-session";
+} from "./browser-thread";
 import type { CreatedThread, RuntimeKind, ThreadView } from "./types";
 
 function view(overrides: Partial<ThreadView> = {}): ThreadView {
