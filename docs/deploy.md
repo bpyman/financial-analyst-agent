@@ -366,6 +366,10 @@ first see the button that wakes it.
 These steps come from search excerpts of Streamlit's Community Cloud docs ("Rename or
 change your app's GitHub coordinates": delete, change, redeploy; subdomains can be
 changed at any time), because docs.streamlit.io was not reachable from the build
-environment. Whether a deleted app's subdomain is free at once was not confirmed,
-which is why the fallback above exists. To run the page locally, see the branch's
-README.
+environment. To run the page locally, see the branch's README.
+
+**Done on 25 September 2026.** The steps above worked as written. The deleted app's
+subdomain was free at once, so the fallback was not needed. **Advanced settings**
+defaulted to Python 3.14; the redirect was deployed on 3.12, the old app's version.
+`DEMO_URL` is `https://financial-analyst-agent-ten.vercel.app`, and the old URL's
+**Open the new demo** button opens it.
