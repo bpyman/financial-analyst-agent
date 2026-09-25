@@ -327,13 +327,8 @@ def create_app(
 
         def run_turn() -> tuple[str, dict[str, Any]]:
             """The turn's terminal event: the thread view, or a public error."""
-            reserved = False
-            budget = SessionBudget.from_counts(
-                turns=0,
-                live_sec_requests=0,
-                max_turns=resolved.max_turns_per_thread,
-                max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
-            )
+            # The budget once its turn is reserved: saved even when the turn fails.
+            reserved: SessionBudget | None = None
             try:
                 prior = store.load(valid, ttl_seconds=resolved.thread_ttl_seconds)
                 budget = SessionBudget.from_counts(
@@ -343,7 +338,7 @@ def create_app(
                     max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
                 )
                 budget.consume_turn()
-                reserved = True
+                reserved = budget
                 bound = prior.runtime if prior is not None else None
                 run_conversation_turn(
                     valid,
@@ -365,9 +360,9 @@ def create_app(
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
                 failed = {"message": public_error_message(exc)}
-                if reserved:
+                if reserved is not None:
                     try:
-                        persist_session_budget(store, valid, budget)
+                        persist_session_budget(store, valid, reserved)
                     except Exception:
                         _LOGGER.exception("api_turn_budget_not_saved")
                 return "error", failed
