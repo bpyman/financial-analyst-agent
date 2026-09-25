@@ -20,7 +20,7 @@ export function StatusLine({
 }) {
   const RuntimeIcon = runtime === "live" ? Radio : Database;
   return (
-    <div className="border-b border-border bg-surface/95 backdrop-blur-xl supports-[backdrop-filter]:bg-surface/85 sm:sticky sm:top-14 sm:z-20">
+    <div className="border-b border-border bg-surface sm:sticky sm:top-14 sm:z-20">
       <div className="mx-auto flex max-w-6xl flex-col gap-1.5 px-4 py-2 text-xs sm:flex-row sm:items-center sm:gap-4 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
