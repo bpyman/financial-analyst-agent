@@ -102,7 +102,9 @@ def wait_for_health(base_url: str, *, timeout: float) -> None:
         time.sleep(0.5)
 
 
-def _sse_events(stream: bytes) -> list[tuple[str, dict[str, Any]]]:
+def sse_events(stream: bytes) -> list[tuple[str, dict[str, Any]]]:
+    """(event, data) pairs from a turn's server-sent events; blocks without an event
+    (keep-alive comments) are skipped."""
     events: list[tuple[str, dict[str, Any]]] = []
     for block in stream.decode().strip().split("\n\n"):
         fields = dict(line.split(": ", 1) for line in block.splitlines() if ": " in line)
@@ -138,7 +140,7 @@ def check_api(
         raise SmokeFailure(f"a new thread started on {runtime!r}, not {expected_runtime!r}")
 
     turn_path = f"/api/threads/{thread['thread_id']}/turns"
-    events = _sse_events(call("POST", turn_path, {"message": question}))
+    events = sse_events(call("POST", turn_path, {"message": question}))
     if not events:
         raise SmokeFailure("the turn stream sent no events")
     kind, data = events[-1]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import uuid
@@ -14,6 +13,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from api_server import smoke
 from financial_analyst_agent import api
 from financial_analyst_agent.api import create_app
 from financial_analyst_agent.config import AppMode, Settings
@@ -65,10 +65,7 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def _events(response: Any) -> list[tuple[str, dict[str, Any]]]:
-    events: list[tuple[str, dict[str, Any]]] = []
-    for block in response.text.strip().split("\n\n"):
-        lines = dict(line.split(": ", 1) for line in block.splitlines())
-        events.append((lines["event"], json.loads(lines["data"])))
+    events: list[tuple[str, dict[str, Any]]] = smoke.sse_events(response.content)
     return events
 
 
