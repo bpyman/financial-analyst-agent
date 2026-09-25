@@ -117,6 +117,16 @@ test("the storefront reports the deployment's runtime and asks for that runtime'
   expect((await response.json()).runtime).toEqual({ default: "recorded", locked: false });
 });
 
+test("the composer takes its message limit from the server", async ({ page }) => {
+  await page.route("**/api/meta**", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), max_message_chars: 50 } });
+  });
+  await new Analyst(page).open();
+
+  await expect(page.getByRole("textbox", { name: "Ask a question" })).toHaveAttribute("maxlength", "50");
+});
+
 test("a question sent before the storefront loads leaves the runtime to the deployment", async ({ page }) => {
   let releaseMeta = () => {};
   const metaHeld = new Promise<void>((resolve) => (releaseMeta = resolve));

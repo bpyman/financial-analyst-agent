@@ -33,6 +33,8 @@ const threadApi: ThreadApi = { createThread, getThread, deleteThread };
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
 const FALLBACK_PLACEHOLDER = "Ask about a company's latest quarterly results…";
 const UNFINISHED = "Your last question could not be completed. Please ask it again.";
+/** The composer's limit until meta brings the server's `max_message_chars`. */
+const MAX_MESSAGE_CHARS_BEFORE_META = 2000;
 
 type Notice = { kind: "info" | "error"; text: string };
 
@@ -288,7 +290,7 @@ export function AnalystWindow() {
         onSend={send}
         busy={busy}
         placeholder={meta?.example_query ?? FALLBACK_PLACEHOLDER}
-        maxChars={meta?.max_message_chars ?? 2000}
+        maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
         inputRef={inputRef}
       />
     </div>
