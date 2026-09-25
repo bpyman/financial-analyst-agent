@@ -677,7 +677,22 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
         else _TABLE_KEYS
     )
     keys = [key for key in allowed if any(not _cell_empty(getattr(row, key)) for row in rows)]
-    headers = tuple(format_field_name(key) for key in keys)
+    metrics = {row.metric for row in rows if row.metric}
+    single_metric = len(metrics) == 1
+    value_header = _humanize_field(next(iter(metrics))) if single_metric else None
+    if single_metric:
+        keys = [key for key in keys if key != "metric"]
+        if "value" not in keys:
+            insert_at = 0
+            for marker in ("ticker", "company_name", "rank"):
+                if marker in keys:
+                    insert_at = keys.index(marker) + 1
+                    break
+            keys.insert(insert_at, "value")
+    headers = tuple(
+        value_header if key == "value" and value_header else format_field_name(key)
+        for key in keys
+    )
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
     numbers = tuple(tuple(_numeric_cell(row, key) for key in keys) for row in rows)
     return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered, numbers=numbers)

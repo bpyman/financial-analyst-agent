@@ -235,7 +235,7 @@ def _patch_main_shell(
             demo_live_sec=False,
             thread_ttl_seconds=7200,
             max_turns_per_thread=25,
-            max_live_sec_requests_per_thread=12,
+            max_live_sec_requests_per_thread=25,
             snapshot_stale_after_days=30,
         ),
     )
@@ -895,12 +895,16 @@ def test_render_table_passes_metric_values_as_numbers_for_sorting(
     )
 
     records = fake_streamlit.dataframes[0][0][0]
-    values = [row["Value"] for row in records]
+    values = [row["Research and development"] for row in records]
     assert all(isinstance(value, (int, float)) for value in values)
     assert sorted(values, reverse=True) == [
         11_730_000_000.0,
         8_920_000_000.0,
         2_530_000_000.0,
+    ]
+    assert "Value" not in records[0]
+    assert "Research and development" in [
+        kwargs.get("label") for _args, kwargs, _marker in fake_streamlit.number_columns
     ]
 
 
@@ -1239,6 +1243,7 @@ def test_rank_bar_chart_is_horizontal_with_period_tooltip(
     # Streamlit/Vega-Lite draws this sort list top-to-bottom.
     assert bar["encoding"]["y"]["sort"] == ["#1 AAPL", "#2 MSFT", "#3 GOOG"]
     assert bar["encoding"]["x"]["axis"]["labelExpr"] == app._USD_TICK
+    assert bar["encoding"]["x"]["title"] == "Research and development"
     tooltip_titles = [
         item.get("title") or item.get("field") for item in bar["encoding"]["tooltip"]
     ]

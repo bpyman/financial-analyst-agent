@@ -272,39 +272,45 @@ def _period_tick(raw: object) -> str:
         return text
 
 
+def _metric_axis_title(metric: str) -> str | None:
+    return format_field_name(metric) if metric else None
+
+
 def _chart_y(metric: str) -> alt.Y:
+    title = _metric_axis_title(metric)
     kind = chart_value_kind(metric)
     if kind == "multiple":
-        return alt.Y("Value:Q", title=None, axis=alt.Axis(format=".1f"))
+        return alt.Y("Value:Q", title=title, axis=alt.Axis(format=".1f"))
     if kind == "percent":
         return alt.Y(
             "Value:Q",
-            title=None,
+            title=title,
             axis=alt.Axis(format=".1%"),
             scale=alt.Scale(zero=True),
         )
     return alt.Y(
         "Value:Q",
-        title=None,
+        title=title,
         axis=alt.Axis(labelExpr=_USD_TICK),
         scale=alt.Scale(zero=True),
     )
 
 
 def _chart_x_value(metric: str) -> alt.X:
+    title = _metric_axis_title(metric)
     kind = chart_value_kind(metric)
     if kind == "multiple":
-        return alt.X("Value:Q", title=None, axis=alt.Axis(format=".1f"))
+        return alt.X("Value:Q", title=title, axis=alt.Axis(format=".1f"))
     if kind == "percent":
         return alt.X(
             "Value:Q",
-            title=None,
+            title=title,
             axis=alt.Axis(format=".1%"),
             scale=alt.Scale(zero=True),
         )
     return alt.X(
         "Value:Q",
-        title=None,
+        title=title,
         axis=alt.Axis(labelExpr=_USD_TICK),
         scale=alt.Scale(zero=True),
     )
@@ -350,7 +356,9 @@ def _render_chart(chart: object) -> None:
                 tooltip=[
                     "Period",
                     "Series",
-                    alt.Tooltip("Amount:N", title="Amount"),
+                    alt.Tooltip(
+                        "Amount:N", title=_metric_axis_title(metric) or "Amount"
+                    ),
                 ],
             )
         )
@@ -365,9 +373,10 @@ def _render_chart(chart: object) -> None:
         frame["Label"] = frame["Amount"]
     if "Missing" not in frame.columns:
         frame["Missing"] = False
+    amount_title = _metric_axis_title(metric) or "Amount"
     tooltips = [
         "Company",
-        alt.Tooltip("Amount:N", title="Amount"),
+        alt.Tooltip("Amount:N", title=amount_title),
         alt.Tooltip("Label:N", title="Note"),
     ]
     if "Period" in frame.columns:
@@ -523,10 +532,13 @@ def _render_table(table: DisplayTable) -> None:
                 continue
             key = table.keys[col_index]
             if key == "rank":
-                column_config[header] = st.column_config.NumberColumn(format="%d")
+                column_config[header] = st.column_config.NumberColumn(
+                    label=header, format="%d"
+                )
             elif key == "value":
                 column_config[header] = st.column_config.NumberColumn(
-                    format=_value_column_format(table)
+                    label=header,
+                    format=_value_column_format(table),
                 )
     if column_config:
         st.dataframe(records, width="stretch", column_config=column_config)

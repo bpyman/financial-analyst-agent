@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     allow_public_tavily: bool = False
     thread_ttl_seconds: int = 7200
     max_turns_per_thread: int = 25
-    max_live_sec_requests_per_thread: int = 12
+    max_live_sec_requests_per_thread: int = 25
     snapshot_stale_after_days: int = 30
 
     model_config = SettingsConfigDict(

@@ -369,7 +369,7 @@ def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
         "Rank",
         "Company",
         "Ticker",
-        "Value",
+        "Market cap",
     )
     assert "cik" not in table.keys
     assert "metric" not in table.keys
@@ -424,6 +424,9 @@ def test_present_compare_formats_percent_and_keeps_reason() -> None:
     assert table.rows[0][reason_index] == "missing_fact (Missing fact)"
     assert table.rows[0][value_index] == ""
     assert table.rows[1][value_index] == "36.1%"
+    assert table.headers[value_index] == "Operating margin"
+    assert "metric" not in table.keys
+    assert "Value" not in table.headers
     assert presented.traces[0].header == (
         "Compared Operating margin · Microsoft, Google in SEC filings"
     )
@@ -737,6 +740,42 @@ def test_mixed_metrics_keep_the_table_without_a_misleading_chart(across_periods:
     assert presented.table is not None
     assert len(presented.table.rows) == 4
     assert presented.chart is None
+    assert "metric" in presented.table.keys
+    assert presented.table.headers[presented.table.keys.index("value")] == "Value"
+
+
+def test_lookup_table_names_value_column_after_the_metric_when_amounts_are_missing() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="net_income",
+                end_date=date(2026, 3, 31),
+                reason="missing_fact",
+            ),
+            TableRow(
+                company_name="Microsoft Corporation",
+                ticker="MSFT",
+                cik="0000789019",
+                metric="net_income",
+                end_date=date(2025, 12, 31),
+                reason="missing_fact",
+            ),
+        ],
+    )
+
+    table = present_turn(result).table
+
+    assert table is not None
+    assert "value" in table.keys
+    assert table.headers[table.keys.index("value")] == "Net income"
+    assert "metric" not in table.keys
+    assert "Value" not in table.headers
 
 
 def test_single_metric_trend_preserves_each_period_value() -> None:
@@ -1124,6 +1163,8 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
         "end_date",
         "reason",
     )
+    assert table.headers[table.keys.index("value")] == "Research and development"
+    assert "Value" not in table.headers
     assert "accession_number" not in table.keys
     assert "concept" not in table.keys
     assert "source_url" not in table.keys
