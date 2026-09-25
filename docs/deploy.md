@@ -19,6 +19,48 @@ secret. `tests/test_deploy_config.py` pins that configuration.
 The Streamlit Community Cloud app is still the public URL until cutover (ticket 11
 onward); its notes are [at the end](#legacy-streamlit-community-cloud).
 
+## Going live: the wizard
+
+```text
+scripts/deploy_wizard.sh           # walk through going live, stage by stage
+scripts/deploy_wizard.sh --check   # re-verify the saved deploy, no prompts
+```
+
+The account steps only a person can do are in `scripts/deploy_wizard.sh`. It runs on
+macOS, Linux, or WSL and needs `bash` and `curl`. Python 3.8+ runs the guided-story
+checks, and npm runs the browser check. `gh` is optional. Its eight stages:
+
+1. **Before you start**: checks the tools, and that `master` has `render.yaml`,
+   the `Dockerfile`, and `web/`. Both hosts build `master`, so the parity and deploy
+   PRs must be merged first. If the Render CLI is installed, it runs
+   `render blueprints validate`.
+2. **Proxy token**: generates `API_PROXY_TOKEN` (`openssl rand -hex 32`). Re-runs
+   keep the saved token, so Render and Vercel stay in step.
+3. **Render**: New → Blueprint → the repo → `master`, and the token pasted into the
+   field the Blueprint asks for. The wizard then waits for `/api/health`, checks that
+   `/api/meta` without the token answers 401, and takes a guided story with the token.
+4. **Render Auto-Deploy**: confirms that Settings → Auto-Deploy reads "After CI
+   Checks Pass". If the free plan does not offer it, the wizard captures the
+   deploy hook and sets the `RENDER_DEPLOY_HOOK_URL` secret with `gh`
+   ([fallback](#fallback-deploy-hook-from-ci)). You then set
+   `autoDeployTrigger: off` yourself.
+5. **Vercel**: imports the repo with Root Directory `web`, then checks that the
+   production `*.vercel.app` domain loads.
+6. **Vercel variables**: sets `API_ORIGIN` and `API_PROXY_TOKEN` (Sensitive) for
+   Production and Preview, and redeploys. It then checks the health route and a
+   guided story through the proxy.
+7. **Proxy check**: runs every check again, as for `--check`.
+8. **Browser check**: runs `PLAYWRIGHT_BASE_URL=<vercel url> npm run test:e2e`.
+
+Values go to `.env.deploy`, which is gitignored: the token, both URLs, and the hook
+URL if one is used. They never go to `.env`, because the API reads `.env`, and a token
+there would make the local API refuse the local window. A stage whose result already
+checks out says so and moves on, so re-running after a partial run is safe.
+`--check` exits 1 if any check fails.
+
+Where the wizard names a dashboard control it could not confirm, it says what to
+look for instead. See [what was checked](#what-was-checked-against-current-docs).
+
 ## Environment variables
 
 | Service | Variable | Value | Where it is set |
@@ -57,8 +99,8 @@ on the public demo.
 
 Create it once: Render dashboard → **New** → **Blueprint** → connect the GitHub repo →
 pick `master`. Render reads `render.yaml`, asks for `API_PROXY_TOKEN`, and creates
-`financial-analyst-api`. Later edits to `render.yaml` sync on push. The deploy wizard
-(ticket 10) walks through each click.
+`financial-analyst-api`. Later edits to `render.yaml` sync on push.
+[The wizard](#going-live-the-wizard) walks through each click.
 
 ### Deploys wait for CI
 
@@ -161,6 +203,19 @@ sources:
   first deployment. `web/vercel.json` passes the config validator in Vercel CLI 60.0.1,
   but that validator does not check `fluid`, `regions`, or `ignoreCommand` at the top
   level.
+- **Dashboard steps in the wizard** come from search excerpts of Render's Blueprint
+  and deploy docs and Vercel's monorepo, environment-variable, and
+  deployment-protection docs, not from the dashboards themselves. These are: New →
+  Blueprint → Connect → Deploy Blueprint; the `sync: false` prompt on first creation;
+  Settings → Auto-Deploy and Deploy Hook; Import → Root Directory → Edit; Settings →
+  Environment Variables with the Sensitive switch; Redeploy. Each step the wizard
+  could not confirm also says where else to look.
+- **Deployment Protection**: Standard Protection is on by default and puts deployment
+  URLs behind a Vercel login. Sources disagree on whether the project's own
+  `<name>.vercel.app` production domain stays public: a July 2025 changelog says
+  Standard Protection now covers "all except production custom domains". If the
+  window answers 401 or 403, the wizard names the Deployment Protection setting to
+  change.
 
 ## Legacy: Streamlit Community Cloud
 

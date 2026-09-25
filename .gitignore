@@ -25,6 +25,8 @@ htmlcov/
 # Environment and secrets
 .env
 .env.local
+# Values the deploy wizard saves (scripts/deploy_wizard.sh), including the proxy token
+.env.deploy
 
 # Runtime cache (SEC downloads, etc.)
 .cache/

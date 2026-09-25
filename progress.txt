@@ -584,3 +584,27 @@ Files changed:
 Blockers / next:
 - render.com and vercel.com are blocked by the container proxy. Blueprint fields come from Render's `render-oss/skills` reference (raw.githubusercontent.com works); `docs/deploy.md` says what was and was not verified. The Vercel CLI's bundled config validator (`npm pack vercel`, chunks/config-validator.mjs) does not check top-level keys, so it cannot catch typos there.
 - 10 (wizard): run `render blueprints validate` or read the Blueprint sync result. Check that the service's Auto-Deploy reads "After CI Checks Pass"; if the free plan lacks it, set the repo secret and change `autoDeployTrigger` to `off`. In Vercel, set Root Directory `web` and both env vars for Production and Preview. Verify with `scripts/smoke_api_image.py --base-url` on the Render URL (with the token) and on the Vercel URL (without it), and check that `/api/meta` on Render without the token returns 401.
+
+
+## 2026-09-25 — react-audience-window 10 Deploy wizard
+
+Task completed: `.scratch/react-audience-window/issues/10-deploy-wizard.md`
+
+Key decisions:
+- `scripts/deploy_wizard.sh` comes from the wizard skill's template. The library above the STAGES marker is byte-identical to the template, so edit only below it. It has eight stages: preflight (tools, deploy files on `origin/master`, optional `render blueprints validate`), proxy token, Render Blueprint, Render Auto-Deploy (checksPass, or the deploy-hook fallback via `gh secret set`), Vercel import (Root Directory `web`), Vercel variables plus Redeploy, the proxy check, and the browser check (`PLAYWRIGHT_BASE_URL=... npm run test:e2e`).
+- Values are saved to `.env.deploy` (gitignored, overridable with `DEPLOY_ENV_FILE`), never `.env`: pydantic settings read `.env`, and a token there would make the local API refuse the local window.
+- Re-runs are safe. The saved token is kept, and each stage first checks its result and says "nothing to do here" when it passes. Stage 6 tries the proxy once quietly, so a first run does not wait out the wake timeout on a 502.
+- The checks are shared by the stages and by `--check` (no prompts, exit 1 on failure): Render health, Render `/api/meta` without the token → 401, the guided story on Render with the token, health through the Vercel proxy, and the guided story through the proxy (`scripts/smoke_api_image.py`, stdlib, Python 3.8+). Failures print fix hints in wizard mode.
+- It is portable to macOS bash 3.2 and WSL: no associative arrays or `mapfile`, clipboard through pbcopy / clip.exe / wl-copy / xclip, and secrets are shown only if you ask. Without `gh`, the fallback secret lands on the closing to-do list with the github.com path.
+- Dashboard UI steps come from WebSearch excerpts, because render.com and vercel.com are blocked. Every unverified control has an "if you don't see X, look for Y" note.
+
+Files changed:
+- `scripts/deploy_wizard.sh` (new, executable), `tests/test_deploy_wizard.py` (new)
+- `.gitignore` (`.env.deploy`), `docs/deploy.md` (wizard section, what was checked), `README.md`
+- ticket 10 resolved
+
+Blockers / next:
+- Ticket 11 (ready-for-human): Blake runs `scripts/deploy_wizard.sh` after PRs 1 and 2 merge into `master`. Its preflight warns until then.
+- It was verified with `bash -n`, shellcheck 0.11 (`uvx --from shellcheck-py shellcheck`, clean), pytest (`--help` and `--check` against in-process stand-ins), and a pty-driven run of the fresh and re-run paths against in-process APIs. It was not run against the real dashboards or on macOS bash 3.2.
+- Open question: whether Vercel Standard Protection gates `<name>.vercel.app` (the July 2025 changelog says "all except production custom domains"). The wizard's 401/403 hint points to Settings → Deployment Protection.
+- The template's `_clear` exits the script under `TERM=dumb`, because `tput clear` fails under `set -e`. Real terminals are unaffected. Fix it in the skill template, not here.
