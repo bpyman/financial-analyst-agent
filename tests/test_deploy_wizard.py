@@ -55,13 +55,16 @@ def open_api(tmp_path: Path) -> Iterator[str]:
     yield from _api(tmp_path, "open", token="", public_demo=False)
 
 
-def _run(*args: str, env_file: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, env_file: Path | None = None, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = {
         key: value
         for key, value in os.environ.items()
-        if key not in {"API_PROXY_TOKEN", "RENDER_API_URL", "VERCEL_URL"}
+        if key not in {"API_PROXY_TOKEN", "RENDER_API_URL", "VERCEL_URL", "SMOKE_PROXY_TOKEN"}
     }
     env["WAKE_SECONDS"] = "5"
+    env.update(extra_env or {})
     if env_file is not None:
         env["DEPLOY_ENV_FILE"] = str(env_file)
     return subprocess.run(
@@ -183,3 +186,27 @@ def test_check_fails_when_the_window_cannot_reach_the_api(tmp_path: Path, render
 
     assert result.returncode == 1
     assert "✗ health check through the Vercel proxy" in result.stdout
+
+
+def test_check_passes_the_token_to_the_smoke_script_in_the_environment() -> None:
+    """On the command line, the token would show in ``ps`` while the story runs."""
+    stages = WIZARD.read_text(encoding="utf-8").split("# STAGES", 1)[1]
+
+    assert "--proxy-token" not in stages
+    assert 'SMOKE_PROXY_TOKEN="${2:-}"' in stages
+
+
+def test_check_sends_no_token_through_the_proxy_even_if_one_is_exported(
+    tmp_path: Path, render_api: str
+) -> None:
+    """A token in the shell must not stand in for the one the Vercel proxy adds."""
+    env_file = _saved(
+        tmp_path, RENDER_API_URL=render_api, VERCEL_URL=render_api, API_PROXY_TOKEN=TOKEN
+    )
+
+    result = _run("--check", env_file=env_file, extra_env={"SMOKE_PROXY_TOKEN": TOKEN})
+
+    assert result.returncode == 1
+    assert "✓ guided story on Render with the saved token" in result.stdout
+    assert "✗ guided story through the Vercel proxy" in result.stdout
+    assert "401" in result.stdout

@@ -359,11 +359,12 @@ wait_healthy() {
   return 1
 }
 
-# smoke BASE [TOKEN] — take the "Verify a quarterly fact" guided story.
+# smoke BASE [TOKEN] — take the "Verify a quarterly fact" guided story. The
+# token goes in the environment, not on the command line where ps shows it.
+# Without one, SMOKE_PROXY_TOKEN is set empty, so a value exported in your shell
+# cannot stand in for the one the Vercel proxy should add.
 smoke() {
-  local args=("$SMOKE" --base-url "$1" --timeout 180)
-  if [[ -n "${2:-}" ]]; then args+=(--proxy-token "$2"); fi
-  SMOKE_OUT=$("$PYTHON" "${args[@]}" 2>&1)
+  SMOKE_OUT=$(SMOKE_PROXY_TOKEN="${2:-}" "$PYTHON" "$SMOKE" --base-url "$1" --timeout 180 2>&1)
 }
 
 # check LABEL FN — run one check, print ✓ or ✗ with its detail, count failures.

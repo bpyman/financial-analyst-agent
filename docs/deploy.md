@@ -158,7 +158,7 @@ the same commit.
 # the API, directly: health is open, everything else needs the token
 curl -sS https://<render service>.onrender.com/api/health
 curl -sS -o /dev/null -w "%{http_code}\n" https://<render service>.onrender.com/api/meta   # 401
-python3 scripts/smoke_api_image.py --base-url https://<render service>.onrender.com --proxy-token <token>
+SMOKE_PROXY_TOKEN=<token> python3 scripts/smoke_api_image.py --base-url https://<render service>.onrender.com
 
 # through the window's proxy (no token: the proxy adds it)
 curl -sS https://<project>.vercel.app/api/health
@@ -167,6 +167,9 @@ python3 scripts/smoke_api_image.py --base-url https://<project>.vercel.app
 # the browser check against the hosted window
 cd web && PLAYWRIGHT_BASE_URL=https://<project>.vercel.app npm run test:e2e
 ```
+
+The smoke script reads the token from `SMOKE_PROXY_TOKEN`, so it stays out of the
+process list; `--proxy-token <token>` also works and wins when both are given.
 
 The first call after 15 idle minutes waits about a minute while Render wakes the
 service. The window says "Waking the analysis service…" in the meantime.

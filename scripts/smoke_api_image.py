@@ -6,17 +6,24 @@ back a quarterly fact card.
 
     python3 scripts/smoke_api_image.py --image financial-analyst-api:ci
     python3 scripts/smoke_api_image.py --base-url http://127.0.0.1:8000
+    SMOKE_PROXY_TOKEN=... python3 scripts/smoke_api_image.py --base-url https://<api host>
 
 ``--image`` runs the image the way a host would (``$PORT`` set, no ``APP_MODE``),
 waits for Docker's own health check, runs the HTTP checks, and confirms the
 image runs as a non-root user and holds no source tree or dev tooling. It uses
 the standard library only, so CI can run it without installing the project.
+
+The proxy token for an API behind the web proxy comes from ``--proxy-token`` or,
+when that is absent, from ``$SMOKE_PROXY_TOKEN``. Scripts pass it in the
+environment, since a command-line argument is visible to anyone who can list
+processes.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +34,7 @@ from typing import Any
 
 STORY = "Verify a quarterly fact"
 PROXY_TOKEN_HEADER = "X-Proxy-Token"
+PROXY_TOKEN_ENV = "SMOKE_PROXY_TOKEN"
 # The host sets $PORT; Render's default is 10000. Not 8000, so the check proves
 # the image listens on $PORT rather than on a hard-coded port.
 CONTAINER_PORT = 10000
@@ -206,14 +214,20 @@ def main(argv: list[str] | None = None) -> int:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--image", help="run this image and check it")
     target.add_argument("--base-url", help="check an API that is already running")
-    parser.add_argument("--proxy-token", help="X-Proxy-Token for an API behind the web proxy")
+    parser.add_argument(
+        "--proxy-token",
+        help=f"X-Proxy-Token for an API behind the web proxy (default: ${PROXY_TOKEN_ENV})",
+    )
     parser.add_argument("--timeout", type=float, default=180)
     args = parser.parse_args(argv)
+    proxy_token = args.proxy_token
+    if proxy_token is None:
+        proxy_token = os.environ.get(PROXY_TOKEN_ENV) or None
     try:
         if args.image:
             report = check_image(args.image, timeout=args.timeout)
         else:
-            report = check_api(args.base_url, timeout=args.timeout, proxy_token=args.proxy_token)
+            report = check_api(args.base_url, timeout=args.timeout, proxy_token=proxy_token)
     except SmokeFailure as exc:
         print(f"smoke check failed: {exc}", file=sys.stderr)
         return 1
