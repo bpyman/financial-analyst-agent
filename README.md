@@ -120,7 +120,7 @@ uv run python -m pytest tests/integration/test_live_sec_lookup.py -m network
 uv run python -m pytest tests/integration/test_live_tavily_news.py -m network
 ```
 
-The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** fixture cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
+The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** recorded-runtime cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
 
 ```text
 uv run python -m financial_analyst_agent.evaluation

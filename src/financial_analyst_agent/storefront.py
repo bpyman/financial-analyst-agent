@@ -5,13 +5,6 @@ No UI framework imports here. The HTTP seam serves this text to the window as is
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from financial_analyst_agent.domain.errors import (
-    ConfigurationError,
-    RuntimeMismatchError,
-    SessionQuotaError,
-)
 from financial_analyst_agent.runtime import RECORDED_FILING_NEWER, RECORDED_FILING_OLDER
 
 EXAMPLE_QUERY = "What was Google's net income based on their latest quarterly report?"
@@ -34,7 +27,6 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
         f"{RECORDED_FILING_OLDER} and {RECORDED_FILING_NEWER}?",
     ),
 )
-PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
 CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Look up quarterly 10-Q financial facts or market cap for any "
@@ -76,13 +68,3 @@ RECORDED_BANNER = (
 LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
 
-
-def public_error_message(exc: BaseException) -> str:
-    if isinstance(exc, (ConfigurationError, SessionQuotaError, RuntimeMismatchError)):
-        return str(exc)
-    return PUBLIC_FAILURE_MESSAGE
-
-
-def thread_store_root() -> Path:
-    """Durable local root for conversation threads (no database server)."""
-    return Path(".cache") / "threads"

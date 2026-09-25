@@ -6,7 +6,7 @@ An evidence-first financial research agent: it answers from SEC filings, and the
 
 A planner proposes a typed analysis spec. Deterministic code resolves identity, picks the standalone 10-Q fact, does the arithmetic, and renders the table. Follow-ups patch the spec instead of restarting. Click any value to inspect the exact Decimal, CIK, concept, accession, and filing URL. Compare MD&A and Risk Factors between two accessions and you get a paragraph diff the model did not write.
 
-Try the guided demo (recorded runtime, no keys): HOSTED_DEMO_URL <!-- ticket 11 fills in the *.vercel.app link -->
+Try the guided stories (recorded runtime, no keys): HOSTED_DEMO_URL <!-- ticket 11 fills in the *.vercel.app link -->
 Repo: https://github.com/bpyman/financial-analyst-agent
 
 ## Visuals

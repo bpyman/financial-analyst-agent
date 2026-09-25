@@ -30,7 +30,11 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from financial_analyst_agent.config import Settings, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
-from financial_analyst_agent.domain.errors import RuntimeMismatchError
+from financial_analyst_agent.domain.errors import (
+    ConfigurationError,
+    RuntimeMismatchError,
+    SessionQuotaError,
+)
 from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
 from financial_analyst_agent.ranking import SnapshotRanking
@@ -54,13 +58,12 @@ from financial_analyst_agent.storefront import (
     LIVE_RUNTIME_CAPTION,
     LIVE_RUNTIME_LOCKED_NOTICE,
     RECORDED_BANNER,
-    public_error_message,
-    thread_store_root,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
 from financial_analyst_agent.turn import RuntimeKind, TurnResult
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
+PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
 MAX_MESSAGE_CHARS = 2000
 TURN_IN_FLIGHT_MESSAGE = "A turn is already running."
 _SSE_HEADERS = {
@@ -69,6 +72,18 @@ _SSE_HEADERS = {
 }
 PROXY_TOKEN_HEADER = "x-proxy-token"
 HEALTH_PATH = "/api/health"
+
+
+def public_error_message(exc: BaseException) -> str:
+    """What a visitor may read about a failed turn: our own errors verbatim, nothing else."""
+    if isinstance(exc, (ConfigurationError, SessionQuotaError, RuntimeMismatchError)):
+        return str(exc)
+    return PUBLIC_FAILURE_MESSAGE
+
+
+def thread_store_root() -> Path:
+    """Durable local root for conversation threads (no database server)."""
+    return Path(".cache") / "threads"
 
 
 class ProxyTokenGuard:

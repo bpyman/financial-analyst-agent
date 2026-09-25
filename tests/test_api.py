@@ -16,16 +16,12 @@ from fastapi.testclient import TestClient
 
 from api_server import smoke
 from financial_analyst_agent import api
-from financial_analyst_agent.api import create_app
+from financial_analyst_agent.api import PUBLIC_FAILURE_MESSAGE, create_app
 from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.contracts import Runtime, RuntimeKind
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.runtime import recorded_runtime, resolve_runtime_kind
-from financial_analyst_agent.storefront import (
-    EXAMPLE_QUERY,
-    GUIDED_STORIES,
-    PUBLIC_FAILURE_MESSAGE,
-)
+from financial_analyst_agent.storefront import EXAMPLE_QUERY, GUIDED_STORIES
 from financial_analyst_agent.thread_store import LocalThreadStore
 
 # Keys the web client reads (web/lib/types.ts). Renaming one is a client break.
