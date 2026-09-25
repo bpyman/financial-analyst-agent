@@ -108,6 +108,15 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
   await expect(analyst.conversation()).toBeHidden();
 });
 
+test("the storefront reports the deployment's runtime and asks for that runtime's snapshot", async ({ page }) => {
+  const asked = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/meta");
+  await new Analyst(page).open();
+  const response = await asked;
+
+  expect(new URL(response.url()).searchParams.get("runtime")).toBe("recorded");
+  expect((await response.json()).runtime).toEqual({ default: "recorded", locked: false });
+});
+
 test("a question sent before the storefront loads leaves the runtime to the deployment", async ({ page }) => {
   let releaseMeta = () => {};
   const metaHeld = new Promise<void>((resolve) => (releaseMeta = resolve));

@@ -68,9 +68,8 @@ export function AnalystWindow() {
     () => null,
   );
 
-  const runtime: RuntimeKind =
-    view?.runtime ?? chosenRuntime ?? (meta && !meta.recorded.default ? "live" : "recorded");
-  const locked = meta?.recorded.locked ?? false;
+  const runtime: RuntimeKind = view?.runtime ?? chosenRuntime ?? meta?.runtime.default ?? "recorded";
+  const locked = meta?.runtime.locked ?? false;
   const busy = turn.status === "running" || switching;
 
   // Wake on visit, then resume the stored thread. A reload mid-turn finds the
@@ -141,7 +140,7 @@ export function AnalystWindow() {
   useEffect(() => {
     let cancelled = false;
     const waking = window.setTimeout(() => setMetaWaking(true), WAKE_AFTER_MS);
-    getMeta(runtime === "recorded")
+    getMeta(runtime)
       .then((loaded) => {
         if (cancelled) return;
         setMeta(loaded);

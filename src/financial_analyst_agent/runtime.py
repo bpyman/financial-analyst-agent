@@ -317,14 +317,21 @@ def live_runtime(
     )
 
 
+def runtime_locked(settings: Settings | None = None) -> bool:
+    """Whether this deployment serves only the recorded runtime.
+
+    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked.
+    """
+    resolved = settings or get_settings()
+    return bool(resolved.public_demo) and not resolved.demo_live_sec
+
+
 def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:
     """The runtime this deployment serves when ``kind`` is asked for.
 
-    A locked public demo (``PUBLIC_DEMO`` on, ``DEMO_LIVE_SEC`` off) serves recorded
-    for every request.
+    A locked deployment (see ``runtime_locked``) serves recorded for every request.
     """
-    resolved = settings or get_settings()
-    if resolved.public_demo and not resolved.demo_live_sec:
+    if runtime_locked(settings):
         return RuntimeKind.RECORDED
     return kind
 

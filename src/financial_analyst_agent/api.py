@@ -23,12 +23,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from financial_analyst_agent.config import AppMode, Settings, get_settings
+from financial_analyst_agent.config import Settings, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import RuntimeMismatchError
 from financial_analyst_agent.observability import configure_logging
@@ -39,6 +39,7 @@ from financial_analyst_agent.runtime import (
     default_runtime_kind,
     resolve_runtime_kind,
     runtime_for,
+    runtime_locked,
 )
 from financial_analyst_agent.session import (
     SessionBudget,
@@ -152,15 +153,9 @@ def _valid_thread_id(thread_id: str) -> str:
     return str(parsed)
 
 
-def recorded_mode(settings: Settings) -> tuple[bool, bool]:
-    """(default recorded, switch locked) for this deployment."""
-    locked = bool(settings.public_demo) and not settings.demo_live_sec
-    return settings.app_mode is AppMode.RECORDED or locked, locked
-
-
 @lru_cache(maxsize=2)
-def _snapshot_as_of(recorded: bool) -> str:
-    path = FIXTURE_UNIVERSE_SNAPSHOT_PATH if recorded else None
+def _snapshot_as_of(kind: RuntimeKind) -> str:
+    path = FIXTURE_UNIVERSE_SNAPSHOT_PATH if kind is RuntimeKind.RECORDED else None
     return SnapshotRanking.from_path(path).snapshot_as_of()
 
 
@@ -252,15 +247,15 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/api/meta")
-    def meta(recorded: bool | None = Query(default=None)) -> dict[str, Any]:
-        default_recorded, locked = recorded_mode(resolved)
-        use_recorded = locked or (default_recorded if recorded is None else recorded)
+    def meta(runtime: RuntimeKind | None = None) -> dict[str, Any]:
+        """Storefront copy; ``runtime`` picks whose snapshot banner to report."""
+        default = default_runtime_kind(resolved)
         banner, stale = snapshot_status(
-            _snapshot_as_of(use_recorded),
+            _snapshot_as_of(resolve_runtime_kind(runtime or default, resolved)),
             stale_after_days=resolved.snapshot_stale_after_days,
         )
         return {
-            "recorded": {"default": default_recorded, "locked": locked},
+            "runtime": {"default": default.value, "locked": runtime_locked(resolved)},
             "runtime_copy": {
                 "recorded": RECORDED_BANNER,
                 "live": LIVE_RUNTIME_CAPTION,

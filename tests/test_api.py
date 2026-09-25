@@ -97,7 +97,7 @@ def _ask(client: TestClient, thread_id: str, message: str) -> dict[str, Any]:
 
 def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> None:
     meta = client.get("/api/meta").json()
-    assert meta["recorded"] == {"default": True, "locked": False}
+    assert meta["runtime"] == {"default": "recorded", "locked": False}
     assert [story["label"] for story in meta["guided_stories"]] == [
         label for label, _ in GUIDED_STORIES
     ]
@@ -108,12 +108,19 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
     assert meta["runtime_copy"]["locked"] == "Live runtime is off on the public demo"
 
 
-def test_public_demo_locks_recorded_mode(tmp_path: Path) -> None:
+def test_public_demo_locks_the_runtime_to_recorded(tmp_path: Path) -> None:
     app = create_app(
         _settings(app_mode=AppMode.LIVE, public_demo=True), store_root=tmp_path
     )
-    meta = TestClient(app).get("/api/meta?recorded=false").json()
-    assert meta["recorded"] == {"default": True, "locked": True}
+    meta = TestClient(app).get("/api/meta?runtime=live").json()
+    assert meta["runtime"] == {"default": "recorded", "locked": True}
+
+
+def test_meta_defaults_to_the_live_runtime_when_app_mode_says_so(tmp_path: Path) -> None:
+    client = TestClient(create_app(_settings(app_mode=AppMode.LIVE), store_root=tmp_path))
+    assert client.get("/api/meta").json()["runtime"] == {"default": "live", "locked": False}
+    assert client.get("/api/meta?runtime=recorded").status_code == 200
+    assert client.get("/api/meta?runtime=true").status_code == 422
 
 
 def test_unknown_thread_is_empty_and_malformed_id_is_404(client: TestClient) -> None:
