@@ -10,7 +10,7 @@ from financial_analyst_agent.news import TavilyNewsSearch
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import DemoCompleter, FixtureEssayCompleter
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import Intent, RendererKind, Runtime, RuntimeKind, run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
 ALPHABET_CIK = "0001652044"
@@ -31,6 +31,7 @@ def test_run_turn_live_sec_lookup_google_net_income() -> None:
             ranking=SnapshotRanking.from_path(),
             news=TavilyNewsSearch(settings),
             essay=FixtureEssayCompleter(),
+            kind=RuntimeKind.LIVE,
         ),
     )
 

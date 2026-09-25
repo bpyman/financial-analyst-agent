@@ -32,7 +32,7 @@ PRESENTATION_KEYS = {
 
 
 def _settings(**overrides: Any) -> Settings:
-    values: dict[str, Any] = {"app_mode": AppMode.FIXTURE, "_env_file": None}
+    values: dict[str, Any] = {"app_mode": AppMode.RECORDED, "_env_file": None}
     values.update(overrides)
     return Settings(**values)
 

@@ -16,7 +16,7 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 ## Try it
 
-Hosted demo (guided fixture data, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
+Hosted demo (recorded runtime, no keys): [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app). Deploy notes: [`docs/deploy.md`](docs/deploy.md).
 
 ![One-click four-quarter comparison, then inspect the exact 10-Q fact](docs/portfolio/images/demo-walkthrough.gif)
 
@@ -44,13 +44,13 @@ macOS / Linux:
 cp .env.example .env
 ```
 
-Set `APP_MODE=fixture` in `.env`, then:
+Set `APP_MODE=recorded` in `.env` (`fixture` still works as a deprecated alias), then:
 
 ```text
 uv run python -m streamlit run src/financial_analyst_agent/app.py
 ```
 
-Fixture mode uses recorded adapters and the same renderer as live. It proves orchestration, not EDGAR freshness.
+The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness.
 
 Example questions:
 

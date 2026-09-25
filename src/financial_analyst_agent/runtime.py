@@ -1,4 +1,4 @@
-"""Fixture and live runtimes for run_turn."""
+"""The recorded runtime and the live runtime, and the builders that choose between them."""
 
 import json
 import re
@@ -21,7 +21,7 @@ from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.session import SessionBudget
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime
+from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, Runtime, RuntimeKind
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
@@ -282,13 +282,15 @@ class DemoCompleter:
         )
 
 
-def fixture_runtime() -> Runtime:
+def recorded_runtime() -> Runtime:
+    """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
         ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=FixtureNewsSearch(),
         essay=FixtureEssayCompleter(),
+        kind=RuntimeKind.RECORDED,
     )
 
 
@@ -311,24 +313,29 @@ def live_runtime(
         ranking=SnapshotRanking.from_path(),
         news=news,
         essay=essay,
+        kind=RuntimeKind.LIVE,
     )
 
 
-def runtime_for_kill_switch(
+def runtime_for(
+    kind: RuntimeKind,
     *,
-    enabled: bool,
     settings: Settings | None = None,
     budget: SessionBudget | None = None,
 ) -> Runtime:
+    """Build the runtime asked for.
+
+    A locked public demo (``PUBLIC_DEMO`` on, ``DEMO_LIVE_SEC`` off) builds the recorded
+    runtime even when the live one is asked for; read ``Runtime.kind`` for the answer.
+    """
     resolved = settings or get_settings()
-    if enabled or (resolved.public_demo and not resolved.demo_live_sec):
-        return fixture_runtime()
+    if kind is RuntimeKind.RECORDED or (resolved.public_demo and not resolved.demo_live_sec):
+        return recorded_runtime()
     return live_runtime(resolved, budget=budget)
 
 
 def build_runtime(settings: Settings | None = None) -> Runtime:
+    """Build the runtime ``APP_MODE`` selects."""
     resolved = settings or get_settings()
-    return runtime_for_kill_switch(
-        enabled=resolved.app_mode is AppMode.FIXTURE,
-        settings=resolved,
-    )
+    kind = RuntimeKind.RECORDED if resolved.app_mode is AppMode.RECORDED else RuntimeKind.LIVE
+    return runtime_for(kind, settings=resolved)

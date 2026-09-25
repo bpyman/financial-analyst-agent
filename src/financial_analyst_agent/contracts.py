@@ -135,13 +135,27 @@ class NewsPort(Protocol):
     def search_news(self, query: str) -> list["NewsHit"]: ...
 
 
+class RuntimeKind(StrEnum):
+    """The two provider sets a turn can run on (see CONTEXT.md)."""
+
+    RECORDED = "recorded"
+    LIVE = "live"
+
+
 @dataclass(frozen=True)
 class Runtime:
+    """Provider set for a turn. ``kind`` says whether it is the recorded or live runtime.
+
+    ``kind`` defaults to recorded: a runtime assembled from test doubles replays canned
+    answers. Builders that reach live providers set ``RuntimeKind.LIVE``.
+    """
+
     completer: Completer
     facts: FactsPort
     ranking: RankingPort | None = None
     news: NewsPort | None = None
     essay: EssayCompleter | None = None
+    kind: RuntimeKind = RuntimeKind.RECORDED
 
 
 class NewsHit(BaseModel):

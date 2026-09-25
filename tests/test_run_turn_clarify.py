@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_lookup import (
     ALLOWED_METRICS,
@@ -55,8 +55,8 @@ def test_run_turn_clarifies_profit_margin() -> None:
     assert result.candidates == ("gross_margin", "operating_margin", "net_margin")
 
 
-def test_fixture_runtime_clarifies_profit() -> None:
-    result = run_turn(PROFIT_QUERY, fixture_runtime())
+def test_recorded_runtime_clarifies_profit() -> None:
+    result = run_turn(PROFIT_QUERY, recorded_runtime())
     assert result.renderer is RendererKind.CLARIFY
     assert result.tool_traces == []
     assert result.candidates == ("gross_profit", "operating_income", "net_income")

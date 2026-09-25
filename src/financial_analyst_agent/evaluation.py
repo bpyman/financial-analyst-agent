@@ -1,4 +1,4 @@
-"""Fixture evaluation suite used to publish a portfolio scorecard."""
+"""Evaluation suite, run on the recorded runtime, that publishes a portfolio scorecard."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from financial_analyst_agent.conversation import run_conversation_turn
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 
@@ -169,7 +169,7 @@ def _check_result(case: EvalCase, result: Any) -> str:
 
 
 def run_suite() -> dict[str, Any]:
-    runtime = fixture_runtime()
+    runtime = recorded_runtime()
     rows: list[dict[str, Any]] = []
     for case in _cases():
         started = time.perf_counter()
@@ -240,7 +240,7 @@ def run_suite() -> dict[str, Any]:
     pass_count = sum(1 for row in rows if row["passed"])
     payload = {
         "generated_at": datetime.now(UTC).isoformat(),
-        "model": "fixture DemoCompleter",
+        "model": "recorded DemoCompleter",
         "live_cost_usd": None,
         "pass_count": pass_count,
         "case_count": len(rows),
@@ -257,13 +257,13 @@ def render_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# Evaluation scorecard",
         "",
-        f"Generated `{payload['generated_at']}` against the fixture runtime.",
+        f"Generated `{payload['generated_at']}` against the recorded runtime.",
         "",
         f"- Pass rate: **{payload['pass_count']}/{payload['case_count']}** "
         f"({payload['pass_rate']:.0%})",
         f"- Latency p50 / p95: **{payload['p50_ms']} ms** / **{payload['p95_ms']} ms**",
         "- Approximate live cost per scenario: **not measured** "
-        "(published card is the fixture path)",
+        "(published card is the recorded runtime)",
         f"- Planner: `{payload['model']}`",
         "",
         "| Case | Category | Result | ms |",

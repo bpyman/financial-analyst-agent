@@ -30,7 +30,7 @@ from financial_analyst_agent.presentation import (
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
-    runtime_for_kill_switch,
+    runtime_for,
 )
 from financial_analyst_agent.session import (
     SessionBudget,
@@ -49,12 +49,11 @@ from financial_analyst_agent.storefront import (
     thread_store_root,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
-from financial_analyst_agent.turn import TurnResult
+from financial_analyst_agent.turn import RuntimeKind, TurnResult
 
 _MD_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+)\)$")
 _GOLD_QUERY = EXAMPLE_QUERY
 _CAPABILITIES = CAPABILITIES
-KILL_SWITCH_BANNER = RECORDED_BANNER
 
 
 def render_turn_result(
@@ -518,7 +517,7 @@ def _history_pairs(state: ThreadState, store: LocalThreadStore) -> list[tuple[st
 
 def _ensure_thread_and_history(
     store: LocalThreadStore,
-    kill_switch: bool,
+    recorded: bool,
     *,
     ttl_seconds: int,
 ) -> None:
@@ -531,7 +530,7 @@ def _ensure_thread_and_history(
     if state is None:
         if existed and st.session_state.get("history"):
             st.session_state["history"] = []
-            st.session_state.pop("history_kill_switch", None)
+            st.session_state.pop("history_recorded", None)
             st.session_state.pop("pending_query", None)
             st.session_state["thread_id"] = new_thread_id()
         elif "history" not in st.session_state:
@@ -543,7 +542,7 @@ def _ensure_thread_and_history(
         st.session_state["history"] = []
         return
     st.session_state["history"] = _history_pairs(state, store)
-    st.session_state["history_kill_switch"] = kill_switch
+    st.session_state["history_recorded"] = recorded
 
 
 def _start_over(store: LocalThreadStore) -> None:
@@ -552,7 +551,7 @@ def _start_over(store: LocalThreadStore) -> None:
         store.clear(thread_id)
     st.session_state["thread_id"] = new_thread_id()
     st.session_state["history"] = []
-    st.session_state.pop("history_kill_switch", None)
+    st.session_state.pop("history_recorded", None)
     st.session_state.pop("turn_in_flight", None)
     st.session_state.pop("pending_query", None)
 
@@ -611,25 +610,25 @@ def main() -> None:
     )
     settings = get_settings()
     public_demo = bool(getattr(settings, "public_demo", False))
-    force_fixture = settings.app_mode is AppMode.FIXTURE or (
+    default_recorded = settings.app_mode is AppMode.RECORDED or (
         public_demo and not settings.demo_live_sec
     )
-    kill_switch = st.sidebar.toggle(
+    recorded = st.sidebar.toggle(
         "Recorded demo data",
-        value=force_fixture,
+        value=default_recorded,
         help="Recorded adapters. Numbers still come from the deterministic renderer.",
         disabled=public_demo and not settings.demo_live_sec,
     )
     with st.container(horizontal=True, vertical_alignment="center"):
         st.title("Financial analyst agent")
         ui.badge(
-            "Guided demo" if kill_switch else "Live SEC",
-            variant="destructive" if kill_switch else "default",
+            "Guided demo" if recorded else "Live SEC",
+            variant="destructive" if recorded else "default",
             key="runtime-status",
         )
         start_over = st.button("Start over", icon=":material/refresh:")
-    if kill_switch:
-        st.warning(KILL_SWITCH_BANNER)
+    if recorded:
+        st.warning(RECORDED_BANNER)
     else:
         st.caption(LIVE_RUNTIME_CAPTION)
 
@@ -637,17 +636,17 @@ def main() -> None:
     if start_over:
         _start_over(store)
         st.rerun()
-    _ensure_thread_and_history(store, kill_switch, ttl_seconds=settings.thread_ttl_seconds)
+    _ensure_thread_and_history(store, recorded, ttl_seconds=settings.thread_ttl_seconds)
 
     if (
         st.session_state.get("history")
-        and st.session_state.get("history_kill_switch") != kill_switch
+        and st.session_state.get("history_recorded") != recorded
     ):
         st.session_state["history"] = []
-        st.session_state.pop("history_kill_switch", None)
+        st.session_state.pop("history_recorded", None)
 
     ranking = SnapshotRanking.from_path(
-        FIXTURE_UNIVERSE_SNAPSHOT_PATH if kill_switch else None
+        FIXTURE_UNIVERSE_SNAPSHOT_PATH if recorded else None
     )
     banner, stale = snapshot_status(
         ranking.snapshot_as_of(),
@@ -702,8 +701,8 @@ def main() -> None:
                 turn = run_conversation_turn(
                     thread_id,
                     query,
-                    runtime_for_kill_switch(
-                        enabled=kill_switch,
+                    runtime_for(
+                        RuntimeKind.RECORDED if recorded else RuntimeKind.LIVE,
                         settings=settings,
                         budget=budget,
                     ),
@@ -723,7 +722,7 @@ def main() -> None:
                         strict=False,
                     )
                 )
-                st.session_state["history_kill_switch"] = kill_switch
+                st.session_state["history_recorded"] = recorded
             finally:
                 if reserved:
                     _persist_session_budget(store, thread_id, budget)

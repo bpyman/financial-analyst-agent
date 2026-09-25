@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, fixture_runtime
+from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, recorded_runtime
 from financial_analyst_agent.turn import (
     MODEL_ANALYSIS_BANNER,
     EssayCompleter,
@@ -82,8 +82,8 @@ def test_run_turn_explain_fails_numeral_lock_on_novel_dollars() -> None:
     assert "29.8" in result.message
 
 
-def test_fixture_runtime_explain_uses_injected_essay_completer() -> None:
-    result = run_turn(AI_HEALTHCARE_QUERY, fixture_runtime())
+def test_recorded_runtime_explain_uses_injected_essay_completer() -> None:
+    result = run_turn(AI_HEALTHCARE_QUERY, recorded_runtime())
 
     assert result.intent is Intent.EXPLAIN
     assert result.renderer is RendererKind.ESSAY
@@ -95,8 +95,8 @@ def test_fixture_runtime_explain_uses_injected_essay_completer() -> None:
     assert "search_news" not in tools
 
 
-def test_fixture_runtime_refuses_explain_without_matching_recording() -> None:
-    result = run_turn(AI_MINING_QUERY, fixture_runtime())
+def test_recorded_runtime_refuses_explain_without_matching_recording() -> None:
+    result = run_turn(AI_MINING_QUERY, recorded_runtime())
 
     assert result.intent is Intent.EXPLAIN
     assert result.renderer is RendererKind.REFUSE

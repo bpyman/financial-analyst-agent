@@ -1,4 +1,4 @@
-"""Labeled gold suite: Thursday demo prompts through fixture_runtime."""
+"""Labeled gold suite: Thursday demo prompts through the recorded runtime."""
 
 from datetime import date
 from decimal import Decimal
@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 
 pytestmark = pytest.mark.gold
@@ -68,8 +68,8 @@ TECH_RD_VALUES = (
 )
 
 
-def test_gold_microsoft_pretax_income_through_kill_switch_runtime() -> None:
-    result = run_turn(MICROSOFT_PRETAX_QUERY, fixture_runtime())
+def test_gold_microsoft_pretax_income_through_recorded_runtime() -> None:
+    result = run_turn(MICROSOFT_PRETAX_QUERY, recorded_runtime())
 
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.TABLE
@@ -86,8 +86,8 @@ def test_gold_microsoft_pretax_income_through_kill_switch_runtime() -> None:
     assert row.source_url == MICROSOFT_SOURCE_URL
 
 
-def test_gold_tsla_vs_gm_revenue_through_kill_switch_runtime() -> None:
-    result = run_turn(TSLA_GM_REVENUE_QUERY, fixture_runtime())
+def test_gold_tsla_vs_gm_revenue_through_recorded_runtime() -> None:
+    result = run_turn(TSLA_GM_REVENUE_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.TABLE
@@ -105,8 +105,8 @@ def test_gold_tsla_vs_gm_revenue_through_kill_switch_runtime() -> None:
     assert gm.end_date == PERIOD_END
 
 
-def test_gold_top_tech_rd_spend_through_kill_switch_runtime() -> None:
-    result = run_turn(TECH_RD_QUERY, fixture_runtime())
+def test_gold_top_tech_rd_spend_through_recorded_runtime() -> None:
+    result = run_turn(TECH_RD_QUERY, recorded_runtime())
 
     assert result.intent is Intent.RANK_AND_LOOKUP
     assert result.renderer is RendererKind.TABLE
@@ -136,8 +136,8 @@ def test_gold_top_tech_rd_spend_through_kill_switch_runtime() -> None:
         assert row.reason is None
 
 
-def test_gold_hormuz_exxon_news_through_kill_switch_runtime() -> None:
-    result = run_turn(FIXTURE_NEWS_QUERY, fixture_runtime())
+def test_gold_hormuz_exxon_news_through_recorded_runtime() -> None:
+    result = run_turn(FIXTURE_NEWS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.NEWS_AND_EXPLAIN
     assert result.renderer is RendererKind.ESSAY

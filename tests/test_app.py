@@ -40,9 +40,9 @@ class _Streamlit:
         *,
         chat_values: tuple[str | None, ...] = ("What was Google's net income?", None),
         start_over_values: tuple[bool, ...] = (),
-        kill_switch_values: tuple[bool, ...] = (True, True),
+        recorded_values: tuple[bool, ...] = (True, True),
     ) -> None:
-        self.sidebar = _Sidebar(kill_switch_values)
+        self.sidebar = _Sidebar(recorded_values)
         self.session_state: dict[str, object] = {}
         self._chat_values = iter(chat_values)
         self._start_over_values = iter(start_over_values)
@@ -230,7 +230,7 @@ def _patch_main_shell(
         app,
         "get_settings",
         lambda: SimpleNamespace(
-            app_mode=AppMode.FIXTURE,
+            app_mode=AppMode.RECORDED,
             public_demo=False,
             demo_live_sec=False,
             thread_ttl_seconds=7200,
@@ -239,7 +239,7 @@ def _patch_main_shell(
             snapshot_stale_after_days=30,
         ),
     )
-    monkeypatch.setattr(app, "runtime_for_kill_switch", lambda **kwargs: object())
+    monkeypatch.setattr(app, "runtime_for", lambda *args, **kwargs: object())
     if store_root is not None:
         monkeypatch.setattr(app, "thread_store_root", lambda: store_root)
 
@@ -343,7 +343,7 @@ def test_main_clears_history_when_runtime_mode_changes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_streamlit = _Streamlit(kill_switch_values=(True, False))
+    fake_streamlit = _Streamlit(recorded_values=(True, False))
     result = TurnResult(
         intent=Intent.LOOKUP,
         tool_traces=[],
@@ -428,7 +428,7 @@ def test_main_keeps_prior_history_on_non_configuration_failure(
     )
     fake_streamlit.session_state["thread_id"] = "thread-a"
     fake_streamlit.session_state["history"] = [("prior question", previous)]
-    fake_streamlit.session_state["history_kill_switch"] = True
+    fake_streamlit.session_state["history_recorded"] = True
     rendered: list[TurnResult] = []
 
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
@@ -483,8 +483,8 @@ def test_main_persists_quota_reservation_when_turn_fails(
 
     monkeypatch.setattr(
         app,
-        "runtime_for_kill_switch",
-        lambda **kwargs: SimpleNamespace(budget=kwargs.get("budget"), ranking=None),
+        "runtime_for",
+        lambda *args, **kwargs: SimpleNamespace(budget=kwargs.get("budget"), ranking=None),
     )
     monkeypatch.setattr(app, "run_conversation_turn", fake_turn)
     monkeypatch.setattr(app, "render_turn_result", lambda *a, **k: None)
@@ -627,7 +627,7 @@ def test_main_clears_in_memory_history_when_thread_expires(
     fake_streamlit = _Streamlit(chat_values=(None,))
     fake_streamlit.session_state["thread_id"] = "expired"
     fake_streamlit.session_state["history"] = [("prior question", previous)]
-    fake_streamlit.session_state["history_kill_switch"] = True
+    fake_streamlit.session_state["history_recorded"] = True
     rendered: list[TurnResult] = []
     _patch_main_shell(monkeypatch, fake_streamlit, store_root=tmp_path)
     monkeypatch.setattr(

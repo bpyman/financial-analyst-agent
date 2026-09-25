@@ -5,10 +5,10 @@ from streamlit.testing.v1 import AppTest
 
 def _quarterly_evidence_app() -> None:
     from financial_analyst_agent.app import GUIDED_STORIES, render_turn_result
-    from financial_analyst_agent.runtime import fixture_runtime
+    from financial_analyst_agent.runtime import recorded_runtime
     from financial_analyst_agent.turn import run_turn
 
-    result = run_turn(GUIDED_STORIES[1][1], fixture_runtime())
+    result = run_turn(GUIDED_STORIES[1][1], recorded_runtime())
     render_turn_result(result)
 
 
@@ -36,10 +36,10 @@ def test_evidence_inspector_selects_the_requested_quarter() -> None:
 
 def _disclosure_history_app() -> None:
     from financial_analyst_agent.app import GUIDED_STORIES, render_turn_result
-    from financial_analyst_agent.runtime import fixture_runtime
+    from financial_analyst_agent.runtime import recorded_runtime
     from financial_analyst_agent.turn import run_turn
 
-    result = run_turn(GUIDED_STORIES[3][1], fixture_runtime())
+    result = run_turn(GUIDED_STORIES[3][1], recorded_runtime())
     for turn_index in range(2):
         render_turn_result(result, turn_index=turn_index)
 

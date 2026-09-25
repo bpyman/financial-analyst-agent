@@ -8,7 +8,7 @@ from financial_analyst_agent.news import TavilyNewsSearch
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import DemoCompleter, FixtureEssayCompleter
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import Intent, RendererKind, Runtime, RuntimeKind, run_turn
 from test_run_turn_news import NVIDIA_SUPPLY_QUERY
 
 
@@ -26,6 +26,7 @@ def test_run_turn_live_tavily_news_and_explain() -> None:
             ranking=SnapshotRanking.from_path(),
             news=TavilyNewsSearch(settings),
             essay=FixtureEssayCompleter(),
+            kind=RuntimeKind.LIVE,
         ),
     )
 

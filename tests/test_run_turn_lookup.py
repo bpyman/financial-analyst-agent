@@ -11,7 +11,7 @@ from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     DemoCompleter,
     build_runtime,
-    fixture_runtime,
+    recorded_runtime,
 )
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, Runtime, run_turn
 
@@ -201,7 +201,7 @@ def test_run_turn_returns_lookup_table_for_google_latest_quarter_net_income() ->
 
 
 def test_run_turn_resolves_google_and_selects_standalone_quarter() -> None:
-    result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, fixture_runtime())
+    result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, recorded_runtime())
 
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.TABLE
@@ -242,8 +242,8 @@ def test_run_turn_refuses_unknown_metric_with_allowed_list() -> None:
         assert metric in result.message
 
 
-def test_fixture_runtime_refuses_unknown_costs_without_inventing_net_income() -> None:
-    result = run_turn(UNKNOWN_COSTS_QUERY, fixture_runtime())
+def test_recorded_runtime_refuses_unknown_costs_without_inventing_net_income() -> None:
+    result = run_turn(UNKNOWN_COSTS_QUERY, recorded_runtime())
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
     assert result.message is not None
@@ -313,22 +313,22 @@ def test_run_turn_lookup_computes_shopify_rd_to_sales() -> None:
     assert result.tool_traces[0].args == {"issuers": ["Shopify"], "metric": "rd_to_sales"}
 
 
-def test_fixture_runtime_does_not_invent_net_income_for_unrelated_query() -> None:
-    result = run_turn(UNRELATED_QUERY, fixture_runtime())
+def test_recorded_runtime_does_not_invent_net_income_for_unrelated_query() -> None:
+    result = run_turn(UNRELATED_QUERY, recorded_runtime())
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
     assert all(row.value != NET_INCOME for row in result.table_rows)
 
 
-def test_fixture_runtime_refuses_when_recorded_fact_missing_for_gross_profit() -> None:
-    result = run_turn(GOOGLE_GROSS_PROFIT_QUERY, fixture_runtime())
+def test_recorded_runtime_refuses_when_recorded_fact_missing_for_gross_profit() -> None:
+    result = run_turn(GOOGLE_GROSS_PROFIT_QUERY, recorded_runtime())
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
     assert result.message is not None
 
 
-def test_fixture_runtime_lookup_computes_operating_margin() -> None:
-    result = run_turn(GOOGLE_OPERATING_MARGIN_QUERY, fixture_runtime())
+def test_recorded_runtime_lookup_computes_operating_margin() -> None:
+    result = run_turn(GOOGLE_OPERATING_MARGIN_QUERY, recorded_runtime())
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.TABLE
     assert result.message is None
@@ -419,7 +419,7 @@ class _NoFacts:
 
 
 def test_run_turn_lookup_google_market_cap_from_snapshot() -> None:
-    result = run_turn(GOOGLE_MARKET_CAP_QUERY, fixture_runtime())
+    result = run_turn(GOOGLE_MARKET_CAP_QUERY, recorded_runtime())
 
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.TABLE

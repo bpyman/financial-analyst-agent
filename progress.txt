@@ -391,3 +391,24 @@ Blockers / next:
 - Issue 05 (explain + numeral lock) is unblocked and is the next tracer. 07 still waits on 05 and 06.
 - Completer is still keyword `DemoCompleter`; "income" maps to `net_income` so the composed prompt works until the structured planner.
 - Fixture ranking snapshot is still the small test freeze; packaged snapshot + live SEC will fill more rows at demo time.
+
+## 2026-09-25 — react-audience-window 01 Name the recorded and live runtimes in code
+
+Task completed: `.scratch/react-audience-window/issues/01-name-the-runtimes-in-code.md`
+
+Key decisions:
+- `RuntimeKind` (`recorded`/`live`) in `contracts.py`. `Runtime.kind` defaults to recorded, since test-double runtimes replay canned answers; the live builder and the live integration tests set `LIVE`.
+- `runtime_for(kind, *, settings, budget)` replaces `runtime_for_kill_switch(enabled=...)`, and `recorded_runtime()` replaces `fixture_runtime()`. A locked public demo still coerces live to recorded; callers read `Runtime.kind` to learn which runtime they got.
+- `AppMode` is `LIVE`/`RECORDED`. `AppMode._missing_` maps `fixture` to `RECORDED` with a logged deprecation warning, so pydantic accepts old `.env` files.
+- "Fixture" stays on test/data vocabulary (snapshot data file, `FixtureNewsSearch`, `FixtureEssayCompleter`, `FIXTURE_NEWS_QUERY`).
+
+Files changed:
+- `src/financial_analyst_agent/contracts.py`, `turn.py`, `runtime.py`, `config.py`, `api.py`, `app.py`, `evaluation.py`
+- `tests/test_runtime_choice.py` (was `test_kill_switch.py`), `tests/conftest.py`, `test_app.py`, `test_api.py`, `test_demo_smoke.py`, `test_gold.py`, `test_openai_planner.py`, `test_app_widgets.py`, `test_run_turn_*.py`, `tests/unit/test_observability.py`, `tests/integration/test_live_*.py`
+- `.env.example`, `.streamlit/secrets.toml.example`, `README.md`, `docs/deploy.md`, `docs/design.md`, `docs/adr/0006-react-audience-window.md`
+
+Blockers / next:
+- Ticket 02 (bind each thread to one runtime) is unblocked: record `runtime.kind` on the thread and refuse a mismatch. The API `TurnRequest.recorded` flag and `recorded_mode()` still exist; 02 replaces them with create-thread `{runtime}`.
+- Streamlit badge copy still says "Guided demo" / "Live SEC"; the web window's labels are owned by the window tickets.
+- `contracts.py`, `turn.py`, and `tests/test_gold.py` use CRLF line endings; preserve them when editing.
+

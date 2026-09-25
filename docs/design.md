@@ -82,7 +82,7 @@ evidence inspection, and expandable tool traces. It contains no financial busine
 ### `run_conversation_turn(thread_id, message, runtime)` — application boundary
 
 Coordinates planning, spec patch application, validation, execution, and persistence.
-Streamlit, tests, and fixture mode all call this interface. `run_turn` wraps it for one-shot
+Streamlit, tests, and the recorded runtime all call this interface. `run_turn` wraps it for one-shot
 regression tests.
 
 ### Planner — language boundary
@@ -99,7 +99,7 @@ model-generated ticker text.
 ### Runtime adapters — provider boundary
 
 Connect the application to SEC EDGAR, a packaged FMP snapshot, Tavily, and OpenAI. Recorded
-adapters provide the same contracts in fixture mode. Live SEC responses are disk-cached.
+adapters provide the same contracts in the recorded runtime. Live SEC responses are disk-cached.
 
 ### `TurnResult` — presentation boundary
 
@@ -205,16 +205,16 @@ The system prefers an explicit failure to a plausible but unsupported answer:
 - mismatched periods and zero denominators do not compute;
 - unknown companies, metrics, or industries return bounded errors;
 - empty news results refuse instead of falling back to model memory; and
-- provider failures can be demonstrated through a clearly labeled fixture runtime.
+- provider failures can be demonstrated through a clearly labeled recorded runtime.
 
-Fixture mode replaces providers—not orchestration or presentation. It proves deterministic
+The recorded runtime replaces providers—not orchestration or presentation. It proves deterministic
 application behavior, not live data freshness, and must be disclosed when used.
 
 ## Verification and production path
 
 The default test suite is offline and asserts behavior at `run_turn` and `run_conversation_turn`:
 intent, spec patches, tool order, values, periods, provenance, partial failures, citations, numeral
-lock, and renderer choice. Gold tests replay the demo workflows through fixture mode. CI runs pytest,
+lock, and renderer choice. Gold tests replay the demo workflows through the recorded runtime. CI runs pytest,
 gold, ruff, and mypy on every push. Separate network-marked tests cover live OpenAI, SEC, and
 Tavily integrations. A generated evaluation scorecard reports pass rate and latency.
 

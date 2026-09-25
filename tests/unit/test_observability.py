@@ -6,7 +6,7 @@ import logging
 import pytest
 
 from financial_analyst_agent.observability import call_provider
-from financial_analyst_agent.runtime import fixture_runtime
+from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.turn import run_turn
 
 
@@ -36,7 +36,7 @@ def test_call_provider_emits_provider_timing(caplog: pytest.LogCaptureFixture) -
 
 def test_explain_turn_logs_planner_and_llm_timing(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="financial_analyst_agent")
-    result = run_turn("How can AI disrupt healthcare?", fixture_runtime())
+    result = run_turn("How can AI disrupt healthcare?", recorded_runtime())
     assert result.essay
     names = {event.get("event") for event in _events(caplog)}
     providers = {

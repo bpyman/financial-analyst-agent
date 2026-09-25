@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.planner import OpenAIStructuredCompleter, Plan
-from financial_analyst_agent.runtime import DemoCompleter, fixture_runtime, live_runtime
+from financial_analyst_agent.runtime import DemoCompleter, live_runtime, recorded_runtime
 from financial_analyst_agent.turn import Intent, run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
@@ -126,8 +126,8 @@ def test_live_runtime_uses_openai_completer_when_configured(
     assert not isinstance(runtime.completer, DemoCompleter)
 
 
-def test_fixture_runtime_still_uses_injected_fake_completer() -> None:
-    runtime = fixture_runtime()
+def test_recorded_runtime_still_uses_injected_fake_completer() -> None:
+    runtime = recorded_runtime()
     assert isinstance(runtime.completer, DemoCompleter)
     result = run_turn(GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, runtime)
     assert result.intent is Intent.LOOKUP

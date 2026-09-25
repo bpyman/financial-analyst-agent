@@ -41,7 +41,7 @@ from financial_analyst_agent.presentation import (
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
-    runtime_for_kill_switch,
+    runtime_for,
 )
 from financial_analyst_agent.session import (
     SessionBudget,
@@ -59,7 +59,7 @@ from financial_analyst_agent.storefront import (
     thread_store_root,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
-from financial_analyst_agent.turn import TurnResult
+from financial_analyst_agent.turn import RuntimeKind, TurnResult
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
 MAX_MESSAGE_CHARS = 2000
@@ -86,7 +86,7 @@ def _valid_thread_id(thread_id: str) -> str:
 def recorded_mode(settings: Settings) -> tuple[bool, bool]:
     """(default recorded, switch locked) for this deployment."""
     locked = bool(settings.public_demo) and not settings.demo_live_sec
-    return settings.app_mode is AppMode.FIXTURE or locked, locked
+    return settings.app_mode is AppMode.RECORDED or locked, locked
 
 
 @lru_cache(maxsize=2)
@@ -278,8 +278,10 @@ def create_app(
                 run_conversation_turn(
                     valid,
                     message,
-                    runtime_for_kill_switch(
-                        enabled=body.recorded, settings=resolved, budget=budget
+                    runtime_for(
+                        RuntimeKind.RECORDED if body.recorded else RuntimeKind.LIVE,
+                        settings=resolved,
+                        budget=budget,
                     ),
                     store=store,
                     on_progress=lambda done, total: emit(
