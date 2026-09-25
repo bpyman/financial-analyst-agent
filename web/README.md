@@ -79,3 +79,21 @@ PLAYWRIGHT_BASE_URL=https://<your-deploy>.vercel.app npm run test:e2e
 
 `@playwright/test` is pinned to 1.56.1. CI installs its own Chromium with
 `npx playwright install --with-deps chromium`.
+
+## Portfolio capture
+
+`scripts/capture-portfolio.ts` re-captures the README's images in
+`docs/portfolio/images/` from this window (ADR 0006 cutover criteria). It is a
+Playwright script with its own config (`playwright.capture.config.ts`) that
+starts, or reuses, the same recorded API and built app as the browser check. It
+takes the stills on one fresh thread at 2x, records the compare four quarters →
+"add Apple" → inspect the 10-Q source walkthrough on another, and converts the
+recording to MP4 and GIF with ffmpeg (`$FFMPEG`, or `ffmpeg` on `PATH`; the run
+stops before opening a browser if neither works).
+
+```bash
+npm run build
+npm run capture
+```
+
+`PORTFOLIO_DIR` writes the files somewhere else, for a look before committing.

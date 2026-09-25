@@ -608,3 +608,26 @@ Blockers / next:
 - It was verified with `bash -n`, shellcheck 0.11 (`uvx --from shellcheck-py shellcheck`, clean), pytest (`--help` and `--check` against in-process stand-ins), and a pty-driven run of the fresh and re-run paths against in-process APIs. It was not run against the real dashboards or on macOS bash 3.2.
 - Open question: whether Vercel Standard Protection gates `<name>.vercel.app` (the July 2025 changelog says "all except production custom domains"). The wizard's 401/403 hint points to Settings → Deployment Protection.
 - The template's `_clear` exits the script under `TERM=dumb`, because `tput clear` fails under `set -e`. Real terminals are unaffected. Fix it in the skill template, not here.
+
+
+## 2026-09-25 — react-audience-window 12 Recapture the portfolio images and rewrite the README
+
+Task completed: `.scratch/react-audience-window/issues/12-recapture-portfolio-and-readme.md`
+
+Key decisions:
+- The capture is a Playwright "test" with its own config (`web/playwright.capture.config.ts`, spreading `playwright.config.ts`), so it gets TypeScript, the `Analyst` page object, and the same recorded API and built-app servers for free. It runs with `npm run capture`, and `npm run test:e2e` never picks it up (different testDir). Node's type stripping could not load `e2e/analyst.ts`, because it uses parameter properties.
+- There are two passes on fresh threads. Stills are taken at dsf 2 at 1280×1000, and the social preview at 1280×640 with `scale: "css"`. The recording is 1280×800 at dsf 1. Taking screenshots during the recording would stutter the video.
+- Framing scrolls each target to just under the sticky header and status line. It measures the sticky and fixed elements in the top third of the screen and waits out the window's own smooth scroll first. The inspector shows Apple's standalone 10-Q item (found by selecting options until "Standalone 10-Q" appears), not the "Calculated from the listed component facts" item, which is first.
+- The video trims the page load with `-ss`, measured from context creation to the landing page being ready. The GIF uses 8 fps, 880 px, a 64-colour palette, no dither, and diff_mode=rectangle. It is about 4.6 MB (it was 8 MB at 10 fps, 960 px, and 128 colours with bayer dither). The MP4 is libx264 crf 24 yuv420p with faststart.
+- The README hosted URL is a `HOSTED_DEMO_URL` marker plus a grey "coming soon" badge (see the ticket Answer for every location). Local run is one-time setup (`uv sync`, `npm --prefix web install`, `cp .env.example .env`), then two commands.
+
+Files changed:
+- `web/scripts/capture-portfolio.ts`, `web/scripts/portfolio-media.ts`, `web/scripts/portfolio-media.test.ts`, `web/playwright.capture.config.ts` (new); `web/package.json` (`capture` script), `web/README.md`
+- `docs/portfolio/images/*` (all six regenerated), `docs/portfolio/release.md`, `README.md`
+- `tests/test_readme.py` (new)
+- ticket 12 resolved
+
+Blockers / next:
+- Ticket 11: replace `HOSTED_DEMO_URL` in README.md and docs/portfolio/release.md, and re-upload the social preview.
+- Ticket 13 (streamlit-redirect branch) is next, then ticket 14. Ticket 14 must keep `tests/test_readme.py` green. docs/deploy.md still has the legacy Streamlit notes; ticket 13 adds the repoint steps there.
+- To recapture in the cloud container: `FFMPEG=$(uvx --from imageio-ffmpeg python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")`, then `npm run build && npm run capture` from `web/`. It takes about 40s.
