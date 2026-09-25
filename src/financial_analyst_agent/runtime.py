@@ -12,7 +12,7 @@ from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.news import (
     FIXTURE_NEWS_QUERY,
     FIXTURE_RESEARCH_QUERY,
-    FixtureNewsSearch,
+    RecordedNewsSearch,
     TavilyNewsSearch,
 )
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
@@ -68,8 +68,8 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("gm", "GM"),
 )
 _ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
-FIXTURE_FILING_OLDER = "0001193125-25-000099"
-FIXTURE_FILING_NEWER = "0001193125-26-191507"
+RECORDED_FILING_OLDER = "0001193125-25-000099"
+RECORDED_FILING_NEWER = "0001193125-26-191507"
 
 
 def _company_from_query(normalized: str) -> str:
@@ -197,7 +197,7 @@ FIXTURE_EXPLAIN_ESSAY = (
 FIXTURE_EXPLAIN_QUERY = "How can AI disrupt healthcare?"
 
 
-class FixtureEssayCompleter:
+class RecordedEssayCompleter:
     """Recorded essay so explain and news_and_explain turns stay offline."""
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
@@ -288,8 +288,8 @@ def recorded_runtime() -> Runtime:
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
         ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
-        news=FixtureNewsSearch(),
-        essay=FixtureEssayCompleter(),
+        news=RecordedNewsSearch(),
+        essay=RecordedEssayCompleter(),
         kind=RuntimeKind.RECORDED,
     )
 
@@ -303,8 +303,8 @@ def live_runtime(
     use_openai = not resolved.public_demo or resolved.allow_public_openai
     use_tavily = not resolved.public_demo or resolved.allow_public_tavily
     completer = OpenAIStructuredCompleter.from_settings(resolved) if use_openai else DemoCompleter()
-    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else FixtureEssayCompleter()
-    news = TavilyNewsSearch(resolved) if use_tavily else FixtureNewsSearch()
+    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else RecordedEssayCompleter()
+    news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
     client = CachingSECDataSource(SECClient(resolved), Path(cache_dir), budget=budget)
     return Runtime(
@@ -317,14 +317,21 @@ def live_runtime(
     )
 
 
+def runtime_locked(settings: Settings | None = None) -> bool:
+    """Whether this deployment serves only the recorded runtime.
+
+    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked.
+    """
+    resolved = settings or get_settings()
+    return bool(resolved.public_demo) and not resolved.demo_live_sec
+
+
 def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:
     """The runtime this deployment serves when ``kind`` is asked for.
 
-    A locked public demo (``PUBLIC_DEMO`` on, ``DEMO_LIVE_SEC`` off) serves recorded
-    for every request.
+    A locked deployment (see ``runtime_locked``) serves recorded for every request.
     """
-    resolved = settings or get_settings()
-    if resolved.public_demo and not resolved.demo_live_sec:
+    if runtime_locked(settings):
         return RuntimeKind.RECORDED
     return kind
 

@@ -141,10 +141,13 @@ export interface ThreadView {
   pending_clarification: boolean;
   turn_count: number;
   max_turns: number;
+  /** A turn is running on this thread (a reload mid-turn polls until it ends). */
+  turn_in_flight: boolean;
 }
 
 export interface Meta {
-  recorded: { default: boolean; locked: boolean };
+  /** The runtime a new thread gets, and whether the deployment serves only the recorded one. */
+  runtime: { default: RuntimeKind; locked: boolean };
   /** Status-line copy per runtime, and the tooltip for a locked runtime switch. */
   runtime_copy: { recorded: string; live: string; locked: string };
   snapshot: { banner: string; stale: boolean };

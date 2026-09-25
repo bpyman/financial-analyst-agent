@@ -924,6 +924,65 @@ def test_trend_chart_orders_periods_chronologically() -> None:
     ]
 
 
+def test_trend_chart_carries_its_text_formatted_like_the_table() -> None:
+    """Axis title, tick style, period labels, and tooltip amounts come from here, not the client."""
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name=name, ticker=ticker, cik=cik,
+                metric="net_margin", value=Decimal(value), end_date=period,
+            )
+            for name, ticker, cik, period, value in (
+                ("Microsoft", "MSFT", "0000789019", date(2025, 12, 31), "0.3542"),
+                ("Microsoft", "MSFT", "0000789019", date(2026, 3, 31), "0.361"),
+                ("Apple", "AAPL", "0000320193", date(2025, 12, 31), "0.2449"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.value_kind == "percent"
+    assert chart.metric_label == "Net margin"
+    assert chart.period_labels == ("Dec 31, 2025", "Mar 31, 2026")
+    assert chart.series == ("Microsoft", "Apple")
+    assert chart.amounts == (
+        {"Microsoft": "35.4%", "Apple": "24.5%"},
+        {"Microsoft": "36.1%"},
+    )
+
+
+def test_trend_chart_keeps_a_company_missing_from_the_first_period() -> None:
+    """A company whose facts start later still gets its own line."""
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        table_rows=[
+            TableRow(
+                company_name=name, ticker=ticker, cik=cik,
+                metric="revenue", value=Decimal(value), end_date=period,
+            )
+            for name, ticker, cik, period, value in (
+                ("Microsoft", "MSFT", "0000789019", date(2025, 12, 31), "81000000000"),
+                ("Microsoft", "MSFT", "0000789019", date(2026, 3, 31), "83000000000"),
+                ("Apple", "AAPL", "0000320193", date(2026, 3, 31), "111000000000"),
+            )
+        ],
+        tool_traces=[],
+    )
+
+    chart = present_turn(result).chart
+
+    assert chart is not None
+    assert chart.kind == "line"
+    assert chart.series == ("Microsoft", "Apple")
+
+
 def test_present_filing_change_omits_empty_table() -> None:
     result = TurnResult(
         intent=Intent.FILING_CHANGE,
@@ -985,6 +1044,9 @@ def test_comparison_bar_chart_keeps_table_order() -> None:
     assert chart.kind == "bar"
     assert chart.horizontal is True
     assert chart.metric == "research_and_development"
+    assert chart.value_kind == "usd"
+    assert chart.metric_label == "Research and development"
+    assert (chart.period_labels, chart.series, chart.amounts) == ((), (), ())
     assert [record["Company"] for record in chart.records] == [
         "#1 AAPL",
         "#2 MSFT",

@@ -12,8 +12,8 @@ from financial_analyst_agent.app import GUIDED_STORIES
 from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.runtime import (
-    FIXTURE_FILING_NEWER,
-    FIXTURE_FILING_OLDER,
+    RECORDED_FILING_NEWER,
+    RECORDED_FILING_OLDER,
     DemoCompleter,
     recorded_runtime,
 )
@@ -75,10 +75,10 @@ def test_guided_filing_change_story_pins_both_accessions() -> None:
     assert result.renderer is RendererKind.TABLE
     assert result.disclosure_changes
     assert {item.older_accession for item in result.disclosure_changes} == {
-        FIXTURE_FILING_OLDER
+        RECORDED_FILING_OLDER
     }
     assert {item.newer_accession for item in result.disclosure_changes} == {
-        FIXTURE_FILING_NEWER
+        RECORDED_FILING_NEWER
     }
 
 

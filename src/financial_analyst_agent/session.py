@@ -43,7 +43,7 @@ class SessionBudget:
         with self._lock:
             if self.turns >= self.max_turns:
                 raise SessionQuotaError(
-                    "This session has reached its turn limit. Start over to continue."
+                    "This thread has reached its turn limit. Start over to continue."
                 )
             self.turns += 1
 
@@ -51,8 +51,8 @@ class SessionBudget:
         with self._lock:
             if self.live_sec_requests >= self.max_live_sec_requests:
                 raise SessionQuotaError(
-                    "This session has reached its live SEC request limit. "
-                    "Retry later or use recorded demo data."
+                    "This thread has reached its live SEC request limit. "
+                    "Retry later, or start over on the recorded runtime."
                 )
             self.live_sec_requests += 1
 

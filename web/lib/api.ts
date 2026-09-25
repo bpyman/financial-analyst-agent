@@ -28,9 +28,9 @@ async function json<T>(input: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** Storefront copy; `recorded` picks which runtime's snapshot banner to report. */
-export function getMeta(recorded?: boolean): Promise<Meta> {
-  return json<Meta>(recorded === undefined ? "/api/meta" : `/api/meta?recorded=${recorded}`);
+/** Storefront copy; `runtime` picks whose snapshot banner to report (the deployment default when omitted). */
+export function getMeta(runtime?: RuntimeKind): Promise<Meta> {
+  return json<Meta>(runtime ? `/api/meta?runtime=${runtime}` : "/api/meta");
 }
 
 /** Wake the hosted API while the visitor reads the landing page (ADR 0006). */

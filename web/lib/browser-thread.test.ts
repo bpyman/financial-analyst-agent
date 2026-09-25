@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "./api";
 import {
   EXPIRED_NOTICE,
+  LOCKED_LIVE_NOTICE,
   THREAD_STORAGE_KEY,
   memoryStore,
   resumeThread,
+  startOverIfLocked,
   startThread,
+  waitForTurn,
   type ThreadApi,
-} from "./thread-session";
+} from "./browser-thread";
 import type { CreatedThread, RuntimeKind, ThreadView } from "./types";
 
 function view(overrides: Partial<ThreadView> = {}): ThreadView {
@@ -19,6 +22,7 @@ function view(overrides: Partial<ThreadView> = {}): ThreadView {
     pending_clarification: false,
     turn_count: 0,
     max_turns: 25,
+    turn_in_flight: false,
     ...overrides,
   };
 }
@@ -126,6 +130,81 @@ describe("startThread", () => {
     const started = await startThread(api, memoryStore(), "live");
     expect(started.notice).toBe("Live runtime is off on the public demo");
     expect(started.view.runtime).toBe("recorded");
+  });
+});
+
+describe("startThread without a chosen runtime", () => {
+  it("leaves the runtime to the deployment default", async () => {
+    const api = fakeApi();
+    await startThread(api, memoryStore(), undefined);
+    expect(api.createThread).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("startOverIfLocked", () => {
+  it("keeps a thread the deployment can run", async () => {
+    const api = fakeApi();
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
+    expect(await startOverIfLocked(api, store, view({ runtime: "live" }), false)).toBeNull();
+    expect(await startOverIfLocked(api, store, view({ runtime: "recorded" }), true)).toBeNull();
+    expect(await startOverIfLocked(api, store, null, true)).toBeNull();
+    expect(api.createThread).not.toHaveBeenCalled();
+  });
+
+  it("starts over on the recorded runtime when a live thread meets a locked deployment", async () => {
+    const live = view({ thread_id: "t-live", runtime: "live", turn_count: 2 });
+    const api = fakeApi({ "t-live": live });
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-live" });
+
+    const started = await startOverIfLocked(api, store, live, true);
+
+    expect(api.deleteThread).toHaveBeenCalledWith("t-live");
+    expect(api.createThread).toHaveBeenCalledWith("recorded");
+    expect(started).toEqual({ view: expect.objectContaining({ runtime: "recorded" }), notice: LOCKED_LIVE_NOTICE });
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started?.view.thread_id);
+  });
+});
+
+describe("waitForTurn", () => {
+  it("polls with growing, capped delays until the turn in flight ends", async () => {
+    const running = view({ turn_in_flight: true });
+    const done = view({ turn_in_flight: false, turn_count: 1 });
+    const getThread = vi
+      .fn<(id: string) => Promise<ThreadView>>()
+      .mockResolvedValueOnce(running)
+      .mockRejectedValueOnce(new ApiError("The analysis service is unavailable.", 502))
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(done);
+    const slept: number[] = [];
+    const sleep = async (ms: number) => void slept.push(ms);
+
+    const finished = await waitForTurn(getThread, "t-1", { sleep, firstDelayMs: 1500, maxDelayMs: 3000 });
+
+    expect(finished).toBe(done);
+    expect(getThread).toHaveBeenCalledWith("t-1");
+    expect(slept).toEqual([1500, 2250, 3000, 3000, 3000]);
+  });
+
+  it("gives up after its time budget", async () => {
+    const getThread = vi.fn(async () => view({ turn_in_flight: true }));
+    const sleep = async () => undefined;
+    await expect(
+      waitForTurn(getThread, "t-1", { sleep, firstDelayMs: 1000, maxDelayMs: 1000, maxWaitMs: 3000 }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(getThread).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops when cancelled", async () => {
+    const controller = new AbortController();
+    const getThread = vi.fn(async () => {
+      controller.abort();
+      return view({ turn_in_flight: true });
+    });
+    await expect(
+      waitForTurn(getThread, "t-1", { sleep: async () => undefined, signal: controller.signal }),
+    ).rejects.toThrow();
+    expect(getThread).toHaveBeenCalledTimes(1);
   });
 });
 
