@@ -16,9 +16,8 @@ Everything a host reads is checked in: `render.yaml`, `Dockerfile`, `web/vercel.
 and `web/scripts/ignore-build.sh`. A person only connects accounts and pastes one
 secret. `tests/test_deploy_config.py` pins that configuration.
 
-The Streamlit Community Cloud app is still the public URL until cutover (ticket 11
-onward); its notes are [at the end](#legacy-streamlit-community-cloud). At cutover it is
-[repointed at a "This demo has moved" page](#repointing-the-streamlit-app).
+The Streamlit window is gone from `master`. The old Community Cloud URL shows a
+["This demo has moved" page](#repointing-the-streamlit-app) that links to the new window.
 
 ## Going live: the wizard
 
@@ -273,33 +272,3 @@ changed at any time), because docs.streamlit.io was not reachable from the build
 environment. Whether a deleted app's subdomain is free at once was not confirmed,
 which is why the fallback above exists. To run the page locally, see the branch's
 README.
-
-## Legacy: Streamlit Community Cloud
-
-> Legacy until cutover (tickets 11–14). The public URL is still
-> [financial-analyst-agent-project.streamlit.app](https://financial-analyst-agent-project.streamlit.app).
-> At cutover the app is [repointed](#repointing-the-streamlit-app) at the
-> `streamlit-redirect` branch, which shows "This demo has moved", and `app.py` is
-> deleted from `master`.
-
-The Streamlit window defaults to the recorded runtime, with isolated browser sessions,
-thread expiry, and cached SEC responses. Community Cloud installs from
-`requirements.txt` (exported from `uv.lock`). Free Community Cloud apps sleep when idle,
-so the first visitor may have to wake the app.
-
-1. Fork or connect `bpyman/financial-analyst-agent`.
-2. Main file: `src/financial_analyst_agent/app.py`.
-3. Copy `.streamlit/secrets.toml.example` into the app's secrets. Keep
-   `APP_MODE=recorded` and `PUBLIC_DEMO=true`.
-4. Check that the first guided story (`Verify a quarterly fact`) returns a table.
-
-Keep the boolean flags quoted in the secrets template. Streamlit exports top-level
-strings and numbers to environment variables, but not TOML booleans, and the app's
-settings read those environment variables.
-
-Local smoke:
-
-```text
-uv run python -m pytest tests/test_demo_smoke.py -q
-uv run python -m streamlit run src/financial_analyst_agent/app.py
-```

@@ -163,6 +163,30 @@ def test_deploy_notes_repoint_the_old_streamlit_url_at_the_redirect_branch() -> 
         assert step in section, step
 
 
+def test_deploy_notes_keep_no_legacy_streamlit_hosting() -> None:
+    # Ticket 14: the Community Cloud app now serves only the redirect branch.
+    notes = DEPLOY_NOTES.read_text(encoding="utf-8")
+
+    assert "## Legacy" not in notes
+    assert "#legacy-streamlit-community-cloud" not in notes
+    assert "src/financial_analyst_agent/app.py" not in notes
+    assert "secrets.toml.example" not in notes
+
+
+def test_the_streamlit_window_and_its_dependencies_are_gone() -> None:
+    # Ticket 14 (ADR 0006 cutover): the Next.js window is the only audience window.
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    locked = set(re.findall(r'^name = "([^"]+)"$', lock, flags=re.MULTILINE))
+
+    assert not locked & {"streamlit", "streamlit-shadcn-ui", "altair", "pandas", "pyarrow"}
+    for path in (
+        "src/financial_analyst_agent/app.py",
+        ".streamlit",
+        "requirements.txt",
+    ):
+        assert not (ROOT / path).exists(), path
+
+
 def test_vercel_config_runs_the_ignored_build_step_on_fluid_compute_in_iad1() -> None:
     config = yaml.safe_load(VERCEL_JSON.read_text(encoding="utf-8"))  # JSON is YAML
 

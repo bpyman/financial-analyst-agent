@@ -1,6 +1,6 @@
-"""Audience-window copy shared by every front end: guided stories, capabilities, banners.
+"""Audience-window copy: guided stories, capabilities, banners.
 
-No UI framework imports here, so the HTTP seam and the Streamlit window read the same text.
+No UI framework imports here. The HTTP seam serves this text to the window as is.
 """
 
 from __future__ import annotations

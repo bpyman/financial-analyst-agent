@@ -74,15 +74,23 @@ suite stays green. The public seam is `run_conversation_turn`. See
 
 ## System boundaries
 
-### Streamlit — audience layer
+### Next.js window — audience layer
 
-Collects a question, shows guided stories, the active analysis spec, runtime status, answers,
-evidence inspection, and expandable tool traces. It contains no financial business logic.
+A Next.js app (`web/`) collects a question, shows guided stories, the active analysis spec,
+runtime status, answers, evidence inspection, and expandable tool traces. It contains no
+financial business logic: it draws the display records the API sends. See
+[ADR 0006](adr/0006-react-audience-window.md).
+
+### FastAPI — HTTP seam
+
+`financial_analyst_agent.api` is transport only. It creates threads bound to a runtime, streams
+each turn's progress over server-sent events, and serialises `present_turn` output. The window
+reaches it through its own `/api` proxy, which adds a shared token.
 
 ### `run_conversation_turn(thread_id, message, runtime)` — application boundary
 
 Coordinates planning, spec patch application, validation, execution, and persistence.
-Streamlit, tests, and the recorded runtime all call this interface. `run_turn` wraps it for one-shot
+The HTTP seam, tests, and the recorded runtime all call this interface. `run_turn` wraps it for one-shot
 regression tests.
 
 ### Planner — language boundary
@@ -129,7 +137,7 @@ but not resolve. An open ReAct loop over the number path stays rejected.
 **Decision:** all entry points call `run_turn(query, runtime)`, with providers injected through
 `Runtime`.
 
-**Why:** application behavior can be tested independently of Streamlit and external services.
+**Why:** application behavior can be tested independently of the window and external services.
 Live and recorded providers can change without creating separate execution paths.
 
 **Trade-off:** the conversation seam is a critical module and must be kept cohesive as the product
@@ -189,7 +197,7 @@ question and the pending analysis continues. The candidate set is still the clos
 **Decision:** FastMCP exposes the five tool capabilities over HTTP, while the app may call the
 same contracts in-process.
 
-**Why:** MCP is a genuine integration boundary, but the live Streamlit path does not depend on a
+**Why:** MCP is a genuine integration boundary, but the live API path does not depend on a
 stdio child process or unnecessary network hop. The five capabilities are financial lookup,
 comparison, ranking, news search, and qualitative explanation.
 

@@ -653,3 +653,27 @@ Blockers / next:
 - Ticket 11: when the window is live, follow "Repointing the Streamlit app" in `docs/deploy.md` and set `DEMO_URL`. Do this before the ticket 14 PR merges.
 - Ticket 14: keep the "Repointing the Streamlit app" section and its test. Delete only the "Legacy: Streamlit Community Cloud" section, and the intro and callout links that point to it.
 
+
+
+## 2026-09-25 — react-audience-window 14 Delete the Streamlit window
+
+Task completed: `.scratch/react-audience-window/issues/14-delete-streamlit.md`
+
+Key decisions:
+- Deleted `app.py`, `tests/test_app.py`, `tests/test_app_widgets.py`, `.streamlit/`, and the root `requirements.txt`. Nothing but the legacy deploy notes read `requirements.txt`, and Docker installs from `uv.lock`. `uv remove streamlit streamlit-shadcn-ui` took the lock from 131 to 111 packages, and altair, pandas, pyarrow, and numpy left with them.
+- Streamlit tests that guarded behaviour the API still has moved to the API seam (meta catalog, public errors keep prior turns, a failed turn still spends budget, restart, expiry) and the presentation seam (numeric table cells, the four-quarter and filing-change stories). The rest were Streamlit widget or Altair details.
+- `docs/deploy.md` loses only the legacy Community Cloud section and the intro link. Two new guards in `tests/test_deploy_config.py` pin that and the dependency removal.
+- `prd.md` marks story 34 superseded (struck through, not rewritten) and notes ADR 0006 wherever it named Streamlit. `docs/design.md` describes the Next.js window and the FastAPI seam.
+- The API image went from 981 MB to 413 MB (216 MB to 88.3 MB compressed). The smoke test passed against it.
+
+Files changed:
+- deleted: `src/financial_analyst_agent/app.py`, `tests/test_app.py`, `tests/test_app_widgets.py`, `.streamlit/config.toml`, `.streamlit/secrets.toml.example`, `requirements.txt`
+- `pyproject.toml`, `uv.lock`
+- `src/financial_analyst_agent/storefront.py`, `src/financial_analyst_agent/observability.py` (docstrings)
+- `tests/test_api.py`, `tests/test_presentation.py`, `tests/test_demo_smoke.py`, `tests/test_deploy_config.py`
+- `docs/deploy.md`, `docs/design.md`, `prd.md`
+- ticket 14 resolved
+
+Blockers / next:
+- The PR stays a draft until ticket 11 is resolved. Before it merges, push `streamlit-redirect` and repoint the Community Cloud app ("Repointing the Streamlit app" in `docs/deploy.md`). An app still on `master` breaks once `app.py` is gone.
+- Only ticket 11 (ready-for-human) remains in this feature.

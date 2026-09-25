@@ -1211,3 +1211,41 @@ def test_rank_and_lookup_chart_keeps_missing_issuers_and_labels_rank() -> None:
     assert table.rows[0][table.keys.index("source_url")] == "https://www.sec.gov/nvda"
     assert table.rows[1][table.keys.index("source_url")] == ""
     assert presented.evidence
+
+
+def test_rank_and_lookup_table_carries_metric_values_as_numbers_for_sorting() -> None:
+    rows = [
+        ("Microsoft Corporation", "MSFT", "0000789019", 3, "8920000000"),
+        ("Apple Inc.", "AAPL", "0000320193", 2, "11730000000"),
+        ("Advanced Micro Devices, Inc.", "AMD", "0000002488", 8, "2530000000"),
+    ]
+    presented = present_turn(
+        TurnResult(
+            intent=Intent.RANK_AND_LOOKUP,
+            renderer=RendererKind.TABLE,
+            tool_traces=[],
+            table_rows=[
+                TableRow(
+                    company_name=name,
+                    ticker=ticker,
+                    cik=cik,
+                    metric="research_and_development",
+                    rank=rank,
+                    value=Decimal(value),
+                    currency="USD",
+                )
+                for name, ticker, cik, rank, value in rows
+            ],
+        )
+    )
+
+    table = presented.table
+    assert table is not None
+    value_index = table.keys.index("value")
+    assert table.headers[value_index] == "Research and development"
+    assert "Value" not in table.headers
+    values = [numbers[value_index] for numbers in table.numbers]
+    assert all(isinstance(value, float) for value in values)
+    assert sorted(values, reverse=True) == [11_730_000_000.0, 8_920_000_000.0, 2_530_000_000.0]
+    rank_index = table.keys.index("rank")
+    assert [numbers[rank_index] for numbers in table.numbers] == [3, 2, 8]

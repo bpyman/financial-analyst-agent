@@ -17,7 +17,7 @@ _CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
 
 
 def configure_logging() -> None:
-    """Emit INFO structured events in Streamlit and CLI runs."""
+    """Emit INFO structured events in API and CLI runs."""
     _LOGGER.setLevel(logging.INFO)
     if _LOGGER.handlers:
         return

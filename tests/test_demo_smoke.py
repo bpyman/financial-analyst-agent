@@ -1,22 +1,16 @@
 """Smoke the fixture-first audience window and first guided story."""
 
-import os
-import tomllib
 from datetime import date
-from pathlib import Path
 
-import pytest
-from streamlit.runtime.secrets import Secrets
-
-from financial_analyst_agent.app import GUIDED_STORIES
-from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.conversation import run_conversation_turn
+from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.runtime import (
     FIXTURE_FILING_NEWER,
     FIXTURE_FILING_OLDER,
     DemoCompleter,
     recorded_runtime,
 )
+from financial_analyst_agent.storefront import GUIDED_STORIES
 from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.turn import Intent, RendererKind, run_turn
 
@@ -82,17 +76,30 @@ def test_guided_filing_change_story_pins_both_accessions() -> None:
     }
 
 
-def test_hosted_secrets_enable_guarded_fixture_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "environ", {})
-    template = Path(__file__).parents[1] / ".streamlit" / "secrets.toml.example"
-    secrets = Secrets()
-    secrets.merge_programmatic_secrets(tomllib.loads(template.read_text(encoding="utf-8")))
 
-    settings = Settings(_env_file=None)
-    assert settings.app_mode is AppMode.RECORDED
-    assert settings.public_demo is True
-    assert settings.demo_live_sec is False
-    assert settings.allow_public_openai is False
-    assert settings.allow_public_tavily is False
-    assert settings.sec_cache_dir == Path(".cache/sec")
-    assert settings.require_user_agent() == "FinancialAnalystAgent (you@example.com)"
+def test_compare_four_quarters_story_presents_each_quarter_on_its_own() -> None:
+    presented = present_turn(run_turn(GUIDED_STORIES[1][1], recorded_runtime()))
+
+    headers = [
+        trace.header
+        for trace in presented.traces
+        if trace.header.startswith("Looked up Microsoft · Revenue")
+    ]
+    assert len(headers) == len(set(headers)) == 4
+    assert all("get_financials" not in header for header in headers)
+    labels = [item.label for item in presented.evidence]
+    assert len(labels) == len(set(labels)) == 4
+    september = next(
+        item for item in presented.evidence if item.period_label == "Jul 1, 2024 – Sep 30, 2024"
+    )
+    assert september.raw_amount == "65585000000"
+    assert "Sep 30, 2024" in september.label
+
+
+def test_filing_change_story_presents_each_changed_section() -> None:
+    presented = present_turn(run_turn(GUIDED_STORIES[3][1], recorded_runtime()))
+
+    assert [(item.section_label, item.change_kind) for item in presented.disclosures] == [
+        ("Management's Discussion and Analysis", "changed"),
+        ("Risk Factors", "changed"),
+    ]
