@@ -569,8 +569,8 @@ Blockers / next:
 Task completed: `.scratch/react-audience-window/issues/09-render-and-vercel-config.md`
 
 Key decisions:
-- `render.yaml`: one free Docker web service in `virginia` on `main`, with `healthCheckPath: /api/health`, `numInstances: 1`, and `autoDeployTrigger: checksPass` (it replaces the deprecated `autoDeploy`). `buildFilter.paths` is Dockerfile, .dockerignore, pyproject.toml, uv.lock, and src/**. The public-demo env values are quoted strings. `API_PROXY_TOKEN` is `sync: false`, and PORT is left to Render.
-- A `deploy-api` CI job is a dormant fallback: it needs all other jobs, runs only on pushes to `main`, and curls `RENDER_DEPLOY_HOOK_URL` only when that secret is set. It is there because nothing confirmed that `checksPass` exists on the free instance.
+- `render.yaml`: one free Docker web service in `virginia` on `master`, with `healthCheckPath: /api/health`, `numInstances: 1`, and `autoDeployTrigger: checksPass` (it replaces the deprecated `autoDeploy`). `buildFilter.paths` is Dockerfile, .dockerignore, pyproject.toml, uv.lock, and src/**. The public-demo env values are quoted strings. `API_PROXY_TOKEN` is `sync: false`, and PORT is left to Render.
+- A `deploy-api` CI job is a dormant fallback: it needs all other jobs, runs only on pushes to `master`, and curls `RENDER_DEPLOY_HOOK_URL` only when that secret is set. It is there because nothing confirmed that `checksPass` exists on the free instance.
 - `web/vercel.json`: `ignoreCommand` runs `sh scripts/ignore-build.sh`, plus `fluid: true` and `regions: ["iad1"]`. The script compares `VERCEL_GIT_PREVIOUS_SHA..HEAD -- .` from `web/`; with no previous SHA, or one outside the shallow clone, it builds. maxDuration stays in route.ts (300, the Hobby cap), and a test pins it.
 - `tests/api_server.py` now holds the in-process uvicorn `serve()` and the loaded smoke script, shared by `test_api_image_smoke.py` and the new `test_deploy_config.py`.
 - PyYAML comes in through langchain-core (langgraph), so the test adds no dependency.
