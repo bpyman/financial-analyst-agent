@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Audience window
 
-## Getting Started
+The Next.js window for the financial analyst agent (ADR 0006,
+`docs/adr/0006-react-audience-window.md`). The browser only ever calls this
+app's `/api/*`; the route handler in `app/api/[...path]/route.ts` proxies each
+call to the Python API.
 
-First, run the development server:
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# repo root: the API on port 8000, recorded runtime
+APP_MODE=recorded uv run serve-api
+
+# web/
+npm install
+npm run dev   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+No secrets are needed locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Both variables are read by the proxy route on the server; neither is
+`NEXT_PUBLIC_`, so neither is bundled for the browser. See `.env.example`.
 
-## Learn More
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `API_ORIGIN` | `http://127.0.0.1:8000` | Base URL of the Python API. |
+| `API_PROXY_TOKEN` | unset | Shared secret sent upstream as `X-Proxy-Token`. Set it to the API's `API_PROXY_TOKEN` on a hosted deploy; the API then refuses any call but `/api/health` that did not come through this proxy. Unset, no header is sent. |
 
-To learn more about Next.js, take a look at the following resources:
+## Checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint && npx tsc --noEmit && npx vitest run && npm run build
+```

@@ -1,11 +1,13 @@
 // Same-origin proxy to the Python API (ADR 0006). The browser never learns
-// API_ORIGIN, so there is no CORS surface and the backend can move freely.
+// API_ORIGIN or API_PROXY_TOKEN, so there is no CORS surface, the backend can
+// move freely, and the hosted API answers only calls that came through here.
+
+import { clientResponseHeaders, upstreamRequestHeaders } from "@/lib/proxy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://127.0.0.1:8000").replace(/\/$/, "");
-const FORWARD_RESPONSE_HEADERS = ["content-type", "cache-control", "x-accel-buffering"];
 
 async function forward(
   request: Request,
@@ -19,10 +21,7 @@ async function forward(
   try {
     upstream = await fetch(target, {
       method: request.method,
-      headers: {
-        accept: request.headers.get("accept") ?? "application/json",
-        ...(hasBody ? { "content-type": request.headers.get("content-type") ?? "application/json" } : {}),
-      },
+      headers: upstreamRequestHeaders(request, process.env.API_PROXY_TOKEN),
       body: hasBody ? await request.text() : undefined,
       cache: "no-store",
       signal: request.signal,
@@ -33,12 +32,10 @@ async function forward(
       { status: 502 },
     );
   }
-  const headers = new Headers();
-  for (const name of FORWARD_RESPONSE_HEADERS) {
-    const value = upstream.headers.get(name);
-    if (value) headers.set(name, value);
-  }
-  return new Response(upstream.body, { status: upstream.status, headers });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: clientResponseHeaders(upstream.headers),
+  });
 }
 
 export { forward as GET, forward as POST, forward as DELETE };

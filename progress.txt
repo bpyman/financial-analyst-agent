@@ -434,3 +434,22 @@ Blockers / next:
 - Package imports in new unit tests must stay inside functions: `test_contracts_import` drops the package from `sys.modules`.
 - `web/.next` can hold stale route types (a deleted `app/page`); run `npm run build` before `npx tsc --noEmit`.
 
+
+## 2026-09-25 — react-audience-window 03 Only the window's proxy may call the API
+
+Task completed: `.scratch/react-audience-window/issues/03-proxy-only-api.md`
+
+Key decisions:
+- `API_PROXY_TOKEN` is `Settings.api_proxy_token: SecretStr`. When set, `create_app` adds `ProxyTokenGuard` (pure ASGI, so SSE streams are untouched): every path except `/api/health` needs `X-Proxy-Token` to match, compared with `hmac.compare_digest`, or it gets `401 {"detail": "Not authorized."}`. OpenAPI docs are guarded too.
+- Unset token means no middleware. `PUBLIC_DEMO=true` without a token logs a warning at app build.
+- `web/lib/proxy.ts` holds the header rules (unit-tested in `proxy.test.ts`): upstream headers come from an allowlist plus the token when configured (a forged browser header is dropped); browser response headers are an allowlist, so the token can never be echoed back.
+
+Files changed:
+- `src/financial_analyst_agent/config.py`, `api.py`
+- `tests/test_api.py`
+- `web/lib/proxy.ts`, `web/lib/proxy.test.ts` (new), `web/app/api/[...path]/route.ts`
+- `.env.example`, `web/.env.example` (new; `web/.gitignore` exception), `web/README.md`, `docs/adr/0006-react-audience-window.md`
+
+Blockers / next:
+- Ticket 04 (ask and see a quarterly fact) is next. It needs no token locally.
+- Tickets 09/10 must set the same `API_PROXY_TOKEN` on Render and Vercel. Render's health check path should be `/api/health`, which stays open.

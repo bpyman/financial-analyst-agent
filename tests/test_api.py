@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -268,3 +269,92 @@ def test_turn_request_no_longer_carries_a_runtime_flag(client: TestClient) -> No
         f"/api/threads/{thread_id}/turns", json={"message": "hi", "recorded": False}
     )
     assert response.status_code == 422
+
+
+# --- Only the window's proxy may call the API (ADR 0006, ticket 03) ---
+
+PROXY_TOKEN = "s3cret-proxy-token"
+PROXY_HEADER = "X-Proxy-Token"  # web/lib/proxy.ts sends this name
+
+
+@pytest.fixture
+def guarded(tmp_path: Path) -> TestClient:
+    return TestClient(
+        create_app(_settings(api_proxy_token=PROXY_TOKEN), store_root=tmp_path / "threads")
+    )
+
+
+@pytest.mark.parametrize("header", [None, "", "wrong-token", PROXY_TOKEN + "x"])
+def test_token_set_refuses_requests_without_the_matching_header(
+    guarded: TestClient, header: str | None
+) -> None:
+    headers = {} if header is None else {PROXY_HEADER: header}
+    for method, path, body in (
+        ("GET", "/api/meta", None),
+        ("POST", "/api/threads", {}),
+        ("GET", f"/api/threads/{'0' * 8}-0000-0000-0000-{'0' * 12}", None),
+        ("POST", f"/api/threads/{'0' * 8}-0000-0000-0000-{'0' * 12}/turns", {"message": "hi"}),
+        ("DELETE", f"/api/threads/{'0' * 8}-0000-0000-0000-{'0' * 12}", None),
+        ("GET", "/api/openapi.json", None),
+    ):
+        response = guarded.request(method, path, json=body, headers=headers)
+        assert response.status_code == 401, (method, path)
+        assert response.json() == {"detail": "Not authorized."}
+        assert PROXY_TOKEN not in response.text
+
+
+def test_token_set_serves_requests_with_the_matching_header(guarded: TestClient) -> None:
+    guarded.headers[PROXY_HEADER] = PROXY_TOKEN
+    assert guarded.get("/api/meta").status_code == 200
+    thread_id = _new_thread(guarded)
+    data = _ask(guarded, thread_id, GUIDED_STORIES[0][1])
+    assert data["turns"][0]["presentation"]["fact_card"] is not None
+
+
+def test_health_check_answers_with_or_without_the_token(guarded: TestClient) -> None:
+    assert guarded.get("/api/health").json() == {"status": "ok"}
+    assert guarded.get("/api/health", headers={PROXY_HEADER: "wrong"}).status_code == 200
+
+
+def test_token_unset_needs_no_header(client: TestClient) -> None:
+    assert client.get("/api/meta").status_code == 200
+    assert client.get("/api/meta", headers={PROXY_HEADER: "anything"}).status_code == 200
+    _ask(client, _new_thread(client), GUIDED_STORIES[0][1])
+
+
+def test_token_comparison_is_constant_time(
+    guarded: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compared: list[tuple[bytes, bytes]] = []
+    real = api.hmac.compare_digest
+
+    def spy(a: bytes, b: bytes) -> bool:
+        compared.append((a, b))
+        return real(a, b)
+
+    monkeypatch.setattr(api.hmac, "compare_digest", spy)
+    guarded.get("/api/meta", headers={PROXY_HEADER: "wrong"})
+    assert compared == [(b"wrong", PROXY_TOKEN.encode())]
+
+
+def test_public_demo_without_a_token_warns_at_startup(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="financial_analyst_agent")
+    create_app(_settings(public_demo=True), store_root=tmp_path)
+    assert any("API_PROXY_TOKEN" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "overrides", [{"public_demo": False}, {"public_demo": True, "api_proxy_token": "t"}]
+)
+def test_no_startup_warning_locally_or_with_a_token(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, overrides: dict[str, Any]
+) -> None:
+    caplog.set_level(logging.WARNING, logger="financial_analyst_agent")
+    create_app(_settings(**overrides), store_root=tmp_path)
+    assert not any("API_PROXY_TOKEN" in record.getMessage() for record in caplog.records)
+
+
+def test_proxy_token_is_not_shown_in_settings_repr() -> None:
+    assert PROXY_TOKEN not in repr(_settings(api_proxy_token=PROXY_TOKEN))

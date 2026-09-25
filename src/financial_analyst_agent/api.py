@@ -10,6 +10,7 @@ Run with ``uv run serve-api`` (uvicorn factory ``create_app``).
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -23,8 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
@@ -72,6 +74,34 @@ _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "X-Accel-Buffering": "no",
 }
+PROXY_TOKEN_HEADER = "x-proxy-token"
+HEALTH_PATH = "/api/health"
+
+
+class ProxyTokenGuard:
+    """Refuse every request but the health check that lacks the proxy's shared secret.
+
+    The Next.js proxy adds ``X-Proxy-Token`` from ``API_PROXY_TOKEN`` (ADR 0006),
+    so a hosted API is not a second public entry point. The comparison is
+    constant-time so a wrong guess learns nothing from response timing.
+    """
+
+    def __init__(self, app: ASGIApp, *, token: str) -> None:
+        self._app = app
+        self._token = token.encode()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] != HEALTH_PATH:
+            presented = b""
+            for name, value in scope["headers"]:
+                if name == PROXY_TOKEN_HEADER.encode():
+                    presented = value
+                    break
+            if not hmac.compare_digest(presented, self._token):
+                refused = JSONResponse({"detail": "Not authorized."}, status_code=401)
+                await refused(scope, receive, send)
+                return
+        await self._app(scope, receive, send)
 
 
 class CreateThreadRequest(BaseModel):
@@ -209,6 +239,14 @@ def create_app(
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    proxy_token = resolved.api_proxy_token.get_secret_value()
+    if proxy_token:
+        app.add_middleware(ProxyTokenGuard, token=proxy_token)
+    elif resolved.public_demo:
+        _LOGGER.warning(
+            "API_PROXY_TOKEN is not set on a public demo: the API answers callers "
+            "that bypass the web proxy. Set the same token on the API and the proxy."
+        )
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

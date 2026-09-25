@@ -6,7 +6,7 @@ import re
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from financial_analyst_agent.domain.errors import ConfigurationError
@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     demo_live_sec: bool = False
     allow_public_openai: bool = False
     allow_public_tavily: bool = False
+    api_proxy_token: SecretStr = SecretStr("")
     thread_ttl_seconds: int = 7200
     max_turns_per_thread: int = 25
     max_live_sec_requests_per_thread: int = 25
