@@ -104,6 +104,38 @@ class ProxyTokenGuard:
         await self._app(scope, receive, send)
 
 
+class TurnLocks:
+    """The per-thread turn lock: at most one turn, or one Start over, per thread at a time.
+
+    Acquisition never blocks (a busy thread answers 409), so a lock is just
+    membership in a set: an entry exists only while its holder runs, and the
+    map cannot grow with every thread id a caller names.
+    """
+
+    def __init__(self) -> None:
+        self._held: set[str] = set()
+        self._guard = threading.Lock()
+
+    def try_acquire(self, thread_id: str) -> bool:
+        with self._guard:
+            if thread_id in self._held:
+                return False
+            self._held.add(thread_id)
+            return True
+
+    def release(self, thread_id: str) -> None:
+        with self._guard:
+            self._held.discard(thread_id)
+
+    def held(self, thread_id: str) -> bool:
+        with self._guard:
+            return thread_id in self._held
+
+    def __len__(self) -> int:
+        with self._guard:
+            return len(self._held)
+
+
 class CreateThreadRequest(BaseModel):
     """``runtime`` omitted means the deployment default (``APP_MODE``)."""
 
@@ -178,9 +210,20 @@ def presentation_json(result: TurnResult) -> dict[str, Any]:
     return presented
 
 
-def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> dict[str, Any]:
-    """Everything the window needs to draw one thread, as JSON-safe display records."""
-    state = store.load(thread_id, ttl_seconds=settings.thread_ttl_seconds)
+def thread_view(
+    store: LocalThreadStore,
+    thread_id: str,
+    settings: Settings,
+    *,
+    turn_in_flight: bool = False,
+) -> dict[str, Any]:
+    """Everything the window needs to draw one thread, as JSON-safe display records.
+
+    ``turn_in_flight`` says a turn is running on the thread (a reloaded window
+    polls until it ends); such a thread is not expired however old its last save.
+    """
+    ttl = None if turn_in_flight else settings.thread_ttl_seconds
+    state = store.load(thread_id, ttl_seconds=ttl)
     turns: list[dict[str, Any]] = []
     chips: tuple[str, ...] = ()
     pending = False
@@ -212,6 +255,7 @@ def thread_view(store: LocalThreadStore, thread_id: str, settings: Settings) -> 
         "pending_clarification": pending,
         "turn_count": turn_count,
         "max_turns": settings.max_turns_per_thread,
+        "turn_in_flight": turn_in_flight,
     }
 
 
@@ -227,18 +271,14 @@ def create_app(
     configure_logging()
     resolved = settings or get_settings()
     store = LocalThreadStore(store_root or thread_store_root())
-    locks: dict[str, threading.Lock] = {}
-    locks_guard = threading.Lock()
-
-    def thread_lock(thread_id: str) -> threading.Lock:
-        with locks_guard:
-            return locks.setdefault(thread_id, threading.Lock())
+    turn_locks = TurnLocks()
 
     app = FastAPI(
         title="Financial analyst agent",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    app.state.turn_locks = turn_locks
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
         app.add_middleware(ProxyTokenGuard, token=proxy_token)
@@ -297,15 +337,23 @@ def create_app(
 
     @app.get("/api/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
-        store.purge_expired(now=datetime.now(UTC), ttl_seconds=resolved.thread_ttl_seconds)
-        return thread_view(store, _valid_thread_id(thread_id), resolved)
+        valid = _valid_thread_id(thread_id)
+        store.purge_expired(
+            now=datetime.now(UTC),
+            ttl_seconds=resolved.thread_ttl_seconds,
+            keep=turn_locks.held,
+        )
+        return thread_view(store, valid, resolved, turn_in_flight=turn_locks.held(valid))
 
     @app.delete("/api/threads/{thread_id}", status_code=204)
     def delete_thread(thread_id: str) -> Response:
         valid = _valid_thread_id(thread_id)
-        if thread_lock(valid).locked():
+        if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
-        store.clear(valid)
+        try:
+            store.clear(valid)
+        finally:
+            turn_locks.release(valid)
         return Response(status_code=204)
 
     @app.post("/api/threads/{thread_id}/turns")
@@ -314,8 +362,7 @@ def create_app(
         message = body.message.strip()
         if not message:
             raise HTTPException(status_code=422, detail="Ask a question.")
-        lock = thread_lock(valid)
-        if not lock.acquire(blocking=False):
+        if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
 
         loop = asyncio.get_running_loop()
@@ -324,7 +371,8 @@ def create_app(
         def emit(event: str, data: dict[str, Any]) -> None:
             loop.call_soon_threadsafe(events.put_nowait, (event, data))
 
-        def work() -> None:
+        def run_turn() -> tuple[str, dict[str, Any]]:
+            """The turn's terminal event: the thread view, or a public error."""
             reserved = False
             budget = SessionBudget.from_counts(
                 turns=0,
@@ -359,17 +407,33 @@ def create_app(
             except RuntimeMismatchError as exc:
                 # Refused before anything ran: the turn does not count against the quota.
                 _LOGGER.warning("api_turn_runtime_mismatch", extra={"details": exc.details})
-                emit("error", {"message": public_error_message(exc)})
+                return "error", {"message": public_error_message(exc)}
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
+                failed = {"message": public_error_message(exc)}
                 if reserved:
-                    persist_session_budget(store, valid, budget)
-                emit("error", {"message": public_error_message(exc)})
-            else:
-                persist_session_budget(store, valid, budget)
-                emit("thread", thread_view(store, valid, resolved))
+                    try:
+                        persist_session_budget(store, valid, budget)
+                    except Exception:
+                        _LOGGER.exception("api_turn_budget_not_saved")
+                return "error", failed
+            persist_session_budget(store, valid, budget)
+            return "thread", thread_view(store, valid, resolved)
+
+        def work() -> None:
+            # Exactly one terminal event per turn, whatever raises; the lock is
+            # released first so the analyst's next turn is never refused.
+            terminal: tuple[str, dict[str, Any]] = (
+                "error",
+                {"message": public_error_message(Exception())},
+            )
+            try:
+                terminal = run_turn()
+            except Exception:
+                _LOGGER.exception("api_turn_failed_after_run")
             finally:
-                lock.release()
+                turn_locks.release(valid)
+                emit(*terminal)
 
         worker = threading.Thread(target=work, name=f"turn-{valid}", daemon=True)
         worker.start()

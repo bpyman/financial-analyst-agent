@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import uuid
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +19,8 @@ from financial_analyst_agent.api import create_app
 from financial_analyst_agent.config import AppMode, Settings
 from financial_analyst_agent.contracts import Runtime, RuntimeKind
 from financial_analyst_agent.runtime import recorded_runtime, resolve_runtime_kind
-from financial_analyst_agent.storefront import GUIDED_STORIES
+from financial_analyst_agent.storefront import GUIDED_STORIES, PUBLIC_FAILURE_MESSAGE
+from financial_analyst_agent.thread_store import LocalThreadStore
 
 # Keys the web client reads (web/lib/types.ts). Renaming one is a client break.
 PRESENTATION_KEYS = {
@@ -34,6 +38,18 @@ PRESENTATION_KEYS = {
     "message",
     "candidates",
     "clarify_prompt",
+}
+
+# Keys of a thread view (web/lib/types.ts ThreadView).
+THREAD_VIEW_KEYS = {
+    "thread_id",
+    "runtime",
+    "turns",
+    "spec_chips",
+    "pending_clarification",
+    "turn_count",
+    "max_turns",
+    "turn_in_flight",
 }
 
 
@@ -145,6 +161,8 @@ def test_follow_up_extends_thread_and_reload_returns_history(client: TestClient)
     )
     reloaded = client.get(f"/api/threads/{thread_id}").json()
     assert reloaded == view
+    assert set(view) == THREAD_VIEW_KEYS
+    assert view["turn_in_flight"] is False
 
 
 def test_ambiguous_metric_offers_live_candidates_on_last_turn_only(client: TestClient) -> None:
@@ -362,3 +380,120 @@ def test_no_startup_warning_locally_or_with_a_token(
 
 def test_proxy_token_is_not_shown_in_settings_repr() -> None:
     assert PROXY_TOKEN not in repr(_settings(api_proxy_token=PROXY_TOKEN))
+
+
+# --- A turn always ends, and nothing else disturbs its thread while it runs ---
+
+
+def _post_turn_within(
+    client: TestClient, thread_id: str, message: str, seconds: float = 30.0
+) -> Any:
+    """POST a turn, failing (not hanging) if its stream never ends."""
+    outcome: dict[str, Any] = {}
+
+    def call() -> None:
+        outcome["response"] = _post_turn(client, thread_id, message)
+
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    assert not worker.is_alive(), "the turn stream never sent a terminal event"
+    return outcome["response"]
+
+
+def _boom(*_: Any, **__: Any) -> Any:
+    raise FileNotFoundError("evidence gone")
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"thread_view": _boom},
+        {"persist_session_budget": _boom},
+        {"run_conversation_turn": _boom, "persist_session_budget": _boom},
+    ],
+    ids=["thread-view", "budget-after-success", "budget-after-failure"],
+)
+def test_a_failure_after_the_turn_still_ends_the_stream_with_one_public_error(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, broken: dict[str, Any]
+) -> None:
+    thread_id = _new_thread(client)
+    for name, replacement in broken.items():
+        monkeypatch.setattr(api, name, replacement)
+
+    events = _events(_post_turn_within(client, thread_id, GUIDED_STORIES[0][1]))
+
+    terminal = [event for event in events if event[0] != "progress"]
+    assert terminal == [("error", {"message": PUBLIC_FAILURE_MESSAGE})]
+    monkeypatch.undo()
+    assert _post_turn_within(client, thread_id, "hi").status_code == 200
+
+
+def test_a_running_turn_keeps_its_thread_past_the_ttl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "threads"
+    client = TestClient(create_app(_settings(thread_ttl_seconds=60), store_root=root))
+    store = LocalThreadStore(root)
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[1][1])
+    seen: dict[str, Any] = {}
+    real_turn = api.run_conversation_turn
+
+    def long_turn(*args: Any, **kwargs: Any) -> Any:
+        # The turn outlives the TTL; meanwhile another visitor's GET purges
+        # expired threads, and a reload of this window reads this one.
+        aged = store.load(thread_id)
+        assert aged is not None
+        store.save(aged.model_copy(update={"updated_at": datetime.now(UTC) - timedelta(hours=3)}))
+        client.get(f"/api/threads/{uuid.uuid4()}")
+        seen["mid_turn"] = client.get(f"/api/threads/{thread_id}").json()
+        return real_turn(*args, **kwargs)
+
+    monkeypatch.setattr(api, "run_conversation_turn", long_turn)
+    view = _ask(client, thread_id, "add Apple")
+
+    assert seen["mid_turn"]["turn_in_flight"] is True
+    assert len(seen["mid_turn"]["turns"]) == 1
+    assert len(view["turns"]) == 2
+    assert view["turn_in_flight"] is False
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_in_flight"] is False
+
+
+def test_start_over_holds_the_thread_while_it_clears(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    thread_id = _new_thread(client)
+    during: dict[str, int] = {}
+    real_clear = LocalThreadStore.clear
+
+    def clear(self: LocalThreadStore, cleared: str) -> None:
+        during["turn"] = _post_turn(client, cleared, "hi").status_code
+        real_clear(self, cleared)
+
+    monkeypatch.setattr(LocalThreadStore, "clear", clear)
+    assert client.delete(f"/api/threads/{thread_id}").status_code == 204
+    assert during["turn"] == 409
+
+
+def test_turn_locks_do_not_outlive_their_turns(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[0][1])
+    for _ in range(3):
+        assert client.delete(f"/api/threads/{uuid.uuid4()}").status_code == 204
+    assert client.delete(f"/api/threads/{thread_id}").status_code == 204
+    app: Any = client.app
+    assert len(app.state.turn_locks) == 0
+
+
+def test_an_unreadable_thread_file_reads_as_an_empty_thread(tmp_path: Path) -> None:
+    root = tmp_path / "threads"
+    client = TestClient(create_app(_settings(), store_root=root))
+    thread_id = _new_thread(client)
+    (root / f"{thread_id}.json").write_text('{"thread_id": "', encoding="utf-8")
+
+    response = client.get(f"/api/threads/{thread_id}")
+
+    assert response.status_code == 200
+    assert response.json()["runtime"] is None
+    assert response.json()["turns"] == []
