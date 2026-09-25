@@ -9,7 +9,9 @@ This supersedes PRD story 34 ("Streamlit to be the only audience window") and th
 - **Presentation stays in Python.** `present_turn` is the only place a `Decimal` becomes a string. The client may choose chart axis tick formats from `chart_value_kind`, but amounts shown as text come from the server.
 - **One turn endpoint, streamed.** `POST /api/threads/{thread_id}/turns` returns server-sent events: `progress` (`done`, `total` compiled cells), then exactly one `thread` (the whole thread view) or `error` (a public message — `ConfigurationError` and `SessionQuotaError` text, otherwise a generic failure).
 - **One thread per browser, plus Start over.** The thread identifier is a server-minted UUID kept in `localStorage`; a reload resumes it until `THREAD_TTL_SECONDS` expires it. No thread list, no accounts (ADR 0005).
-- **Recorded mode is a thread property.** Switching between recorded and live data starts a new thread, so recorded and live evidence never mix on one thread. When `PUBLIC_DEMO=true` and `DEMO_LIVE_SEC=false`, recorded mode is forced and the switch is locked.
+- **A thread is bound to one runtime.** A conversation thread starts on the recorded runtime or the live runtime and the server refuses a turn on the other one, so recorded and live evidence never mix. Switching runtime in the window starts a new thread. When `PUBLIC_DEMO=true` and `DEMO_LIVE_SEC=false`, the recorded runtime is forced and the switch is locked. (Streamlit let the switch flip mid-thread; that is the behaviour this replaces.)
+- **Threads may be lost on restart.** The hosted thread store is a plain local disk, as it already was on Streamlit Community Cloud; threads also expire after `THREAD_TTL_SECONDS`. When a stored thread comes back empty, the window says so and starts fresh.
+- **The API accepts only proxied calls.** The Vercel proxy sends a shared secret header; the API refuses requests without it, so the Python origin is not a second public entry point.
 - **Clarify answers are messages.** A candidate button sends its catalog slug as the next analyst message, as before; only the last turn's candidates are live, and only while the thread holds a pending clarification.
 - **Browser never calls Python directly.** A Next.js route handler proxies `/api/*` to `API_ORIGIN`, so there is no CORS surface and the Python host can move without a client rebuild.
 
@@ -19,7 +21,11 @@ Next.js on Vercel (`web/` as the project root). FastAPI in a long-lived containe
 
 ## Migration
 
-Streamlit stays runnable alongside until the new hosted demo is live, then `app.py`, its tests, and the `streamlit`, `streamlit-shadcn-ui`, `altair`, and `pandas` dependencies are deleted in one follow-up. Two windows exist during that window of time; both call the same seams, so neither can drift on numbers.
+Streamlit stays runnable alongside until cutover, then `app.py`, its tests, and the `streamlit`, `streamlit-shadcn-ui`, `altair`, and `pandas` dependencies are deleted in one follow-up. Two windows exist until then; both call the same seams, so neither can drift on numbers.
+
+Cutover needs all three: the hosted Next.js URL serves the recorded runtime; a Playwright check in CI clicks each guided story and the compare-then-add-Apple walkthrough and finds the expected fact card, chart, table, or disclosure; and the README's portfolio images are re-captured from the new window. The Playwright check replaces what `tests/test_app.py` guarded; there are no visual snapshot tests.
+
+Scope is parity with the Streamlit window plus three display-only additions: copy buttons on identifiers, a turn counter, and a compact/full column switch on tables. CSV export and shareable thread links are out: a share link would reintroduce cross-visitor thread access.
 
 ## Considered Options
 

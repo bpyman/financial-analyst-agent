@@ -37,8 +37,16 @@ A user metric phrase that names nothing in the closed catalog.
 _Avoid_: ambiguous metric
 
 **Conversation thread**:
-One analyst investigation, identified and persisted. It carries the analysis spec, any pending clarification, the last result, and evidence references. Threads do not share state.
+One analyst investigation, identified and persisted. It carries the analysis spec, any pending clarification, the last result, and evidence references, and is bound to one runtime for its whole life. Threads do not share state.
 _Avoid_: session, chat, conversation history, memory
+
+**Recorded runtime**:
+The provider set that replays captured SEC, news, and model responses. Orchestration and presentation are the same as live; only the providers differ. A thread started on it never takes a live turn.
+_Avoid_: kill-switch, fixture mode, guided demo data, cassette
+
+**Live runtime**:
+The provider set that calls SEC EDGAR, the news search, and the model provider. A thread started on it never takes a recorded turn.
+_Avoid_: production mode, real mode
 
 **Analysis spec**:
 The typed, resolved statement of the analyst's current quantitative question: companies or constituents, closed-catalog metrics, period selection, operations, and requested presentation. Resolved means CIKs and catalog slugs, so it can execute. It is the thing a follow-up edits.
