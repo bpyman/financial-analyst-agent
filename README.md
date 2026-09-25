@@ -3,8 +3,7 @@
 [![CI](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
-<!-- HOSTED_DEMO_URL: ticket 11 points this badge at the hosted *.vercel.app window. -->
-[![Hosted demo: coming soon](https://img.shields.io/badge/demo-coming_soon-lightgrey.svg)](#try-it)
+[![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)
 
 **An evidence-first financial research agent that answers from SEC filings without letting the model touch the numbers.**
 
@@ -18,8 +17,7 @@ A language model interprets the question. Deterministic code owns quarterly fact
 
 ## Try it
 
-<!-- HOSTED_DEMO_URL: ticket 11 replaces this line with the hosted *.vercel.app link. -->
-Hosted demo (recorded runtime, no keys): coming soon on Vercel. Until then, [run it locally](#run-it-locally) in two commands.
+Hosted demo (recorded runtime, no keys): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. Or [run it locally](#run-it-locally) in two commands.
 
 ![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 

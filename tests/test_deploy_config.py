@@ -36,7 +36,7 @@ DEPLOY_NOTES = ROOT / "docs" / "deploy.md"
 # render-blueprints/references/field-reference.md), so a misspelt field fails
 # here rather than at Blueprint sync.
 RENDER_SERVICE_FIELDS = {
-    "name", "type", "runtime", "region", "plan", "branch", "rootDir",
+    "name", "type", "runtime", "region", "plan", "repo", "branch", "rootDir",
     "buildCommand", "startCommand", "preDeployCommand", "autoDeployTrigger",
     "maxShutdownDelaySeconds", "healthCheckPath", "domains", "envVars",
     "buildFilter", "disk", "scaling", "numInstances", "registryCredential",
@@ -71,6 +71,7 @@ def test_render_blueprint_is_one_free_docker_web_service_in_virginia() -> None:
     assert service["plan"] == "free"
     assert service["region"] in RENDER_REGIONS
     assert service["region"] == "virginia"
+    assert service["repo"] == "https://github.com/bpyman/financial-analyst-agent"
     assert service["branch"] == "master"
     assert (ROOT / service["dockerfilePath"]).is_file()
     assert (ROOT / service["dockerContext"]).resolve() == ROOT

@@ -220,6 +220,35 @@ service. The window says "Waking the analysis service…" in the meantime.
 
 ## What was checked against current docs
 
+### Verified at go-live (25 September 2026)
+
+Going live settled several of the open points below against the real services:
+
+- **Blueprint schema.** `render blueprints validate` (Render CLI, built from
+  render-oss/cli) accepts `render.yaml`. Its only complaint was a missing `repo:`,
+  which the dashboard fills in when you import a Blueprint from a repo; the file now
+  names it so the standalone validator passes too.
+- **"After CI Checks Pass" on the free plan.** Render's API accepted
+  `autoDeployTrigger: checksPass` for the free web service, so the deploy-hook
+  fallback for Render is not needed. The `deploy` job still skips it while
+  `RENDER_DEPLOY_HOOK_URL` is unset.
+- **How the service was created.** The API service was created through Render's REST
+  API with the Blueprint's settings, not through a Blueprint sync. `render.yaml` stays
+  the record of those settings.
+- **Vercel production through a deploy hook.** With `git.deploymentEnabled.master:
+  false`, a Deploy Hook for `master` produced a `production` deployment that became
+  the live domain. Production deploys therefore need the `VERCEL_DEPLOY_HOOK_URL`
+  repository secret for CI's `deploy` job.
+- **Deployment Protection.** The project's default protection
+  (`all_except_custom_domains`) protects preview and per-deployment URLs. The
+  production domain, `financial-analyst-agent-ten.vercel.app`, is public (200 without
+  a login). The unsuffixed `financial-analyst-agent.vercel.app` belongs to another
+  project.
+- **End to end.** The API refuses calls without the proxy token (401). A guided story
+  runs through the Vercel proxy, and the Playwright suite can run against the hosted URL
+  with `PLAYWRIGHT_BASE_URL`.
+
+
 This configuration was written on 25 September 2026. render.com and vercel.com were not
 reachable from the build environment, so the fields were checked against these
 sources:

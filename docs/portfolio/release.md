@@ -6,7 +6,7 @@ An evidence-first financial research agent: it answers from SEC filings, and the
 
 A planner proposes a typed analysis spec. Deterministic code resolves identity, picks the standalone 10-Q fact, does the arithmetic, and renders the table. Follow-ups patch the spec instead of restarting. Click any value to inspect the exact Decimal, CIK, concept, accession, and filing URL. Compare MD&A and Risk Factors between two accessions and you get a paragraph diff the model did not write.
 
-Try the guided stories (recorded runtime, no keys): HOSTED_DEMO_URL <!-- ticket 11 fills in the *.vercel.app link -->
+Try the guided stories (recorded runtime, no keys): https://financial-analyst-agent-ten.vercel.app
 Repo: https://github.com/bpyman/financial-analyst-agent
 
 ## Visuals
@@ -20,6 +20,6 @@ Captured from the Next.js window on the recorded runtime, default dark theme, by
 5. Screenshot: [`docs/portfolio/images/inspect-exact-source.png`](images/inspect-exact-source.png).
 6. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640). Re-upload it in GitHub Settings → Social preview after a recapture.
 
-Repository homepage: HOSTED_DEMO_URL <!-- ticket 11 -->
+Repository homepage: https://financial-analyst-agent-ten.vercel.app
 
 The recorded runtime includes Apple quarterly revenue for its 10-Q periods. After a Microsoft four-quarter compare, `add Apple` still has no 10-Q on 2024-09-30 (Apple's fiscal year-end is a 10-K), so that cell stays `missing_fact` and the chart bridges the gap with a dotted line.
