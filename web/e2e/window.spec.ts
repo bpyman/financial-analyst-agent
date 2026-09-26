@@ -174,3 +174,19 @@ test("a reload while a turn runs picks the answer up when it lands", async ({ pa
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   await expect(analyst.counter()).toHaveText(/^1 of /);
 });
+
+test("the window installs as an app with the project's icons", async ({ page, request }) => {
+  await page.goto("/");
+  const href = await page.locator('link[rel="manifest"]').getAttribute("href");
+  expect(href).toBeTruthy();
+
+  const manifest = await (await request.get(href!)).json();
+  expect(manifest).toMatchObject({ name: "Financial analyst agent", display: "standalone", start_url: "/" });
+  const sizes = manifest.icons.map((icon: { sizes: string }) => icon.sizes);
+  expect(sizes).toEqual(expect.arrayContaining(["192x192", "512x512"]));
+  for (const icon of manifest.icons) {
+    const response = await request.get(icon.src);
+    expect(response.ok(), icon.src).toBe(true);
+    expect(response.headers()["content-type"]).toBe("image/png");
+  }
+});
