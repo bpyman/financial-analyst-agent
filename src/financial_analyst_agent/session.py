@@ -62,15 +62,21 @@ def snapshot_status(
     *,
     now: datetime | None = None,
     stale_after_days: int = 30,
+    recorded: bool = False,
 ) -> tuple[str, bool]:
-    """Human freeze date plus whether the ranking snapshot is older than the threshold."""
+    """Human freeze date plus whether the ranking snapshot is older than the threshold.
+
+    The recorded runtime ranks a fixture frozen with its captured filings, so its age
+    is by design: it is labelled as recorded and never flagged stale.
+    """
+    prefix = "Recorded universe snapshot as of" if recorded else "Universe snapshot as of"
     parsed = try_parse_datetime(as_of)
     clock = now or datetime.now(UTC)
     if parsed is None:
-        return (f"Universe snapshot as of {as_of}", False)
+        return (f"{prefix} {as_of}", False)
     aware = parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-    stale = clock - aware >= timedelta(days=stale_after_days)
-    banner = f"Universe snapshot as of {format_datetime_utc(aware)}"
+    stale = not recorded and clock - aware >= timedelta(days=stale_after_days)
+    banner = f"{prefix} {format_datetime_utc(aware)}"
     if stale:
         banner = f"{banner} — freeze is older than {stale_after_days} days"
     return banner, stale

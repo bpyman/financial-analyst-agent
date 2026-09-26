@@ -265,9 +265,11 @@ def create_app(
     def meta(runtime: RuntimeKind | None = None) -> dict[str, Any]:
         """Storefront copy; ``runtime`` picks whose snapshot banner to report."""
         default = default_runtime_kind(resolved)
+        kind = resolve_runtime_kind(runtime or default, resolved)
         banner, stale = snapshot_status(
-            _snapshot_as_of(resolve_runtime_kind(runtime or default, resolved)),
+            _snapshot_as_of(kind),
             stale_after_days=resolved.snapshot_stale_after_days,
+            recorded=kind is RuntimeKind.RECORDED,
         )
         return {
             "runtime": {"default": default.value, "locked": runtime_locked(resolved)},

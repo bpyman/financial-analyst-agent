@@ -78,3 +78,14 @@ def test_snapshot_status_warns_when_freeze_is_stale() -> None:
     )
     assert "Aug 17, 2026" in fresh
     assert still_stale is False
+
+
+def test_recorded_snapshot_is_labelled_and_never_stale() -> None:
+    banner, stale = snapshot_status(
+        "2026-08-17T16:00:00+00:00",
+        now=datetime(2026, 9, 26, tzinfo=UTC),
+        stale_after_days=30,
+        recorded=True,
+    )
+    assert banner == "Recorded universe snapshot as of Aug 17, 2026, 4:00 PM UTC"
+    assert stale is False
