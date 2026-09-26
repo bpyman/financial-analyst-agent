@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContextOptions, type Locator, type Page } from "@playwright/test";
 import { Analyst } from "../e2e/analyst";
 import { findFfmpeg, gifArgs, mp4Args } from "./portfolio-media";
+import { SOCIAL_SIZE, socialCardHtml } from "./social-card";
 
 /**
  * Re-captures the README's portfolio media from the window (ADR 0006 cutover
@@ -19,7 +20,8 @@ import { findFfmpeg, gifArgs, mp4Args } from "./portfolio-media";
 const OUT = process.env.PORTFOLIO_DIR ?? path.resolve(__dirname, "../../docs/portfolio/images");
 const VIEWPORT = { width: 1280, height: 800 };
 const STILL = { width: 1280, height: 1000 };
-const SOCIAL = { width: 1280, height: 640 };
+const REPO = "github.com/bpyman/financial-analyst-agent";
+const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastAPI"];
 
 const FILES = {
   landing: "guided-first-run.png",
@@ -38,6 +40,7 @@ test("capture the portfolio stills and walkthrough", async ({ browser }) => {
   mkdirSync(OUT, { recursive: true });
 
   await captureStills(browser);
+  await captureSocial(browser);
   await captureWalkthrough(browser, ffmpeg);
 });
 
@@ -57,17 +60,55 @@ async function captureStills(browser: Browser) {
 
   await analyst.ask("add Apple");
   await expect(analyst.charts()).toHaveCount(2);
-  await page.setViewportSize(SOCIAL);
-  // Close enough under the header that the callout above the chart stays hidden.
-  await frame(page, analyst.charts().last(), 14);
-  await shoot(page, FILES.social, { scale: "css" });
-  await page.setViewportSize(STILL);
 
   const inspector = await chooseAppleEvidence(page);
   await frame(page, inspector);
   await shoot(page, FILES.inspect);
 
   await context.close();
+}
+
+/**
+ * The social preview: the landing headline beside the fact card from "Verify a
+ * quarterly fact", both taken from the window, composed by `social-card.ts`.
+ */
+async function captureSocial(browser: Browser) {
+  const context = await browser.newContext({ ...DARK, viewport: STILL, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  const analyst = new Analyst(page);
+
+  await analyst.open();
+  const headline = page.getByRole("heading", { level: 1 });
+  const muted = (await headline.locator("span").textContent())?.trim() ?? "";
+  const lead = ((await headline.textContent()) ?? "").replace(muted, "").trim();
+
+  await analyst.tell("Verify a quarterly fact");
+  const factCard = analyst.factCards(/, Microsoft Corporation$/);
+  await expect(factCard).toBeVisible();
+  await settle(page);
+  await page.mouse.move(0, 0);
+  const card = await factCard.screenshot({ animations: "disabled" });
+  await context.close();
+
+  const composer = await browser.newContext({ viewport: SOCIAL_SIZE, deviceScaleFactor: 1 });
+  const canvas = await composer.newPage();
+  await canvas.setContent(
+    socialCardHtml({ lead, muted, chips: CHIPS, repo: REPO, card: dataUri("image/png", card), fonts: geistFonts() }),
+  );
+  await settle(canvas);
+  await canvas.screenshot({ path: path.join(OUT, FILES.social), animations: "disabled" });
+  await composer.close();
+}
+
+function dataUri(type: string, bytes: Buffer): string {
+  return `data:${type};base64,${bytes.toString("base64")}`;
+}
+
+/** The window's own typefaces, from the `geist` package. */
+function geistFonts(): { sans: string; mono: string } {
+  const fonts = path.resolve(__dirname, "../node_modules/geist/dist/fonts");
+  const woff2 = (file: string) => dataUri("font/woff2", readFileSync(path.join(fonts, file)));
+  return { sans: woff2("geist-sans/Geist-Variable.woff2"), mono: woff2("geist-mono/GeistMono-Variable.woff2") };
 }
 
 async function captureWalkthrough(browser: Browser, ffmpeg: string) {
@@ -147,10 +188,10 @@ async function chooseAppleEvidence(page: Page): Promise<Locator> {
   throw new Error(`no standalone 10-Q Apple fact among: ${labels.join(" | ")}`);
 }
 
-async function shoot(page: Page, name: string, options: { scale?: "css" | "device" } = {}) {
+async function shoot(page: Page, name: string) {
   await page.mouse.move(0, 0);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await page.screenshot({ path: path.join(OUT, name), animations: "disabled", ...options });
+  await page.screenshot({ path: path.join(OUT, name), animations: "disabled" });
 }
 
 /** Lets fonts, chart animations, and the answer's smooth scroll finish. */

@@ -138,7 +138,7 @@ uv run python -m financial_analyst_agent.mcp_server
 
 ## Portfolio images
 
-`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source, and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview, and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
+`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source, and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the window's fact card, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
 
 ```text
 cd web
