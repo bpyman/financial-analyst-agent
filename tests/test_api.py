@@ -100,7 +100,10 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
     assert [story["label"] for story in meta["guided_stories"]] == [
         label for label, _ in GUIDED_STORIES
     ]
-    assert meta["snapshot"]["banner"].startswith("Universe snapshot as of ")
+    assert meta["snapshot"] == {
+        "banner": "Recorded universe snapshot as of Aug 17, 2026, 4:00 PM UTC",
+        "stale": False,
+    }
     assert meta["metric_groups"][0]["title"] == "Reported (SEC EDGAR)"
     assert "Net income" in meta["metric_groups"][0]["names"]
     assert meta["runtime_copy"]["recorded"].startswith("Recorded runtime — ")
