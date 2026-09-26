@@ -14,18 +14,18 @@ pytestmark = pytest.mark.gold
 MICROSOFT_PRETAX_QUERY = "Microsoft pre-tax income"
 TSLA_GM_REVENUE_QUERY = "TSLA vs GM revenue"
 TECH_RD_QUERY = "Top 10 tech companies R&D spend"
-SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
+SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
 TECHNOLOGY_TOP_10 = (
-    ("Apple Inc.", "AAPL", "0000320193", Decimal("3500000000000")),
-    ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3100000000000")),
-    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("2200000000000")),
-    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("1800000000000")),
-    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("900000000000")),
-    ("Oracle Corporation", "ORCL", "0001341439", Decimal("650000000000")),
-    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("600000000000")),
-    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("450000000000")),
-    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("400000000000")),
-    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("350000000000")),
+    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
+    ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),
+    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("4139313608328")),
+    ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3832846143500")),
+    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("1678521799800")),
+    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("1028305278000")),
+    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("435495596900")),
+    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("420551078756")),
+    ("Oracle Corporation", "ORCL", "0001341439", Decimal("394854827600")),
+    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("385070115000")),
 )
 
 MICROSOFT_CIK = "0000789019"
@@ -55,15 +55,15 @@ CISCO_RD = Decimal("2000000000")
 PALANTIR_RD = Decimal("300000000")
 AMAT_RD = Decimal("900000000")
 TECH_RD_VALUES = (
-    APPLE_RD,
-    MICROSOFT_RD,
-    ALPHABET_RD,
     NVIDIA_RD,
+    APPLE_RD,
+    ALPHABET_RD,
+    MICROSOFT_RD,
     BROADCOM_RD,
-    ORACLE_RD,
     AMD_RD,
-    CISCO_RD,
     PALANTIR_RD,
+    CISCO_RD,
+    ORACLE_RD,
     AMAT_RD,
 )
 

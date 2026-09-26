@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-08-17T16:00:00+00:00",
+  "as_of": "2026-09-26T21:03:37.822811Z",
   "source": "universe_snapshot",
   "companies": [
     {
@@ -8,7 +8,7 @@
       "ticker": "LLY",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "800000000000",
+      "market_cap": "1114757656520",
       "is_etf": false,
       "is_fund": false
     },
@@ -18,7 +18,7 @@
       "ticker": "UNH",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "500000000000",
+      "market_cap": "341998101102",
       "is_etf": false,
       "is_fund": false
     },
@@ -28,7 +28,7 @@
       "ticker": "JNJ",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "395000000000",
+      "market_cap": "653612648388",
       "is_etf": false,
       "is_fund": false
     },
@@ -38,7 +38,7 @@
       "ticker": "ABBV",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "330000000000",
+      "market_cap": "467140021872",
       "is_etf": false,
       "is_fund": false
     },
@@ -48,7 +48,7 @@
       "ticker": "MRK",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "280000000000",
+      "market_cap": "367361026800",
       "is_etf": false,
       "is_fund": false
     },
@@ -58,7 +58,7 @@
       "ticker": "TMO",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "210000000000",
+      "market_cap": "249579418050",
       "is_etf": false,
       "is_fund": false
     },
@@ -68,7 +68,7 @@
       "ticker": "ABT",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "195000000000",
+      "market_cap": "175287835584",
       "is_etf": false,
       "is_fund": false
     },
@@ -78,7 +78,7 @@
       "ticker": "DHR",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "175000000000",
+      "market_cap": "157925817031",
       "is_etf": false,
       "is_fund": false
     },
@@ -88,7 +88,7 @@
       "ticker": "AMGN",
       "sector": "Healthcare",
       "exchange": "NASDAQ",
-      "market_cap": "155000000000",
+      "market_cap": "223768333880",
       "is_etf": false,
       "is_fund": false
     },
@@ -98,7 +98,7 @@
       "ticker": "PFE",
       "sector": "Healthcare",
       "exchange": "NYSE",
-      "market_cap": "140000000000",
+      "market_cap": "163402944800",
       "is_etf": false,
       "is_fund": false
     },
@@ -108,7 +108,7 @@
       "ticker": "GILD",
       "sector": "Healthcare",
       "exchange": "NASDAQ",
-      "market_cap": "90000000000",
+      "market_cap": "187146431544",
       "is_etf": false,
       "is_fund": false
     },
@@ -118,7 +118,7 @@
       "ticker": "JPM",
       "sector": "Financial Services",
       "exchange": "NYSE",
-      "market_cap": "600000000000",
+      "market_cap": "919232700600",
       "is_etf": false,
       "is_fund": false
     },
@@ -128,7 +128,7 @@
       "ticker": "BAC",
       "sector": "Financial Services",
       "exchange": "NYSE",
-      "market_cap": "300000000000",
+      "market_cap": "402376653000",
       "is_etf": false,
       "is_fund": false
     },
@@ -138,7 +138,7 @@
       "ticker": "WFC",
       "sector": "Financial Services",
       "exchange": "NYSE",
-      "market_cap": "200000000000",
+      "market_cap": "250901280000",
       "is_etf": false,
       "is_fund": false
     },
@@ -148,7 +148,7 @@
       "ticker": "GS",
       "sector": "Financial Services",
       "exchange": "NYSE",
-      "market_cap": "150000000000",
+      "market_cap": "275964298150",
       "is_etf": false,
       "is_fund": false
     },
@@ -158,7 +158,7 @@
       "ticker": "AAPL",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "3500000000000",
+      "market_cap": "5009416510920",
       "is_etf": false,
       "is_fund": false
     },
@@ -168,7 +168,7 @@
       "ticker": "MSFT",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "3100000000000",
+      "market_cap": "3832846143500",
       "is_etf": false,
       "is_fund": false
     },
@@ -178,7 +178,7 @@
       "ticker": "GOOGL",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "2190000000000",
+      "market_cap": "4139313608328",
       "is_etf": false,
       "is_fund": false
     },
@@ -188,7 +188,7 @@
       "ticker": "GOOG",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "2200000000000",
+      "market_cap": "4139313608328",
       "is_etf": false,
       "is_fund": false
     },
@@ -198,7 +198,7 @@
       "ticker": "NVDA",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "1800000000000",
+      "market_cap": "5451420470000",
       "is_etf": false,
       "is_fund": false
     },
@@ -208,7 +208,7 @@
       "ticker": "AVGO",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "900000000000",
+      "market_cap": "1678521799800",
       "is_etf": false,
       "is_fund": false
     },
@@ -218,7 +218,7 @@
       "ticker": "ORCL",
       "sector": "Technology",
       "exchange": "NYSE",
-      "market_cap": "650000000000",
+      "market_cap": "394854827600",
       "is_etf": false,
       "is_fund": false
     },
@@ -228,7 +228,7 @@
       "ticker": "AMD",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "600000000000",
+      "market_cap": "1028305278000",
       "is_etf": false,
       "is_fund": false
     },
@@ -238,7 +238,7 @@
       "ticker": "CSCO",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "450000000000",
+      "market_cap": "420551078756",
       "is_etf": false,
       "is_fund": false
     },
@@ -248,7 +248,7 @@
       "ticker": "PLTR",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "400000000000",
+      "market_cap": "435495596900",
       "is_etf": false,
       "is_fund": false
     },
@@ -258,7 +258,7 @@
       "ticker": "AMAT",
       "sector": "Technology",
       "exchange": "NASDAQ",
-      "market_cap": "350000000000",
+      "market_cap": "385070115000",
       "is_etf": false,
       "is_fund": false
     }

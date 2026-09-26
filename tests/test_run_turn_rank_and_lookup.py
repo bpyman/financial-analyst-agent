@@ -73,7 +73,9 @@ def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None
         assert row.cik == cik
         assert row.metric == "net_income"
 
-    lilly, unitedhealth, *middle, pfizer = result.table_rows
+    lilly, *_, pfizer = result.table_rows
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    middle = result.table_rows[1:-1]
     assert lilly.value == LLY_NET_INCOME
     assert lilly.accession_number == LLY_ACCESSION
     assert lilly.concept == CONCEPT
@@ -226,7 +228,9 @@ def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
         ),
     )
 
-    lilly, unitedhealth, *remaining = result.table_rows
+    lilly = result.table_rows[0]
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    remaining = [row for row in result.table_rows if row not in (lilly, unitedhealth)]
     assert lilly.reason == "ambiguous_concept"
     assert unitedhealth.value == UNH_NET_INCOME
     assert all(row.reason == "missing_fact" for row in remaining)
@@ -254,7 +258,9 @@ def test_run_turn_rank_and_lookup_computes_net_margin_per_ranked_issuer() -> Non
     ]
 
     assert len(result.table_rows) == 10
-    lilly, unitedhealth, *remaining = result.table_rows
+    lilly = result.table_rows[0]
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    remaining = [row for row in result.table_rows if row not in (lilly, unitedhealth)]
     assert lilly.rank == 1
     assert lilly.ticker == "LLY"
     assert lilly.cik == "0000059478"
