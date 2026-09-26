@@ -30,30 +30,34 @@ TECHNOLOGY_TOP_10 = (
 
 MICROSOFT_CIK = "0000789019"
 MICROSOFT_TICKER = "MSFT"
-MICROSOFT_PRETAX = Decimal("32014000000")
+MICROSOFT_PRETAX = Decimal("39340000000")
 MICROSOFT_ACCESSION = "0001193125-26-191507"
-MICROSOFT_PRETAX_CONCEPT = "PretaxIncomeLoss"
+MICROSOFT_PRETAX_CONCEPT = (
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
+)
 MICROSOFT_SOURCE_URL = (
     "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm"
 )
 PERIOD_START = date(2026, 1, 1)
 PERIOD_END = date(2026, 3, 31)
+LATEST_QUARTER_START = date(2026, 4, 1)
+LATEST_QUARTER_END = date(2026, 6, 30)
 
 TESLA_CIK = "0001318605"
-TESLA_REVENUE = Decimal("19335000000")
+TESLA_REVENUE = Decimal("28236000000")
 GM_CIK = "0001467858"
-GM_REVENUE = Decimal("44019000000")
+GM_REVENUE = Decimal("43762000000")
 
-APPLE_RD = Decimal("8042000000")
-MICROSOFT_RD = Decimal("8197000000")
-ALPHABET_RD = Decimal("13838000000")
-NVIDIA_RD = Decimal("3900000000")
-BROADCOM_RD = Decimal("1500000000")
-ORACLE_RD = Decimal("2300000000")
-AMD_RD = Decimal("1600000000")
-CISCO_RD = Decimal("2000000000")
-PALANTIR_RD = Decimal("300000000")
-AMAT_RD = Decimal("900000000")
+APPLE_RD = Decimal("11729000000")
+MICROSOFT_RD = Decimal("8915000000")
+ALPHABET_RD = Decimal("18219000000")
+NVIDIA_RD = Decimal("7054000000")
+BROADCOM_RD = Decimal("2895000000")
+ORACLE_RD = Decimal("2401000000")
+AMD_RD = Decimal("2528000000")
+CISCO_RD = Decimal("2377000000")
+PALANTIR_RD = Decimal("192513000")
+AMAT_RD = Decimal("1100000000")
 TECH_RD_VALUES = (
     NVIDIA_RD,
     APPLE_RD,
@@ -96,13 +100,13 @@ def test_gold_tsla_vs_gm_revenue_through_recorded_runtime() -> None:
     assert tesla.ticker == "TSLA"
     assert tesla.metric == "revenue"
     assert tesla.value == TESLA_REVENUE
-    assert tesla.start_date == PERIOD_START
-    assert tesla.end_date == PERIOD_END
+    assert tesla.start_date == LATEST_QUARTER_START
+    assert tesla.end_date == LATEST_QUARTER_END
     assert gm.cik == GM_CIK
     assert gm.ticker == "GM"
     assert gm.value == GM_REVENUE
-    assert gm.start_date == PERIOD_START
-    assert gm.end_date == PERIOD_END
+    assert gm.start_date == LATEST_QUARTER_START
+    assert gm.end_date == LATEST_QUARTER_END
 
 
 def test_gold_top_tech_rd_spend_through_recorded_runtime() -> None:

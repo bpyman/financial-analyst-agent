@@ -1,6 +1,6 @@
 """Filing selector tests — latest and named reporting periods."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -108,3 +108,25 @@ def test_list_quarterly_report_dates_newest_first_limited() -> None:
     ]
     assert list_quarterly_report_dates(filings, limit=1) == [NEWER]
     assert list_quarterly_report_dates(filings, limit=2) == [NEWER, OLDER]
+
+
+def test_named_report_date_matches_a_52_53_week_quarter_end_days_away() -> None:
+    filings = [
+        make_filing(report_date=NEWER),
+        make_filing(
+            accession_number="0000320193-24-000060",
+            report_date=OLDER,
+            filed_date=date(2024, 8, 1),
+        ),
+    ]
+
+    candidates = get_candidate_filings(filings, report_date=date(2024, 6, 30))
+
+    assert [filing.report_date for filing in candidates] == [OLDER]
+
+
+def test_named_report_date_a_week_off_is_still_a_typed_failure() -> None:
+    filings = [make_filing(report_date=OLDER)]
+
+    with pytest.raises(FilingNotFoundError):
+        get_candidate_filings(filings, report_date=OLDER + timedelta(days=7))

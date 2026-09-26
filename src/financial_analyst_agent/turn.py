@@ -56,6 +56,7 @@ from financial_analyst_agent.domain.errors import (
 )
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.observability import call_provider
+from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _LOOKUP_FAILURES = (
@@ -398,6 +399,23 @@ def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
     return next(iter(periods))
 
 
+def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
+    """True when every period is one fiscal quarter, allowing 52/53-week calendars.
+
+    Apple's quarter ending March 28 and Microsoft's ending March 31 are the same
+    quarter; bounds further apart than ``FISCAL_WEEK_TOLERANCE`` are not.
+    """
+    if len(periods) <= 1:
+        return True
+    starts = [start for start, _end in periods if start is not None]
+    ends = [end for _start, end in periods if end is not None]
+    if len(starts) != len(periods) or len(ends) != len(periods):
+        return False
+    return all(
+        max(bounds) - min(bounds) <= FISCAL_WEEK_TOLERANCE for bounds in (starts, ends)
+    )
+
+
 def _partial_lookup_reason(exc: BaseException) -> str:
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
 
@@ -492,7 +510,7 @@ def compare_metrics(
             )
         )
     comparable_periods = {(row.start_date, row.end_date) for row in rows if row.value is not None}
-    if len(comparable_periods) > 1:
+    if not _same_fiscal_period(comparable_periods):
         rows = [
             row.model_copy(update={"value": None, "reason": PERIOD_MISMATCH})
             if row.value is not None

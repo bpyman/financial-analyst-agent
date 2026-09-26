@@ -130,6 +130,12 @@ Rebuild the ranking freeze (not during a demo turn):
 uv run build-universe-snapshot
 ```
 
+Then carry that freeze into the recorded runtime, which the public demo is locked to: this copies the freeze's date and market caps into the recorded ranking snapshot and re-records the latest 10-Qs from SEC EDGAR for every recorded company.
+
+```text
+SEC_USER_AGENT="app-name you@example.com" uv run python scripts/record_sec_fixtures.py
+```
+
 MCP tools (same contracts as in-process) can be served locally:
 
 ```text

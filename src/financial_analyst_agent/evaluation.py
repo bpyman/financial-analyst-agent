@@ -50,9 +50,12 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.LOOKUP,
             RendererKind.TABLE,
             expect_tickers=("MSFT",),
-            expect_values=("32014000000",),
+            expect_values=("39340000000",),
             expect_accessions=("0001193125-26-191507",),
-            expect_concepts=("PretaxIncomeLoss",),
+            expect_concepts=(
+                "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"
+                "ExtraordinaryItemsNoncontrollingInterest",
+            ),
         ),
         EvalCase(
             "compare_tsla_gm",
@@ -61,7 +64,7 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.COMPARE,
             RendererKind.TABLE,
             expect_tickers=("TSLA", "GM"),
-            expect_values=("19335000000", "44019000000"),
+            expect_values=("28236000000", "43762000000"),
         ),
         EvalCase(
             "rank_tech_rd",
@@ -115,10 +118,10 @@ def _cases() -> tuple[EvalCase, ...]:
             "filing_change_mda",
             "filing_change",
             "What changed in Microsoft's MD&A between "
-            "0001193125-25-000099 and 0001193125-26-191507?",
+            "0000950170-25-061046 and 0001193125-26-191507?",
             Intent.FILING_CHANGE,
             RendererKind.TABLE,
-            expect_accessions=("0001193125-25-000099", "0001193125-26-191507"),
+            expect_accessions=("0000950170-25-061046", "0001193125-26-191507"),
         ),
     )
 

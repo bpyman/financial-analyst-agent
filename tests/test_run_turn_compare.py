@@ -25,6 +25,8 @@ MICROSOFT_NAME = "Microsoft Corporation"
 MICROSOFT_TICKER = "MSFT"
 PERIOD_START = date(2026, 1, 1)
 PERIOD_END = date(2026, 3, 31)
+ALPHABET_PERIOD_START = date(2026, 4, 1)
+ALPHABET_PERIOD_END = date(2026, 6, 30)
 FORM = "10-Q"
 TAXONOMY = "us-gaap"
 
@@ -52,7 +54,7 @@ ALPHABET_SOURCE_URL = (
 )
 
 
-def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margins() -> None:
+def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -> None:
     result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
@@ -73,10 +75,11 @@ def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margi
     assert microsoft.ticker == MICROSOFT_TICKER
     assert microsoft.cik == MICROSOFT_CIK
     assert microsoft.metric == "operating_margin"
-    assert microsoft.value == MICROSOFT_OPERATING_MARGIN
+    # Each issuer's latest quarter differs, so neither margin is shown as comparable.
+    assert microsoft.value is None
     assert microsoft.start_date == PERIOD_START
     assert microsoft.end_date == PERIOD_END
-    assert microsoft.reason is None
+    assert microsoft.reason == "period_mismatch"
     _assert_operating_margin_components(
         microsoft,
         operating_income=MICROSOFT_OPERATING_INCOME,
@@ -91,19 +94,32 @@ def test_run_turn_returns_compare_table_for_microsoft_and_google_operating_margi
     assert alphabet.ticker == ALPHABET_TICKER
     assert alphabet.cik == ALPHABET_CIK
     assert alphabet.metric == "operating_margin"
-    assert alphabet.value == ALPHABET_OPERATING_MARGIN
-    assert alphabet.start_date == PERIOD_START
-    assert alphabet.end_date == PERIOD_END
-    assert alphabet.reason is None
+    assert alphabet.value is None
+    assert alphabet.start_date == ALPHABET_PERIOD_START
+    assert alphabet.end_date == ALPHABET_PERIOD_END
+    assert alphabet.reason == "period_mismatch"
     _assert_operating_margin_components(
         alphabet,
-        operating_income=ALPHABET_OPERATING_INCOME,
-        revenue=ALPHABET_REVENUE,
-        accession=ALPHABET_ACCESSION,
+        operating_income=RECORDED_ALPHABET_OPERATING_INCOME,
+        revenue=RECORDED_ALPHABET_REVENUE,
+        accession=RECORDED_ALPHABET_ACCESSION,
         operating_income_concept=ALPHABET_OPERATING_INCOME_CONCEPT,
-        revenue_concept=ALPHABET_REVENUE_CONCEPT,
-        source_url=ALPHABET_SOURCE_URL,
+        revenue_concept=RECORDED_ALPHABET_REVENUE_CONCEPT,
+        source_url=RECORDED_ALPHABET_SOURCE_URL,
+        period=(ALPHABET_PERIOD_START, ALPHABET_PERIOD_END),
     )
+
+
+# Alphabet's latest recorded 10-Q (the quarter to June 2026) is a quarter newer
+# than Microsoft's, whose next 10-Q had not been filed at the recording.
+RECORDED_ALPHABET_OPERATING_INCOME = Decimal("40770000000")
+RECORDED_ALPHABET_REVENUE = Decimal("119796000000")
+RECORDED_ALPHABET_ACCESSION = "0001652044-26-000071"
+RECORDED_ALPHABET_REVENUE_CONCEPT = "Revenues"
+RECORDED_ALPHABET_SOURCE_URL = (
+    "https://www.sec.gov/Archives/edgar/data/1652044/"
+    "000165204426000071/goog-20260630.htm"
+)
 
 
 def _assert_operating_margin_components(
@@ -115,13 +131,13 @@ def _assert_operating_margin_components(
     operating_income_concept: str,
     revenue_concept: str,
     source_url: str,
+    period: tuple[date, date] = (PERIOD_START, PERIOD_END),
 ) -> None:
     components = {component.metric: component for component in row.components}
     assert set(components) == {"operating_income", "revenue"}
     income = components["operating_income"]
     assert income.value == operating_income
-    assert income.start_date == PERIOD_START
-    assert income.end_date == PERIOD_END
+    assert (income.start_date, income.end_date) == period
     assert income.form == FORM
     assert income.accession_number == accession
     assert income.taxonomy == TAXONOMY
@@ -129,8 +145,7 @@ def _assert_operating_margin_components(
     assert income.source_url == source_url
     sales = components["revenue"]
     assert sales.value == revenue
-    assert sales.start_date == PERIOD_START
-    assert sales.end_date == PERIOD_END
+    assert (sales.start_date, sales.end_date) == period
     assert sales.form == FORM
     assert sales.accession_number == accession
     assert sales.taxonomy == TAXONOMY
@@ -277,7 +292,7 @@ def test_run_turn_consolidates_goog_and_googl_to_one_alphabet_row() -> None:
     assert row.company_name == ALPHABET_NAME
     assert row.ticker == ALPHABET_TICKER
     assert row.metric == "operating_margin"
-    assert row.value == ALPHABET_OPERATING_MARGIN
+    assert row.value == RECORDED_ALPHABET_OPERATING_INCOME / RECORDED_ALPHABET_REVENUE
 
 
 class _MissingMicrosoftFacts:
