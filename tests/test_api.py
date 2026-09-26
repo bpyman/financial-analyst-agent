@@ -101,7 +101,7 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
         label for label, _ in GUIDED_STORIES
     ]
     assert meta["snapshot"] == {
-        "banner": "Recorded universe snapshot as of Aug 17, 2026, 4:00 PM UTC",
+        "banner": "Recorded universe snapshot as of Sep 26, 2026, 9:03 PM UTC",
         "stale": False,
     }
     assert meta["metric_groups"][0]["title"] == "Reported (SEC EDGAR)"

@@ -30,7 +30,7 @@ from financial_analyst_agent.universe import (
 
 HEALTHCARE_TOP_10_QUERY = "What are the top 10 companies in healthcare?"
 FIXTURE_SNAPSHOT_PATH = FIXTURE_UNIVERSE_SNAPSHOT_PATH
-SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
+SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
 
 
 def _gold_rank_runtime() -> Runtime:
@@ -73,16 +73,16 @@ def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
 
 # Fixture-runtime gold literals (injected snapshot, not the live vendor freeze).
 HEALTHCARE_TOP_10 = (
-    ("Eli Lilly and Company", "LLY", "0000059478", Decimal("800000000000")),
-    ("UnitedHealth Group Incorporated", "UNH", "0000731766", Decimal("500000000000")),
-    ("Johnson & Johnson", "JNJ", "0000200406", Decimal("395000000000")),
-    ("AbbVie Inc.", "ABBV", "0001551152", Decimal("330000000000")),
-    ("Merck & Co., Inc.", "MRK", "0000310158", Decimal("280000000000")),
-    ("Thermo Fisher Scientific Inc.", "TMO", "0000097745", Decimal("210000000000")),
-    ("Abbott Laboratories", "ABT", "0000001800", Decimal("195000000000")),
-    ("Danaher Corporation", "DHR", "0000313616", Decimal("175000000000")),
-    ("Amgen Inc.", "AMGN", "0000318154", Decimal("155000000000")),
-    ("Pfizer Inc.", "PFE", "0000078003", Decimal("140000000000")),
+    ("Eli Lilly and Company", "LLY", "0000059478", Decimal("1114757656520")),
+    ("Johnson & Johnson", "JNJ", "0000200406", Decimal("653612648388")),
+    ("AbbVie Inc.", "ABBV", "0001551152", Decimal("467140021872")),
+    ("Merck & Co., Inc.", "MRK", "0000310158", Decimal("367361026800")),
+    ("UnitedHealth Group Incorporated", "UNH", "0000731766", Decimal("341998101102")),
+    ("Thermo Fisher Scientific Inc.", "TMO", "0000097745", Decimal("249579418050")),
+    ("Amgen Inc.", "AMGN", "0000318154", Decimal("223768333880")),
+    ("Gilead Sciences, Inc.", "GILD", "0000882095", Decimal("187146431544")),
+    ("Abbott Laboratories", "ABT", "0000001800", Decimal("175287835584")),
+    ("Pfizer Inc.", "PFE", "0000078003", Decimal("163402944800")),
 )
 
 
@@ -104,7 +104,7 @@ def test_run_turn_returns_rank_table_for_top_10_healthcare() -> None:
 
     assert len(result.table_rows) == 10
     tickers = [row.ticker for row in result.table_rows]
-    assert "GILD" not in tickers
+    assert "DHR" not in tickers
     assert "XLV" not in tickers
     assert tickers.count("UNH") == 1
     for index, (name, ticker, cik, market_cap) in enumerate(HEALTHCARE_TOP_10, start=1):
@@ -202,10 +202,10 @@ def test_run_turn_refuses_biotechnology_and_fintech_instead_of_technology() -> N
 
 FINANCE_TOP_10_QUERY = "What are the top 10 companies in finance?"
 FINANCE_TOP_4 = (
-    ("JPMorgan Chase & Co.", "JPM", "0000019617", Decimal("600000000000")),
-    ("Bank of America Corporation", "BAC", "0000070858", Decimal("300000000000")),
-    ("Wells Fargo & Company", "WFC", "0000072971", Decimal("200000000000")),
-    ("The Goldman Sachs Group, Inc.", "GS", "0000886982", Decimal("150000000000")),
+    ("JPMorgan Chase & Co.", "JPM", "0000019617", Decimal("919232700600")),
+    ("Bank of America Corporation", "BAC", "0000070858", Decimal("402376653000")),
+    ("The Goldman Sachs Group, Inc.", "GS", "0000886982", Decimal("275964298150")),
+    ("Wells Fargo & Company", "WFC", "0000072971", Decimal("250901280000")),
 )
 
 
@@ -228,16 +228,16 @@ def test_run_turn_ranks_finance_alias_and_does_not_pad_short_sectors() -> None:
 
 TECHNOLOGY_TOP_10_QUERY = "What are the top 10 companies in technology?"
 TECHNOLOGY_TOP_10 = (
-    ("Apple Inc.", "AAPL", "0000320193", Decimal("3500000000000")),
-    ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3100000000000")),
-    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("2200000000000")),
-    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("1800000000000")),
-    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("900000000000")),
-    ("Oracle Corporation", "ORCL", "0001341439", Decimal("650000000000")),
-    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("600000000000")),
-    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("450000000000")),
-    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("400000000000")),
-    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("350000000000")),
+    ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
+    ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),
+    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("4139313608328")),
+    ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3832846143500")),
+    ("Broadcom Inc.", "AVGO", "0001730168", Decimal("1678521799800")),
+    ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("1028305278000")),
+    ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("435495596900")),
+    ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("420551078756")),
+    ("Oracle Corporation", "ORCL", "0001341439", Decimal("394854827600")),
+    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("385070115000")),
 )
 
 

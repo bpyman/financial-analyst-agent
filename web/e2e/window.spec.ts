@@ -53,10 +53,10 @@ test.describe("guided stories", () => {
 
     const changes = page.getByRole("region", { name: "Filing changes" });
     const kind = "(added|removed|changed)$";
-    await expect(changes.getByRole("article")).toHaveCount(2);
+    // Recorded 10-Qs a year apart: each reviewed section has at least one change.
     for (const section of ["Management's Discussion and Analysis", "Risk Factors"]) {
       const name = new RegExp(`^${section}, ${kind}`);
-      await expect(changes.getByRole("article", { name })).toBeVisible();
+      await expect(changes.getByRole("article", { name }).first()).toBeVisible();
     }
     await expect(changes.getByRole("link", { name: "Open previous filing" }).first()).toBeVisible();
   });

@@ -46,14 +46,14 @@ SUCCESSOR_TICKERS = {
 ALPHABET_CIK = "0001652044"
 ALPHABET_NAME = "Alphabet Inc."
 ALPHABET_TICKER = "GOOG"
-NET_INCOME = Decimal("62578000000")
-PERIOD_START = date(2026, 1, 1)
-PERIOD_END = date(2026, 3, 31)
+NET_INCOME = Decimal("112193000000")
+PERIOD_START = date(2026, 4, 1)
+PERIOD_END = date(2026, 6, 30)
 FORM = "10-Q"
-ACCESSION = "0001652044-26-000048"
+ACCESSION = "0001652044-26-000071"
 TAXONOMY = "us-gaap"
 CONCEPT = "NetIncomeLoss"
-SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm"
+SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000071/goog-20260630.htm"
 
 
 class _FakeCompleter:
@@ -402,8 +402,8 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
 
 GOOGLE_MARKET_CAP_QUERY = "What was Google's market cap?"
 SHOPIFY_MARKET_CAP_QUERY = "What was Shopify's market cap?"
-ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("2200000000000")
-SNAPSHOT_AS_OF = "2026-08-17T16:00:00+00:00"
+ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("4139313608328")
+SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
 
 
 class _ShopifyMarketCapCompleter:

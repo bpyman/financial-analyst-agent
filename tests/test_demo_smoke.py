@@ -45,10 +45,13 @@ def test_add_apple_after_microsoft_four_quarters_returns_apple_revenue() -> None
         for row in follow.result.table_rows
         if row.ticker == "AAPL" and row.value is not None and row.comparison is None
     }
-    assert valued[date(2026, 3, 31)] == 111_184_000_000
-    assert valued[date(2024, 12, 31)] == 124_300_000_000
-    assert valued[date(2024, 6, 30)] == 85_777_000_000
-    assert date(2024, 9, 30) not in valued
+    # Apple's 52/53-week quarters end a few days before Microsoft's; its fiscal
+    # fourth quarter (to September) is in a 10-K, so that row stays empty.
+    assert valued == {
+        date(2026, 3, 28): 111_184_000_000,
+        date(2025, 12, 27): 143_756_000_000,
+        date(2025, 3, 29): 95_359_000_000,
+    }
 
 
 def test_filing_change_without_accessions_refuses_instead_of_selecting() -> None:
@@ -90,16 +93,17 @@ def test_compare_four_quarters_story_presents_each_quarter_on_its_own() -> None:
     labels = [item.label for item in presented.evidence]
     assert len(labels) == len(set(labels)) == 4
     september = next(
-        item for item in presented.evidence if item.period_label == "Jul 1, 2024 – Sep 30, 2024"
+        item for item in presented.evidence if item.period_label == "Jul 1, 2025 – Sep 30, 2025"
     )
-    assert september.raw_amount == "65585000000"
-    assert "Sep 30, 2024" in september.label
+    assert september.raw_amount == "77673000000"
+    assert "Sep 30, 2025" in september.label
 
 
 def test_filing_change_story_presents_each_changed_section() -> None:
     presented = present_turn(run_turn(GUIDED_STORIES[3][1], recorded_runtime()))
 
-    assert [(item.section_label, item.change_kind) for item in presented.disclosures] == [
-        ("Management's Discussion and Analysis", "changed"),
-        ("Risk Factors", "changed"),
-    ]
+    order = ["Management's Discussion and Analysis", "Risk Factors"]
+    sections = [item.section_label for item in presented.disclosures]
+    assert sections == sorted(sections, key=order.index)
+    assert set(sections) == set(order)
+    assert {item.change_kind for item in presented.disclosures} == {"changed"}

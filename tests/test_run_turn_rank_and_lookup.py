@@ -29,17 +29,20 @@ FORM = "10-Q"
 TAXONOMY = "us-gaap"
 CONCEPT = "NetIncomeLoss"
 
-LLY_NET_INCOME = Decimal("7396000000")
-LLY_REVENUE = Decimal("73960000000")
-LLY_ACCESSION = "0000059478-26-000045"
-LLY_SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/59478/000005947826000045/lly-20260331.htm"
+LLY_NET_INCOME = Decimal("7095000000")
+LLY_REVENUE = Decimal("70950000000")
+LLY_ACCESSION = "0000059478-26-000081"
+LLY_SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/59478/000005947826000081/lly-20260630.htm"
 
-UNH_NET_INCOME = Decimal("6481000000")
-UNH_REVENUE = Decimal("64810000000")
-UNH_ACCESSION = "0000731766-26-000127"
+UNH_NET_INCOME = Decimal("5484000000")
+UNH_REVENUE = Decimal("54840000000")
+UNH_ACCESSION = "0000731766-26-000197"
 UNH_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/731766/000073176626000127/unh-20260331.htm"
+    "https://www.sec.gov/Archives/edgar/data/731766/000073176626000197/unh-20260630.htm"
 )
+# The recorded runtime's latest 10-Q quarter for both issuers.
+RECORDED_PERIOD_START = date(2026, 4, 1)
+RECORDED_PERIOD_END = date(2026, 6, 30)
 UNH_PERIOD_START = date(2025, 10, 1)
 UNH_PERIOD_END = date(2025, 12, 31)
 REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
@@ -73,13 +76,15 @@ def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None
         assert row.cik == cik
         assert row.metric == "net_income"
 
-    lilly, unitedhealth, *middle, pfizer = result.table_rows
+    lilly, *_, pfizer = result.table_rows
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    middle = result.table_rows[1:-1]
     assert lilly.value == LLY_NET_INCOME
     assert lilly.accession_number == LLY_ACCESSION
     assert lilly.concept == CONCEPT
     assert lilly.source_url == LLY_SOURCE_URL
-    assert lilly.start_date == PERIOD_START
-    assert lilly.end_date == PERIOD_END
+    assert lilly.start_date == RECORDED_PERIOD_START
+    assert lilly.end_date == RECORDED_PERIOD_END
     assert lilly.form == FORM
     assert lilly.taxonomy == TAXONOMY
     assert lilly.reason is None
@@ -90,14 +95,21 @@ def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None
     assert unitedhealth.source_url == UNH_SOURCE_URL
     assert unitedhealth.reason is None
 
+    assert unitedhealth.start_date == RECORDED_PERIOD_START
+    assert unitedhealth.end_date == RECORDED_PERIOD_END
+
+    # Pfizer reported a quarterly net loss; Abbott tags no quarterly net income
+    # under a supported concept, so its row says so rather than guessing.
     assert pfizer.ticker == "PFE"
-    assert pfizer.value is None
-    assert pfizer.reason == "missing_fact"
-    assert pfizer.accession_number is None
+    assert pfizer.value == Decimal("-248000000")
+    abbott = next(row for row in middle if row.ticker == "ABT")
+    assert abbott.value is None
+    assert abbott.reason == "missing_fact"
+    assert abbott.accession_number is None
     for row in middle:
-        if row.ticker not in {"LLY", "UNH"}:
-            assert row.value is None
-            assert row.reason == "missing_fact"
+        if row.ticker != "ABT":
+            assert row.value is not None
+            assert row.reason is None
 
 
 def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:
@@ -226,7 +238,9 @@ def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
         ),
     )
 
-    lilly, unitedhealth, *remaining = result.table_rows
+    lilly = result.table_rows[0]
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    remaining = [row for row in result.table_rows if row not in (lilly, unitedhealth)]
     assert lilly.reason == "ambiguous_concept"
     assert unitedhealth.value == UNH_NET_INCOME
     assert all(row.reason == "missing_fact" for row in remaining)
@@ -254,7 +268,9 @@ def test_run_turn_rank_and_lookup_computes_net_margin_per_ranked_issuer() -> Non
     ]
 
     assert len(result.table_rows) == 10
-    lilly, unitedhealth, *remaining = result.table_rows
+    lilly = result.table_rows[0]
+    unitedhealth = next(row for row in result.table_rows if row.ticker == "UNH")
+    remaining = [row for row in result.table_rows if row not in (lilly, unitedhealth)]
     assert lilly.rank == 1
     assert lilly.ticker == "LLY"
     assert lilly.cik == "0000059478"
