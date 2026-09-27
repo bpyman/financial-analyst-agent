@@ -12,14 +12,16 @@ recorded runtime replays it through the same selection code the live runtime
 uses, so the cassette holds real EDGAR payloads, trimmed to what the demo reads:
 
 - ``company_tickers``: the SEC ticker rows for every recorded issuer.
-- ``submissions``: each issuer's 10-Q and 10-Q/A filings from the last
-  ``--quarters`` report dates.
+- ``submissions``: each issuer's 10-Q and 10-K filings (and amendments) from
+  the last ``--quarters`` period ends. A 10-K's period end is the fiscal fourth
+  quarter, derived from it per ADR 0007.
 - ``company_facts``: the concepts in ``METRIC_CONCEPTS``, only as reported in
   those filings.
 - ``filing_documents``: the Management's Discussion and Analysis and Risk
-  Factors sections of the two Microsoft 10-Qs the "What changed" story
-  compares, the newest and the one a year before it, as extracted by
-  ``filing_change.extract_section``.
+  Factors sections of each issuer's newest 10-Q and the 10-Q a year before it,
+  the pair "What changed in X's latest 10-Q?" compares, as extracted by
+  ``filing_change.extract_section``. An issuer whose sections cannot be
+  extracted is skipped; Microsoft, which the guided story names, must extract.
 
 Issuers are every company in ``fixture_universe_snapshot.json`` plus the
 compare story's extras.
@@ -38,7 +40,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from financial_analyst_agent.filing_change import REVIEWED_SECTIONS, extract_section
+from financial_analyst_agent.filing_change import (
+    REVIEWED_SECTIONS,
+    _year_apart_quarterlies,
+    extract_section,
+)
 from financial_analyst_agent.services.metric_catalog import METRIC_CONCEPTS
 
 DATA = Path(__file__).resolve().parents[1] / "src" / "financial_analyst_agent" / "data"
@@ -48,7 +54,7 @@ FIXTURE_SNAPSHOT = DATA / "fixture_universe_snapshot.json"
 # Issuers the guided stories and gold prompts name outside the ranking snapshot.
 EXTRA_CIKS = ("0001318605", "0001467858")  # Tesla, General Motors
 MICROSOFT = "0000789019"
-QUARTERLY_FORMS = frozenset({"10-Q", "10-Q/A"})
+PERIODIC_FORMS = frozenset({"10-Q", "10-Q/A", "10-K", "10-K/A"})
 FACT_FIELDS = ("start", "end", "val", "accn", "fy", "fp", "form", "filed", "frame")
 SEC_INTERVAL_SECONDS = 0.15
 DISPLAY_NAMES: dict[int, str] = {
@@ -102,7 +108,7 @@ def _quarterly_filings(submissions: dict[str, Any], quarters: int) -> dict[str, 
     rows = [
         dict(zip(keys, values, strict=True))
         for values in zip(*(recent[key] for key in keys), strict=True)
-        if values[0] in QUARTERLY_FORMS
+        if values[0] in PERIODIC_FORMS
     ]
     report_dates = sorted({row["reportDate"] for row in rows}, reverse=True)[:quarters]
     kept = [row for row in rows if row["reportDate"] in report_dates]
@@ -139,13 +145,17 @@ def _trim_company_facts(payload: dict[str, Any], accessions: set[str]) -> dict[s
     return {"cik": payload["cik"], "entityName": payload["entityName"], "facts": facts}
 
 
+class ExcerptError(Exception):
+    """A filing whose reviewed sections cannot be extracted as they stand."""
+
+
 def _section_excerpt(document: str) -> str:
     """Rebuild a filing from just its reviewed sections, one line per paragraph."""
     parts = ["<html><body>"]
     for section in REVIEWED_SECTIONS:
         text = extract_section(document, section)
         if not text:
-            raise SystemExit(f"Section {section} not found in the Microsoft filing")
+            raise ExcerptError(f"Section {section} not found")
         parts.extend(f"<p>{html.escape(line)}</p>" for line in text.splitlines())
     # A closing item heading ends the last section the way the full filing does.
     parts.append("<p>Item 6. Exhibits</p>")
@@ -153,45 +163,38 @@ def _section_excerpt(document: str) -> str:
     excerpt = "\n".join(parts)
     for section in REVIEWED_SECTIONS:
         if extract_section(excerpt, section) != extract_section(document, section):
-            raise SystemExit(f"Excerpt changed the {section} section; refusing to record it")
+            raise ExcerptError(f"Excerpt changed the {section} section; refusing to record it")
     return excerpt
 
 
-def _microsoft_documents(
-    submissions: dict[str, Any], user_agent: str
-) -> tuple[dict[str, str], tuple[str, str]]:
-    recent = submissions["filings"]["recent"]
-    rows = sorted(
-        (
-            (report, accession, document)
-            for form, accession, report, document in zip(
-                recent["form"],
-                recent["accessionNumber"],
-                recent["reportDate"],
-                recent["primaryDocument"],
-                strict=True,
-            )
-            if form == "10-Q"
-        ),
-        reverse=True,
-    )
-    newest = rows[0]
-    year_before = str(int(newest[0][:4]) - 1) + newest[0][4:]
-    older = next(row for row in rows if row[0] == year_before)
+def _year_apart_documents(
+    cik: str, recent: dict[str, list[Any]], user_agent: str
+) -> tuple[dict[str, str], tuple[str, str]] | None:
+    """The newest 10-Q and the one a year before it, as ``filing_change`` pairs them."""
+    pair = _year_apart_quarterlies(recent)
+    if pair is None:
+        return None
     documents: dict[str, str] = {}
-    for _report, accession, document in (older, newest):
+    for accession in pair:
+        index = recent["accessionNumber"].index(accession)
+        document = recent["primaryDocument"][index]
         url = (
-            f"https://www.sec.gov/Archives/edgar/data/{int(MICROSOFT)}/"
+            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
             f"{accession.replace('-', '')}/{document}"
         )
         raw = _get(url, user_agent).decode("utf-8", errors="replace")
-        documents[f"{MICROSOFT}:{accession}:{document}"] = _section_excerpt(raw)
-    return documents, (older[1], newest[1])
+        documents[f"{cik}:{accession}:{document}"] = _section_excerpt(raw)
+    return documents, pair
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--quarters", type=int, default=6, help="10-Q report dates per issuer")
+    parser.add_argument(
+        "--quarters",
+        type=int,
+        default=9,
+        help="period ends per issuer (10-Q and 10-K); nine covers two fiscal years and a change",
+    )
     args = parser.parse_args()
     user_agent = os.environ.get("SEC_USER_AGENT", "").strip()
     if not user_agent:
@@ -212,32 +215,42 @@ def main() -> None:
 
     submissions: dict[str, Any] = {}
     company_facts: dict[str, Any] = {}
-    full_microsoft: dict[str, Any] = {}
+    documents: dict[str, str] = {}
+    pairs: dict[str, tuple[str, str]] = {}
     for cik in ciks:
         raw_submissions = _get_json(
             f"https://data.sec.gov/submissions/CIK{cik}.json", user_agent
         )
         trimmed = _trim_submissions(raw_submissions, args.quarters)
         submissions[cik] = trimmed
-        accessions = set(trimmed["filings"]["recent"]["accessionNumber"])
+        kept = trimmed["filings"]["recent"]
+        # "What changed" compares a year apart, which may predate --quarters.
+        wide = _quarterly_filings(raw_submissions, args.quarters + 4)
+        try:
+            recorded = _year_apart_documents(cik, wide, user_agent)
+        except ExcerptError as exc:
+            if cik == MICROSOFT:
+                raise SystemExit(f"Microsoft filing: {exc}") from exc
+            print(f"{cik}: no filing text recorded ({exc})")
+            recorded = None
+        if recorded is not None:
+            documents.update(recorded[0])
+            pairs[cik] = recorded[1]
+            for accession in recorded[1]:
+                if accession in kept["accessionNumber"]:
+                    continue
+                index = wide["accessionNumber"].index(accession)
+                for key, values in kept.items():
+                    values.append(wide[key][index])
+        accessions = set(kept["accessionNumber"])
         raw_facts = _get_json(
             f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json", user_agent
         )
         company_facts[cik] = _trim_company_facts(raw_facts, accessions)
-        if cik == MICROSOFT:
-            full_microsoft = raw_submissions
         print(f"{cik} {raw_submissions['name']}: {len(accessions)} filings")
-
-    # The filing-change story needs the year-ago 10-Q, which may predate --quarters.
-    documents, (older, newer) = _microsoft_documents(
-        {"filings": {"recent": _quarterly_filings(full_microsoft, 8)}}, user_agent
-    )
-    kept = submissions[MICROSOFT]["filings"]["recent"]
-    if older not in kept["accessionNumber"]:
-        all_rows = _quarterly_filings(full_microsoft, 8)
-        index = all_rows["accessionNumber"].index(older)
-        for key, values in kept.items():
-            values.append(all_rows[key][index])
+    if MICROSOFT not in pairs:
+        raise SystemExit("No year-apart 10-Q pair for Microsoft")
+    older, newer = pairs[MICROSOFT]
 
     cassette = {
         "company_tickers": {str(index): row for index, row in enumerate(ticker_rows)},
@@ -246,7 +259,10 @@ def main() -> None:
         "filing_documents": documents,
     }
     CASSETTE.write_text(json.dumps(cassette, indent=2) + "\n")
-    print(f"Wrote {CASSETTE.name}: filing-change story compares {older} with {newer}")
+    print(
+        f"Wrote {CASSETTE.name}: filing text for {len(pairs)} issuers; "
+        f"the Microsoft story compares {older} with {newer}"
+    )
 
 
 if __name__ == "__main__":
