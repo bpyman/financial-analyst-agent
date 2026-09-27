@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
 from financial_analyst_agent.config import Settings, get_settings
-from financial_analyst_agent.domain.errors import ConfigurationError
+from financial_analyst_agent.domain.errors import ConfigurationError, ProviderError
+from financial_analyst_agent.providers.sec.cache import CachingSECDataSource
 from financial_analyst_agent.providers.sec.client import SECClient
+from financial_analyst_agent.providers.sec.submissions import files_quarterly_reports
 from financial_analyst_agent.providers.sec.tickers import (
     extract_usable_ticker_entries,
     normalize_ticker,
@@ -24,7 +27,9 @@ from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
     US_EXCHANGES,
     UniverseCompany,
+    UniverseSnapshot,
     build_universe_snapshot,
+    load_universe_snapshot,
     write_universe_snapshot,
 )
 
@@ -174,6 +179,72 @@ def fetch_fmp_rows(
             http.close()
 
 
+class SubmissionsSource(Protocol):
+    def get_submissions(self, cik: str) -> dict[str, Any]: ...
+
+
+def annotate_filers(
+    snapshot: UniverseSnapshot,
+    sec: SubmissionsSource,
+    *,
+    workers: int = 4,
+    progress: Callable[[int, int], None] | None = None,
+) -> tuple[UniverseSnapshot, list[str]]:
+    """Set ``files_quarterly`` from each company's SEC submissions.
+
+    Membership, order, ``as_of``, and market caps are untouched. A company whose
+    submissions cannot be read keeps its current flag; its CIK is returned so
+    the caller can report it. Workers share the SEC client's rate limiter, so
+    more of them only hide request latency.
+    """
+
+    def classify(company: UniverseCompany) -> bool | None:
+        try:
+            return files_quarterly_reports(sec.get_submissions(company.cik))
+        except ProviderError:
+            return None
+
+    total = len(snapshot.companies)
+    companies: list[UniverseCompany] = []
+    failed: list[str] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for done, (company, flag) in enumerate(
+            zip(snapshot.companies, pool.map(classify, snapshot.companies), strict=True),
+            start=1,
+        ):
+            if flag is None:
+                failed.append(company.cik)
+                companies.append(company)
+            else:
+                companies.append(company.model_copy(update={"files_quarterly": flag}))
+            if progress is not None:
+                progress(done, total)
+    return snapshot.model_copy(update={"companies": companies}), failed
+
+
+def _sec_submissions_source(settings: Settings) -> CachingSECDataSource:
+    cache_dir = settings.sec_cache_dir or Path(".cache") / "sec"
+    return CachingSECDataSource(SECClient(settings), Path(cache_dir))
+
+
+def _print_progress(done: int, total: int) -> None:
+    if done % 250 == 0 or done == total:
+        print(f"Checked SEC filings for {done}/{total} companies", flush=True)
+
+
+def _annotate_with_sec(snapshot: UniverseSnapshot, settings: Settings) -> UniverseSnapshot:
+    sec = _sec_submissions_source(settings)
+    try:
+        annotated, failed = annotate_filers(snapshot, sec, progress=_print_progress)
+    finally:
+        sec.close()
+    flagged = sum(1 for company in annotated.companies if not company.files_quarterly)
+    print(f"{flagged} companies file 20-F/40-F instead of 10-Q; ranking skips them")
+    if failed:
+        print(f"Could not read SEC submissions for {len(failed)} CIKs: {', '.join(failed)}")
+    return annotated
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -192,7 +263,27 @@ def main(argv: Sequence[str] | None = None) -> None:
         default=DEFAULT_SNAPSHOT_PATH,
         help="Snapshot path the rank adapter reads.",
     )
+    parser.add_argument(
+        "--annotate-filers",
+        action="store_true",
+        help=(
+            "Re-check which companies in the existing --output snapshot file 10-Qs, "
+            "using SEC submissions only. Keeps as_of, membership, and market caps."
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.annotate_filers:
+        if args.input is not None:
+            parser.error("--annotate-filers reads --output; it does not take --input")
+        settings = get_settings()
+        try:
+            settings.require_user_agent()
+        except ConfigurationError as exc:
+            parser.error(str(exc))
+        existing = load_universe_snapshot(args.output)
+        written = write_universe_snapshot(_annotate_with_sec(existing, settings), args.output)
+        print(f"Annotated {len(existing.companies)} companies in {written}")
+        return
     if args.input is not None:
         rows = load_vendor_rows(args.input)
         source = "universe_snapshot"
@@ -215,6 +306,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             "refusing to write empty universe snapshot; "
             "check CIK identity enrichment and US operating-company filters"
         )
+    if args.input is None:
+        # A stub dump is an offline rebuild; only the live build asks EDGAR.
+        snapshot = _annotate_with_sec(snapshot, settings)
     written = write_universe_snapshot(snapshot, args.output)
     print(f"Wrote {len(snapshot.companies)} companies to {written}")
 

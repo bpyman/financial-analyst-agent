@@ -87,6 +87,9 @@ class UniverseCompany(BaseModel):
     is_etf: bool = False
     is_fund: bool = False
     industry: str = ""
+    # Foreign private issuers (20-F/40-F) have no 10-Q facts to rank on.
+    # Older snapshots predate the flag, so absent means it files quarterly.
+    files_quarterly: bool = True
 
 
 def is_common_operating_listing(company: UniverseCompany) -> bool:
@@ -159,6 +162,9 @@ def _snapshot_json(snapshot: UniverseSnapshot) -> str:
     for company in payload["companies"]:
         if not company.get("industry"):
             company.pop("industry", None)
+        # Only exceptions are written, so annotating a snapshot touches only them.
+        if company.get("files_quarterly", True):
+            company.pop("files_quarterly", None)
     return json.dumps(payload, indent=2)
 
 
