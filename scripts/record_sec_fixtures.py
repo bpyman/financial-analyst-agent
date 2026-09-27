@@ -4,8 +4,8 @@ Run it after ``build-universe-snapshot`` so the public demo, which is locked to
 the recorded runtime, shows the same freeze as the live runtime.
 
 First, ``fixture_universe_snapshot.json`` takes the freeze's ``as_of`` and each
-of its companies' market caps and industries from ``universe_snapshot.json`` (membership and
-sectors stay as they are).
+of its companies' market caps, industries, and ``files_quarterly`` flags from
+``universe_snapshot.json`` (membership and sectors stay as they are).
 
 Then ``sec_fixture_recordings.json`` is re-recorded from live EDGAR. The
 recorded runtime replays it through the same selection code the live runtime
@@ -68,12 +68,14 @@ DISPLAY_NAMES: dict[int, str] = {
 
 
 def _sync_fixture_snapshot() -> str:
-    """Carry the live freeze's date, market caps, and industries into the recorded snapshot."""
+    """Carry the live freeze's date, caps, industries, and filer flags into the recorded one."""
     raw = FIXTURE_SNAPSHOT.read_text()
     fixture = json.loads(raw)
     live = json.loads(LIVE_SNAPSHOT.read_text())
     caps = {company["cik"]: company["market_cap"] for company in live["companies"]}
     industries = {company["cik"]: company.get("industry", "") for company in live["companies"]}
+    # Like write_universe_snapshot, only a False flag is written.
+    foreign = {c["cik"] for c in live["companies"] if c.get("files_quarterly", True) is False}
     missing = [c["ticker"] for c in fixture["companies"] if c["cik"] not in caps]
     if missing:
         raise SystemExit(f"The live snapshot has no row for {missing}; update the fixture")
@@ -81,6 +83,10 @@ def _sync_fixture_snapshot() -> str:
     for company in fixture["companies"]:
         company["market_cap"] = caps[company["cik"]]
         company["industry"] = industries[company["cik"]]
+        if company["cik"] in foreign:
+            company["files_quarterly"] = False
+        else:
+            company.pop("files_quarterly", None)
     trailer = "\n" if raw.endswith("\n") else ""
     FIXTURE_SNAPSHOT.write_text(json.dumps(fixture, indent=2) + trailer)
     return str(live["as_of"])

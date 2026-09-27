@@ -14,6 +14,8 @@ _ACCESSION_PATTERN = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _PERIODIC_FORMS = frozenset(
     {FormType.FORM_10_Q, FormType.FORM_10_Q_A, FormType.FORM_10_K, FormType.FORM_10_K_A}
 )
+_DOMESTIC_PERIODIC_FORMS = frozenset({"10-K", "10-KT", "10-Q", "10-QT"})
+_FOREIGN_ANNUAL_FORMS = frozenset({"20-F", "40-F"})
 
 
 def require_matching_submissions_cik(payload: dict[str, Any], cik: str) -> dict[str, Any]:
@@ -55,6 +57,35 @@ def validate_submissions_response(
     """
     require_matching_submissions_cik(payload, cik)
     return require_submissions_structure(payload, details=details)
+
+
+def files_quarterly_reports(payload: dict[str, Any]) -> bool:
+    """False when the issuer's latest periodic report is a 20-F or 40-F.
+
+    Foreign private issuers report annually on 20-F/40-F and furnish 6-Ks, so
+    they have no 10-Q facts to rank on. Judging by the latest report keeps
+    issuers that switched to 10-K/10-Q, and drops ones that switched away.
+    An issuer with neither kind in its recent filings is given the benefit of
+    the doubt: large banks' prospectus supplements can crowd out their 10-Qs.
+    Amendments are ignored so a late 20-F/A cannot outrank a newer 10-Q.
+    """
+    filings = payload.get("filings")
+    recent = filings.get("recent") if isinstance(filings, dict) else None
+    if not isinstance(recent, dict):
+        return True
+    forms = recent.get("form")
+    dates = recent.get("filingDate")
+    if not isinstance(forms, list) or not isinstance(dates, list):
+        return True
+    periodic = [
+        (str(filed), form in _DOMESTIC_PERIODIC_FORMS)
+        for form, filed in zip(forms, dates, strict=False)
+        if form in _DOMESTIC_PERIODIC_FORMS or form in _FOREIGN_ANNUAL_FORMS
+    ]
+    if not periodic:
+        return True
+    _filed, domestic = max(periodic)
+    return domestic
 
 
 def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
