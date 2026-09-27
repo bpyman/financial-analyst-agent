@@ -759,8 +759,8 @@ def _friendly_message(message: str | None) -> str | None:
     missing = _COMPANY_NOT_FOUND.match(message)
     if missing is not None:
         return (
-            f"I couldn't find a US SEC filer called “{missing.group('query')}”. "
-            "Check the spelling, or try the ticker."
+            f"I couldn't find a company called “{missing.group('query')}” in the "
+            "filings available here. Check the spelling, or try the ticker."
         )
     return message
 
