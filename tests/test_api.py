@@ -103,7 +103,7 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
         label for label, _ in GUIDED_STORIES
     ]
     assert meta["snapshot"] == {
-        "banner": "Recorded universe snapshot as of Sep 26, 2026, 9:03 PM UTC",
+        "banner": "Recorded universe snapshot as of Sep 27, 2026, 10:54 AM UTC",
         "stale": False,
     }
     assert meta["metric_groups"][0]["title"] == "Reported (SEC EDGAR)"
@@ -146,7 +146,8 @@ def test_guided_story_streams_a_fact_card_with_formatted_amount(client: TestClie
     card = presented["fact_card"]
     assert card is not None
     assert card["amount"].startswith("$")
-    assert card["form"] == "10-Q"
+    # Microsoft's latest quarter is its fiscal Q4, derived from the 10-K.
+    assert card["form"] == "10-K"
     assert presented["evidence"][0]["raw_amount"].isdigit()
     assert presented["traces"], "tool traces must reach the client"
     assert view["turn_count"] == 1
@@ -216,7 +217,7 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
     assert meta["example_query"] == EXAMPLE_QUERY
     descriptions = [item["description"] for item in meta["capabilities"]]
     assert descriptions == [
-        "Look up quarterly 10-Q financial facts or market cap for any "
+        "Look up any quarter's financials, EPS, cash flow, or market cap for any "
         "operating publicly-listed US company",
         "Compare companies on metrics, rank by market cap, or combine rank and lookup",
         "Access and analyze relevant financial news linked to specific companies",
@@ -226,7 +227,8 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
     examples = [example for item in meta["capabilities"] for example in item["examples"]]
     assert examples == [
         "What was Microsoft's latest quarterly revenue?",
-        "What is Apple's market cap?",
+        "Apple diluted EPS in Q3 FY2025",
+        "Microsoft free cash flow over the last four quarters",
         "How is Nvidia doing?",
         "Compare Eli Lilly and Merck net margins",
         "What are the top 10 tech companies and R&D spend for each?",

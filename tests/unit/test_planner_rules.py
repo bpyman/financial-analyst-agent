@@ -269,4 +269,4 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
 
     assert table is not None
     assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
-    assert table.rows[2][3:5] == ("+$10", "+2.0%")
+    assert table.rows[2][3:5] == ("+$10", "+2.0 pts")

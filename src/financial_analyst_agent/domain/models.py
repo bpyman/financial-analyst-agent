@@ -42,6 +42,28 @@ class FactRecord(BaseModel):
     filed_date: date
 
 
+class DerivationPart(BaseModel):
+    """One directly reported fact a derived quarter was computed from."""
+
+    value: DecimalStr
+    start_date: date
+    end_date: date
+    form: str
+    accession_number: str
+    taxonomy: str
+    concept: str
+    filed_date: date
+    source_url: str
+
+
+class Derivation(BaseModel):
+    """How a derived quarter was computed: ``parts[0]`` minus ``parts[1]`` (ADR 0007)."""
+
+    method: str
+    label: str
+    parts: list[DerivationPart]
+
+
 class FinancialFact(BaseModel):
     """A quarterly financial fact with typed provenance."""
 
@@ -60,4 +82,5 @@ class FinancialFact(BaseModel):
     concept: str
     source_url: str
     directly_reported: bool = True
+    derivation: Derivation | None = None
     source: DataSourceKind = DataSourceKind.SEC_XBRL

@@ -45,6 +45,8 @@
     {"cik": "0002076427", "ticker": "LATAW", "reason": "SPAC warrant"},
     {"cik": "0002076616", "ticker": "TDWDU", "reason": "SPAC unit"},
     {"cik": "0002079106", "ticker": "LAFAR", "reason": "SPAC right"},
-    {"cik": "0002086524", "ticker": "KTWOR", "reason": "SPAC right"}
+    {"cik": "0002086524", "ticker": "KTWOR", "reason": "SPAC right"},
+    {"cik": "0001376986", "ticker": "TVE", "reason": "federal agency bonds; no common share"},
+    {"cik": "0001412100", "ticker": "MHLA", "reason": "note; only listing left for the CIK"}
   ]
 }

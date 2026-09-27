@@ -436,7 +436,8 @@ def test_sec_fact_lookup_maps_missing_quarterly_filings_to_unsupported_fact() ->
         lookup.get_financials("ExxonMobil", "net_income")
 
     assert not isinstance(exc_info.value, FilingNotFoundError)
-    assert "10-Q" in str(exc_info.value)
+    # A lone 10-K with no fiscal-year amount has no quarter to derive (ADR 0007).
+    assert "quarter" in str(exc_info.value)
 
 
 def test_sec_fact_lookup_reuses_sec_payloads_across_get_financials_calls() -> None:

@@ -29,11 +29,12 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
 )
 CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
-        "Look up quarterly 10-Q financial facts or market cap for any "
+        "Look up any quarter's financials, EPS, cash flow, or market cap for any "
         "operating publicly-listed US company",
         (
             "What was Microsoft's latest quarterly revenue?",
-            "What is Apple's market cap?",
+            "Apple diluted EPS in Q3 FY2025",
+            "Microsoft free cash flow over the last four quarters",
             "How is Nvidia doing?",
         ),
     ),

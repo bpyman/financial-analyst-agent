@@ -28,6 +28,14 @@ _Avoid_: blocklist entry, banned ticker
 A directly reported standalone-quarter amount from a 10-Q, with provenance.
 _Avoid_: TTM, derived quarter, restatement
 
+**Derived quarter**:
+A quarter the filings report only inside a longer period, computed by one of the two subtractions in ADR 0007 (fiscal year minus nine months; year to date minus the previous year to date), labelled, with both reported facts as provenance. Per-share figures are never derived.
+_Avoid_: estimate, implied quarter, TTM
+
+**Named period**:
+A fiscal quarter or year the analyst names ("Q3 2024", "fiscal 2025"), read as each company's own fiscal calendar from the fiscal year and period its filings declare; "calendar" names a calendar quarter instead.
+_Avoid_: date range, calendar quarter (unqualified)
+
 **Ambiguous metric**:
 A user metric phrase that matches more than one name in the closed catalog.
 _Avoid_: metric collision, unknown metric

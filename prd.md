@@ -2,7 +2,7 @@ Status: ready-for-agent
 
 # Financial analyst agent
 
-The 20 August 2026 interview is done and went well. There is no remaining deadline. This repo continues as a portfolio project (fun, not time-boxed). The stories and decisions below are the interview POC that shipped; interview-only kill-order and “before Thursday” language is historical. Architectural locks (no LLM math, no YTD subtraction, closed intents, XBRL as quarterly truth) still stand unless a later ADR replaces them.
+The 20 August 2026 interview is done and went well. There is no remaining deadline. This repo continues as a portfolio project (fun, not time-boxed). The stories and decisions below are the interview POC that shipped; interview-only kill-order and “before Thursday” language is historical. Architectural locks (no LLM math, closed intents, XBRL as quarterly truth) still stand unless a later ADR replaces them. [ADR 0007](docs/adr/0007-derived-quarters-and-per-share.md) replaced the YTD-subtraction lock with two labelled derivations.
 
 ## Problem Statement
 
@@ -64,7 +64,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 40. As a developer, I want the graph to call those tools without depending on stdio subprocesses, so that a hung MCP child process cannot take down the app.
 41. As a developer, I want to port v1’s SEC fact selector rather than rewrite XBRL selection, so that directly-reported quarterly duration rules stay intact.
 42. As a developer, I want Decimal — not float — for money and ratios, so that provenance-carrying math does not pick up binary junk.
-43. As a developer, I want YTD subtraction and Q4 derivation to remain forbidden, so that missing standalone quarters refuse instead of being invented.
+43. As a developer, I want a fiscal fourth quarter or cash-flow quarter derived only by the two subtractions ADR 0007 allows, labelled and with both filings as evidence, and per-share figures never derived, so that nothing is invented. (Revised by ADR 0007; originally: YTD subtraction and Q4 derivation forbidden.)
 44. As Rohit, I want a refuse for an unknown metric or industry to be typed and listed, so that I can see the system’s honesty under a bad prompt.
 45. As Rohit, I want partial compare/rank-and-lookup rows when one issuer’s fact is missing, so that nine good rows are not thrown away.
 46. As Blake, I want PDF extraction left as a later fallback with warnings, so that I can defend XBRL in Q&A without shipping an unevaluated parser.
@@ -90,7 +90,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 - **Closed intents:** `lookup` | `compare` | `rank` | `rank_and_lookup` | `explain` | `news_and_explain` | `exploratory_research` | `filing_change`. The planner may only emit this enum (plus parameters). No open ReAct. One user prompt maps to one intent; composition is inside `rank_and_lookup` and `news_and_explain`, not by the model chaining tools. *(ADR 0005 supersedes the one-prompt-one-intent rule: composition moves into a patchable analysis spec over companies × metrics × periods × operations. "No open ReAct" on the number path stands.)* `exploratory_research` shares the news-grounded essay helper with `news_and_explain` (same search → numeral-lock flow) but keeps its own intent and `exploratory-research` banner for thematic/open questions with cited news and no structured rows.
 - **TurnResult (decision shape from grilling):** intent; ordered tool traces (tool name, args, provenance/source ids); renderer kind (`table` | `essay` | `refuse` | `clarify`); table rows or essay text; banners (`model-analysis`, `exploratory-research`, and/or news citations); numeral-lock extras if any (must be empty on success). Clarify lists colliding humanized metric names only; it is not `st.error` and it does not call tools.
 - **Five MCP tools:** `rank_companies`, `get_financials`, `compare_metrics`, `explain_topic`, `search_news`. Identity resolution is inside those tools. Local FastMCP over HTTP; the app uses the same tool implementations in-process or over that HTTP — not stdio as the only path. A second MCP client (Inspector/Cursor) is design-optional, not a live requirement.
-- **Port v1 fact engine:** companyfacts JSON, submissions, ticker/CIK identity, 70–110 day standalone quarterly duration, accession + end date + form + unit filters, `AmbiguousFactError` rather than picking silently, Decimal money, no YTD subtraction. Expand the reported metric catalog; do not replace the selector with edgartools or FMP statements.
+- **Port v1 fact engine:** companyfacts JSON, submissions, ticker/CIK identity, 70–110 day standalone quarterly duration, accession + end date + form + unit filters, `AmbiguousFactError` rather than picking silently, Decimal money, no YTD subtraction (since revised by ADR 0007). Expand the reported metric catalog; do not replace the selector with edgartools or FMP statements.
 - **Reported metrics:** `revenue`, `cost_of_revenue`, `gross_profit`, `operating_expenses`, `operating_income`, `net_income`, `research_and_development`, `selling_general_and_administrative`, `interest_expense`, `income_tax_expense`, `pretax_income`. **Formulas:** `gross_margin`, `operating_margin`, `net_margin`, `rd_to_sales`, `sga_ratio`, `effective_tax_rate` as Decimal division of named components; `interest_coverage` as operating income over interest expense. **Snapshot metrics:** `market_cap` from the dated FMP universe freeze (not a 10-Q fact; freeze presence is required). Metric phrases are a closed table on the user question (ADR 0004): unique name/alias → proceed; ambiguous metric → clarify pane; unknown metric → refuse with the full list. No balance-sheet/instant ratios in this PRD. The phrase table may grow when the catalog grows.
 - **`compare_metrics`:** one tool; issuers list + metric or formula; resolve to CIKs; fetch components; same `start`/`end` or do not compute; partial rows with typed reasons; share-class consolidation (one row per CIK).
 - **`rank_and_lookup`:** executor runs rank, then batched `get_financials` on CIKs taken from ranking state. The LLM never types the constituent list.
@@ -128,8 +128,8 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 - FMP ratios or edgartools as the source of quarterly facts or live compare margins.
 - Global listings; claiming a complete catalog of all public companies.
 - Open/LLM industry mapping; SIC-from-EDGAR as the rank taxonomy.
-- Balance-sheet and instant metrics (current ratio, D/E, ROE); cash-flow extras unless leftover after the gold set is green.
-- YTD subtraction, Q4 derivation, shares×price market cap.
+- Balance-sheet and instant metrics (current ratio, D/E, ROE). Operating cash flow, capital expenditure, free cash flow and EPS are in scope since ADR 0007.
+- YTD subtraction and Q4 derivation beyond the two ADR 0007 rules; shares×price market cap.
 - LangGraph Studio as the audience view; Claude Desktop as a required second client; stdio-only MCP.
 - Authentication, cloud deploy, streaming-as-a-product. Multi-turn thread state is now in scope per ADR 0005 (persisted analysis spec, resumable clarification); per-thread public-demo quotas and deploy docs for the portfolio demo are in scope; cross-thread long-term memory and personalization stay out.
 - Rewriting the v1 XBRL selector from scratch.

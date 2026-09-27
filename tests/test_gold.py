@@ -14,7 +14,7 @@ pytestmark = pytest.mark.gold
 MICROSOFT_PRETAX_QUERY = "Microsoft pre-tax income"
 TSLA_GM_REVENUE_QUERY = "TSLA vs GM revenue"
 TECH_RD_QUERY = "Top 10 tech companies R&D spend"
-SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
 TECHNOLOGY_TOP_10 = (
     ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
     ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),
@@ -30,16 +30,16 @@ TECHNOLOGY_TOP_10 = (
 
 MICROSOFT_CIK = "0000789019"
 MICROSOFT_TICKER = "MSFT"
-MICROSOFT_PRETAX = Decimal("39340000000")
-MICROSOFT_ACCESSION = "0001193125-26-191507"
+MICROSOFT_PRETAX = Decimal("44047000000")
+MICROSOFT_ACCESSION = "0001193125-26-323660"
 MICROSOFT_PRETAX_CONCEPT = (
     "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
 )
 MICROSOFT_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm"
+    "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm"
 )
-PERIOD_START = date(2026, 1, 1)
-PERIOD_END = date(2026, 3, 31)
+PERIOD_START = date(2026, 4, 1)
+PERIOD_END = date(2026, 6, 30)
 LATEST_QUARTER_START = date(2026, 4, 1)
 LATEST_QUARTER_END = date(2026, 6, 30)
 
@@ -49,13 +49,13 @@ GM_CIK = "0001467858"
 GM_REVENUE = Decimal("43762000000")
 
 APPLE_RD = Decimal("11729000000")
-MICROSOFT_RD = Decimal("8915000000")
+MICROSOFT_RD = Decimal("9997000000")
 ALPHABET_RD = Decimal("18219000000")
 NVIDIA_RD = Decimal("7054000000")
 BROADCOM_RD = Decimal("2895000000")
 ORACLE_RD = Decimal("2401000000")
 AMD_RD = Decimal("2528000000")
-CISCO_RD = Decimal("2377000000")
+CISCO_RD = Decimal("2431000000")
 PALANTIR_RD = Decimal("192513000")
 AMAT_RD = Decimal("1100000000")
 TECH_RD_VALUES = (
@@ -83,7 +83,13 @@ def test_gold_microsoft_pretax_income_through_recorded_runtime() -> None:
     assert row.metric == "pretax_income"
     assert row.value == MICROSOFT_PRETAX
     assert row.accession_number == MICROSOFT_ACCESSION
-    assert row.form == "10-Q"
+    # The latest quarter is fiscal Q4: the 10-K year minus the 10-Q nine months.
+    assert row.form == "10-K"
+    assert row.derivation is not None
+    assert [part.value for part in row.derived_from] == [
+        Decimal("165934000000"),
+        Decimal("121887000000"),
+    ]
     assert row.concept == MICROSOFT_PRETAX_CONCEPT
     assert row.start_date == PERIOD_START
     assert row.end_date == PERIOD_END

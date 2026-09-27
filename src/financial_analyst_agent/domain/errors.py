@@ -18,6 +18,12 @@ class UnsupportedQuarterlyFactError(FinancialAnalystError):
     code = "unsupported_quarterly_fact"
 
 
+class PerShareNotDerivableError(UnsupportedQuarterlyFactError):
+    """A per-share figure the filings report only for a longer period (ADR 0007)."""
+
+    code = "not_reported_for_quarter"
+
+
 class AmbiguousFactError(FinancialAnalystError):
     code = "ambiguous_fact"
 

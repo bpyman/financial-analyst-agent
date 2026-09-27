@@ -16,7 +16,8 @@ test.describe("guided stories", () => {
     const card = analyst.factCards(/, Microsoft Corporation$/);
     await expect(card).toBeVisible();
     await expect(card).toContainText("$");
-    await expect(card).toContainText("10-Q");
+    // Microsoft's latest quarter is its fiscal Q4, derived from the 10-K (ADR 0007).
+    await expect(card).toContainText(/10-[KQ]/);
     await expect(card.getByRole("link", { name: /filing/i })).toBeVisible();
     await expect(page.getByRole("region", { name: "Evidence inspector" })).toBeVisible();
   });

@@ -90,7 +90,7 @@ def test_change_rows_say_what_they_are_and_carry_a_sign() -> None:
         "Reported",
         "Quarter over quarter",
     ]
-    value = presented.table.keys.index("value")
+    value = presented.table.keys.index("value:revenue")
     assert presented.table.rows[2][value].startswith("+$")
     # The change's two components are the levels already listed: one entry each.
     labels = [item.label for item in presented.evidence]

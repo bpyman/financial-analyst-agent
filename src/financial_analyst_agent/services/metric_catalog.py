@@ -53,7 +53,32 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"),
         ("us-gaap", "PretaxIncomeLoss"),
     ],
+    Metric.EPS_DILUTED: [
+        ("us-gaap", "EarningsPerShareDiluted"),
+        ("us-gaap", "EarningsPerShareBasicAndDiluted"),
+    ],
+    Metric.EPS_BASIC: [
+        ("us-gaap", "EarningsPerShareBasic"),
+        ("us-gaap", "EarningsPerShareBasicAndDiluted"),
+    ],
+    Metric.OPERATING_CASH_FLOW: [
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivities"),
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"),
+    ],
+    Metric.CAPITAL_EXPENDITURE: [
+        ("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment"),
+        ("us-gaap", "PaymentsToAcquireProductiveAssets"),
+    ],
 }
+
+# Per-share amounts are reported in USD per share and are never derived by
+# subtraction: the share count moves during the year (ADR 0007).
+PER_SHARE_METRICS: frozenset[Metric] = frozenset({Metric.EPS_DILUTED, Metric.EPS_BASIC})
+
+
+def metric_unit(metric: Metric) -> str:
+    """The companyfacts unit a metric is reported in."""
+    return "USD/shares" if metric in PER_SHARE_METRICS else "USD"
 
 MetricPhraseKind = Literal["unique", "ambiguous", "unknown"]
 
@@ -144,6 +169,28 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("pre-tax income", "pretax_income"),
     ("pretax income", "pretax_income"),
     ("pretax_income", "pretax_income"),
+    ("diluted earnings per share", "eps_diluted"),
+    ("basic earnings per share", "eps_basic"),
+    ("earnings per share", "eps_diluted"),
+    ("diluted eps", "eps_diluted"),
+    ("basic eps", "eps_basic"),
+    ("eps_diluted", "eps_diluted"),
+    ("eps_basic", "eps_basic"),
+    ("per share", "eps_diluted"),
+    ("eps", "eps_diluted"),
+    ("free cash flow", "free_cash_flow"),
+    ("free_cash_flow", "free_cash_flow"),
+    ("fcf", "free_cash_flow"),
+    ("operating cash flow", "operating_cash_flow"),
+    ("cash flow from operations", "operating_cash_flow"),
+    ("cash flow from operating activities", "operating_cash_flow"),
+    ("cash from operations", "operating_cash_flow"),
+    ("operating_cash_flow", "operating_cash_flow"),
+    ("capital expenditures", "capital_expenditure"),
+    ("capital expenditure", "capital_expenditure"),
+    ("capital_expenditure", "capital_expenditure"),
+    ("capital spending", "capital_expenditure"),
+    ("capex", "capital_expenditure"),
     ("net profit margin", "net_margin"),
     ("net income", "net_income"),
     ("net_income", "net_income"),
@@ -165,6 +212,7 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
 
 _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("profit margin", ("gross_margin", "operating_margin", "net_margin")),
+    ("cash flow", ("operating_cash_flow", "free_cash_flow")),
     ("profit", ("gross_profit", "operating_income", "net_income")),
     ("income", ("net_income", "operating_income")),
     ("margin", ("gross_margin", "operating_margin", "net_margin")),

@@ -46,7 +46,9 @@ class SnapshotRanking:
         ranked = [
             company
             for company in self._snapshot.companies
-            if group.includes(company) and is_common_operating_listing(company)
+            if group.includes(company)
+            and is_common_operating_listing(company)
+            and company.files_quarterly
         ]
         by_cik: dict[str, list[UniverseCompany]] = {}
         for company in ranked:
@@ -98,6 +100,7 @@ class SnapshotRanking:
                 row.industry == own.industry
                 and row.cik not in seen
                 and is_common_operating_listing(row)
+                and row.files_quarterly
             ):
                 seen.add(row.cik)
                 found.append(row)

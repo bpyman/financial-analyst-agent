@@ -35,7 +35,7 @@ export interface DisplayCitation {
   published: string | null;
 }
 
-export type ValueKind = "usd" | "percent" | "multiple";
+export type ValueKind = "usd" | "percent" | "multiple" | "per_share";
 
 interface ChartBase {
   title: string;

@@ -70,6 +70,10 @@ _NOT_TICKERS = frozenset(
         "CEO",
         "CFO",
         "EPS",
+        "FCF",
+        "OCF",
+        "CY",
+        "LTM",
         "ROE",
         "ROA",
         "US",
@@ -97,6 +101,23 @@ _NOT_TICKERS = frozenset(
         "D",
         "Q",
     }
+)
+# Names people use that no listing title contains, by the ticker they mean.
+# Applied only when that ticker is in the snapshot.
+_NICKNAMES: tuple[tuple[str, str], ...] = (
+    ("pepsi", "PEP"),
+    ("coke", "KO"),
+    ("facebook", "META"),
+    ("p&g", "PG"),
+    ("bofa", "BAC"),
+    ("disney", "DIS"),
+    ("ibm", "IBM"),
+    ("honeywell", "HON"),
+    ("3m", "MMM"),
+    ("comcast", "CMCSA"),
+    ("amex", "AXP"),
+    ("exxonmobil", "XOM"),
+    ("berkshire", "BRK-B"),
 )
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
@@ -148,6 +169,10 @@ class IssuerIndex:
         index = cls()
         for phrase, query in aliases:
             index.phrases.setdefault(normalize(phrase), query)
+        listed = {company.ticker.upper() for company in companies}
+        for phrase, ticker in _NICKNAMES:
+            if ticker in listed:
+                index.phrases.setdefault(phrase, ticker)
         ranked = sorted(companies, key=lambda company: company.market_cap, reverse=True)
         first_words: dict[str, list[str]] = {}
         for rank, company in enumerate(ranked):

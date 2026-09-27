@@ -10,7 +10,14 @@ from financial_analyst_agent.domain.models import Filing
 from financial_analyst_agent.providers.sec.identity import require_matching_payload_cik
 
 _ACCESSION_PATTERN = re.compile(r"^\d{10}-\d{2}-\d{6}$")
-_QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
+# 10-Ks are kept for the fiscal fourth quarter they cover (ADR 0007).
+_PERIODIC_FORMS = frozenset(
+    {FormType.FORM_10_Q, FormType.FORM_10_Q_A, FormType.FORM_10_K, FormType.FORM_10_K_A}
+)
+_DOMESTIC_PERIODIC_FORMS = frozenset({"10-K", "10-KT", "10-Q", "10-QT"})
+_FOREIGN_ANNUAL_FORMS = frozenset({"20-F", "40-F"})
+# Only foreign private issuers furnish 6-Ks or register on a 20-F/40-F.
+_FOREIGN_ONLY_FORMS = frozenset({"6-K", "20FR12B", "20FR12G", "40FR12B", "40FR12G"})
 
 
 def require_matching_submissions_cik(payload: dict[str, Any], cik: str) -> dict[str, Any]:
@@ -54,8 +61,40 @@ def validate_submissions_response(
     return require_submissions_structure(payload, details=details)
 
 
+def files_quarterly_reports(payload: dict[str, Any]) -> bool:
+    """False when the issuer's latest periodic report is a 20-F or 40-F.
+
+    Foreign private issuers report annually on 20-F/40-F and furnish 6-Ks, so
+    they have no 10-Q facts to rank on. Judging by the latest report keeps
+    issuers that switched to 10-K/10-Q, and drops ones that switched away;
+    amendments are ignored so a late 20-F/A cannot outrank a newer 10-Q.
+
+    A newly listed foreign issuer has no annual report yet, so with no periodic
+    report at all a 6-K or 20-F registration still marks it foreign. Otherwise
+    it gets the benefit of the doubt: large banks' prospectus supplements can
+    crowd their 10-Qs out of the recent list.
+    """
+    filings = payload.get("filings")
+    recent = filings.get("recent") if isinstance(filings, dict) else None
+    if not isinstance(recent, dict):
+        return True
+    forms = recent.get("form")
+    dates = recent.get("filingDate")
+    if not isinstance(forms, list) or not isinstance(dates, list):
+        return True
+    periodic = [
+        (str(filed), form in _DOMESTIC_PERIODIC_FORMS)
+        for form, filed in zip(forms, dates, strict=False)
+        if form in _DOMESTIC_PERIODIC_FORMS or form in _FOREIGN_ANNUAL_FORMS
+    ]
+    if not periodic:
+        return _FOREIGN_ONLY_FORMS.isdisjoint(forms)
+    _filed, domestic = max(periodic)
+    return domestic
+
+
 def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
-    """Parse quarterly filings from a SEC submissions response."""
+    """Parse 10-Q and 10-K filings from a SEC submissions response."""
     filings_section = payload.get("filings")
     if not isinstance(filings_section, dict):
         raise ProviderError("submissions payload missing filings object")
@@ -79,7 +118,7 @@ def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
         # Every provider-supplied field is type-checked before use, so malformed data
         # raises the sanitized provider boundary error instead of a built-in TypeError.
         form = _require_provider_string(raw_form, "form", index)
-        if form not in _QUARTERLY_FORMS:
+        if form not in _PERIODIC_FORMS:
             continue
         accession_number = _require_provider_string(
             accession_numbers[index], "accessionNumber", index

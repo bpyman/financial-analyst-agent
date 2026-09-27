@@ -88,6 +88,10 @@ def _payload_to_fact(payload: dict[str, Any]) -> Any:
         from decimal import Decimal
 
         data["value"] = Decimal(str(data["value"]))
+    if isinstance(data.get("derivation"), dict):
+        from financial_analyst_agent.domain.models import Derivation
+
+        data["derivation"] = Derivation.model_validate(data["derivation"])
     return SimpleNamespace(**data)
 
 
@@ -343,6 +347,12 @@ class EvidenceCachedFacts:
             return ()
         dates = listing(company, limit=limit)
         return tuple(dates)
+
+    def fiscal_periods(self, company: str) -> tuple[Any, ...]:
+        periods = getattr(self._inner, "fiscal_periods", None)
+        if periods is None:
+            return ()
+        return tuple(periods(company))
 
     def get_filing_document(self, cik: str, accession: str, document: str) -> str:
         getter = getattr(self._inner, "get_filing_document", None)

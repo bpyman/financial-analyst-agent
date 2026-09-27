@@ -103,10 +103,11 @@ def test_format_field_name_is_human_readable() -> None:
 
 
 def test_format_reason_domain_first() -> None:
-    assert format_reason("missing_fact") == "missing_fact (Missing fact)"
-    assert format_reason("period_mismatch") == "period_mismatch (Period mismatch)"
-    assert format_reason("ambiguous_concept") == "ambiguous_concept (Ambiguous concept)"
-    assert format_reason("zero_denominator") == "zero_denominator (Zero denominator)"
+    assert format_reason("missing_fact") == "Missing fact"
+    assert format_reason("period_mismatch") == "Period mismatch"
+    assert format_reason("ambiguous_concept") == "Ambiguous concept"
+    assert format_reason("zero_denominator") == "Zero denominator"
+    assert format_reason("not_reported_for_quarter") == "Reported for the year only"
 
 
 def test_format_metric_value_blank_when_missing() -> None:
@@ -193,7 +194,7 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert card.ticker == "GOOG"
     assert card.metric_header == "Net income"
     assert card.amount == "$62.58 B"
-    assert card.period_label == "Latest standalone quarter · Jan 1, 2026 – Mar 31, 2026"
+    assert card.period_label == "Standalone quarter · Jan 1, 2026 – Mar 31, 2026"
     assert card.form == "10-Q"
     assert card.accession_number == "0001652044-26-000048"
     assert card.concept == "NetIncomeLoss"
@@ -418,13 +419,13 @@ def test_present_compare_formats_percent_and_keeps_reason() -> None:
     presented = present_turn(result)
     table = presented.table
     assert table is not None
-    assert "reason" in table.keys
-    reason_index = table.keys.index("reason")
-    value_index = table.keys.index("value")
-    assert table.rows[0][reason_index] == "missing_fact (Missing fact)"
-    assert table.rows[0][value_index] == ""
+    # One metric across companies reads as one row per company; a failed cell
+    # shows its reason in the value column, with provenance in the evidence.
+    value_index = table.keys.index("value:operating_margin")
+    assert table.rows[0][value_index] == "Missing fact"
     assert table.rows[1][value_index] == "36.1%"
     assert table.headers[value_index] == "Operating margin"
+    assert table.headers[-1] == "Quarter ended"
     assert "metric" not in table.keys
     assert "Value" not in table.headers
     assert presented.traces[0].header == (
@@ -724,7 +725,9 @@ def test_metric_legend_lists_closed_catalog() -> None:
     assert "Interest coverage" in legend
     assert "Market cap" in legend
     assert all("(" not in name and "_" not in name for name in legend)
-    assert len(legend) == 19
+    assert "Diluted EPS" in legend
+    assert "Free cash flow" in legend
+    assert len(legend) == 24
 
 
 def test_metric_groups_split_reported_from_calculated() -> None:
@@ -743,7 +746,9 @@ def test_metric_groups_split_reported_from_calculated() -> None:
         "SG&A ratio",
         "Effective tax rate",
         "Interest coverage",
+        "Free cash flow",
     )
+    assert "Operating cash flow" in groups["Reported (SEC EDGAR)"]
     assert groups["Daily snapshot (FMP)"] == ("Market cap",)
 
 

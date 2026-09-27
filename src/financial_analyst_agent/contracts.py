@@ -62,6 +62,10 @@ REPORTED_METRICS: tuple[str, ...] = (
     "interest_expense",
     "income_tax_expense",
     "pretax_income",
+    "eps_diluted",
+    "eps_basic",
+    "operating_cash_flow",
+    "capital_expenditure",
 )
 FORMULA_METRICS: tuple[str, ...] = (
     "gross_margin",
@@ -71,6 +75,7 @@ FORMULA_METRICS: tuple[str, ...] = (
     "sga_ratio",
     "effective_tax_rate",
     "interest_coverage",
+    "free_cash_flow",
 )
 SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap",)
 ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS + SNAPSHOT_METRICS
@@ -90,7 +95,11 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "sga_ratio": ("selling_general_and_administrative", "revenue"),
     "effective_tax_rate": ("income_tax_expense", "pretax_income"),
     "interest_coverage": ("operating_income", "interest_expense"),
+    "free_cash_flow": ("operating_cash_flow", "capital_expenditure"),
 }
+# Formulas that subtract their second component instead of dividing by it.
+DIFFERENCE_FORMULAS: tuple[str, ...] = ("free_cash_flow",)
+PER_SHARE_METRICS: tuple[str, ...] = ("eps_diluted", "eps_basic")
 
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
@@ -98,6 +107,9 @@ MISSING_FACT = "missing_fact"
 SOURCE_UNAVAILABLE = "source_unavailable"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 ZERO_DENOMINATOR = "zero_denominator"
+# A per-share figure for a quarter the filings do not report on its own
+# (fiscal Q4 EPS lives only in the annual total; ADR 0007).
+NOT_REPORTED_FOR_QUARTER = "not_reported_for_quarter"
 MODEL_ANALYSIS_BANNER = "model-analysis"
 EXPLORATORY_RESEARCH_BANNER = "exploratory-research"
 SEARCH_NEWS_TOPIC = "news"
@@ -185,6 +197,9 @@ class ComponentProvenance(BaseModel):
     concept: str
     source_url: str
     source: str
+    # Set when the value is a derived quarter (ADR 0007), e.g. "Fiscal year minus nine months".
+    derivation: str | None = None
+    derived_from: list["ComponentProvenance"] = Field(default_factory=list)
 
 
 class TableRow(BaseModel):
@@ -205,6 +220,9 @@ class TableRow(BaseModel):
     components: list[ComponentProvenance] = Field(default_factory=list)
     reason: str | None = None
     comparison: Literal["sequential", "yoy"] | None = None
+    # A derived quarter (ADR 0007): how it was computed, and the facts it came from.
+    derivation: str | None = None
+    derived_from: list[ComponentProvenance] = Field(default_factory=list)
 
 
 class DisclosureChange(BaseModel):

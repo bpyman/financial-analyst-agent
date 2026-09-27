@@ -320,11 +320,15 @@ def test_recorded_runtime_does_not_invent_net_income_for_unrelated_query() -> No
     assert all(row.value != NET_INCOME for row in result.table_rows)
 
 
-def test_recorded_runtime_refuses_when_recorded_fact_missing_for_gross_profit() -> None:
+def test_recorded_runtime_derives_gross_profit_when_no_line_is_tagged() -> None:
+    # Alphabet tags revenue and cost of revenue but no gross profit line.
     result = run_turn(GOOGLE_GROSS_PROFIT_QUERY, recorded_runtime())
-    assert result.renderer is RendererKind.REFUSE
-    assert result.table_rows == []
-    assert result.message is not None
+    assert result.renderer is RendererKind.TABLE
+    row = result.table_rows[0]
+    assert row.metric == "gross_profit"
+    assert row.derivation == "Revenue minus cost of revenue"
+    revenue, cost = row.derived_from
+    assert row.value == revenue.value - cost.value
 
 
 def test_recorded_runtime_lookup_computes_operating_margin() -> None:
@@ -403,7 +407,7 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
 GOOGLE_MARKET_CAP_QUERY = "What was Google's market cap?"
 SHOPIFY_MARKET_CAP_QUERY = "What was Shopify's market cap?"
 ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("4139313608328")
-SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
 
 
 class _ShopifyMarketCapCompleter:

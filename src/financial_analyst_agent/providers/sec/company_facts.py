@@ -209,7 +209,13 @@ def _parse_fact_record(
         raise ValueError("missing or invalid filed date")
     filed_date = date.fromisoformat(filed_raw)
 
-    value = _parse_sec_monetary_value(raw_fact.get("val"))
+    raw_value = raw_fact.get("val")
+    if isinstance(raw_value, float) and unit.endswith("/shares"):
+        # Per-share amounts ("2.02") arrive as JSON floats; the shortest repr
+        # round-trips to the decimal SEC published.
+        value = Decimal(repr(raw_value))
+    else:
+        value = _parse_sec_monetary_value(raw_value)
 
     return FactRecord(
         accession_number=accession_number,

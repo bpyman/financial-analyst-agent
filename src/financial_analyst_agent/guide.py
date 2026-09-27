@@ -28,9 +28,10 @@ STARTER_QUESTIONS: tuple[str, ...] = (
 )
 HELP_MESSAGE = (
     "I answer from companies' SEC filings. Ask for a quarterly figure (revenue, "
-    "net income, margins, R&D), compare companies, rank an industry, track a "
-    "metric over several quarters, or see what changed in a 10-Q. Every number "
-    "links to the filing it came from."
+    "net income, margins, EPS, free cash flow), name a period (“Q3 2024”, "
+    "“fiscal 2025”), compare companies, rank an industry, track a metric over "
+    "several quarters, or see what changed in a 10-Q. Every number links to the "
+    "filing it came from."
 )
 GREETING_MESSAGE = "Hi! " + HELP_MESSAGE
 THANKS_MESSAGE = "Glad that helped. Here are a few places to go next."

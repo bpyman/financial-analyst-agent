@@ -17,11 +17,13 @@ from typing import Any
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     AMBIGUOUS_CONCEPT,
+    DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
     FORMULA_METRICS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NOT_REPORTED_FOR_QUARTER,
     PERCENT_FORMULAS,
     PERIOD_MISMATCH,
     REPORTED_METRICS,
@@ -50,6 +52,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    PerShareNotDerivableError,
     ProviderError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
@@ -284,6 +287,32 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
     )
 
 
+def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
+    """A derived quarter's label and the reported facts it came from (ADR 0007)."""
+    derivation = getattr(fact, "derivation", None)
+    if derivation is None:
+        return {}
+    metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
+    return {
+        "derivation": derivation.label,
+        "derived_from": [
+            ComponentProvenance(
+                metric=metric,
+                value=part.value,
+                start_date=part.start_date,
+                end_date=part.end_date,
+                form=part.form,
+                accession_number=part.accession_number,
+                taxonomy=part.taxonomy,
+                concept=part.concept,
+                source_url=part.source_url,
+                source=_fact_source_kind(fact),
+            )
+            for part in derivation.parts
+        ],
+    }
+
+
 def _table_row_from_fact(fact: FinancialFact) -> TableRow:
     metric = fact.metric
     metric_value = metric.value if hasattr(metric, "value") else metric
@@ -301,6 +330,7 @@ def _table_row_from_fact(fact: FinancialFact) -> TableRow:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
+        **_derivation_fields(fact),
     )
 
 
@@ -310,7 +340,11 @@ def _fact_source_kind(fact: FinancialFact) -> str:
 
 
 def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
-    return {
+    derivation = getattr(fact, "derivation", None)
+    extra: dict[str, Any] = {}
+    if derivation is not None:
+        extra["derivation"] = derivation.model_dump(mode="json")
+    return extra | {
         "form": fact.form,
         "accession_number": fact.accession_number,
         "taxonomy": fact.taxonomy,
@@ -395,6 +429,7 @@ def _provenance_from_fact(fact: FinancialFact, metric: str) -> ComponentProvenan
         concept=fact.concept,
         source_url=fact.source_url,
         source=_fact_source_kind(fact),
+        **_derivation_fields(fact),
     )
 
 
@@ -402,8 +437,10 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
     components = FORMULA_COMPONENTS.get(metric)
     if components is None:
         return facts[0].value
-    numerator, denominator = facts
-    return numerator.value / denominator.value
+    first, second = facts
+    if metric in DIFFERENCE_FORMULAS:
+        return first.value - second.value
+    return first.value / second.value
 
 
 def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
@@ -437,16 +474,22 @@ def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
 
 
 def _partial_lookup_reason(exc: BaseException) -> str:
+    if isinstance(exc, PerShareNotDerivableError):
+        return NOT_REPORTED_FOR_QUARTER
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
 
 
-def _compare_unresolved_row(issuer: str, metric: str, reason: str) -> TableRow:
+def _compare_unresolved_row(
+    issuer: str, metric: str, reason: str, report_date: date | None = None
+) -> TableRow:
+    # A dated cell keeps its quarter, so a window table shows it on that quarter's row.
     return TableRow(
         company_name=issuer,
         ticker="",
         cik="",
         metric=metric,
         reason=reason,
+        end_date=report_date,
     )
 
 
@@ -483,7 +526,11 @@ def compare_metrics(
                     for component in component_names
                 ]
         except _LOOKUP_FAILURES as exc:
-            rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
+            rows.append(
+                _compare_unresolved_row(
+                    issuer, metric, _partial_lookup_reason(exc), report_date=report_date
+                )
+            )
             continue
         identity = fetched[0]
         if identity.cik in seen_ciks:
@@ -505,7 +552,7 @@ def compare_metrics(
             )
             continue
         period_start, period_end = period
-        if metric in FORMULA_COMPONENTS:
+        if metric in FORMULA_COMPONENTS and metric not in DIFFERENCE_FORMULAS:
             _numerator, denominator = fetched
             if denominator.value == 0:
                 rows.append(
@@ -756,6 +803,23 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
                 plan.company, metric, report_date=report_date
             )
     except _LOOKUP_FAILURES as exc:
+        if isinstance(exc, PerShareNotDerivableError):
+            # Not a failure: the filings say this figure exists only for the year.
+            return TurnResult(
+                intent=Intent.LOOKUP,
+                tool_traces=[ToolTrace(tool="get_financials", args=args)],
+                renderer=RendererKind.TABLE,
+                table_rows=[
+                    TableRow(
+                        company_name=plan.company,
+                        ticker="",
+                        cik="",
+                        metric=metric,
+                        end_date=report_date,
+                        reason=NOT_REPORTED_FOR_QUARTER,
+                    )
+                ],
+            )
         return TurnResult(
             intent=Intent.LOOKUP,
             tool_traces=[],

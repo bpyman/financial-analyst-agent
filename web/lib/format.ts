@@ -14,6 +14,7 @@ export function axisTick(value: number, kind: ValueKind): string {
   if (!Number.isFinite(value)) return "";
   if (kind === "percent") return `${Number((value * 100).toFixed(1))}%`;
   if (kind === "multiple") return `${value.toFixed(1)}x`;
+  if (kind === "per_share") return `${value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
   const scaled = (divisor: number, suffix: string) => {

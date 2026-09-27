@@ -17,6 +17,10 @@ class Metric(StrEnum):
     INTEREST_EXPENSE = "interest_expense"
     INCOME_TAX_EXPENSE = "income_tax_expense"
     PRETAX_INCOME = "pretax_income"
+    EPS_DILUTED = "eps_diluted"
+    EPS_BASIC = "eps_basic"
+    OPERATING_CASH_FLOW = "operating_cash_flow"
+    CAPITAL_EXPENDITURE = "capital_expenditure"
 
 
 class FormType(StrEnum):
@@ -24,6 +28,8 @@ class FormType(StrEnum):
 
     FORM_10_Q = "10-Q"
     FORM_10_Q_A = "10-Q/A"
+    FORM_10_K = "10-K"
+    FORM_10_K_A = "10-K/A"
 
 
 class DataSourceKind(StrEnum):

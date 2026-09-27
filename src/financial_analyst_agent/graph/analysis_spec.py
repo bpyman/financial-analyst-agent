@@ -9,10 +9,25 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from financial_analyst_agent.contracts import ALLOWED_METRICS
 from financial_analyst_agent.domain.errors import AmbiguousCompanyError, CompanyNotFoundError
+
+
+class NamedPeriodSpec(BaseModel):
+    """A period the analyst named: "Q3 2024" (fiscal), "fiscal 2025", "calendar Q1 2026"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int
+    quarter: int | None = Field(default=None, ge=1, le=4)
+    calendar: bool = False
+
+    def label(self) -> str:
+        if self.calendar:
+            return f"Calendar Q{self.quarter} {self.year}" if self.quarter else f"{self.year}"
+        return f"Q{self.quarter} FY{self.year}" if self.quarter else f"Fiscal {self.year}"
 
 
 class PeriodSelection(BaseModel):
@@ -24,16 +39,27 @@ class PeriodSelection(BaseModel):
     ``company_report_dates`` holds another company's own quarter ends, keyed by
     its casefolded query, for companies whose fiscal calendar differs from the
     first company's (Walmart's April quarter beside Microsoft's March one).
+    ``named`` periods are fiscal quarters or years the analyst named; each
+    company's own filings say which quarter ends they cover (ADR 0007).
     """
 
-    kind: Literal["latest_quarter", "last_n_quarters"] = "latest_quarter"
+    kind: Literal["latest_quarter", "last_n_quarters", "named"] = "latest_quarter"
     count: int | None = None
     report_dates: tuple[date, ...] = ()
     company_report_dates: tuple[tuple[str, tuple[date, ...]], ...] = ()
+    named: tuple[NamedPeriodSpec, ...] = ()
+
+    @property
+    def label(self) -> str:
+        return ", ".join(period.label() for period in self.named)
 
     @model_validator(mode="after")
     def _check_window(self) -> PeriodSelection:
         if self.kind == "latest_quarter":
+            return self
+        if self.kind == "named":
+            if not self.named:
+                raise ValueError("named periods require at least one period")
             return self
         if self.count is None or self.count < 1:
             raise ValueError("last_n_quarters requires count >= 1")
@@ -204,8 +230,14 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
         )
         constituents = RankedSet(industry=industry, limit=limit, members=members)
     else:
+        seen: set[str] = set()
         for query in draft.company_queries:
-            companies.append(_resolve_company(query, ranking=ranking))
+            company = _resolve_company(query, ranking=ranking)
+            if company.cik and company.cik in seen:
+                # "add Apple" to an analysis that already has AAPL.
+                continue
+            seen.add(company.cik)
+            companies.append(company)
 
     operations = list(draft.operations)
     if len(companies) >= 2 and "across_companies" not in operations:
@@ -257,8 +289,8 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
                 ),
             )
         if operation == "across_periods" and (
-            spec.periods.kind != "last_n_quarters"
-            or (spec.periods.count or 0) < 2
+            spec.periods.kind not in ("last_n_quarters", "named")
+            or (spec.periods.kind == "last_n_quarters" and (spec.periods.count or 0) < 2)
         ):
             return SpecRejection(
                 code="unsupported_combination",
@@ -346,10 +378,15 @@ def calendar_groups(spec: AnalysisSpec) -> list[tuple[tuple[str, ...], tuple[dat
     """
     reference = spec.periods.report_dates
     own = dict(spec.periods.company_report_dates)
+    named = spec.periods.kind == "named"
     groups: dict[tuple[date, ...], list[str]] = {}
     for company in spec.companies:
         dates = own.get(company.query.casefold(), reference)
-        if not dates or not reference or _quarter_phase(dates[0]) == _quarter_phase(
+        if named:
+            # "Q3 FY2024" is each company's own third quarter, wherever it ends.
+            if not dates:
+                continue
+        elif not dates or not reference or _quarter_phase(dates[0]) == _quarter_phase(
             reference[0]
         ):
             dates = reference
@@ -366,7 +403,7 @@ def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     """
     base = _base_tasks(spec)
     if (
-        spec.periods.kind != "last_n_quarters"
+        spec.periods.kind not in ("last_n_quarters", "named")
         or not spec.periods.report_dates
         or not base
     ):
@@ -378,17 +415,18 @@ def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     if not expandable:
         return base
     groups = calendar_groups(spec)
-    if len(groups) > 1:
+    if len(groups) > 1 or (groups and groups[0][1] != spec.periods.report_dates):
         # Each calendar asks for its own quarter ends; one shared date would
         # miss every quarter of a company whose fiscal quarters end elsewhere.
+        longest = max(len(dates) for _, dates in groups)
         return tuple(
             CompiledTask(
-                kind="compare",
+                kind="compare" if len(spec.companies) > 1 else task.kind,
                 company_queries=queries,
                 metric=task.metric,
                 report_date=dates[index],
             )
-            for index in range(spec.periods.count or 0)
+            for index in range(longest)
             for task in expandable
             for queries, dates in groups
             if index < len(dates)
