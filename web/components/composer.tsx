@@ -86,8 +86,13 @@ export function Composer({
           </span>
           <span className="sm:hidden">Answers cite the SEC filing they come from.</span>
           {nearLimit && (
-            <span className={cn("num", value.length >= maxChars && "text-warning")}>
-              {value.length} / {maxChars}
+            <span
+              role={value.length >= maxChars ? "status" : undefined}
+              className={cn("num", value.length >= maxChars && "text-warning")}
+            >
+              {value.length >= maxChars
+                ? `Limit reached: questions stop at ${maxChars.toLocaleString("en-US")} characters`
+                : `${value.length} / ${maxChars}`}
             </span>
           )}
         </div>

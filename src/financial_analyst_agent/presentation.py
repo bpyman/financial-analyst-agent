@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import PER_SHARE_METRICS
+from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     YEAR_TO_DATE_LABEL,
@@ -317,6 +318,7 @@ _LEVEL_LABEL = "Reported"
 _SNAPSHOT_PREFIX = "Universe snapshot as of "
 # Banner codes a qualitative turn carries, in the words the window shows.
 _BANNER_COPY = {
+    THREAD_EVIDENCE_BANNER: "Figures fetched earlier in this conversation were reused.",
     MODEL_ANALYSIS_BANNER: (
         "Model analysis — written by the model, not quoted from a filing. "
         "It may only repeat numbers the tools returned."
@@ -954,7 +956,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     so the wide table carries no filing columns.
     """
     metrics = list(dict.fromkeys(row.metric for row in rows if row.metric))
-    if len(metrics) < 2:
+    if len(metrics) < 2 and (len(rows) < 2 or intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)):
         return None
     cells: dict[tuple[str, date | None, str | None], dict[str, TableRow]] = {}
     for row in rows:

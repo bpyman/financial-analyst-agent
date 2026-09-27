@@ -298,6 +298,6 @@ def test_derived_values_are_marked_and_explained() -> None:
     presented = present_turn(result)
 
     assert presented.table is not None
-    values = [r[presented.table.keys.index("value")] for r in presented.table.rows]
+    values = [r[presented.table.keys.index("value:revenue")] for r in presented.table.rows]
     assert values == ["$102.47 B †", "$102.47 B"]
     assert any("10-K's full year minus the 10-Q's nine months" in b for b in presented.banners)

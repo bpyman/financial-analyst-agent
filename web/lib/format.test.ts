@@ -4,6 +4,8 @@ import { axisTick, hardBreaks, parseLink } from "./format";
 describe("axisTick", () => {
   it("compacts dollars by scale", () => {
     expect(axisTick(0, "usd")).toBe("$0");
+    expect(axisTick(2.5, "per_share")).toBe("$2.50");
+    expect(axisTick(-0.1, "per_share")).toBe("-$0.10");
     expect(axisTick(8e9, "usd")).toBe("$8B");
     expect(axisTick(12.5e9, "usd")).toBe("$12.5B");
     expect(axisTick(1.25e12, "usd")).toBe("$1.25T");

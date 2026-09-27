@@ -1167,7 +1167,11 @@ def run_spec_turn_context(
     planner_notes = [
         note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
     ]
-    notes = [*planner_notes, *_period_notes(message, spec)]
+    notes = [
+        *planner_notes,
+        *_already_present_notes(patch, current_spec, spec),
+        *_period_notes(message, spec),
+    ]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
     return merged, spec, patch
@@ -1182,6 +1186,30 @@ _SPECIFIC_PERIOD = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+
+def _already_present_notes(
+    patch: SpecPatch, current: AnalysisSpec | None, spec: AnalysisSpec
+) -> list[str]:
+    """Say so when an "add" names a company the analysis already has."""
+    if current is None or patch.mode != "extend" or not patch.add_companies:
+        return []
+    before = {company.cik for company in current.companies if company.cik}
+    if len(spec.companies) > len(current.companies):
+        return []
+    names = [
+        short_name(company.name) or company.query
+        for company in spec.companies
+        if company.cik in before
+        and any(
+            token.casefold() in (company.query.casefold(), company.ticker.casefold())
+            or token.casefold() in company.name.casefold()
+            for token in patch.add_companies
+        )
+    ]
+    if not names:
+        return []
+    return [f"{' and '.join(names)} {'is' if len(names) == 1 else 'are'} already in this analysis."]
 
 
 def _short_date(day: date) -> str:

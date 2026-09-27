@@ -419,13 +419,13 @@ def test_present_compare_formats_percent_and_keeps_reason() -> None:
     presented = present_turn(result)
     table = presented.table
     assert table is not None
-    assert "reason" in table.keys
-    reason_index = table.keys.index("reason")
-    value_index = table.keys.index("value")
-    assert table.rows[0][reason_index] == "Missing fact"
-    assert table.rows[0][value_index] == ""
+    # One metric across companies reads as one row per company; a failed cell
+    # shows its reason in the value column, with provenance in the evidence.
+    value_index = table.keys.index("value:operating_margin")
+    assert table.rows[0][value_index] == "Missing fact"
     assert table.rows[1][value_index] == "36.1%"
     assert table.headers[value_index] == "Operating margin"
+    assert table.headers[-1] == "Quarter ended"
     assert "metric" not in table.keys
     assert "Value" not in table.headers
     assert presented.traces[0].header == (

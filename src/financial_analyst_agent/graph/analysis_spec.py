@@ -230,8 +230,14 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
         )
         constituents = RankedSet(industry=industry, limit=limit, members=members)
     else:
+        seen: set[str] = set()
         for query in draft.company_queries:
-            companies.append(_resolve_company(query, ranking=ranking))
+            company = _resolve_company(query, ranking=ranking)
+            if company.cik and company.cik in seen:
+                # "add Apple" to an analysis that already has AAPL.
+                continue
+            seen.add(company.cik)
+            companies.append(company)
 
     operations = list(draft.operations)
     if len(companies) >= 2 and "across_companies" not in operations:
