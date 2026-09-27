@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -48,6 +49,7 @@ _REASON_LABELS = {
     "source_unavailable": "Source unavailable",
 }
 _FIELD_LABELS = {
+    "comparison": "Change",
     "cik": "CIK",
     "source_url": "Source URL",
     "company_name": "Company",
@@ -220,6 +222,7 @@ _TABLE_KEYS = (
     "ticker",
     "cik",
     "metric",
+    "comparison",
     "value",
     "currency",
     "start_date",
@@ -246,6 +249,13 @@ _RANK_TABLE_KEYS = (
     "source_url",
     "reason",
 )
+# A change row sits in the same value column as the levels it is derived from, so
+# it must say what it is and carry an explicit sign.
+_COMPARISON_LABELS = {
+    "yoy": "Year over year",
+    "sequential": "Quarter over quarter",
+}
+_LEVEL_LABEL = "Reported"
 _SNAPSHOT_PREFIX = "Universe snapshot as of "
 # Banner codes a qualitative turn carries, in the words the window shows.
 _BANNER_COPY = {
@@ -584,11 +594,10 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         form = form or first.form
         accession_number = accession_number or first.accession_number
         source_url = source_url or first.source_url
+    change = _COMPARISON_LABELS.get(row.comparison or "")
+    metric_label = _humanize_field(row.metric) + (f" · {change.lower()} change" if change else "")
     return EvidenceItem(
-        label=(
-            f"{row.company_name} · {_humanize_field(row.metric)}"
-            + (f" · {period}" if period else "")
-        ),
+        label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
         raw_amount=raw,
         company_name=row.company_name,
@@ -633,6 +642,19 @@ def _evidence_items(row: TableRow) -> tuple[EvidenceItem, ...]:
     return tuple(items)
 
 
+def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
+    """One inspector entry per fact: change rows repeat the levels they compare."""
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[EvidenceItem] = []
+    for item in items:
+        key = (item.label, item.raw_amount, item.accession_number)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return tuple(unique)
+
+
 def present_turn(result: TurnResult) -> Presentation:
     fact_card = None
     table = None
@@ -647,7 +669,7 @@ def present_turn(result: TurnResult) -> Presentation:
         fact_card = _fact_card(result.table_rows[0])
     elif result.renderer is RendererKind.TABLE and result.table_rows:
         table = _display_table(result.table_rows, intent=result.intent)
-    evidence = tuple(
+    evidence = _dedupe_evidence(
         item
         for row in result.table_rows
         if row.cik or row.source_url or row.components
@@ -670,7 +692,10 @@ def present_turn(result: TurnResult) -> Presentation:
         intent=result.intent.value,
         intent_label=intent_label(result.intent.value),
         banners=tuple(_format_banner(banner) for banner in result.banners),
-        traces=tuple(_display_trace(trace) for trace in result.tool_traces),
+        traces=tuple(
+            _display_trace(trace, names=_names_by_cik(result.table_rows))
+            for trace in result.tool_traces
+        ),
         citations=tuple(
             _display_citation(index, hit) for index, hit in enumerate(result.citations, start=1)
         ),
@@ -680,10 +705,64 @@ def present_turn(result: TurnResult) -> Presentation:
         evidence=evidence,
         disclosures=disclosures,
         essay=result.essay,
-        message=result.message if result.renderer is not RendererKind.CLARIFY else None,
+        message=(
+            _friendly_message(result.message)
+            if result.renderer is not RendererKind.CLARIFY
+            else None
+        ),
         candidates=tuple(_humanize_field(name) for name in result.candidates),
         clarify_prompt=_clarify_prompt(result),
     )
+
+
+_UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$", re.DOTALL)
+_COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
+_METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
+_FRIENDLY_MESSAGES = {
+    "Analysis has no companies or ranked constituents": (
+        "I couldn't tell which company you mean. Name a company or ticker, "
+        "for example “What was Apple's revenue?”"
+    ),
+    "No 10-Q or 10-Q/A filing found": (
+        "This company has no 10-Q filings. Foreign private issuers file 20-F and "
+        "6-K reports instead, which this app does not read yet."
+    ),
+    "No directly reported standalone-quarter fact exists for metric": (
+        "This company's 10-Q does not report a standalone quarterly value for that "
+        "metric. Banks, for example, do not report revenue the way operating "
+        "companies do."
+    ),
+}
+
+
+def _friendly_message(message: str | None) -> str | None:
+    """Put the domain's refusal text in the window's words.
+
+    Domain messages name catalog slugs and internal terms (the MCP server and
+    tests read them as they are); the audience window should not.
+    """
+    if message is None:
+        return None
+    if message in _FRIENDLY_MESSAGES:
+        return _FRIENDLY_MESSAGES[message]
+    unknown = _UNKNOWN_METRIC.match(message)
+    if unknown is not None:
+        term = unknown.group("term")
+        if term in ("", "unknown"):
+            return (
+                "I couldn't find a metric I can look up in that question. I answer "
+                f"from SEC 10-Q facts such as {_METRIC_EXAMPLES}, for example "
+                "“What was Microsoft's latest quarterly revenue?”"
+            )
+        supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
+        return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
+    missing = _COMPANY_NOT_FOUND.match(message)
+    if missing is not None:
+        return (
+            f"I couldn't find a US SEC filer called “{missing.group('query')}”. "
+            "Check the spelling, or try the ticker."
+        )
+    return message
 
 
 def _clarify_prompt(result: TurnResult) -> str | None:
@@ -765,10 +844,15 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
 
 def _format_cell(row: TableRow, key: str) -> str:
     value = getattr(row, key)
+    if key == "comparison":
+        return _COMPARISON_LABELS.get(str(value), _LEVEL_LABEL) if value else _LEVEL_LABEL
     if _cell_empty(value):
         return ""
     if key == "value":
-        return format_metric_value(row.metric, value)
+        formatted = format_metric_value(row.metric, value)
+        if row.comparison is not None and value > 0:
+            return f"+{formatted}"
+        return formatted
     if key == "metric":
         return _humanize_field(str(value))
     if key in {"start_date", "end_date"}:
@@ -854,8 +938,17 @@ def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple(fields)
 
 
-def _display_trace(trace: Any) -> DisplayTrace:
-    identity = _trace_identity(trace.args)
+def _names_by_cik(rows: list[TableRow]) -> dict[str, str]:
+    return {row.cik: row.company_name for row in rows if row.cik and row.company_name}
+
+
+def _display_trace(trace: Any, *, names: dict[str, str] | None = None) -> DisplayTrace:
+    args = dict(trace.args)
+    company = args.get("company")
+    if names and isinstance(company, str) and company in names:
+        # Ranked lookups run by CIK; the header reads better with the name.
+        args["company"] = names[company]
+    identity = _trace_identity(args)
     period = _trace_period(trace)
     what = identity or "this request"
     template = _TOOL_HEADERS.get(str(trace.tool))

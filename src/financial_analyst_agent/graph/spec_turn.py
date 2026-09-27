@@ -504,6 +504,10 @@ RANKED_LATEST_QUARTER_BANNER = (
     "Ranked lists show each company's latest quarter. "
     "Name the companies to see a multi-quarter window."
 )
+FISCAL_Q4_GAP_BANNER = (
+    "This window skips fiscal fourth quarters: companies report them in the 10-K, "
+    "not a 10-Q, so they have no standalone quarterly fact."
+)
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
 
 
@@ -902,13 +906,48 @@ def run_spec_turn_context(
     )
     across = "across_periods" in spec.operations
     merged = merge_task_results(tasks, results, across_periods=across)
+    notes = _period_notes(message, spec)
+    if notes:
+        merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
+    return merged, spec, patch
+
+
+_SPECIFIC_PERIOD = re.compile(
+    r"\b(?:"
+    r"q[1-4]\s*(?:fy\s*)?'?\d{2,4}"
+    r"|(?:fy|fiscal(?:\s+year)?)\s*'?\d{2,4}"
+    r"|(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\s+(?:of\s+)?(?:fy\s*)?\d{4}"
+    r"|(?:in|for|during)\s+(?:19|20)\d{2}"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
+    """Say plainly when the window shown is not the one the analyst asked for."""
+    notes: list[str] = []
+    window = (
+        f"the last {spec.periods.count} quarters"
+        if spec.periods.kind == "last_n_quarters"
+        else "the latest quarter"
+    )
+    named = _SPECIFIC_PERIOD.search(message)
+    if named is not None:
+        notes.append(
+            f"Specific periods such as “{named.group(0)}” are not supported yet; "
+            f"this shows {window}."
+        )
     if spec.constituents is not None and spec.periods.kind == "last_n_quarters":
         # compile_tasks does not expand ranked lists over a period window; say so
         # instead of showing a "Last N quarters" chip over one quarter of data.
-        merged = merged.model_copy(
-            update={"banners": [*merged.banners, RANKED_LATEST_QUARTER_BANNER]}
-        )
-    return merged, spec, patch
+        notes.append(RANKED_LATEST_QUARTER_BANNER)
+    dates = spec.periods.report_dates
+    if any(
+        not _adjacent_quarters(newer, older)
+        for newer, older in zip(dates, dates[1:], strict=False)
+    ):
+        notes.append(FISCAL_Q4_GAP_BANNER)
+    return notes
 
 
 def run_spec_turn(
