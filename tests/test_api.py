@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import threading
 import uuid
@@ -625,3 +627,202 @@ def test_an_unreadable_thread_file_reads_as_an_empty_thread(tmp_path: Path) -> N
     assert response.status_code == 200
     assert response.json()["runtime"] is None
     assert response.json()["turns"] == []
+
+
+# --- Admission: only threads the API created take turns, and only a few at once ---
+
+
+def _record_turns(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    ran: list[str] = []
+
+    def record(thread_id: str, *_: Any, **__: Any) -> None:
+        ran.append(thread_id)
+
+    monkeypatch.setattr(api, "run_conversation_turn", record)
+    return ran
+
+
+def test_a_turn_on_a_thread_never_created_is_refused_before_any_work(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ran = _record_turns(monkeypatch)
+    thread_id = str(uuid.uuid4())
+
+    response = _post_turn(client, thread_id, "hi")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Unknown thread."}
+    assert ran == []
+    assert not any(t.name == f"turn-{thread_id}" for t in threading.enumerate())
+    assert list((tmp_path / "threads").glob("*.json")) == []
+    app: Any = client.app
+    assert len(app.state.turn_locks) == 0
+    assert len(app.state.turn_slots) == 0
+
+
+def test_a_turn_on_an_expired_thread_is_refused_and_the_thread_cleared(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    thread_id = _new_thread(client)
+    store = LocalThreadStore(tmp_path / "threads")
+    state = store.load(thread_id)
+    assert state is not None
+    store.save(state.model_copy(update={"updated_at": datetime(2020, 1, 1, tzinfo=UTC)}))
+    ran = _record_turns(monkeypatch)
+
+    response = _post_turn(client, thread_id, "hi")
+
+    assert response.status_code == 404
+    assert ran == []
+    assert store.load(thread_id) is None
+
+
+class _HeldTurn:
+    """Stands in for ``run_conversation_turn``: the first call waits until let go."""
+
+    def __init__(self, real: Any) -> None:
+        self.started = threading.Event()
+        self.go = threading.Event()
+        self.calls = 0
+        self._real = real
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            self.started.set()
+            assert self.go.wait(10), "the held turn was never let go"
+        return self._real(*args, **kwargs)
+
+
+def test_a_turn_past_the_process_cap_is_refused_busy_until_a_slot_frees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = TestClient(create_app(_settings(max_concurrent_turns=1), store_root=tmp_path))
+    first, second = _new_thread(client), _new_thread(client)
+    held = _HeldTurn(api.run_conversation_turn)
+    monkeypatch.setattr(api, "run_conversation_turn", held)
+    outcome: dict[str, Any] = {}
+
+    def ask_first() -> None:
+        outcome["response"] = _post_turn(client, first, GUIDED_STORIES[0][1])
+
+    running = threading.Thread(target=ask_first, daemon=True)
+    running.start()
+    assert held.started.wait(10)
+
+    busy = _post_turn(client, second, GUIDED_STORIES[0][1])
+
+    assert busy.status_code == 429
+    assert busy.json() == {"detail": "The analysis service is busy. Please try again in a moment."}
+    assert busy.headers["retry-after"] == "5"
+    assert held.calls == 1
+    app: Any = client.app
+    assert not app.state.turn_locks.held(second)
+    # Only turns are capped: the wake-up check and thread creation still answer.
+    assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.post("/api/threads").status_code == 201
+
+    held.go.set()
+    running.join(30)
+    assert _events(outcome["response"])[-1][0] == "thread"
+    assert len(app.state.turn_slots) == 0
+    assert _ask(client, second, GUIDED_STORIES[0][1])["turn_count"] == 1
+
+
+def test_a_failed_turn_frees_its_slot(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    thread_id = _new_thread(client)
+    monkeypatch.setattr(api, "run_conversation_turn", _boom)
+
+    assert _events(_post_turn_within(client, thread_id, "hi"))[-1][0] == "error"
+
+    app: Any = client.app
+    assert len(app.state.turn_slots) == 0
+
+
+def test_a_turn_keeps_its_slot_after_the_reader_leaves_and_frees_it_when_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_app(_settings(max_concurrent_turns=1), store_root=tmp_path)
+    client = TestClient(app)
+    thread_id = _new_thread(client)
+    held = _HeldTurn(api.run_conversation_turn)
+    monkeypatch.setattr(api, "run_conversation_turn", held)
+    path = f"/api/threads/{thread_id}/turns"
+    scope = {
+        "type": "http",
+        # Below ASGI 2.4, Starlette listens for the reader's disconnect.
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"content-type", b"application/json")],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+    }
+
+    async def read_the_first_event_then_leave() -> None:
+        request = {
+            "type": "http.request",
+            "body": json.dumps({"message": GUIDED_STORIES[0][1]}).encode(),
+            "more_body": False,
+        }
+        first_event = asyncio.Event()
+        messages = [request]
+
+        async def receive() -> dict[str, Any]:
+            if messages:
+                return messages.pop()
+            await first_event.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                first_event.set()
+
+        await app(scope, receive, send)  # returns once the reader has gone
+        assert held.started.wait(10)
+        assert len(app.state.turn_slots) == 1, "the turn still runs, so it holds its slot"
+
+        held.go.set()
+        [worker] = [t for t in threading.enumerate() if t.name == f"turn-{thread_id}"]
+        await asyncio.to_thread(worker.join, 30)
+        assert not worker.is_alive()
+
+    asyncio.run(read_the_first_event_then_leave())
+
+    assert len(app.state.turn_slots) == 0
+    assert len(app.state.turn_locks) == 0
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 1
+
+
+def test_a_turn_begun_as_a_reload_reads_is_not_expired_by_that_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "threads"
+    client = TestClient(create_app(_settings(thread_ttl_seconds=60), store_root=root))
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[0][1])
+    client.get(f"/api/threads/{uuid.uuid4()}")  # spends this minute's purge
+    store = LocalThreadStore(root)
+    state = store.load(thread_id)
+    assert state is not None
+    store.save(state.model_copy(update={"updated_at": datetime.now(UTC) - timedelta(hours=3)}))
+    app: Any = client.app
+    real_read = LocalThreadStore._read
+
+    def a_turn_begins_as_the_reload_reads(path: Path) -> Any:
+        # The reload saw no turn in flight; one starts before the store decides.
+        app.state.turn_locks.try_acquire(thread_id)
+        return real_read(path)
+
+    monkeypatch.setattr(LocalThreadStore, "_read", staticmethod(a_turn_begins_as_the_reload_reads))
+    view = client.get(f"/api/threads/{thread_id}").json()
+    monkeypatch.undo()
+
+    assert len(view["turns"]) == 1
+    assert store.load(thread_id) is not None
+    assert any((root / "evidence" / thread_id).iterdir())

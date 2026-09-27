@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -86,10 +87,25 @@ class ThreadStore(Protocol):
     def clear(self, thread_id: str) -> None: ...
 
 
+def _expired(state: ThreadState, now: datetime, ttl_seconds: int) -> bool:
+    updated = state.updated_at
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    return now - updated >= timedelta(seconds=ttl_seconds)
+
+
 class LocalThreadStore:
-    """JSON thread checkpoints plus a per-thread evidence directory."""
+    """JSON thread checkpoints plus a per-thread evidence directory.
+
+    Loads, saves, clears, and expiry share one lock. Expiry re-reads the
+    checkpoint and asks ``keep`` (a turn in flight) while holding it, so it
+    never deletes a checkpoint saved after it decided, and a turn that starts
+    meanwhile reads its thread only once the expiry is done: none of the
+    turn's evidence is removed from under it. One store per process.
+    """
 
     def __init__(self, root: Path) -> None:
+        self._lock = threading.RLock()
         self._root = root
         self._root.mkdir(parents=True, exist_ok=True)
         self._evidence_root = root / "evidence"
@@ -110,18 +126,21 @@ class LocalThreadStore:
         *,
         now: datetime | None = None,
         ttl_seconds: int | None = None,
+        keep: Callable[[str], bool] = lambda _thread_id: False,
     ) -> ThreadState | None:
-        state = self._read(self._path(thread_id))
-        if state is None or ttl_seconds is None:
+        """The thread, or ``None``; past the TTL it is cleared unless ``keep`` names it.
+
+        A caller that holds the thread's turn lock leaves ``keep`` alone: it is
+        the one that may expire the thread.
+        """
+        with self._lock:
+            state = self._read(self._path(thread_id))
+            if state is None or ttl_seconds is None:
+                return state
+            if _expired(state, now or datetime.now(UTC), ttl_seconds) and not keep(thread_id):
+                self._clear(thread_id)
+                return None
             return state
-        clock = now or datetime.now(UTC)
-        updated = state.updated_at
-        if updated.tzinfo is None:
-            updated = updated.replace(tzinfo=UTC)
-        if clock - updated >= timedelta(seconds=ttl_seconds):
-            self.clear(thread_id)
-            return None
-        return state
 
     @staticmethod
     def _read(path: Path) -> ThreadState | None:
@@ -138,7 +157,8 @@ class LocalThreadStore:
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as temp:
                 temp.write(state.model_dump_json())
-            os.replace(temp_name, path)
+            with self._lock:
+                os.replace(temp_name, path)
         except BaseException:
             Path(temp_name).unlink(missing_ok=True)
             raise
@@ -153,15 +173,18 @@ class LocalThreadStore:
         """Clear threads idle past the TTL, except those ``keep`` names (a turn in flight)."""
         removed = 0
         for path in self._root.glob("*.json"):
+            # A first read without the lock skips the fresh threads cheaply;
+            # an expired one is read again, and kept or cleared, under it.
             state = self._read(path)
-            if state is None or keep(state.thread_id):
+            if state is None or not _expired(state, now, ttl_seconds):
                 continue
-            updated = state.updated_at
-            if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=UTC)
-            if now - updated >= timedelta(seconds=ttl_seconds):
-                self.clear(state.thread_id)
-                removed += 1
+            with self._lock:
+                state = self._read(path)
+                if state is None or keep(state.thread_id):
+                    continue
+                if _expired(state, now, ttl_seconds):
+                    self._clear(state.thread_id)
+                    removed += 1
         return removed
 
     def resolve_results(self, state: ThreadState) -> tuple[TurnResult, ...]:
@@ -178,6 +201,10 @@ class LocalThreadStore:
         return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
 
     def clear(self, thread_id: str) -> None:
+        with self._lock:
+            self._clear(thread_id)
+
+    def _clear(self, thread_id: str) -> None:
         path = self._path(thread_id)
         if path.is_file():
             path.unlink()

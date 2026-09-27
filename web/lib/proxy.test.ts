@@ -52,4 +52,9 @@ describe("clientResponseHeaders", () => {
       ["x-accel-buffering", "no"],
     ]);
   });
+
+  it("passes on how long a busy API asks the caller to wait", () => {
+    const upstream = new Headers({ "content-type": "application/json", "retry-after": "5" });
+    expect(clientResponseHeaders(upstream).get("retry-after")).toBe("5");
+  });
 });

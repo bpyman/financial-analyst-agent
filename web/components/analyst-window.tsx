@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import {
   THREAD_STORAGE_KEY,
+  askOnThread,
   browserStore,
   resumeThread,
   startOverIfLocked,
@@ -192,7 +193,22 @@ export function AnalystWindow() {
         threadId = started.view.thread_id;
         if (started.notice) setNotice({ kind: "info", text: started.notice });
       }
-      for await (const event of runTurn(threadId, message)) {
+      const asked = askOnThread(
+        threadApi,
+        store,
+        runTurn,
+        threadId,
+        message,
+        view?.runtime ?? chosenRuntime ?? undefined,
+        (fresh) => {
+          // The server lost the thread while the window sat open.
+          shownTurns.current = 0;
+          setView(fresh.view);
+          threadId = fresh.view.thread_id;
+          if (fresh.notice) setNotice({ kind: "info", text: fresh.notice });
+        },
+      );
+      for await (const event of asked) {
         if (event.event === "thread") setView(event.data);
         if (event.event === "error") stale = true;
         dispatch({ type: "event", event });

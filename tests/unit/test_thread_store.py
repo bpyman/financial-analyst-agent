@@ -1,7 +1,8 @@
-"""LocalThreadStore durability: atomic saves, unreadable files, purge that spares busy threads."""
+"""LocalThreadStore durability: atomic saves, unreadable files, expiry that spares busy threads."""
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -51,3 +52,89 @@ def test_purge_spares_threads_the_caller_keeps(tmp_path: Path) -> None:
     assert removed == 1
     assert store.load("busy") is not None
     assert store.load("idle") is None
+
+
+def _write_evidence(root: Path, thread_id: str, name: str) -> Path:
+    path = root / "evidence" / thread_id / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}", encoding="utf-8")
+    return path
+
+
+def test_purge_never_deletes_a_checkpoint_saved_after_it_decided(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LocalThreadStore(tmp_path)
+    store.save(ThreadState(thread_id="t", updated_at=LONG_AGO))
+    fresh = ThreadState(thread_id="t", updated_at=LATER, turn_count=1)
+    real_read = LocalThreadStore._read
+    reads: list[Path] = []
+
+    def a_turn_finishes_after_the_scan(path: Path) -> ThreadState | None:
+        state = real_read(path)
+        if not reads:
+            _write_evidence(tmp_path, "t", "result-1.json")
+            store.save(fresh)
+        reads.append(path)
+        return state
+
+    monkeypatch.setattr(LocalThreadStore, "_read", staticmethod(a_turn_finishes_after_the_scan))
+    removed = store.purge_expired(now=LATER, ttl_seconds=60)
+    monkeypatch.undo()
+
+    assert removed == 0
+    assert store.load("t") == fresh
+    assert (tmp_path / "evidence" / "t" / "result-1.json").is_file()
+
+
+def test_a_turn_that_starts_during_an_expiry_reads_only_once_it_is_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LocalThreadStore(tmp_path)
+    store.save(ThreadState(thread_id="t", updated_at=LONG_AGO))
+    _write_evidence(tmp_path, "t", "result-old.json")
+    clearing, go = threading.Event(), threading.Event()
+    real_rmtree = thread_store.shutil.rmtree
+
+    def slow_rmtree(path: Path) -> None:
+        clearing.set()
+        assert go.wait(10)
+        real_rmtree(path)
+
+    monkeypatch.setattr(thread_store.shutil, "rmtree", slow_rmtree)
+    purging = threading.Thread(
+        target=lambda: store.purge_expired(now=LATER, ttl_seconds=60), daemon=True
+    )
+    purging.start()
+    assert clearing.wait(10)
+    seen: dict[str, ThreadState | None] = {}
+
+    def turn() -> None:
+        seen["prior"] = store.load("t", now=LATER, ttl_seconds=60)
+        _write_evidence(tmp_path, "t", "result-new.json")
+        store.save(ThreadState(thread_id="t", updated_at=LATER, turn_count=1))
+
+    turning = threading.Thread(target=turn, daemon=True)
+    turning.start()
+    turning.join(0.2)  # a turn not held back would have written its evidence by now
+    go.set()
+    purging.join(10)
+    turning.join(10)
+
+    assert seen["prior"] is None
+    assert (tmp_path / "evidence" / "t" / "result-new.json").is_file()
+    assert not (tmp_path / "evidence" / "t" / "result-old.json").exists()
+    saved = store.load("t")
+    assert saved is not None and saved.turn_count == 1
+
+
+def test_load_spares_an_expired_thread_the_caller_keeps(tmp_path: Path) -> None:
+    store = LocalThreadStore(tmp_path)
+    stale = ThreadState(thread_id="t", updated_at=LONG_AGO)
+    store.save(stale)
+    evidence = _write_evidence(tmp_path, "t", "result-1.json")
+
+    assert store.load("t", now=LATER, ttl_seconds=60, keep=lambda tid: tid == "t") == stale
+    assert evidence.is_file()
+    assert store.load("t", now=LATER, ttl_seconds=60) is None
+    assert not evidence.exists()
