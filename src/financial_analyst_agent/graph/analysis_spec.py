@@ -127,7 +127,7 @@ class SpecDraft(BaseModel):
 
 
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
-    {"across_companies", "across_periods", "rank", "year_over_year"}
+    {"across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"}
 )
 
 

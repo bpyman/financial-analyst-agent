@@ -20,6 +20,7 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_METRICS,
+    _order_by_metric,
     bind_metrics_from_message,
     bind_periods_from_message,
     plan_to_spec_patch,
@@ -119,6 +120,58 @@ def test_industry_words_name_industries_inside_a_sector() -> None:
     assert regional is not None and regional.industries == {"Banks - Regional"}
     assert tech is not None and tech.sector == "Technology"
     assert resolve_industry_group("spaceships", snapshot) is None
+
+
+def test_a_ranking_by_a_metric_is_ordered_by_it() -> None:
+    by = _live().complete("top 5 healthcare companies by revenue")
+    their = _live().complete("biggest banks and their net income")
+    cap = _live().complete("top 5 banks by market cap")
+
+    assert by.order_by_metric is True
+    assert their.order_by_metric is False
+    assert cap.order_by_metric is False
+    assert plan_to_spec_patch(by).add_operations == ("rank", "order_by_metric")
+    assert plan_to_spec_patch(their).add_operations == ("rank",)
+
+
+def test_ordering_by_a_metric_reranks_the_members() -> None:
+    def row(rank: int, ticker: str, value: str | None, end: date) -> TableRow:
+        return TableRow(
+            company_name=ticker,
+            ticker=ticker,
+            cik=f"000000000{rank}",
+            metric="revenue",
+            rank=rank,
+            value=Decimal(value) if value is not None else None,
+            end_date=end,
+        )
+
+    june = date(2026, 6, 30)
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            row(1, "LLY", "22", june),
+            row(2, "JNJ", "25", june),
+            row(3, "XYZ", None, june),
+            row(4, "UNH", "112", june),
+        ],
+    )
+
+    ordered = _order_by_metric(result, "revenue")
+    presented = present_turn(ordered)
+
+    assert [(r.rank, r.ticker) for r in ordered.table_rows] == [
+        (1, "UNH"),
+        (2, "JNJ"),
+        (3, "LLY"),
+        (4, "XYZ"),
+    ]
+    assert ordered.ordered_by == "revenue"
+    assert any(banner.startswith("Ordered by revenue.") for banner in presented.banners)
+    assert presented.chart is not None
+    assert presented.chart.caption.startswith("Ordered by revenue among the largest by market cap")
 
 
 def test_gics_sector_names_and_common_industry_words_resolve() -> None:

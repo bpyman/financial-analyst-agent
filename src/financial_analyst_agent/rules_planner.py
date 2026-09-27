@@ -279,6 +279,9 @@ def _is_exploratory_query(normalized: str) -> bool:
 
 
 _RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading)\b")
+_ORDER_WORDING = re.compile(
+    r"\b(?:by|in terms of|ranked by|sorted by|with the (?:most|highest|biggest|largest))\b"
+)
 _ADD_WORDING = re.compile(r"^\s*(?:and|also|plus|with|include|now add|add)\b|\b(?:their|its)\b")
 _SWAP_WORDING = re.compile(
     r"^\s*(?:what about|how about|and what about|same for|now|ok|okay)\b"
@@ -399,8 +402,14 @@ class DemoCompleter:
             industry = _ranked_industry(normalized)
             limit = _limit(normalized)
             if metric in ALLOWED_METRICS:
+                ordered = metric != "market_cap" and bool(_ORDER_WORDING.search(normalized))
                 return SimpleNamespace(
-                    intent=Intent.RANK_AND_LOOKUP, industry=industry, limit=limit, metric=metric
+                    intent=Intent.RANK_AND_LOOKUP,
+                    industry=industry,
+                    limit=limit,
+                    metric=metric,
+                    # "top 5 banks by net income" orders by it; "and their net income" does not.
+                    order_by_metric=ordered,
                 )
             return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit)
         # "Meta margin Q2 2026 vs Q2 2025" compares periods of one company.

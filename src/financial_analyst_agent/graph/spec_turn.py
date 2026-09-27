@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from functools import partial
 from types import SimpleNamespace
 from typing import Any
@@ -187,11 +188,12 @@ def plan_to_spec_patch(plan: Any) -> SpecPatch:
         industry = plan.industry or ""
         limit = int(getattr(plan, "limit", 10) or 10)
         metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
+        ordered = getattr(plan, "order_by_metric", False) is True
         return SpecPatch(
             mode="replace",
             ranked_request=(industry, limit),
             add_metrics=(metric,) if metric else (),
-            add_operations=("rank",),
+            add_operations=("rank", "order_by_metric") if ordered else ("rank",),
         )
     raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
 
@@ -1077,6 +1079,39 @@ def merge_task_results(
     )
 
 
+def _order_by_metric(result: TurnResult, metric: str) -> TurnResult:
+    """Order a ranking's market-cap members by ``metric``, largest first.
+
+    Membership stays the snapshot's top N by market cap: ranking a whole
+    industry by a filed metric would mean a lookup per company in it.
+    """
+    latest: dict[str, TableRow] = {}
+    for row in result.table_rows:
+        if row.metric != metric or row.comparison is not None or not row.cik:
+            continue
+        shown = latest.get(row.cik)
+        if shown is None or (row.end_date or date.min) > (shown.end_date or date.min):
+            latest[row.cik] = row
+    ranks = {row.cik: row.rank for row in result.table_rows if row.cik and row.rank is not None}
+    if not latest or not ranks:
+        return result
+
+    def key(cik: str) -> tuple[bool, Decimal, int]:
+        row = latest.get(cik)
+        value = row.value if row is not None else None
+        return (value is None, -(value or Decimal(0)), ranks[cik] or 0)
+
+    order = {cik: index for index, cik in enumerate(sorted(ranks, key=key), start=1)}
+    rows = sorted(
+        (
+            row.model_copy(update={"rank": order[row.cik]}) if row.cik in order else row
+            for row in result.table_rows
+        ),
+        key=lambda row: (row.rank is None, row.rank or 0),
+    )
+    return result.model_copy(update={"table_rows": rows, "ordered_by": metric})
+
+
 def _fill_identity(result: TurnResult, spec: AnalysisSpec) -> TurnResult:
     """Give a failed cell the company's name and ticker, not the typed query.
 
@@ -1263,6 +1298,8 @@ def run_spec_turn_context(
         sequential="year_over_year" not in spec.operations,
     )
     merged = _fill_identity(merged, spec)
+    if "order_by_metric" in spec.operations and spec.constituents is not None and spec.metrics:
+        merged = _order_by_metric(merged, spec.metrics[0])
     # Planner notes first: a corrected company name explains the whole answer.
     planner_notes = [
         note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)

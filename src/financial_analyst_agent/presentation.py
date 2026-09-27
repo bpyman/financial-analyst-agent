@@ -630,6 +630,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
                 ranked=rank_cross_section,
                 metric=metric,
                 mixed_periods=mixed_periods,
+                ordered_by=result.ordered_by,
             ),
             horizontal=rank_cross_section,
             value_kind=chart_value_kind(metric),
@@ -658,12 +659,16 @@ def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
     return record
 
 
-def _bar_caption(*, ranked: bool, metric: str, mixed_periods: bool) -> str:
+def _bar_caption(
+    *, ranked: bool, metric: str, mixed_periods: bool, ordered_by: str | None = None
+) -> str:
     if ranked and metric != "market_cap":
-        caption = (
-            "Ordered by market cap; bar length is latest-quarter "
-            f"{_humanize_field(metric)}."
+        order = (
+            f"Ordered by {_humanize_field(ordered_by).lower()} among the largest by market cap"
+            if ordered_by
+            else "Ordered by market cap"
         )
+        caption = f"{order}; bar length is latest-quarter {_humanize_field(metric)}."
         if mixed_periods:
             return f"{caption} Periods differ by issuer."
         return caption
@@ -842,6 +847,13 @@ def present_turn(result: TurnResult) -> Presentation:
     newer = newer_filing_banner(result.table_rows)
     if newer:
         banners.append(newer)
+    if result.ordered_by:
+        label = _humanize_field(result.ordered_by).lower()
+        banners.append(
+            f"Ordered by {label}. The companies are the industry's largest by market cap in "
+            f"the snapshot, which holds market cap only, so a smaller company with more "
+            f"{label} is not listed."
+        )
     return Presentation(
         intent=result.intent.value,
         intent_label=(

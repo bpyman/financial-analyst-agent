@@ -260,3 +260,5 @@ class TurnResult(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     # A guide reply (help, greetings, advice declined) rather than a refusal.
     guide: bool = False
+    # A ranking whose market-cap members are ordered by this metric instead.
+    ordered_by: str | None = None
