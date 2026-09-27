@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
+from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.filing_change import _year_apart_quarterlies
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
@@ -113,6 +116,51 @@ def test_industry_words_name_industries_inside_a_sector() -> None:
     assert regional is not None and regional.industries == {"Banks - Regional"}
     assert tech is not None and tech.sector == "Technology"
     assert resolve_industry_group("spaceships", snapshot) is None
+
+
+def test_gics_sector_names_and_common_industry_words_resolve() -> None:
+    snapshot = load_universe_snapshot()
+
+    staples = resolve_industry_group("consumer staples", snapshot)
+    payments = resolve_industry_group("payments companies", snapshot)
+    hotels = resolve_industry_group("hotels", snapshot)
+    oil = resolve_industry_group("oil & gas", snapshot)
+    healthcare = resolve_industry_group("healthcare", snapshot)
+
+    assert staples is not None and staples.sector == "Consumer Defensive"
+    assert payments is not None and payments.industries == {"Financial - Credit Services"}
+    assert hotels is not None and "Travel Lodging" in hotels.industries
+    assert oil is not None and len(oil.industries) > 1
+    assert all(name.startswith("Oil & Gas") for name in oil.industries)
+    assert healthcare is not None and healthcare.sector == "Healthcare"
+    for word in ("software", "telecom", "restaurants"):
+        assert resolve_industry_group(word, snapshot) is not None, word
+
+
+def test_oil_and_gas_is_one_industry_in_a_ranking() -> None:
+    plan = _live().complete("top 5 oil and gas companies by revenue")
+    both = _live().complete("biggest banks and their net income")
+
+    assert plan.industry == "oil & gas"
+    assert both.industry == "banks"
+
+
+def test_unknown_industry_names_the_snapshot_sectors() -> None:
+    snapshot = load_universe_snapshot()
+    with pytest.raises(UnknownIndustryError) as raised:
+        SnapshotRanking(snapshot).rank_companies("spaceships", 5)
+    result = TurnResult(
+        intent=Intent.RANK,
+        renderer=RendererKind.REFUSE,
+        message=str(raised.value),
+        tool_traces=[],
+    )
+
+    message = present_turn(result).message or ""
+
+    assert "“spaceships”" in message
+    assert "Healthcare" in message and "Technology" in message
+    assert "finance" not in message
 
 
 def _spec(*queries: str, metrics: tuple[str, ...] = ("revenue",)) -> AnalysisSpec:

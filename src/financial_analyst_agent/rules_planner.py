@@ -318,6 +318,8 @@ def _limit(normalized: str) -> int:
 def _ranked_industry(normalized: str) -> str:
     """The group a ranking names: "top 5 semiconductor companies", "biggest banks"."""
     text = re.sub(r"\b(?:by|in terms of|ranked by)\b.*$", "", normalized)
+    # "oil and gas" is one industry, not a list to cut at "and".
+    text = re.sub(r"\boil and gas\b", "oil & gas", text)
     text = re.split(r"\s+(?:and|with|plus)\s+|,", text, maxsplit=1)[0]
     match = re.search(
         r"\b(?:top|biggest|largest|leading)\s+(?:\d+\s+)?(?:companies\s+in\s+(?:the\s+)?)?(.+)$",

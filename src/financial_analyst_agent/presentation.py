@@ -848,6 +848,7 @@ def present_turn(result: TurnResult) -> Presentation:
 
 
 _UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$", re.DOTALL)
+_UNKNOWN_INDUSTRY = re.compile(r"^Unknown industry '(?P<industry>.*)'\. Allowed: (?P<allowed>.*)$")
 _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
 _FRIENDLY_MESSAGES = {
@@ -901,6 +902,16 @@ def _friendly_message(message: str | None) -> str | None:
             )
         supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
         return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
+    industry = _UNKNOWN_INDUSTRY.match(message)
+    if industry is not None:
+        # Aliases ("finance") are lower case; the snapshot's sectors are titled.
+        sectors = [name for name in industry.group("allowed").split(", ") if name[:1].isupper()]
+        covers = f" It covers {_join_words(sectors)} companies." if sectors else ""
+        return (
+            f"I couldn't find “{industry.group('industry')}” companies in this snapshot."
+            f"{covers} You can also name an industry within those, such as "
+            "semiconductors, software, pharma or banks."
+        )
     missing = _COMPANY_NOT_FOUND.match(message)
     if missing is not None and missing.group("query").strip().casefold() in ("", "unknown"):
         return (
@@ -1422,3 +1433,10 @@ def _display_citation(index: int, hit: Any) -> DisplayCitation:
     if published:
         published = _format_trace_value(published)
     return DisplayCitation(index=index, title=hit.title, url=hit.url, published=published)
+
+
+def _join_words(words: list[str]) -> str:
+    """Join words in prose: "A", "A and B", "A, B and C"."""
+    if len(words) <= 1:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"
