@@ -329,3 +329,43 @@ def test_answering_mode_clarification_resumes_with_chosen_mode(tmp_path: Path) -
     state = store.load("t1")
     assert state is not None
     assert state.pending_clarification is None
+
+
+def test_answering_replace_resumes_the_held_question(tmp_path: Path) -> None:
+    from financial_analyst_agent.contracts import RendererKind
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    store = LocalThreadStore(tmp_path)
+    facts = _LookupFacts()
+    run_conversation_turn(
+        "t1",
+        "What was Google's net income based on their latest quarterly report?",
+        _runtime(completer=_GuessNetIncome(), facts=facts),
+        store=store,
+    )
+
+    class _AmbiguousMode:
+        def complete(self, query: str) -> SpecPatch:
+            return SpecPatch(mode=None, add_companies=("Apple",), add_metrics=("revenue",))
+
+    held = run_conversation_turn(
+        "t1",
+        "Apple revenue",
+        _runtime(completer=_AmbiguousMode(), facts=_SilentFacts()),
+        store=store,
+    )
+    assert held.result.renderer is RendererKind.CLARIFY
+
+    turn = run_conversation_turn(
+        "t1",
+        "replace",
+        _runtime(completer=_AmbiguousMode(), facts=facts),
+        store=store,
+    )
+
+    assert turn.result.renderer is RendererKind.TABLE, turn.result.message
+    assert turn.analysis_spec is not None
+    assert [c.query for c in turn.analysis_spec.companies] == ["Apple"]
+    assert turn.analysis_spec.metrics == ("revenue",)

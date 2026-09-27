@@ -50,6 +50,12 @@ class CompanyNotFoundError(FinancialAnalystError):
     code = "company_not_found"
 
 
+class IneligibleIssuerError(CompanyNotFoundError):
+    """A listing that is not an operating company: a fund, BDC, SPAC or note (ADR 0002)."""
+
+    code = "ineligible_issuer"
+
+
 class AmbiguousCompanyError(FinancialAnalystError):
     code = "ambiguous_company"
 

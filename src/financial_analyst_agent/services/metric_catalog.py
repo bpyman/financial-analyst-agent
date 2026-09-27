@@ -71,6 +71,15 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     ],
 }
 
+# Costs that show "cost of revenue" is not all of a company's cost of revenue: an
+# insurer's benefits and claims (UnitedHealth's medical costs) sit beside the cost
+# of the products it sells. Revenue minus that cost is not a gross profit.
+GROSS_PROFIT_EXCLUDING_CONCEPTS: tuple[tuple[str, str], ...] = (
+    ("us-gaap", "PolicyholderBenefitsAndClaimsIncurredNet"),
+    ("us-gaap", "PolicyholderBenefitsAndClaimsIncurredHealthCare"),
+    ("us-gaap", "BenefitsLossesAndExpenses"),
+)
+
 # Per-share amounts are reported in USD per share and are never derived by
 # subtraction: the share count moves during the year (ADR 0007).
 PER_SHARE_METRICS: frozenset[Metric] = frozenset({Metric.EPS_DILUTED, Metric.EPS_BASIC})

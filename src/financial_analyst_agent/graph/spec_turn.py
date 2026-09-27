@@ -113,6 +113,8 @@ _NAMED_PERIOD_PATTERNS = (
     re.compile(rf"\b(?:fy|fiscal(?:\s+year)?)\s*{_YEAR}", re.I),
     re.compile(r"\b(?:in|for|during)\s+(?P<y>(?:19|20)\d{2})\b", re.I),
 )
+# "latest revenue" after "Apple revenue Q3 2025" asks for the newest quarter again.
+_LATEST = re.compile(r"\b(?:latest|most recent|newest)\b", re.IGNORECASE)
 _TRAILING_YEAR = re.compile(
     r"\b(?:ttm|ltm|trailing[\s-]+(?:twelve|12)[\s-]+months?|(?:last|past)\s+(?:twelve|12)\s+months)\b",
     re.I,
@@ -381,6 +383,13 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
             }
         )
     if match is None and not yoy:
+        if _LATEST.search(message) is not None:
+            return patch.model_copy(
+                update={
+                    "set_periods": PeriodSelection(),
+                    "remove_operations": (*patch.remove_operations, "across_periods"),
+                }
+            )
         return patch
     operations = patch.add_operations
     if yoy and "across_periods" not in operations:
@@ -891,8 +900,11 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
 
 
 def _provenance_from_level(row: TableRow) -> ComponentProvenance:
-    if row.components:
-        return row.components[0]
+    """The level a change row subtracts, with the facts it came from.
+
+    A margin level keeps its formula inputs and a derived quarter its source
+    facts, so the change's evidence shows every filing behind both levels.
+    """
     assert row.value is not None
     assert row.start_date is not None
     assert row.end_date is not None
@@ -907,6 +919,8 @@ def _provenance_from_level(row: TableRow) -> ComponentProvenance:
         concept=row.concept or row.metric,
         source_url=row.source_url or "",
         source="sec_xbrl",
+        derivation=row.derivation,
+        derived_from=list(row.components) or list(row.derived_from),
     )
 
 
@@ -1267,7 +1281,9 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
     own = dict(periods.company_report_dates)
     label = periods.label
     missing = [
-        company.name for company in spec.companies if not own.get(company.query.casefold())
+        short_name(company.name) or company.query
+        for company in spec.companies
+        if not own.get(company.query.casefold())
     ]
     single = len(periods.named) == 1 and periods.named[0].quarter is not None
     dated = [company for company in spec.companies if own.get(company.query.casefold())]

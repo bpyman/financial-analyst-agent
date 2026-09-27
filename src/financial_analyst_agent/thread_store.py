@@ -42,6 +42,9 @@ class PendingClarification(BaseModel):
     patch: SpecPatch
     intent: Intent = Intent.LOOKUP
     metric_role: Literal["add", "remove"] = "add"
+    # The question that was held, so an answer like "replace" resumes it rather
+    # than being read as a question of its own. Empty in threads saved before.
+    question: str = ""
 
 
 class ThreadState(BaseModel):

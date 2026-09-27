@@ -107,3 +107,67 @@ def test_no_company_named_says_so_instead_of_unknown(runtime) -> None:  # type: 
     assert answers[0].message is not None
     assert "unknown" not in answers[0].message
     assert answers[0].message.startswith("I couldn't tell which company you mean")
+
+
+# Codex review of master (GPT-6-Astra), reproduced on the recorded runtime.
+
+
+def _turn(runtime, *messages: str):  # type: ignore[no-untyped-def]
+    from financial_analyst_agent.conversation import run_conversation_turn, start_thread
+    from financial_analyst_agent.runtime import RuntimeKind
+    from financial_analyst_agent.thread_store import EphemeralThreadStore
+
+    store = EphemeralThreadStore()
+    thread_id = uuid.uuid4().hex
+    start_thread(thread_id, RuntimeKind.RECORDED, store=store)
+    turn = None
+    for message in messages:
+        turn = run_conversation_turn(thread_id, message, runtime, store=store)
+    assert turn is not None
+    return turn.result
+
+
+def test_an_insurers_gross_margin_is_not_revenue_minus_product_costs(runtime) -> None:  # type: ignore[no-untyped-def]
+    # UnitedHealth tags $13.4 B of product costs as cost of goods and reports its
+    # $75 B of medical costs separately; revenue minus the first is not gross profit.
+    (row,) = _turn(runtime, "UnitedHealth gross margin").table_rows
+    assert row.value is None
+    apple = _turn(runtime, "Apple gross margin").table_rows[0]
+    assert apple.value is not None
+
+
+def test_a_named_quarter_leaves_out_a_company_without_that_quarter(runtime) -> None:  # type: ignore[no-untyped-def]
+    result = _turn(runtime, "Compare Microsoft and Apple revenue Q4 2026")
+    assert {row.ticker for row in result.table_rows} == {"MSFT"}
+    assert "No filing for Q4 FY2026 from Apple." in result.banners
+
+
+def test_latest_after_a_named_quarter_asks_for_the_newest_quarter(runtime) -> None:  # type: ignore[no-untyped-def]
+    (named,) = _turn(runtime, "Apple revenue Q3 2025").table_rows
+    (latest,) = _turn(runtime, "Apple revenue Q3 2025", "latest revenue").table_rows
+    assert latest.end_date is not None and named.end_date is not None
+    assert latest.end_date > named.end_date
+
+
+def test_a_trend_chart_keeps_a_missing_quarter_as_a_gap(runtime) -> None:  # type: ignore[no-untyped-def]
+    from financial_analyst_agent.presentation import present_turn
+
+    answer = present_turn(_turn(runtime, "Apple EPS last 6 quarters"))
+    assert answer.chart is not None
+    assert len(answer.chart.period_labels) == 6
+    assert any(record["Apple Inc."] is None for record in answer.chart.records)
+
+
+def test_a_derived_fiscal_q4_inside_gross_profit_keeps_its_filings(runtime) -> None:  # type: ignore[no-untyped-def]
+    (row,) = _turn(runtime, "Google gross profit Q4 2025").table_rows
+    forms = {inner.form for part in row.derived_from for inner in part.derived_from}
+    assert forms == {"10-K", "10-Q"}
+    assert all(part.derivation for part in row.derived_from)
+
+
+def test_a_margin_change_row_keeps_both_formula_inputs(runtime) -> None:  # type: ignore[no-untyped-def]
+    rows = _turn(runtime, "Apple operating margin year over year").table_rows
+    change = next(row for row in rows if row.comparison == "yoy")
+    for level in change.components:
+        assert level.metric == "operating_margin"
+        assert {part.metric for part in level.derived_from} == {"operating_income", "revenue"}

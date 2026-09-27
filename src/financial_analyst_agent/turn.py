@@ -293,23 +293,28 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     if derivation is None:
         return {}
     metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
+    source = _fact_source_kind(fact)
+
+    def provenance(part: Any) -> ComponentProvenance:
+        nested = getattr(part, "derivation", None)
+        return ComponentProvenance(
+            metric=metric,
+            value=part.value,
+            start_date=part.start_date,
+            end_date=part.end_date,
+            form=part.form,
+            accession_number=part.accession_number,
+            taxonomy=part.taxonomy,
+            concept=part.concept,
+            source_url=part.source_url,
+            source=source,
+            derivation=nested.label if nested is not None else None,
+            derived_from=[provenance(inner) for inner in nested.parts] if nested else [],
+        )
+
     return {
         "derivation": derivation.label,
-        "derived_from": [
-            ComponentProvenance(
-                metric=metric,
-                value=part.value,
-                start_date=part.start_date,
-                end_date=part.end_date,
-                form=part.form,
-                accession_number=part.accession_number,
-                taxonomy=part.taxonomy,
-                concept=part.concept,
-                source_url=part.source_url,
-                source=_fact_source_kind(fact),
-            )
-            for part in derivation.parts
-        ],
+        "derived_from": [provenance(part) for part in derivation.parts],
     }
 
 

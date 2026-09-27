@@ -15,8 +15,8 @@ uses, so the cassette holds real EDGAR payloads, trimmed to what the demo reads:
 - ``submissions``: each issuer's 10-Q and 10-K filings (and amendments) from
   the last ``--quarters`` period ends. A 10-K's period end is the fiscal fourth
   quarter, derived from it per ADR 0007.
-- ``company_facts``: the concepts in ``METRIC_CONCEPTS``, only as reported in
-  those filings.
+- ``company_facts``: the concepts in ``METRIC_CONCEPTS`` and
+  ``GROSS_PROFIT_EXCLUDING_CONCEPTS``, only as reported in those filings.
 - ``filing_documents``: the Management's Discussion and Analysis and Risk
   Factors sections of each issuer's newest 10-Q and the 10-Q a year before it,
   the pair "What changed in X's latest 10-Q?" compares, as extracted by
@@ -45,7 +45,10 @@ from financial_analyst_agent.filing_change import (
     _year_apart_quarterlies,
     extract_section,
 )
-from financial_analyst_agent.services.metric_catalog import METRIC_CONCEPTS
+from financial_analyst_agent.services.metric_catalog import (
+    GROSS_PROFIT_EXCLUDING_CONCEPTS,
+    METRIC_CONCEPTS,
+)
 
 DATA = Path(__file__).resolve().parents[1] / "src" / "financial_analyst_agent" / "data"
 CASSETTE = DATA / "sec_fixture_recordings.json"
@@ -132,7 +135,7 @@ def _trim_submissions(payload: dict[str, Any], quarters: int) -> dict[str, Any]:
 
 def _trim_company_facts(payload: dict[str, Any], accessions: set[str]) -> dict[str, Any]:
     facts: dict[str, dict[str, Any]] = {}
-    for concepts in METRIC_CONCEPTS.values():
+    for concepts in (*METRIC_CONCEPTS.values(), GROSS_PROFIT_EXCLUDING_CONCEPTS):
         for taxonomy, concept in concepts:
             body = payload.get("facts", {}).get(taxonomy, {}).get(concept)
             if body is None:

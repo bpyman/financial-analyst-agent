@@ -415,7 +415,10 @@ def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     if not expandable:
         return base
     groups = calendar_groups(spec)
-    if len(groups) > 1 or (groups and groups[0][1] != spec.periods.report_dates):
+    # A named period leaves out a company with no filing for it; asking that
+    # company for another company's date would answer with its own other quarter.
+    named = spec.periods.kind == "named"
+    if named or len(groups) > 1 or (groups and groups[0][1] != spec.periods.report_dates):
         # Each calendar asks for its own quarter ends; one shared date would
         # miss every quarter of a company whose fiscal quarters end elsewhere.
         longest = max(len(dates) for _, dates in groups)
