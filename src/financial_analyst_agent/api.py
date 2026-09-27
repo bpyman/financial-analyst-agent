@@ -22,7 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
@@ -306,6 +307,20 @@ def create_app(
     )
     app.state.turn_locks = turn_locks
     app.state.turn_slots = turn_slots
+
+    @app.exception_handler(RequestValidationError)
+    async def plain_validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # FastAPI's default echoes the rejected input back; say what to fix instead.
+        too_long = any(error.get("type") == "string_too_long" for error in exc.errors())
+        detail = (
+            f"That message is longer than {MAX_MESSAGE_CHARS:,} characters. "
+            "Shorten it and send it again."
+            if too_long
+            else "The request was not in the form the analysis service expects."
+        )
+        return JSONResponse(status_code=422, content={"detail": detail})
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
         app.add_middleware(ProxyTokenGuard, token=proxy_token)

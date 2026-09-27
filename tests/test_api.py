@@ -826,3 +826,14 @@ def test_a_turn_begun_as_a_reload_reads_is_not_expired_by_that_reload(
     assert len(view["turns"]) == 1
     assert store.load(thread_id) is not None
     assert any((root / "evidence" / thread_id).iterdir())
+
+
+def test_an_overlong_message_is_refused_without_echoing_it(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+    message = "x" * 2001
+    response = client.post(f"/api/threads/{thread_id}/turns", json={"message": message})
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "That message is longer than 2,000 characters. Shorten it and send it again."
+    }
+    assert message not in response.text
