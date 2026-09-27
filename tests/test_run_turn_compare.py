@@ -8,7 +8,13 @@ from financial_analyst_agent.domain.errors import AmbiguousFactError, Unsupporte
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import (
+    PERIODS_DIFFER_BANNER,
+    Intent,
+    RendererKind,
+    Runtime,
+    run_turn,
+)
 from test_run_turn_lookup import ALLOWED_METRICS
 
 MSFT_GOOG_OPERATING_MARGINS_QUERY = (
@@ -59,7 +65,7 @@ def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.TABLE
-    assert result.banners == []
+    assert result.banners == [PERIODS_DIFFER_BANNER]
     assert result.numeral_lock_extras == []
     assert result.message is None
 
@@ -75,11 +81,12 @@ def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -
     assert microsoft.ticker == MICROSOFT_TICKER
     assert microsoft.cik == MICROSOFT_CIK
     assert microsoft.metric == "operating_margin"
-    # Each issuer's latest quarter differs, so neither margin is shown as comparable.
-    assert microsoft.value is None
+    # Each issuer's latest quarter differs: each margin is shown for its own
+    # quarter, and the banner says the periods differ.
+    assert microsoft.value == MICROSOFT_OPERATING_INCOME / MICROSOFT_REVENUE
     assert microsoft.start_date == PERIOD_START
     assert microsoft.end_date == PERIOD_END
-    assert microsoft.reason == "period_mismatch"
+    assert microsoft.reason is None
     _assert_operating_margin_components(
         microsoft,
         operating_income=MICROSOFT_OPERATING_INCOME,
@@ -94,10 +101,10 @@ def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -
     assert alphabet.ticker == ALPHABET_TICKER
     assert alphabet.cik == ALPHABET_CIK
     assert alphabet.metric == "operating_margin"
-    assert alphabet.value is None
+    assert alphabet.value == RECORDED_ALPHABET_OPERATING_INCOME / RECORDED_ALPHABET_REVENUE
     assert alphabet.start_date == ALPHABET_PERIOD_START
     assert alphabet.end_date == ALPHABET_PERIOD_END
-    assert alphabet.reason == "period_mismatch"
+    assert alphabet.reason is None
     _assert_operating_margin_components(
         alphabet,
         operating_income=RECORDED_ALPHABET_OPERATING_INCOME,
@@ -243,7 +250,7 @@ def _component_fact(
     )
 
 
-def test_run_turn_does_not_compute_margin_when_periods_mismatch() -> None:
+def test_run_turn_never_blends_margins_across_mismatched_periods() -> None:
     result = run_turn(
         MSFT_GOOG_OPERATING_MARGINS_QUERY,
         Runtime(completer=_CompareCompleter(), facts=_MismatchedPeriodFacts()),
@@ -257,13 +264,11 @@ def test_run_turn_does_not_compute_margin_when_periods_mismatch() -> None:
     blended = (MICROSOFT_OPERATING_INCOME + ALPHABET_OPERATING_INCOME) / (
         MICROSOFT_REVENUE + ALPHABET_REVENUE
     )
-    for row in result.table_rows:
-        assert row.value is None
-        assert row.reason == "period_mismatch"
-        assert row.value != microsoft_margin
-        assert row.value != alphabet_margin
-        assert row.value != blended
-    assert {row.cik for row in result.table_rows} == {MICROSOFT_CIK, ALPHABET_CIK}
+    by_cik = {row.cik: row for row in result.table_rows}
+    assert by_cik[MICROSOFT_CIK].value == microsoft_margin
+    assert by_cik[ALPHABET_CIK].value == alphabet_margin
+    assert all(row.value != blended for row in result.table_rows)
+    assert result.banners == [PERIODS_DIFFER_BANNER]
 
 
 class _ShareClassCompleter:

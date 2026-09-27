@@ -413,6 +413,12 @@ def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
     return next(iter(periods))
 
 
+PERIODS_DIFFER_BANNER = (
+    "These companies' latest quarters end on different dates, so the values cover "
+    "different periods. Each row shows its own quarter."
+)
+
+
 def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
     """True when every period is one fiscal quarter, allowing 52/53-week calendars.
 
@@ -523,15 +529,17 @@ def compare_metrics(
                 components=components,
             )
         )
-    comparable_periods = {(row.start_date, row.end_date) for row in rows if row.value is not None}
-    if not _same_fiscal_period(comparable_periods):
-        rows = [
-            row.model_copy(update={"value": None, "reason": PERIOD_MISMATCH})
-            if row.value is not None
-            else row
-            for row in rows
-        ]
+    # Each row keeps its own issuer's period. When issuers' latest quarters end on
+    # different dates the values stay visible, each with its own dates, and the
+    # turn says the periods differ (see ``periods_differ``); no value is ever
+    # computed across issuers.
     return rows
+
+
+def periods_differ(rows: list[TableRow]) -> bool:
+    """Whether the valued rows cover different fiscal quarters."""
+    periods = {(row.start_date, row.end_date) for row in rows if row.value is not None}
+    return not _same_fiscal_period(periods)
 
 
 def _rank_and_lookup_row(company: Any, index: int, metric: str, reason: str) -> TableRow:
@@ -650,6 +658,7 @@ def _metrics_turn(
         ],
         renderer=RendererKind.TABLE,
         table_rows=rows,
+        banners=[PERIODS_DIFFER_BANNER] if periods_differ(rows) else [],
     )
 
 
