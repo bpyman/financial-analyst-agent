@@ -214,3 +214,21 @@ def test_concurrent_fills_across_cache_instances_share_one_fetch(tmp_path: Path)
     assert right._budget is not None
     assert left._budget.live_sec_requests + right._budget.live_sec_requests == 1
     assert json.loads((tmp_path / "tickers.json").read_text(encoding="utf-8")) == {"ok": True}
+
+
+def test_missing_company_facts_are_remembered(tmp_path: Path) -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+
+    class _Missing(_CountingSource):
+        def get_company_facts(self, cik: str) -> dict[str, Any]:
+            self.calls.append(f"facts:{cik}")
+            raise ProviderError("not found", details={"status_code": 404})
+
+    inner = _Missing({}, {}, {})
+    budget = SessionBudget(max_turns=10, max_live_sec_requests=10)
+    for _ in range(2):
+        with pytest.raises(ProviderError) as caught:
+            CachingSECDataSource(inner, tmp_path, budget=budget).get_company_facts("0000000001")
+        assert caught.value.details["status_code"] == 404
+
+    assert inner.calls == ["facts:0000000001"]

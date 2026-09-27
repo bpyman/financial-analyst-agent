@@ -182,8 +182,9 @@ export function AnalystWindow() {
     setDraft("");
     setNotice(null);
     const waking = window.setTimeout(() => dispatch({ type: "wake" }), WAKE_AFTER_MS);
+    let threadId = view?.thread_id;
+    let stale = false;
     try {
-      let threadId = view?.thread_id;
       if (!threadId) {
         // Before the analyst picks a runtime, the server applies its deployment default.
         const started = await startThread(threadApi, store, chosenRuntime ?? undefined);
@@ -193,13 +194,22 @@ export function AnalystWindow() {
       }
       for await (const event of runTurn(threadId, message)) {
         if (event.event === "thread") setView(event.data);
+        if (event.event === "error") stale = true;
         dispatch({ type: "event", event });
       }
     } catch (error) {
+      stale = true;
       dispatch({ type: "fail", error: errorText(error) });
     } finally {
       window.clearTimeout(waking);
       inFlight.current = false;
+    }
+    if (stale && threadId) {
+      // A failed turn can still have changed the thread (its turn and budget
+      // counts); redraw from the server rather than keep the pre-turn view.
+      getThread(threadId)
+        .then(setView)
+        .catch(() => undefined);
     }
   }
 

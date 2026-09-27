@@ -39,6 +39,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     SpecPatch,
     SpecRejection,
     apply_patch,
+    calendar_groups,
     compile_tasks,
     resolve_spec,
     validate_spec,
@@ -383,34 +384,60 @@ def refine_patch_from_message(
     return patch
 
 
+def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
+    try:
+        return tuple(listing(company, limit=count))
+    except (AttributeError, TypeError):
+        return ()
+
+
 def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:
-    """Fill last_n_quarters report_dates from the facts port when the patch omitted them."""
-    if spec.periods.kind != "last_n_quarters" or spec.periods.report_dates:
+    """Fill last_n_quarters report dates from the facts port.
+
+    The first company's quarter ends become ``report_dates``; every other named
+    company gets its own, so a company on a different fiscal calendar is asked
+    for its quarters rather than the first company's. Dates already on the spec
+    are kept, so a follow-up that adds a company lists only that company.
+    """
+    if spec.periods.kind != "last_n_quarters":
         return spec
-    count = spec.periods.count or 1
     listing = getattr(runtime.facts, "list_quarterly_report_dates", None)
     if listing is None:
         return spec
-    company = ""
-    if spec.companies:
-        company = spec.companies[0].query
-    elif spec.constituents is not None and spec.constituents.members:
-        company = spec.constituents.members[0].query
-    if not company:
+    queries = [company.query for company in spec.companies]
+    if not queries and spec.constituents is not None and spec.constituents.members:
+        queries = [spec.constituents.members[0].query]
+    if not queries:
         return spec
-    try:
-        dates = tuple(listing(company, limit=count))
-    except (AttributeError, TypeError):
+    periods = spec.periods
+    listed_first = False
+    if not periods.report_dates:
+        dates = _listed_dates(listing, queries[0], periods.count or 1)
+        if not dates:
+            return spec
+        periods = periods.model_copy(update={"count": len(dates), "report_dates": dates})
+        listed_first = True
+    known = dict(periods.company_report_dates)
+    if listed_first and spec.companies:
+        known[queries[0].casefold()] = periods.report_dates
+    for company in spec.companies:
+        key = company.query.casefold()
+        if key in known:
+            continue
+        try:
+            dates = _listed_dates(listing, company.query, periods.count or 1)
+        except SessionQuotaError:
+            raise
+        except Exception:
+            # This company's cells report their own failure; it must not refuse
+            # the whole window for the companies that do resolve.
+            continue
+        if dates:
+            known[key] = dates
+    periods = periods.model_copy(update={"company_report_dates": tuple(known.items())})
+    if periods == spec.periods:
         return spec
-    if not dates:
-        return spec
-    return spec.model_copy(
-        update={
-            "periods": spec.periods.model_copy(
-                update={"count": len(dates), "report_dates": dates}
-            )
-        }
-    )
+    return spec.model_copy(update={"periods": periods})
 
 
 def is_filing_change_proposal(proposal: Any) -> bool:
@@ -507,6 +534,10 @@ RANKED_LATEST_QUARTER_BANNER = (
 FISCAL_Q4_GAP_BANNER = (
     "This window skips fiscal fourth quarters: companies report them in the 10-K, "
     "not a 10-Q, so they have no standalone quarterly fact."
+)
+CALENDARS_DIFFER_BANNER = (
+    "These companies' fiscal quarters end on different dates, "
+    "so each row shows the company's own quarter."
 )
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
 
@@ -941,9 +972,15 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         # compile_tasks does not expand ranked lists over a period window; say so
         # instead of showing a "Last N quarters" chip over one quarter of data.
         notes.append(RANKED_LATEST_QUARTER_BANNER)
-    dates = spec.periods.report_dates
+    windows = [spec.periods.report_dates]
+    if spec.periods.kind == "last_n_quarters" and spec.companies:
+        groups = calendar_groups(spec)
+        windows = [dates for _, dates in groups]
+        if len(groups) > 1:
+            notes.append(CALENDARS_DIFFER_BANNER)
     if any(
         not _adjacent_quarters(newer, older)
+        for dates in windows
         for newer, older in zip(dates, dates[1:], strict=False)
     ):
         notes.append(FISCAL_Q4_GAP_BANNER)

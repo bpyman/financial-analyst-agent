@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlparse
 
+from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
     EXPLORATORY_RESEARCH_BANNER,
@@ -82,15 +83,16 @@ def format_usd(value: Decimal) -> str:
     amount = abs(value)
     if amount == 0:
         return "$0"
-    if amount >= _TRILLION:
-        scaled = (amount / _TRILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} T"
-    if amount >= _BILLION:
-        scaled = (amount / _BILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} B"
-    if amount >= _MILLION:
-        scaled = (amount / _MILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} M"
+    units = ((_TRILLION, "T"), (_BILLION, "B"), (_MILLION, "M"))
+    for index, (unit, suffix) in enumerate(units):
+        if amount < unit:
+            continue
+        scaled = (amount / unit).quantize(_CENTS, rounding=ROUND_HALF_UP)
+        if scaled >= 1000 and index > 0:
+            # Rounding reached the next unit: $999,996,000 is "$1.00 B", not "$1000.00 M".
+            unit, suffix = units[index - 1]
+            scaled = (amount / unit).quantize(_CENTS, rounding=ROUND_HALF_UP)
+        return f"{sign}${scaled:.2f} {suffix}"
     grouped = f"{int(amount):,}"
     return f"{sign}${grouped}"
 
@@ -440,6 +442,23 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     return tuple(chips)
 
 
+def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:
+    """Map each period end to the latest end within a fiscal week of it.
+
+    Apple's March 28 and Microsoft's March 31 are one quarter on the chart, not
+    two points a few days apart.
+    """
+    buckets: dict[date, date] = {}
+    cluster: list[date] = []
+    for end in sorted(ends):
+        if cluster and end - cluster[0] > FISCAL_WEEK_TOLERANCE:
+            buckets.update(dict.fromkeys(cluster, cluster[-1]))
+            cluster = []
+        cluster.append(end)
+    buckets.update(dict.fromkeys(cluster, cluster[-1]))
+    return buckets
+
+
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
     comparison_free = [
         row for row in result.table_rows if row.comparison is None
@@ -463,13 +482,15 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     if not rank_cross_section and any(
         len(periods) >= 2 for periods in periods_by_company.values()
     ):
+        buckets = _fiscal_week_buckets(
+            {row.end_date for row in rows if row.end_date is not None}
+        )
         merged: dict[date, dict[str, object]] = {}
         for row in rows:
             if row.end_date is None:
                 continue
-            bucket = merged.setdefault(
-                row.end_date, {"Period": row.end_date.isoformat()}
-            )
+            period = buckets[row.end_date]
+            bucket = merged.setdefault(period, {"Period": period.isoformat()})
             bucket[row.company_name] = (
                 float(row.value) if row.value is not None else None
             )

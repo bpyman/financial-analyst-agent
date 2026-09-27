@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
-import { cn, parseLink, safeHref } from "@/lib/format";
+import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerChart } from "./answer-chart";
 import { Clarify } from "./clarify";
@@ -299,7 +299,7 @@ function TraceRow({ label, value }: { label: string; value: string }) {
       <div className="col-span-2 min-w-0">
         {label && <dt className="mb-1 font-medium text-fg">{label}</dt>}
         <dd>
-          <SafeMarkdown text={value} className="text-[12.5px] text-muted" />
+          <SafeMarkdown text={hardBreaks(value)} className="text-[12.5px] text-muted" />
         </dd>
       </div>
     );

@@ -71,6 +71,10 @@ def _resolve_same_concept_candidates(candidates: list[FactRecord]) -> FactRecord
     top = [fact for fact in by_filed if fact.filed_date == best_filed]
     if len(top) == 1:
         return top[0]
+    if len({(fact.start_date, fact.end_date, fact.value) for fact in top}) == 1:
+        # companyfacts lists one reported number again under another frame or
+        # form; identical copies agree, so they are not ambiguous.
+        return top[0]
 
     raise AmbiguousFactError(
         "Multiple directly reported quarterly facts remain after precedence rules",

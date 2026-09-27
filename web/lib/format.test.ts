@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axisTick, parseLink } from "./format";
+import { axisTick, hardBreaks, parseLink } from "./format";
 
 describe("axisTick", () => {
   it("compacts dollars by scale", () => {
@@ -37,5 +37,11 @@ describe("parseLink", () => {
     });
     expect(parseLink("[x](javascript:alert(1))")).toBeNull();
     expect(parseLink("plain text")).toBeNull();
+  });
+});
+
+describe("hardBreaks", () => {
+  it("keeps single line breaks and leaves paragraphs alone", () => {
+    expect(hardBreaks("Revenue\nNet income\n\nNext")).toBe("Revenue  \nNet income\n\nNext");
   });
 });

@@ -85,11 +85,19 @@ class ConversationTurn(BaseModel):
     proposed_patch: SpecPatch | None = None
 
 
+_NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
+_MAX_ANSWER_WORDS = 6
+
+
 def _match_clarification_answer(
     pending: PendingClarification, message: str
 ) -> str | None:
     """Return the chosen candidate when the message answers the open question."""
     if pending.kind == "ambiguous_metric":
+        if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
+            # "What was Microsoft's net income?" names a candidate but is a new
+            # question; answering the held patch would drop its company.
+            return None
         resolved = resolve_metric_phrase(message)
         if resolved.kind != "unique":
             return None

@@ -127,6 +127,12 @@ def test_ambiguous_when_multiple_same_filed_date() -> None:
         _select(facts)
 
 
+def test_identical_duplicate_facts_are_not_ambiguous() -> None:
+    facts = [make_fact(value=Decimal("100")), make_fact(value=Decimal("100"))]
+
+    assert _select(facts).value == Decimal("100")
+
+
 def test_prefers_latest_filed_date_on_restatement() -> None:
     facts = [
         make_fact(filed_date=date(2024, 11, 1), value=Decimal("23636000000")),

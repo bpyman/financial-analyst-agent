@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.session import SessionBudget
 
 _FILL_LOCKS: dict[str, Lock] = {}
@@ -63,7 +64,22 @@ class CachingSECDataSource:
         return payload
 
     def get_company_facts(self, cik: str) -> dict[str, Any]:
-        payload = self._json(f"facts-{cik}.json", lambda: self._inner.get_company_facts(cik))
+        # Many filers (funds, trusts, predecessor CIKs) have no companyfacts at
+        # all; remember the 404 for the same hour so each turn does not re-ask.
+        missing = self._dir / f"facts-{cik}.missing"
+        if self._json_is_fresh(missing):
+            raise ProviderError(
+                "No SEC companyfacts response exists for the issuer",
+                details={"cik": cik, "status_code": 404},
+            )
+        try:
+            payload = self._json(
+                f"facts-{cik}.json", lambda: self._inner.get_company_facts(cik)
+            )
+        except ProviderError as exc:
+            if exc.details.get("status_code") == 404:
+                _write_text_atomic(missing, "")
+            raise
         if not isinstance(payload, dict):
             raise TypeError("cached company facts must be an object")
         return payload
