@@ -308,7 +308,7 @@ def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
         return MetricPhraseResolution(kind="unknown")
     for phrase in phrases:
         if phrase.kind == "ambiguous":
-            return phrase
+            return _with_prefixed_metric(query, phrase)
     uniques = [phrase for phrase in phrases if phrase.kind == "unique"]
     if len(uniques) == 1:
         return uniques[0]
@@ -321,3 +321,27 @@ def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
             return MetricPhraseResolution(kind="unique", metric=metrics[0], metrics=metrics)
         return MetricPhraseResolution(kind="unique", metrics=metrics)
     return MetricPhraseResolution(kind="unknown")
+
+
+def _with_prefixed_metric(
+    query: str, phrase: MetricPhraseResolution
+) -> MetricPhraseResolution:
+    """Offer the metric named just before "margin" ("free cash flow margin").
+
+    The catalog has no such ratio, but the metric itself is a likely answer and
+    the margins alone would not include it.
+    """
+    normalized = query.casefold()
+    unique = _nonoverlapping_unique_matches(normalized)
+    occupied = [(start, end) for start, end, _metric in unique]
+    ambiguous = _nonoverlapping_ambiguous_matches(normalized, occupied)
+    prefixed = [
+        metric
+        for _start, end, metric in unique
+        for amb_start, _amb_end, _candidates in ambiguous
+        if normalized[end:amb_start].strip() == ""
+    ]
+    if not prefixed:
+        return phrase
+    candidates = tuple(dict.fromkeys([*prefixed, *phrase.candidates]))
+    return MetricPhraseResolution(kind="ambiguous", candidates=candidates)

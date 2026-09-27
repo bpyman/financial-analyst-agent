@@ -171,3 +171,48 @@ def test_a_margin_change_row_keeps_both_formula_inputs(runtime) -> None:  # type
     for level in change.components:
         assert level.metric == "operating_margin"
         assert {part.metric for part in level.derived_from} == {"operating_income", "revenue"}
+
+
+# Smaller findings from the same round of user testing.
+
+
+def test_a_quarter_that_does_not_exist_is_refused(runtime) -> None:  # type: ignore[no-untyped-def]
+    (answer,) = _conversation(runtime, "Microsoft revenue Q5 2025")
+    assert answer.table is None and answer.fact_card is None
+    assert answer.message == "There is no Q5: a fiscal year has four quarters, Q1 to Q4."
+
+
+def test_which_one_is_more_profitable_adds_profit_to_the_comparison(runtime) -> None:  # type: ignore[no-untyped-def]
+    answers = _conversation(
+        runtime, "Compare Nvidia and AMD revenue", "which one is more profitable"
+    )
+    assert answers[1].table is not None
+    assert {"Net income", "Net margin"} <= set(answers[1].table.headers)
+    assert _tickers(answers[1]) == {"NVDA", "AMD"}
+
+
+def test_chart_it_explains_when_charts_appear(runtime) -> None:  # type: ignore[no-untyped-def]
+    answers = _conversation(runtime, "Apple revenue", "chart it")
+    assert answers[1].message is not None
+    assert answers[1].message.startswith("Charts appear on their own")
+    assert answers[1].message_tone == "info"
+
+
+def test_year_over_year_shows_a_yoy_change_for_each_quarter(runtime) -> None:  # type: ignore[no-untyped-def]
+    answers = _conversation(runtime, "Apple revenue last 4 quarters", "show year-over-year")
+    table = answers[1].table
+    assert table is not None
+    changes = [row[table.headers.index("Change")] for row in table.rows]
+    assert changes.count("Year over year") == 4
+    assert "Quarter over quarter" not in changes
+
+
+def test_a_ranking_shorter_than_asked_says_so(runtime) -> None:  # type: ignore[no-untyped-def]
+    (answer,) = _conversation(runtime, "Rank the top 5 banks by net income")
+    assert answer.table is not None and len(answer.table.rows) == 3
+    assert any("shorter than the 5 asked for" in banner for banner in answer.banners)
+
+
+def test_a_margin_of_another_metric_offers_that_metric(runtime) -> None:  # type: ignore[no-untyped-def]
+    (answer,) = _conversation(runtime, "Palantir free cash flow margin")
+    assert answer.candidates[0] == "Free cash flow"

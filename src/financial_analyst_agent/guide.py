@@ -65,6 +65,13 @@ _ADVICE = re.compile(
     r"|buy or sell|undervalued|overvalued|buy the dip)\b"
 )
 _WHY = re.compile(r"^why\b")
+_CHART = re.compile(
+    r"^(?:can you |please )?(?:chart|plot|graph|visuali[sz]e|draw)(?: it| that| this| them)?$"
+)
+CHART_MESSAGE = (
+    "Charts appear on their own when an answer has several quarters or several "
+    "companies. Ask for a window or add a company, and the chart follows."
+)
 _WHY_MAX_WORDS = 6
 _THANKS_MAX_WORDS = 4
 
@@ -119,6 +126,8 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
                 f"What changed in {name}'s latest 10-Q?",
             ],
         )
+    if _CHART.match(text):
+        return _guide(CHART_MESSAGE, ["last 4 quarters", "show year-over-year"])
     if _WHY.match(text) and len(text.split()) <= _WHY_MAX_WORDS:
         named = _spec_company(spec)
         if named is None:

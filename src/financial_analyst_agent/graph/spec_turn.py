@@ -113,6 +113,18 @@ _NAMED_PERIOD_PATTERNS = (
     re.compile(rf"\b(?:fy|fiscal(?:\s+year)?)\s*{_YEAR}", re.I),
     re.compile(r"\b(?:in|for|during)\s+(?P<y>(?:19|20)\d{2})\b", re.I),
 )
+# Wording that asks for year-over-year change only, not quarter-to-quarter too.
+_EXPLICIT_YOY = re.compile(
+    r"\b(?:year[\s-]*over[\s-]*year|yoy"
+    r"|(?:from|since|vs\.?|versus|compared? (?:to|with)) "
+    r"(?:a year ago|last year|the (?:prior|previous) year))\b",
+    re.IGNORECASE,
+)
+_SEQUENTIAL = re.compile(r"\b(?:sequential|quarter[\s-]*over[\s-]*quarter|qoq)\b", re.IGNORECASE)
+# Four quarters, each with the quarter a year before it.
+_YOY_WINDOW = 8
+# "Q5 2025" names no quarter; answering the latest one instead would mislead.
+_INVALID_QUARTER = re.compile(r"\bQ(0|[5-9]|\d{2,})\s*(?:FY\s*)?'?\d{2,4}\b", re.IGNORECASE)
 # "latest revenue" after "Apple revenue Q3 2025" asks for the newest quarter again.
 _LATEST = re.compile(r"\b(?:latest|most recent|newest)\b", re.IGNORECASE)
 _TRAILING_YEAR = re.compile(
@@ -394,9 +406,14 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     operations = patch.add_operations
     if yoy and "across_periods" not in operations:
         operations = (*operations, "across_periods")
+    explicit_yoy = _EXPLICIT_YOY.search(message) is not None and not _SEQUENTIAL.search(message)
+    if explicit_yoy and "year_over_year" not in operations:
+        operations = (*operations, "year_over_year")
     if match is None and patch.set_periods is not None:
         return patch.model_copy(update={"add_operations": operations})
     count = _period_count_from_match(match, yoy=yoy)
+    if explicit_yoy and match is None:
+        count = _YOY_WINDOW
     return patch.model_copy(
         update={
             "set_periods": PeriodSelection(kind="last_n_quarters", count=count),
@@ -976,8 +993,13 @@ def _yoy_prior(row: TableRow, ordered: list[TableRow]) -> TableRow | None:
     return best
 
 
-def across_period_change_rows(levels: list[TableRow]) -> list[TableRow]:
-    """Sequential and year-over-year change from period-aligned level cells."""
+def across_period_change_rows(
+    levels: list[TableRow], *, sequential: bool = True
+) -> list[TableRow]:
+    """Sequential and year-over-year change from period-aligned level cells.
+
+    ``sequential`` is off when the analyst asked for year-over-year change only.
+    """
     by_key: dict[tuple[str, str], list[TableRow]] = {}
     for row in levels:
         if row.value is None or row.end_date is None or row.comparison is not None:
@@ -991,7 +1013,7 @@ def across_period_change_rows(levels: list[TableRow]) -> list[TableRow]:
             assert newer.end_date is not None and older.end_date is not None
             # A missing quarter in the window must not turn into a two-quarter
             # change labelled "sequential".
-            if _adjacent_quarters(newer.end_date, older.end_date):
+            if sequential and _adjacent_quarters(newer.end_date, older.end_date):
                 changes.append(_change_row(newer, older, comparison="sequential"))
         for row in ordered:
             prior = _yoy_prior(row, ordered)
@@ -1006,6 +1028,7 @@ def merge_task_results(
     results: list[TurnResult],
     *,
     across_periods: bool = False,
+    sequential: bool = True,
 ) -> TurnResult:
     """Assemble independent cell results into one analysis table."""
     if len(results) == 1 and not across_periods:
@@ -1031,7 +1054,7 @@ def merge_task_results(
                 return result
 
     if across_periods:
-        rows = list(rows) + across_period_change_rows(rows)
+        rows = list(rows) + across_period_change_rows(rows, sequential=sequential)
 
     intent = results[0].intent
     if any(task.kind == "compare" for task in tasks):
@@ -1095,6 +1118,21 @@ def run_spec_turn_context(
         else plan_to_spec_patch(proposal)
     )
     intent = getattr(proposal, "intent", None) if not isinstance(proposal, SpecPatch) else None
+    invalid = _INVALID_QUARTER.search(message)
+    if invalid is not None:
+        return (
+            TurnResult(
+                intent=intent or Intent.LOOKUP,
+                tool_traces=[],
+                renderer=RendererKind.REFUSE,
+                message=(
+                    f"There is no Q{invalid.group(1)}: a fiscal year has four quarters, "
+                    "Q1 to Q4."
+                ),
+            ),
+            current_spec,
+            patch,
+        )
     patch = refine_patch_from_message(patch, message, current_spec)
     if patch.mode is None:
         if current_spec is None:
@@ -1214,7 +1252,12 @@ def run_spec_turn_context(
         max_workers=max_workers,
     )
     across = "across_periods" in spec.operations
-    merged = merge_task_results(tasks, results, across_periods=across)
+    merged = merge_task_results(
+        tasks,
+        results,
+        across_periods=across,
+        sequential="year_over_year" not in spec.operations,
+    )
     merged = _fill_identity(merged, spec)
     # Planner notes first: a corrected company name explains the whole answer.
     planner_notes = [
@@ -1224,6 +1267,7 @@ def run_spec_turn_context(
         *planner_notes,
         *_already_present_notes(patch, current_spec, spec),
         *_period_notes(message, spec),
+        *_short_ranking_notes(spec),
     ]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
@@ -1240,6 +1284,19 @@ _SPECIFIC_PERIOD = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+
+def _short_ranking_notes(spec: AnalysisSpec) -> list[str]:
+    """Say so when an industry has fewer snapshot members than the ranking asked for."""
+    ranked = spec.constituents
+    if ranked is None or not ranked.members or len(ranked.members) >= ranked.limit:
+        return []
+    count = len(ranked.members)
+    noun = "company" if count == 1 else "companies"
+    return [
+        f"The snapshot holds only {count} {noun} in {ranked.industry}, so this list "
+        f"is shorter than the {ranked.limit} asked for."
+    ]
 
 
 def _already_present_notes(

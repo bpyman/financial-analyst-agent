@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import parse_named_periods
+from financial_analyst_agent.graph.spec_turn import implied_metrics, parse_named_periods
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
@@ -409,6 +409,14 @@ class DemoCompleter:
         return SimpleNamespace(intent=Intent.LOOKUP, company=company, metric=metric, notes=notes)
 
 
+# Wording that names no metric but implies some (see ``implied_metrics``). The
+# overview fallback for short messages is left out: "chart it" is not a request
+# for revenue and margins.
+_IMPLIED_WORDING = re.compile(
+    r"\b(?:profitab|bigger|larger|biggest|largest|grow(?:ing|n|th)?\b|grew\b)", re.IGNORECASE
+)
+
+
 def _follow_up(
     normalized: str, companies: list[str], metric: str, spec: AnalysisSpec
 ) -> SpecPatch | None:
@@ -438,6 +446,14 @@ def _follow_up(
                 add_companies=tuple(companies),
             )
         return None
+    if (
+        not companies
+        and metric not in ALLOWED_METRICS
+        and (spec.companies or spec.constituents is not None)
+        and _IMPLIED_WORDING.search(normalized)
+    ):
+        # "which one is more profitable?" asks the current analysis a new question.
+        return SpecPatch(mode="extend", add_metrics=implied_metrics(normalized))
     if companies or metric not in ALLOWED_METRICS:
         return None
     if not (spec.companies or spec.constituents is not None):
