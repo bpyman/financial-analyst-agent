@@ -7,7 +7,6 @@ import pytest
 from pydantic import ValidationError
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.planner import OpenAIStructuredCompleter, Plan
 from financial_analyst_agent.runtime import DemoCompleter, live_runtime, recorded_runtime
 from financial_analyst_agent.turn import Intent, run_turn
@@ -105,14 +104,17 @@ def test_plan_rejects_incomplete_intent_parameters(
         Plan.model_validate(payload)
 
 
-def test_missing_openai_config_is_configuration_error_not_regex_planner(
+def test_live_runtime_without_openai_key_plans_with_the_rules_planner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The rules planner serves the public demo; a live run without a key uses it
+    # too rather than failing every turn.
     monkeypatch.setenv("APP_MODE", "live")
     monkeypatch.setenv("OPENAI_API_KEY", "")
-    monkeypatch.setenv("OPENAI_MODEL", "")
-    with pytest.raises(ConfigurationError, match=r"OPENAI"):
-        live_runtime(Settings())
+    monkeypatch.setenv("TAVILY_API_KEY", "")
+    monkeypatch.setenv("SEC_USER_AGENT", "FinancialAnalystAgent (dev@example.com)")
+    runtime = live_runtime(Settings())
+    assert isinstance(runtime.completer, DemoCompleter)
 
 
 def test_live_runtime_uses_openai_completer_when_configured(

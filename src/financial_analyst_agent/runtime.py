@@ -201,8 +201,13 @@ def live_runtime(
     budget: SessionBudget | None = None,
 ) -> Runtime:
     resolved = settings or get_settings()
-    use_openai = not resolved.public_demo or resolved.allow_public_openai
-    use_tavily = not resolved.public_demo or resolved.allow_public_tavily
+    # Without a key the rules planner plans the question, as on the public demo.
+    use_openai = bool(resolved.openai_api_key.strip()) and (
+        not resolved.public_demo or resolved.allow_public_openai
+    )
+    use_tavily = bool(resolved.tavily_api_key.strip()) and (
+        not resolved.public_demo or resolved.allow_public_tavily
+    )
     completer = (
         OpenAIStructuredCompleter.from_settings(resolved)
         if use_openai

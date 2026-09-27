@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { barRows, lineSeries, lineRows, niceTicks, valueDomain, SERIES_COLORS } from "./chart-data";
+import {
+  barRows,
+  calendarsDiffer,
+  endLabelSides,
+  lineSeries,
+  lineRows,
+  niceTicks,
+  quarterTicks,
+  valueDomain,
+  SERIES_COLORS,
+} from "./chart-data";
 import type { BarChartSpec, LineChartSpec } from "./types";
 
 // "Compare four quarters" then "add Apple", as the API serves it on the recorded runtime.
@@ -69,6 +79,7 @@ describe("lineRows", () => {
     const rows = lineRows(TREND);
     expect(rows[0]).toEqual({
       period: "Jun 30, 2024",
+      time: Date.UTC(2024, 5, 30),
       s0: 64727000000,
       s1: 85777000000,
       amounts: { s0: "$64.73 B", s1: "$85.78 B" },
@@ -79,6 +90,52 @@ describe("lineRows", () => {
   it("marks each series' latest point for its end label", () => {
     const rows = lineRows(TREND);
     expect(rows.map((row) => row.last)).toEqual([undefined, undefined, undefined, ["s0", "s1"]]);
+  });
+});
+
+// Nvidia's fiscal quarters end in late January, April, July and October; AMD's in late
+// March, June, September and December.
+const STAGGERED: LineChartSpec = {
+  ...TREND,
+  records: [
+    { Period: "2025-06-28", "Advanced Micro Devices, Inc.": 7685000000 },
+    { Period: "2025-07-27", "NVIDIA Corporation": 46743000000 },
+    { Period: "2025-09-27", "Advanced Micro Devices, Inc.": 9246000000 },
+    { Period: "2025-10-26", "NVIDIA Corporation": 57006000000 },
+  ],
+  period_labels: ["Jun 28, 2025", "Jul 27, 2025", "Sep 27, 2025", "Oct 26, 2025"],
+  series: ["NVIDIA Corporation", "Advanced Micro Devices, Inc."],
+  amounts: [{}, {}, {}, {}],
+};
+
+describe("calendarsDiffer", () => {
+  it("is false for one calendar, even with a missing quarter", () => {
+    expect(calendarsDiffer(lineRows(TREND))).toBe(false);
+  });
+
+  it("is true when two companies' quarters end weeks apart", () => {
+    expect(calendarsDiffer(lineRows(STAGGERED))).toBe(true);
+  });
+});
+
+describe("quarterTicks", () => {
+  it("puts ticks on the calendar quarter ends within the rows' dates", () => {
+    expect(quarterTicks(lineRows(STAGGERED))).toEqual([Date.UTC(2025, 5, 30), Date.UTC(2025, 8, 30)]);
+  });
+
+  it("thins to every other quarter, keeping the newest", () => {
+    const rows = lineRows(TREND);
+    const ticks = quarterTicks(rows, 4);
+    expect(ticks.length).toBeLessThanOrEqual(4);
+    expect(ticks[ticks.length - 1]).toBe(Date.UTC(2026, 2, 31));
+  });
+});
+
+describe("endLabelSides", () => {
+  it("labels the highest line above and the lowest below, whatever their slope", () => {
+    const rows = lineRows(TREND);
+    // Apple ends highest but fell; Microsoft ends lowest but rose.
+    expect(endLabelSides(rows, lineSeries(TREND))).toEqual({ s0: "below", s1: "above" });
   });
 });
 

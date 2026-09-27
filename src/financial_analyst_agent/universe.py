@@ -276,8 +276,12 @@ class IndustryGroup:
     label: str
     sector: str | None = None
     industries: frozenset[str] = frozenset()
+    # "Top 10 companies by net income": every sector in the snapshot.
+    everything: bool = False
 
     def includes(self, company: UniverseCompany) -> bool:
+        if self.everything:
+            return True
         if self.sector is not None:
             return company.sector == self.sector
         return company.industry in self.industries
@@ -308,12 +312,23 @@ def resolve_industry(industry: str, snapshot: UniverseSnapshot) -> str | None:
     return None
 
 
+# Words that name no industry at all ("top 10 companies", "largest US stocks",
+# "biggest public companies"): rank the whole snapshot. Compared after
+# ``_normalize_group``, which drops "companies" and singularizes ("us" -> "u").
+_WHOLE_SNAPSHOT = frozenset(
+    {"", "companie", "company", "stock", "firm", "all", "public", "u", "american",
+     "listed", "businesse", "corporation"}
+)
+
+
 def resolve_industry_group(industry: str, snapshot: UniverseSnapshot) -> IndustryGroup | None:
     """A sector by name or alias, else the industries an everyday word names.
 
     "technology" is a sector; "semiconductors", "banks", or "software companies"
     are industries inside one, ranked on their own.
     """
+    if industry.strip() and _normalize_group(industry) in _WHOLE_SNAPSHOT:
+        return IndustryGroup(label="All companies", everything=True)
     sector = resolve_industry(industry, snapshot) or resolve_industry(
         _normalize_group(industry), snapshot
     )

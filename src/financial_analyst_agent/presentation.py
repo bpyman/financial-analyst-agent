@@ -198,6 +198,33 @@ def derived_banner(rows: list[TableRow]) -> str:
     )
 
 
+# A 13-week quarter is 91 days; a 14-week one 98. Anything longer is a long quarter.
+_LONG_QUARTER_DAYS = 98
+
+
+def long_quarter_banner(rows: list[TableRow]) -> str:
+    """Say which quarters run longer than about 13 weeks (Costco's 16-week Q4), or ""."""
+    long: dict[str, list[tuple[date, int]]] = {}
+    for row in rows:
+        if row.value is None or row.start_date is None or row.end_date is None:
+            continue
+        days = (row.end_date - row.start_date).days + 1
+        if days > _LONG_QUARTER_DAYS:
+            name = short_name(row.company_name) or row.company_name
+            if (row.end_date, days) not in long.get(name, []):
+                long.setdefault(name, []).append((row.end_date, days))
+    notes: list[str] = []
+    for name, quarters in long.items():
+        weeks = " or ".join(str(week) for week in sorted({round(days / 7) for _, days in quarters}))
+        ends = _join_words([format_date(end) for end, _ in quarters])
+        plural = "quarters" if len(quarters) > 1 else "quarter"
+        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        notes.append(f"{owner} {plural} ended {ends} ran {weeks} weeks")
+    if not notes:
+        return ""
+    return "; ".join(notes) + ", longer than the usual 13 weeks, which lifts those amounts."
+
+
 def newer_filing_banner(rows: list[TableRow]) -> str:
     """Say which companies' newest filed quarter SEC's structured data still lacks, or ""."""
     pending: dict[str, date] = {}
@@ -844,13 +871,16 @@ def present_turn(result: TurnResult) -> Presentation:
     derived = derived_banner(result.table_rows)
     if derived:
         banners.append(derived)
+    long_quarters = long_quarter_banner(result.table_rows)
+    if long_quarters:
+        banners.append(long_quarters)
     newer = newer_filing_banner(result.table_rows)
     if newer:
         banners.append(newer)
     if result.ordered_by:
         label = _humanize_field(result.ordered_by).lower()
         banners.append(
-            f"Ordered by {label}. The companies are the industry's largest by market cap in "
+            f"Ordered by {label}. The companies are the largest by market cap in "
             f"the snapshot, which holds market cap only, so a smaller company with more "
             f"{label} is not listed."
         )

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from financial_analyst_agent.contracts import ALLOWED_METRICS
 from financial_analyst_agent.domain.errors import AmbiguousCompanyError, CompanyNotFoundError
+from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 
 
 class NamedPeriodSpec(BaseModel):
@@ -386,6 +387,20 @@ def _quarter_phase(day: date) -> int:
     return month % 3
 
 
+def _same_grid(dates: tuple[date, ...], reference: tuple[date, ...]) -> bool:
+    """Whether two quarter-end lists name the same quarters, give or take a week.
+
+    Apple's March 28 and Microsoft's March 31 are one quarter. Costco's May 10
+    and Walmart's April 30 sit in the same month of the quarter grid but are
+    different quarters: asking Walmart for May 10 finds no filing.
+    """
+    if _quarter_phase(dates[0]) != _quarter_phase(reference[0]):
+        return False
+    return any(
+        abs(own - shared) <= FISCAL_WEEK_TOLERANCE for own in dates for shared in reference
+    )
+
+
 def calendar_groups(spec: AnalysisSpec) -> list[tuple[tuple[str, ...], tuple[date, ...]]]:
     """Named companies grouped by the quarter ends their window uses, in spec order.
 
@@ -404,9 +419,7 @@ def calendar_groups(spec: AnalysisSpec) -> list[tuple[tuple[str, ...], tuple[dat
             # "Q3 FY2024" is each company's own third quarter, wherever it ends.
             if not dates:
                 continue
-        elif not dates or not reference or _quarter_phase(dates[0]) == _quarter_phase(
-            reference[0]
-        ):
+        elif not dates or not reference or _same_grid(dates, reference):
             dates = reference
         groups.setdefault(dates, []).append(company.query)
     return [(tuple(queries), dates) for dates, queries in groups.items()]

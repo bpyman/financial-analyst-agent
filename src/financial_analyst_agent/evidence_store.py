@@ -348,6 +348,13 @@ class EvidenceCachedFacts:
         dates = listing(company, limit=limit)
         return tuple(dates)
 
+    def files_quarterly(self, company: str) -> tuple[bool, str]:
+        checker = getattr(self._inner, "files_quarterly", None)
+        if checker is None:
+            return True, company
+        quarterly, name = checker(company)
+        return bool(quarterly), str(name)
+
     def fiscal_periods(self, company: str) -> tuple[Any, ...]:
         periods = getattr(self._inner, "fiscal_periods", None)
         if periods is None:

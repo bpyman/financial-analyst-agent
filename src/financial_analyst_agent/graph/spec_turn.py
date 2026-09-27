@@ -244,11 +244,13 @@ def _names_companies(patch: SpecPatch) -> bool:
     )
 
 
-def _names_new_subject(patch: SpecPatch, spec: AnalysisSpec) -> bool:
+def _names_new_subject(patch: SpecPatch, spec: AnalysisSpec, message: str = "") -> bool:
     """Whether the patch names a company or ranking the current analysis lacks.
 
     A model planner often repeats the current company in a follow-up's plan, so
-    naming a company already on screen is not a new question.
+    naming a company already on screen is not a new question. Naming only some
+    of the companies on screen, in the analyst's own words ("Walmart revenue
+    over the last four quarters" after Costco and Walmart), is one.
     """
     if patch.ranked_request is not None:
         return spec.constituents is None or (
@@ -261,7 +263,32 @@ def _names_new_subject(patch: SpecPatch, spec: AnalysisSpec) -> bool:
         for company in spec.companies
         for label in (company.query, company.name, company.ticker)
     }
-    return any(company.casefold() not in known for company in patch.add_companies)
+    if any(company.casefold() not in known for company in patch.add_companies):
+        return True
+    return patch.mode == "replace" and _narrows_to_named(patch, spec, message)
+
+
+def _narrows_to_named(patch: SpecPatch, spec: AnalysisSpec, message: str) -> bool:
+    """Whether the analyst named fewer of the companies on screen than are shown."""
+    wanted = {company.casefold() for company in patch.add_companies}
+    kept = [
+        company
+        for company in spec.companies
+        if wanted & {company.query.casefold(), company.name.casefold(), company.ticker.casefold()}
+    ]
+    if not kept or len(kept) >= len(spec.companies):
+        return False
+    words = f" {normalize_words(message)} "
+    return all(
+        f" {normalize_words(short_name(company.name))} " in words
+        or f" {company.ticker.casefold()} " in words
+        for company in kept
+        if company.name or company.ticker
+    )
+
+
+def normalize_words(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9&]+", " ", text.casefold()).split())
 
 
 def bind_metrics_from_message(
@@ -562,7 +589,7 @@ def refine_patch_from_message(
     # A period on its own ("for Q3 2024", "last 8 quarters") edits the current
     # analysis. One that names another company or ranking ("Microsoft TTM net
     # income") is a new question and keeps what it names.
-    period_only = not _names_new_subject(patch, current_spec)
+    period_only = not _names_new_subject(patch, current_spec, message)
     if patch.set_periods is not None and patch.mode == "replace" and not standalone and period_only:
         return patch.model_copy(
             update={
@@ -690,6 +717,44 @@ def _materialize_named_periods(spec: AnalysisSpec, runtime: Runtime) -> Analysis
     if updated == periods:
         return spec
     return spec.model_copy(update={"periods": updated})
+
+
+def drop_annual_filers(spec: AnalysisSpec, runtime: Runtime) -> tuple[AnalysisSpec, list[str]]:
+    """Leave out named companies that file annual 20-F/40-F reports instead of 10-Qs.
+
+    A foreign private issuer such as Novo Nordisk has no quarterly facts, so
+    every cell would read "Missing fact"; the turn says why instead.
+    """
+    checker = getattr(runtime.facts, "files_quarterly", None)
+    if checker is None or not spec.companies:
+        return spec, []
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for company in spec.companies:
+        try:
+            quarterly, name = checker(company.ticker or company.query)
+        except SessionQuotaError:
+            raise
+        except Exception:
+            # Resolution problems surface through the company's own cells.
+            kept.append(company)
+            continue
+        if quarterly:
+            kept.append(company)
+        else:
+            dropped.append(short_name(company.name if company.cik else name) or company.query)
+    if not dropped:
+        return spec, []
+    return spec.model_copy(update={"companies": tuple(kept)}), dropped
+
+
+def annual_filer_note(names: list[str]) -> str:
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    verb = "files" if len(names) == 1 else "file"
+    return (
+        f"{listed} {verb} annual reports with the SEC (Form 20-F or 40-F) rather than "
+        "quarterly 10-Qs, so there are no quarterly figures to show."
+    )
 
 
 def is_filing_change_proposal(proposal: Any) -> bool:
@@ -976,7 +1041,8 @@ def _yoy_prior_date(end: date) -> date:
 
 # One fiscal quarter is 13 weeks, or 14 in a 53-week year; calendar quarters run
 # 90 to 92 days. Anything outside this band pairs non-adjacent quarters.
-_ADJACENT_QUARTER_GAP = (timedelta(days=84), timedelta(days=105))
+# Up to 17 weeks: some 52/53-week retailers (Costco) run a 16- or 17-week fourth quarter.
+_ADJACENT_QUARTER_GAP = (timedelta(days=84), timedelta(days=126))
 
 
 def _adjacent_quarters(newer: date, older: date) -> bool:
@@ -1232,6 +1298,16 @@ def run_spec_turn_context(
     if outcome is not None:
         return _rejection_result(outcome), None, patch
 
+    spec, annual_filers = drop_annual_filers(spec, runtime)
+    if annual_filers and not spec.companies and spec.constituents is None:
+        return (
+            _rejection_result(
+                SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers))
+            ),
+            None,
+            patch,
+        )
+
     try:
         spec = materialize_period_dates(spec, runtime)
     except (CompanyNotFoundError, ProviderError) as exc:
@@ -1307,6 +1383,7 @@ def run_spec_turn_context(
     ]
     notes = [
         *planner_notes,
+        *([annual_filer_note(annual_filers)] if annual_filers else []),
         *_already_present_notes(patch, current_spec, spec),
         *_period_notes(message, spec),
         *_short_ranking_notes(spec),
