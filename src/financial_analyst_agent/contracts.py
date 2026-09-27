@@ -94,6 +94,8 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
 
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
+# The source (EDGAR) failed for this cell; the fact may well exist.
+SOURCE_UNAVAILABLE = "source_unavailable"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 ZERO_DENOMINATOR = "zero_denominator"
 MODEL_ANALYSIS_BANNER = "model-analysis"

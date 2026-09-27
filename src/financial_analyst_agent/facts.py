@@ -1,6 +1,7 @@
 """Offline SEC response replay through the production fact-selection path."""
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -12,14 +13,23 @@ from financial_analyst_agent.providers.sec.tickers import require_usable_company
 _RECORDING_PATH = Path(__file__).parent / "data" / "sec_fixture_recordings.json"
 
 
+@lru_cache(maxsize=4)
+def _load_recording(path: Path, _mtime_ns: int) -> dict[str, Any]:
+    """Parse the cassette once per file version; every turn builds a new source.
+
+    The parsed payload is shared and read-only.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ProviderError("Recorded SEC cassette must be a JSON object")
+    return raw
+
+
 class RecordedSECDataSource:
     """Read source-shaped SEC responses from the checked-in offline cassette."""
 
     def __init__(self, path: Path = _RECORDING_PATH) -> None:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise ProviderError("Recorded SEC cassette must be a JSON object")
-        self._recording: dict[str, Any] = raw
+        self._recording: dict[str, Any] = _load_recording(path, path.stat().st_mtime_ns)
 
     def close(self) -> None:
         return None

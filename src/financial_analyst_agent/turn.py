@@ -188,6 +188,20 @@ def _hits_json(hits: list[NewsHit]) -> str:
     return json.dumps([hit.model_dump(mode="json") for hit in hits])
 
 
+NO_NEWS_MESSAGE = "No usable news hits for this query. Refusing rather than using training data."
+
+
+def _no_news_message(runtime: Runtime) -> str:
+    if runtime.kind is not RuntimeKind.RECORDED:
+        return NO_NEWS_MESSAGE
+    from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
+
+    return (
+        f"{NO_NEWS_MESSAGE} The recorded demo only replays captured news for "
+        f"“{FIXTURE_NEWS_QUERY}”."
+    )
+
+
 def _news_grounded_essay_turn(
     query: str, runtime: Runtime, *, intent: Intent, banners: list[str] | None = None
 ) -> TurnResult:
@@ -227,7 +241,7 @@ def _news_grounded_essay_turn(
             intent=intent,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message="No usable news hits for this query. Refusing rather than using training data.",
+            message=_no_news_message(runtime),
         )
     tool_json = _hits_json(hits)
     essay = call_provider(

@@ -199,7 +199,10 @@ def allowed_industry_names(snapshot: UniverseSnapshot) -> tuple[str, ...]:
     aliases = ("finance", "healthcare", "technology")
     sectors = tuple(sorted({company.sector for company in snapshot.companies}))
     seen: list[str] = []
+    folded: set[str] = set()
     for name in (*aliases, *sectors):
-        if name not in seen:
+        # "Healthcare" the sector repeats "healthcare" the alias.
+        if name.casefold() not in folded:
             seen.append(name)
+            folded.add(name.casefold())
     return tuple(seen)

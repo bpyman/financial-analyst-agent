@@ -2,6 +2,8 @@
 
 import json
 import re
+import threading
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -66,6 +68,53 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("tsla", "Tesla"),
     ("general motors", "GM"),
     ("gm", "GM"),
+    # The rest of the recorded cassette, so the demo answers by name for every
+    # company it holds (the landing page's own examples name Eli Lilly and Merck).
+    ("nvidia", "NVDA"),
+    ("nvda", "NVDA"),
+    ("broadcom", "AVGO"),
+    ("avgo", "AVGO"),
+    ("eli lilly", "LLY"),
+    ("lilly", "LLY"),
+    ("lly", "LLY"),
+    ("advanced micro devices", "AMD"),
+    ("amd", "AMD"),
+    ("jpmorgan", "JPM"),
+    ("jp morgan", "JPM"),
+    ("jpm", "JPM"),
+    ("johnson & johnson", "JNJ"),
+    ("johnson and johnson", "JNJ"),
+    ("j&j", "JNJ"),
+    ("jnj", "JNJ"),
+    ("abbvie", "ABBV"),
+    ("abbv", "ABBV"),
+    ("oracle", "ORCL"),
+    ("orcl", "ORCL"),
+    ("palantir", "PLTR"),
+    ("pltr", "PLTR"),
+    ("cisco", "CSCO"),
+    ("csco", "CSCO"),
+    ("bank of america", "BAC"),
+    ("merck", "MRK"),
+    ("mrk", "MRK"),
+    ("applied materials", "AMAT"),
+    ("amat", "AMAT"),
+    ("unitedhealth", "UNH"),
+    ("united health", "UNH"),
+    ("unh", "UNH"),
+    ("goldman sachs", "GS"),
+    ("goldman", "GS"),
+    ("wells fargo", "WFC"),
+    ("wfc", "WFC"),
+    ("thermo fisher", "TMO"),
+    ("amgen", "AMGN"),
+    ("amgn", "AMGN"),
+    ("gilead", "GILD"),
+    ("gild", "GILD"),
+    ("abbott", "ABT"),
+    ("pfizer", "PFE"),
+    ("pfe", "PFE"),
+    ("danaher", "DHR"),
 )
 _ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
 RECORDED_FILING_OLDER = "0000950170-25-061046"
@@ -83,13 +132,18 @@ def _company_from_query(normalized: str) -> str:
 
 
 def _companies_from_query(normalized: str) -> list[str]:
-    found: list[str] = []
-    seen: set[str] = set()
+    """Issuers named in the query, in the order the analyst named them.
+
+    Whole words only, so "gm" does not match inside "algorithm".
+    """
+    first_seen: dict[str, int] = {}
     for phrase, name in _ISSUER_PHRASES:
-        if phrase in normalized and name not in seen:
-            found.append(name)
-            seen.add(name)
-    return found
+        match = re.search(rf"(?<![\w&]){re.escape(phrase)}(?![\w&])", normalized)
+        if match is None:
+            continue
+        if name not in first_seen or match.start() < first_seen[name]:
+            first_seen[name] = match.start()
+    return sorted(first_seen, key=first_seen.__getitem__)
 
 
 def _issuer_from_lookup_query(normalized: str) -> str | None:
@@ -203,7 +257,11 @@ class RecordedEssayCompleter:
     def complete_essay(self, query: str, tool_json: str = "") -> str:
         if not tool_json:
             if query.strip().casefold() != FIXTURE_EXPLAIN_QUERY.casefold():
-                raise ProviderError("No recorded fixture essay for this prompt")
+                raise ProviderError(
+                    "The recorded demo only replays one captured essay, for "
+                    f"“{FIXTURE_EXPLAIN_QUERY}”. Other qualitative questions need "
+                    "the live runtime."
+                )
             return FIXTURE_EXPLAIN_ESSAY
         if query.strip().casefold() not in {
             FIXTURE_NEWS_QUERY.casefold(),
@@ -248,7 +306,9 @@ class DemoCompleter:
         metric = _metric_from_query(normalized)
         if _is_filing_change_query(normalized):
             return _filing_change_plan(query, normalized)
-        if "disrupt" in normalized or re.search(r"\bhow can ai\b", normalized):
+        if "disrupt" in normalized or re.search(
+            r"\bhow (?:can|could|will|might|would) ai\b", normalized
+        ):
             return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
         if _is_exploratory_query(normalized):
             return SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=query)
@@ -282,12 +342,48 @@ class DemoCompleter:
         )
 
 
+@lru_cache(maxsize=4)
+def _cached_ranking(path: Path | None, _mtime_ns: int) -> SnapshotRanking:
+    return SnapshotRanking.from_path(path)
+
+
+def _snapshot_ranking(path: Path | None) -> SnapshotRanking:
+    """The snapshot is immutable per file version; parse it once, not on every turn."""
+    from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH
+
+    resolved = path or DEFAULT_SNAPSHOT_PATH
+    return _cached_ranking(path, resolved.stat().st_mtime_ns)
+
+
+_SEC_CLIENTS: dict[tuple[object, ...], SECClient] = {}
+_SEC_CLIENTS_LOCK = threading.Lock()
+
+
+def _shared_sec_client(settings: Settings) -> SECClient:
+    """One SEC client (and connection pool) per configuration for the process.
+
+    A client per turn left an unclosed httpx pool behind on every live turn.
+    """
+    key = (
+        settings.sec_user_agent,
+        settings.sec_base_url,
+        settings.sec_max_requests_per_second,
+        settings.sec_timeout_seconds,
+    )
+    with _SEC_CLIENTS_LOCK:
+        client = _SEC_CLIENTS.get(key)
+        if client is None:
+            client = SECClient(settings)
+            _SEC_CLIENTS[key] = client
+        return client
+
+
 def recorded_runtime() -> Runtime:
     """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
-        ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+        ranking=_snapshot_ranking(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=RecordedNewsSearch(),
         essay=RecordedEssayCompleter(),
         kind=RuntimeKind.RECORDED,
@@ -306,11 +402,11 @@ def live_runtime(
     essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else RecordedEssayCompleter()
     news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
-    client = CachingSECDataSource(SECClient(resolved), Path(cache_dir), budget=budget)
+    client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
     return Runtime(
         completer=completer,
         facts=SecFactLookup(client=client),
-        ranking=SnapshotRanking.from_path(),
+        ranking=_snapshot_ranking(None),
         news=news,
         essay=essay,
         kind=RuntimeKind.LIVE,

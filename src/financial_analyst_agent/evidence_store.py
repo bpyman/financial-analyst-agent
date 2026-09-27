@@ -7,6 +7,7 @@ references. Reuse across turns is the caller's responsibility to label.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import threading
 import uuid
@@ -275,6 +276,16 @@ class LocalEvidenceStore:
         return TurnResult.model_validate(record.payload)
 
 
+def _accepts_report_date(func: Any) -> bool:
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        return True
+    return any(
+        p.name == "report_date" or p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters
+    )
+
+
 class EvidenceCachedFacts:
     """FactsPort wrapper: retain fetched facts and serve them by identifier.
 
@@ -312,11 +323,12 @@ class EvidenceCachedFacts:
         kwargs: dict[str, Any] = {}
         if report_date is not None:
             kwargs["report_date"] = report_date
-        try:
-            fact = self._inner.get_financials(company, metric, **kwargs)
-        except TypeError:
-            # Fixture ports that omit report_date.
-            fact = self._inner.get_financials(company, metric)
+        if kwargs and not _accepts_report_date(self._inner.get_financials):
+            # Fixture ports that omit report_date. Checked from the signature, not
+            # by catching TypeError, so a real error inside a dated lookup is never
+            # retried as a latest-quarter lookup and cached under the dated id.
+            kwargs = {}
+        fact = self._inner.get_financials(company, metric, **kwargs)
         with self._lock:
             if not self._store.has(evidence_id):
                 self._store.put_fact(company, metric, fact, report_date=report_date)
