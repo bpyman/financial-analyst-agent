@@ -180,6 +180,44 @@ def test_sec_fact_lookup_named_report_date_returns_that_quarter() -> None:
     assert fact.accession_number == "0000034088-26-000050"
 
 
+def test_latest_steps_back_past_filings_companyfacts_lacks() -> None:
+    submissions = _submissions_two_quarters(PREDECESSOR_CIK)
+    recent = submissions["filings"]["recent"]  # type: ignore[index]
+    recent["form"].insert(0, "10-Q")
+    recent["accessionNumber"].insert(0, "0000034088-26-000120")
+    recent["filingDate"].insert(0, "2026-11-03")
+    recent["reportDate"].insert(0, "2026-09-30")
+    recent["primaryDocument"].insert(0, "xom-20260930.htm")
+    facts = _two_quarter_net_income_facts(PREDECESSOR_CIK)
+    usd = facts["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["USD"]  # type: ignore[index]
+    del usd[0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/company_tickers.json"):
+            return httpx.Response(
+                200,
+                json={"0": {"cik_str": 34088, "ticker": "XOM", "title": "Exxon Mobil Corporation"}},
+            )
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=submissions)
+        if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
+            return httpx.Response(200, json=facts)
+        return httpx.Response(404, json={"error": path})
+
+    settings = Settings(
+        sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        sec_max_requests_per_second=5.0,
+    )
+    client = SECClient(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    fact = SecFactLookup(settings, client=client).get_financials("XOM", "net_income")
+
+    assert fact.end_date == date(2026, 3, 31)
+    assert fact.value == Decimal("7713000000")
+    assert fact.newer_filing_end == date(2026, 9, 30)
+
+
 def test_sec_fact_lookup_named_report_date_missing_does_not_use_latest() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path

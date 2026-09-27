@@ -46,7 +46,8 @@ LATEST_QUARTER_END = date(2026, 6, 30)
 TESLA_CIK = "0001318605"
 TESLA_REVENUE = Decimal("28236000000")
 GM_CIK = "0001467858"
-GM_REVENUE = Decimal("43762000000")
+# GM's total net sales and revenue (``Revenues``), with GM Financial.
+GM_REVENUE = Decimal("48026000000")
 
 APPLE_RD = Decimal("11729000000")
 MICROSOFT_RD = Decimal("9997000000")

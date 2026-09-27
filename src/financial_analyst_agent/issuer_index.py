@@ -119,6 +119,15 @@ _NICKNAMES: tuple[tuple[str, str], ...] = (
     ("amex", "AXP"),
     ("exxonmobil", "XOM"),
     ("berkshire", "BRK-B"),
+    ("citi", "C"),
+    ("chase", "JPM"),
+    ("raytheon", "RTX"),
+    ("ups", "UPS"),
+    ("att", "T"),
+    ("cvs", "CVS"),
+    ("hp", "HPQ"),
+    ("schwab", "SCHW"),
+    ("capital one", "COF"),
 )
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500

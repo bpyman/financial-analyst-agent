@@ -13,8 +13,11 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "ProfitLoss"),
     ],
     Metric.REVENUE: [
-        ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+        # The income statement's total first: contract revenue leaves out
+        # insurance premiums, rent, financing income and membership fees
+        # (Berkshire, Welltower, GM Financial, Walmart).
         ("us-gaap", "Revenues"),
+        ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
         ("us-gaap", "SalesRevenueNet"),
     ],
     Metric.COST_OF_REVENUE: [

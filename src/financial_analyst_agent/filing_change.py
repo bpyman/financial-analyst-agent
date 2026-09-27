@@ -20,6 +20,7 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
@@ -409,6 +410,9 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
+    # SEC titles companies "PFIZER INC"; the snapshot knows them as "Pfizer Inc.".
+    display = getattr(runtime.facts, "display_name", None)
+    name = display(cik, resolved.name) if callable(display) else resolved.name
     chosen_banner = ""
     changes: list[DisclosureChange] = []
     section_errors: list[str] = []
@@ -422,7 +426,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                 raise ProviderError("Fewer than two 10-Q filings are available for this company")
             older, newer = pair
             chosen_banner = (
-                f"Comparing {resolved.name}'s latest 10-Q (quarter ended "
+                f"Comparing {short_name(name)}'s latest 10-Q (quarter ended "
                 f"{_pretty(_filing_date(recent, newer))}) with the one for "
                 f"{_pretty(_filing_date(recent, older))}."
             )
@@ -504,7 +508,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         from financial_analyst_agent.turn import _numeral_lock_extras
 
         topic = (
-            f"Summarize only the following disclosure changes for {resolved.name}. "
+            f"Summarize only the following disclosure changes for {name}. "
             "Do not invent numbers."
         )
         essay_completer = runtime.essay

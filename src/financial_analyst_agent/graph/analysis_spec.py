@@ -90,6 +90,9 @@ class AnalysisSpec(BaseModel):
     periods: PeriodSelection = Field(default_factory=PeriodSelection)
     operations: tuple[str, ...] = ()
     presentation: Literal["table"] = "table"
+    # Companies a swap ("what about AMD?") replaced, so "which one is more
+    # profitable?" can compare the two the analyst just looked at.
+    earlier_companies: tuple[str, ...] = ()
 
 
 class SpecPatch(BaseModel):
@@ -120,10 +123,15 @@ class SpecDraft(BaseModel):
     operations: tuple[str, ...] = ()
     presentation: Literal["table"] = "table"
     ranked_request: tuple[str, int] | None = None
+    earlier_companies: tuple[str, ...] = ()
 
+
+# A ranking lists at most this many companies: each one with a filed metric
+# is a lookup, and "top 1000" once took eight minutes of SEC requests.
+MAX_RANKED_COMPANIES = 25
 
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
-    {"across_companies", "across_periods", "rank", "year_over_year"}
+    {"across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"}
 )
 
 
@@ -162,6 +170,7 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
         operations = list(patch.add_operations)
         presentation = patch.set_presentation or "table"
         ranked = patch.ranked_request
+        earlier: tuple[str, ...] = ()
     else:
         kept = [
             company
@@ -171,6 +180,12 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
             )
         ]
         companies = [company.query for company in kept]
+        if not patch.add_companies and not patch.remove_companies:
+            earlier = current.earlier_companies
+        elif current.companies and not kept and patch.add_companies:
+            earlier = tuple(company.query for company in current.companies)
+        else:
+            earlier = ()
         for token in patch.add_companies:
             if token not in companies:
                 companies.append(token)
@@ -206,6 +221,7 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
         operations=tuple(operations),
         presentation=presentation,
         ranked_request=ranked,
+        earlier_companies=() if ranked is not None else earlier,
     )
 
 
@@ -217,7 +233,8 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
     if draft.ranked_request is not None:
         if ranking is None:
             raise RuntimeError("ranked analysis requires a ranking adapter")
-        industry, limit = draft.ranked_request
+        industry, asked = draft.ranked_request
+        limit = min(asked, MAX_RANKED_COMPANIES)
         table = ranking.rank_companies(industry, limit)
         members = tuple(
             ResolvedCompany(
@@ -252,6 +269,7 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
         periods=draft.periods,
         operations=tuple(operations),
         presentation=draft.presentation,
+        earlier_companies=draft.earlier_companies,
     )
 
 

@@ -37,6 +37,12 @@ INDUSTRY_ALIASES: dict[str, str] = {
     "technology": "Technology",
     "tech": "Technology",
     "information technology": "Technology",
+    # GICS sector names for the snapshot's own (FMP) sectors.
+    "consumer staples": "Consumer Defensive",
+    "staples": "Consumer Defensive",
+    "consumer discretionary": "Consumer Cyclical",
+    "communications": "Communication Services",
+    "materials": "Basic Materials",
 }
 
 # NYSE/NASDAQ product suffixes: preferreds, units, warrants, rights — not common shares.
@@ -251,6 +257,10 @@ INDUSTRY_GROUP_ALIASES: dict[str, tuple[str, ...]] = {
     "medical device": ("Medical - Devices",),
     "medtech": ("Medical - Devices", "Medical - Instruments & Supplies"),
     "restaurant": ("Restaurants",),
+    "hotel": ("Travel Lodging", "REIT - Hotel & Motel"),
+    "lodging": ("Travel Lodging",),
+    "payment": ("Financial - Credit Services",),
+    "credit card": ("Financial - Credit Services",),
     "railroad": ("Railroads",),
     "beverage": ("Beverages -",),
     "internet": ("Internet Content & Information",),
@@ -344,8 +354,8 @@ def allowed_industry_names(snapshot: UniverseSnapshot) -> tuple[str, ...]:
     sectors = tuple(sorted({company.sector for company in snapshot.companies}))
     seen: list[str] = []
     folded: set[str] = set()
-    for name in (*aliases, *sectors):
-        # "Healthcare" the sector repeats "healthcare" the alias.
+    for name in (*sectors, *aliases):
+        # "healthcare" the alias repeats "Healthcare" the sector, which is kept.
         if name.casefold() not in folded:
             seen.append(name)
             folded.add(name.casefold())

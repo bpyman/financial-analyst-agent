@@ -329,3 +329,12 @@ def test_everyday_nicknames_name_the_company() -> None:
     assert [m.query for m in index.find("Compare Coke and Pepsi EPS")] == ["KO", "PEP"]
     # A nickname for a company the snapshot lacks names nobody.
     assert index.find("Facebook revenue") == []
+
+
+def test_live_index_knows_street_names_for_large_companies() -> None:
+    from financial_analyst_agent.rules_planner import issuer_index
+
+    index = issuer_index()
+
+    assert [m.query for m in index.find("Citi vs Chase net income")] == ["C", "JPM"]
+    assert [m.query for m in index.find("Schwab and Capital One revenue")] == ["SCHW", "COF"]

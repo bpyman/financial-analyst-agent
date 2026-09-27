@@ -5,18 +5,26 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
+from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.filing_change import _year_apart_quarterlies
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
     RankedSet,
     ResolvedCompany,
     SpecPatch,
+    apply_patch,
+    resolve_spec,
 )
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_METRICS,
+    _capped_ranking_notes,
+    _order_by_metric,
     bind_metrics_from_message,
     bind_periods_from_message,
+    plan_to_spec_patch,
 )
 from financial_analyst_agent.guide import guide_reply, short_name, suggest_follow_ups
 from financial_analyst_agent.issuer_index import IssuerIndex
@@ -115,6 +123,117 @@ def test_industry_words_name_industries_inside_a_sector() -> None:
     assert resolve_industry_group("spaceships", snapshot) is None
 
 
+def test_a_ranking_by_a_metric_is_ordered_by_it() -> None:
+    by = _live().complete("top 5 healthcare companies by revenue")
+    their = _live().complete("biggest banks and their net income")
+    cap = _live().complete("top 5 banks by market cap")
+
+    assert by.order_by_metric is True
+    assert their.order_by_metric is False
+    assert cap.order_by_metric is False
+    assert plan_to_spec_patch(by).add_operations == ("rank", "order_by_metric")
+    assert plan_to_spec_patch(their).add_operations == ("rank",)
+
+
+def test_ordering_by_a_metric_reranks_the_members() -> None:
+    def row(rank: int, ticker: str, value: str | None, end: date) -> TableRow:
+        return TableRow(
+            company_name=ticker,
+            ticker=ticker,
+            cik=f"000000000{rank}",
+            metric="revenue",
+            rank=rank,
+            value=Decimal(value) if value is not None else None,
+            end_date=end,
+        )
+
+    june = date(2026, 6, 30)
+    result = TurnResult(
+        intent=Intent.RANK_AND_LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            row(1, "LLY", "22", june),
+            row(2, "JNJ", "25", june),
+            row(3, "XYZ", None, june),
+            row(4, "UNH", "112", june),
+        ],
+    )
+
+    ordered = _order_by_metric(result, "revenue")
+    presented = present_turn(ordered)
+
+    assert [(r.rank, r.ticker) for r in ordered.table_rows] == [
+        (1, "UNH"),
+        (2, "JNJ"),
+        (3, "LLY"),
+        (4, "XYZ"),
+    ]
+    assert ordered.ordered_by == "revenue"
+    assert any(banner.startswith("Ordered by revenue.") for banner in presented.banners)
+    assert presented.chart is not None
+    assert presented.chart.caption.startswith("Ordered by revenue among the largest by market cap")
+
+
+def test_a_ranking_lists_at_most_25_companies() -> None:
+    ranking = SnapshotRanking(load_universe_snapshot())
+    patch = SpecPatch(mode="replace", ranked_request=("tech", 1000))
+
+    spec = resolve_spec(apply_patch(None, patch), ranking=ranking)
+
+    assert spec.constituents is not None
+    assert len(spec.constituents.members) == spec.constituents.limit == 25
+    assert _capped_ranking_notes(patch) == [
+        "A ranking lists at most 25 companies, so this shows the top 25 rather than 1000."
+    ]
+    assert _capped_ranking_notes(SpecPatch(mode="replace", ranked_request=("tech", 5))) == []
+
+
+def test_gics_sector_names_and_common_industry_words_resolve() -> None:
+    snapshot = load_universe_snapshot()
+
+    staples = resolve_industry_group("consumer staples", snapshot)
+    payments = resolve_industry_group("payments companies", snapshot)
+    hotels = resolve_industry_group("hotels", snapshot)
+    oil = resolve_industry_group("oil & gas", snapshot)
+    healthcare = resolve_industry_group("healthcare", snapshot)
+
+    assert staples is not None and staples.sector == "Consumer Defensive"
+    assert payments is not None and payments.industries == {"Financial - Credit Services"}
+    assert hotels is not None and "Travel Lodging" in hotels.industries
+    assert oil is not None and len(oil.industries) > 1
+    assert all(name.startswith("Oil & Gas") for name in oil.industries)
+    assert healthcare is not None and healthcare.sector == "Healthcare"
+    for word in ("software", "telecom", "restaurants"):
+        assert resolve_industry_group(word, snapshot) is not None, word
+
+
+def test_oil_and_gas_is_one_industry_in_a_ranking() -> None:
+    plan = _live().complete("top 5 oil and gas companies by revenue")
+    both = _live().complete("biggest banks and their net income")
+
+    assert plan.industry == "oil & gas"
+    assert both.industry == "banks"
+
+
+def test_unknown_industry_names_the_snapshot_sectors() -> None:
+    snapshot = load_universe_snapshot()
+    with pytest.raises(UnknownIndustryError) as raised:
+        SnapshotRanking(snapshot).rank_companies("spaceships", 5)
+    result = TurnResult(
+        intent=Intent.RANK,
+        renderer=RendererKind.REFUSE,
+        message=str(raised.value),
+        tool_traces=[],
+    )
+
+    message = present_turn(result).message or ""
+
+    assert "“spaceships”" in message
+    assert "Healthcare" in message and "Technology" in message
+    assert "finance" not in message
+
+
 def _spec(*queries: str, metrics: tuple[str, ...] = ("revenue",)) -> AnalysisSpec:
     return AnalysisSpec(
         companies=tuple(
@@ -141,6 +260,44 @@ def test_short_follow_ups_lean_on_the_current_analysis() -> None:
         mode="extend", remove_companies=("MSFT",), add_companies=("Apple",)
     )
     assert add_company == SpecPatch(mode="extend", add_companies=("NVDA",))
+
+
+def test_which_one_after_a_swap_compares_the_two_companies() -> None:
+    swapped = resolve_spec(
+        apply_patch(
+            _spec("NVDA"),
+            SpecPatch(mode="extend", remove_companies=("NVDA",), add_companies=("AMD",)),
+        )
+    )
+    planner = DemoCompleter()
+
+    which = planner.complete("which one is more profitable", current_spec=swapped)
+    only = planner.complete("is it profitable", current_spec=swapped)
+    kept = resolve_spec(apply_patch(swapped, SpecPatch(mode="extend", add_metrics=("capex",))))
+
+    assert swapped.earlier_companies == ("NVDA",)
+    assert which == SpecPatch(
+        mode="extend", add_companies=("NVDA",), add_metrics=("net_income", "net_margin")
+    )
+    assert only.add_companies == ()
+    assert kept.earlier_companies == ("NVDA",)
+
+
+def test_compare_without_a_metric_is_an_overview() -> None:
+    planner = _live()
+
+    for question in ("Compare Nvidia and AMD", "how does Nvidia stack up against AMD?"):
+        plan = planner.complete(question)
+        patch, refusal = bind_metrics_from_message(
+            plan_to_spec_patch(plan), question, intent=plan.intent
+        )
+        assert refusal is None, question
+        assert patch.add_metrics == OVERVIEW_METRICS, question
+    ebitda = planner.complete("compare apple and microsoft ebitda")
+    _patch, refusal = bind_metrics_from_message(
+        plan_to_spec_patch(ebitda), "compare apple and microsoft ebitda", intent=ebitda.intent
+    )
+    assert refusal is not None and refusal.renderer is RendererKind.REFUSE
 
 
 def test_top_n_narrows_a_ranking_and_a_new_ranking_is_not_an_edit() -> None:
@@ -214,6 +371,7 @@ def test_short_names_drop_legal_suffixes() -> None:
     assert short_name("NVIDIA Corporation") == "NVIDIA"
     assert short_name("Eli Lilly and Company") == "Eli Lilly"
     assert short_name("JPMorgan Chase & Co.") == "JPMorgan Chase"
+    assert short_name("The Goldman Sachs Group, Inc.") == "Goldman Sachs"
 
 
 def test_several_metrics_for_one_quarter_read_across_one_row() -> None:

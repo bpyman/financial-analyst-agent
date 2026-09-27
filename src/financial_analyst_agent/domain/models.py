@@ -90,3 +90,5 @@ class FinancialFact(BaseModel):
     directly_reported: bool = True
     derivation: Derivation | None = None
     source: DataSourceKind = DataSourceKind.SEC_XBRL
+    # "Latest" stepped back: the end of a newer filed quarter SEC's companyfacts lacks.
+    newer_filing_end: date | None = None

@@ -15,9 +15,13 @@ from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import implied_metrics, parse_named_periods
+from financial_analyst_agent.graph.spec_turn import (
+    OVERVIEW_PLAN,
+    implied_metrics,
+    parse_named_periods,
+)
 from financial_analyst_agent.guide import short_name
-from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex
+from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex, normalize
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
@@ -275,6 +279,9 @@ def _is_exploratory_query(normalized: str) -> bool:
 
 
 _RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading)\b")
+_ORDER_WORDING = re.compile(
+    r"\b(?:by|in terms of|ranked by|sorted by|with the (?:most|highest|biggest|largest))\b"
+)
 _ADD_WORDING = re.compile(r"^\s*(?:and|also|plus|with|include|now add|add)\b|\b(?:their|its)\b")
 _SWAP_WORDING = re.compile(
     r"^\s*(?:what about|how about|and what about|same for|now|ok|okay)\b"
@@ -318,6 +325,8 @@ def _limit(normalized: str) -> int:
 def _ranked_industry(normalized: str) -> str:
     """The group a ranking names: "top 5 semiconductor companies", "biggest banks"."""
     text = re.sub(r"\b(?:by|in terms of|ranked by)\b.*$", "", normalized)
+    # "oil and gas" is one industry, not a list to cut at "and".
+    text = re.sub(r"\boil and gas\b", "oil & gas", text)
     text = re.split(r"\s+(?:and|with|plus)\s+|,", text, maxsplit=1)[0]
     match = re.search(
         r"\b(?:top|biggest|largest|leading)\s+(?:\d+\s+)?(?:companies\s+in\s+(?:the\s+)?)?(.+)$",
@@ -393,8 +402,14 @@ class DemoCompleter:
             industry = _ranked_industry(normalized)
             limit = _limit(normalized)
             if metric in ALLOWED_METRICS:
+                ordered = metric != "market_cap" and bool(_ORDER_WORDING.search(normalized))
                 return SimpleNamespace(
-                    intent=Intent.RANK_AND_LOOKUP, industry=industry, limit=limit, metric=metric
+                    intent=Intent.RANK_AND_LOOKUP,
+                    industry=industry,
+                    limit=limit,
+                    metric=metric,
+                    # "top 5 banks by net income" orders by it; "and their net income" does not.
+                    order_by_metric=ordered,
                 )
             return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit)
         # "Meta margin Q2 2026 vs Q2 2025" compares periods of one company.
@@ -402,6 +417,8 @@ class DemoCompleter:
             len(companies) == 1 and len(parse_named_periods(normalized)) >= 2
         )
         if len(companies) >= 2 or compare_words:
+            if metric == "unknown" and len(companies) >= 2 and _names_only(query, mentions):
+                metric = OVERVIEW_PLAN
             return SimpleNamespace(
                 intent=Intent.COMPARE, companies=companies, metric=metric, notes=notes
             )
@@ -415,6 +432,22 @@ class DemoCompleter:
 _IMPLIED_WORDING = re.compile(
     r"\b(?:profitab|bigger|larger|biggest|largest|grow(?:ing|n|th)?\b|grew\b)", re.IGNORECASE
 )
+
+_COMPARE_FILLER = frozenset(
+    """
+    compare comparing comparison and vs versus against with to between the how do does
+    stack up side by
+    """.split()  # noqa: SIM905
+)
+
+
+def _names_only(query: str, mentions: list[CompanyMention]) -> bool:
+    """Whether a question is companies and compare words alone ("Compare Nvidia and AMD")."""
+    named = {word for mention in mentions for word in normalize(mention.typed).split()}
+    return all(word in named or word in _COMPARE_FILLER for word in normalize(query).split())
+
+
+_WHICH_OF_TWO = re.compile(r"\b(?:which (?:one|is|of)|both|them|compared?|vs|versus)\b")
 
 
 def _follow_up(
@@ -453,7 +486,15 @@ def _follow_up(
         and _IMPLIED_WORDING.search(normalized)
     ):
         # "which one is more profitable?" asks the current analysis a new question.
-        return SpecPatch(mode="extend", add_metrics=implied_metrics(normalized))
+        earlier = (
+            spec.earlier_companies
+            if len(spec.companies) == 1 and _WHICH_OF_TWO.search(normalized)
+            else ()
+        )
+        # After "what about AMD?", "which one" means Nvidia and AMD.
+        return SpecPatch(
+            mode="extend", add_companies=earlier, add_metrics=implied_metrics(normalized)
+        )
     if companies or metric not in ALLOWED_METRICS:
         return None
     if not (spec.companies or spec.constituents is not None):

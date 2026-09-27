@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import PER_SHARE_METRICS
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
+from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     YEAR_TO_DATE_LABEL,
@@ -195,6 +196,32 @@ def derived_banner(rows: list[TableRow]) -> str:
         + "; ".join(notes)
         + ". Both source facts are in the evidence."
     )
+
+
+def newer_filing_banner(rows: list[TableRow]) -> str:
+    """Say which companies' newest filed quarter SEC's structured data still lacks, or ""."""
+    pending: dict[str, date] = {}
+    for row in rows:
+        if row.value is not None and row.newer_filing_end is not None:
+            name = short_name(row.company_name) or row.ticker
+            pending.setdefault(name, row.newer_filing_end)
+    if not pending:
+        return ""
+    if len(pending) == 1:
+        ((name, end),) = pending.items()
+        return (
+            f"SEC's structured data does not yet include {name}'s filing for the quarter "
+            f"ended {_date(end)}, so {name} is shown for the newest quarter SEC has."
+        )
+    filings = [f"{name} (quarter ended {_date(end)})" for name, end in pending.items()]
+    return (
+        "SEC's structured data does not yet include the newest filings from "
+        f"{_join_words(filings)}, so those companies are shown for the newest quarter SEC has."
+    )
+
+
+def _date(day: date) -> str:
+    return f"{day:%b} {day.day}, {day.year}"
 
 
 def is_derived(row: TableRow) -> bool:
@@ -603,6 +630,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
                 ranked=rank_cross_section,
                 metric=metric,
                 mixed_periods=mixed_periods,
+                ordered_by=result.ordered_by,
             ),
             horizontal=rank_cross_section,
             value_kind=chart_value_kind(metric),
@@ -631,12 +659,16 @@ def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
     return record
 
 
-def _bar_caption(*, ranked: bool, metric: str, mixed_periods: bool) -> str:
+def _bar_caption(
+    *, ranked: bool, metric: str, mixed_periods: bool, ordered_by: str | None = None
+) -> str:
     if ranked and metric != "market_cap":
-        caption = (
-            "Ordered by market cap; bar length is latest-quarter "
-            f"{_humanize_field(metric)}."
+        order = (
+            f"Ordered by {_humanize_field(ordered_by).lower()} among the largest by market cap"
+            if ordered_by
+            else "Ordered by market cap"
         )
+        caption = f"{order}; bar length is latest-quarter {_humanize_field(metric)}."
         if mixed_periods:
             return f"{caption} Periods differ by issuer."
         return caption
@@ -812,6 +844,16 @@ def present_turn(result: TurnResult) -> Presentation:
     derived = derived_banner(result.table_rows)
     if derived:
         banners.append(derived)
+    newer = newer_filing_banner(result.table_rows)
+    if newer:
+        banners.append(newer)
+    if result.ordered_by:
+        label = _humanize_field(result.ordered_by).lower()
+        banners.append(
+            f"Ordered by {label}. The companies are the industry's largest by market cap in "
+            f"the snapshot, which holds market cap only, so a smaller company with more "
+            f"{label} is not listed."
+        )
     return Presentation(
         intent=result.intent.value,
         intent_label=(
@@ -848,6 +890,7 @@ def present_turn(result: TurnResult) -> Presentation:
 
 
 _UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$", re.DOTALL)
+_UNKNOWN_INDUSTRY = re.compile(r"^Unknown industry '(?P<industry>.*)'\. Allowed: (?P<allowed>.*)$")
 _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
 _FRIENDLY_MESSAGES = {
@@ -869,13 +912,14 @@ _FRIENDLY_MESSAGES = {
         "revenue can, so there is no fourth-quarter figure to show."
     ),
     "No reported or derivable quarter exists for metric": (
-        "This company's filings do not report that metric for this quarter. Banks, "
-        "for example, do not report revenue the way operating companies do."
+        "This company's filings do not report that metric for this quarter. Not every "
+        "company reports every line item: banks, for example, report neither revenue "
+        "nor capital spending the way operating companies do."
     ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
-        "metric. Banks, for example, do not report revenue the way operating "
-        "companies do."
+        "metric. Not every company reports every line item: banks, for example, "
+        "report neither revenue nor capital spending the way operating companies do."
     ),
 }
 
@@ -901,6 +945,16 @@ def _friendly_message(message: str | None) -> str | None:
             )
         supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
         return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
+    industry = _UNKNOWN_INDUSTRY.match(message)
+    if industry is not None:
+        # Aliases ("finance") are lower case; the snapshot's sectors are titled.
+        sectors = [name for name in industry.group("allowed").split(", ") if name[:1].isupper()]
+        covers = f" It covers {_join_words(sectors)} companies." if sectors else ""
+        return (
+            f"I couldn't find “{industry.group('industry')}” companies in this snapshot."
+            f"{covers} You can also name an industry within those, such as "
+            "semiconductors, software, pharma or banks."
+        )
     missing = _COMPANY_NOT_FOUND.match(message)
     if missing is not None and missing.group("query").strip().casefold() in ("", "unknown"):
         return (
@@ -1422,3 +1476,10 @@ def _display_citation(index: int, hit: Any) -> DisplayCitation:
     if published:
         published = _format_trace_value(published)
     return DisplayCitation(index=index, title=hit.title, url=hit.url, published=published)
+
+
+def _join_words(words: list[str]) -> str:
+    """Join words in prose: "A", "A and B", "A, B and C"."""
+    if len(words) <= 1:
+        return "".join(words)
+    return f"{', '.join(words[:-1])} and {words[-1]}"

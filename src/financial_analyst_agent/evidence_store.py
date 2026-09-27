@@ -360,6 +360,10 @@ class EvidenceCachedFacts:
             raise ProviderError("Filing documents are not available")
         return str(getter(cik, accession, document))
 
+    def display_name(self, cik: str, fallback: str) -> str:
+        named = getattr(self._inner, "display_name", None)
+        return str(named(cik, fallback)) if callable(named) else fallback
+
 
 def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:
     if not reused:

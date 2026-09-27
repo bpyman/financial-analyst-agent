@@ -335,6 +335,7 @@ def _table_row_from_fact(fact: FinancialFact) -> TableRow:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
+        newer_filing_end=getattr(fact, "newer_filing_end", None),
         **_derivation_fields(fact),
     )
 
@@ -579,6 +580,14 @@ def compare_metrics(
                 start_date=period_start,
                 end_date=period_end,
                 components=components,
+                newer_filing_end=max(
+                    (
+                        pending
+                        for fact in fetched
+                        if (pending := getattr(fact, "newer_filing_end", None))
+                    ),
+                    default=None,
+                ),
             )
         )
     # Each row keeps its own issuer's period. When issuers' latest quarters end on
