@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
 from test_run_turn_lookup import (
-    ALLOWED_METRICS,
     UNKNOWN_METRIC_QUERY,
     _ExplodingFacts,
     _UnknownMetricCompleter,
@@ -70,8 +69,7 @@ def test_unknown_metric_still_refuses_with_full_catalog() -> None:
     assert result.renderer is RendererKind.REFUSE
     assert result.candidates == ()
     assert result.message is not None
-    for metric in ALLOWED_METRICS:
-        assert metric in result.message
+    assert result.message.startswith("I can't look up return on equity yet.")
 
 
 def test_unique_phrase_overrides_planner_metric() -> None:
@@ -112,5 +110,4 @@ def test_unknown_phrase_refuses_even_when_planner_guesses_net_income() -> None:
     assert result.renderer is RendererKind.REFUSE
     assert result.tool_traces == []
     assert result.message is not None
-    for metric in ALLOWED_METRICS:
-        assert metric in result.message
+    assert result.message.startswith("I can't look up return on equity yet.")

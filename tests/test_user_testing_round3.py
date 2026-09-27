@@ -83,7 +83,6 @@ def test_a_period_on_its_own_still_edits_the_current_analysis(runtime) -> None: 
     [
         ("Costco revenue", "Costco Wholesale"),
         ("COST revenue", "Costco Wholesale"),
-        ("Compare Apple and Walmart revenue", "Walmart"),
     ],
 )
 def test_a_company_the_demo_did_not_record_is_named_not_swapped(

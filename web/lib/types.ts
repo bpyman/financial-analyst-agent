@@ -116,6 +116,8 @@ export interface Presentation {
   suggestions: string[];
   /** "info" for a guide reply (help, greetings), "warning" for a refusal. */
   message_tone: "info" | "warning";
+  /** One sentence that answers the question before the table, or null. */
+  headline?: string | null;
 }
 
 export interface Turn {

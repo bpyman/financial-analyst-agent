@@ -191,7 +191,10 @@ def _hits_json(hits: list[NewsHit]) -> str:
     return json.dumps([hit.model_dump(mode="json") for hit in hits])
 
 
-NO_NEWS_MESSAGE = "No usable news hits for this query. Refusing rather than using training data."
+NO_NEWS_MESSAGE = (
+    "I found no news articles for this, and I only answer news questions from articles I "
+    "can cite."
+)
 
 
 def _no_news_message(runtime: Runtime) -> str:
@@ -230,7 +233,10 @@ def _news_grounded_essay_turn(
                 )
             ],
             renderer=RendererKind.REFUSE,
-            message=("News search is unavailable. Refusing rather than using training data."),
+            message=(
+                "News search is unavailable right now, and I only answer news questions "
+                "from articles I can cite."
+            ),
         )
     traces = [
         ToolTrace(

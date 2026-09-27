@@ -42,6 +42,9 @@ export function Answer({
       <div className="flex items-center gap-2">
         <Badge tone="primary">{presentation.intent_label || presentation.intent}</Badge>
       </div>
+      {presentation.headline && (
+        <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
+      )}
       {banners.map((banner) => (
         <Callout key={banner} kind="info">
           {banner}

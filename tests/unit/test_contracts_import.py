@@ -9,6 +9,7 @@ def test_contracts_import_without_loading_turn_workflows() -> None:
     dependents = (
         "financial_analyst_agent.turn",
         "financial_analyst_agent.conversation",
+        "financial_analyst_agent.guide",
         "financial_analyst_agent.thread_store",
         "financial_analyst_agent.evidence_store",
         "financial_analyst_agent.contracts",

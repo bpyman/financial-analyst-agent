@@ -71,7 +71,8 @@ _LAST_N_QUARTERS = re.compile(
 _YOY = re.compile(
     r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year"
     r"|(?:over|in) the (?:last|past) year|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
-    r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?)\b",
+    r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?"
+    r"|why did .+ (?:drop|fall|decline|rise|jump|increase|decrease|go (?:up|down)))\b",
     re.IGNORECASE,
 )
 _STANDALONE_LOOKUP = re.compile(
@@ -131,6 +132,30 @@ _INVALID_QUARTER = re.compile(r"\bQ(0|[5-9]|\d{2,})\s*(?:FY\s*)?'?\d{2,4}\b", re
 _LATEST = re.compile(r"\b(?:latest|most recent|newest)\b", re.IGNORECASE)
 _TRAILING_YEAR = re.compile(
     r"\b(?:ttm|ltm|trailing[\s-]+(?:twelve|12)[\s-]+months?|(?:last|past)\s+(?:twelve|12)\s+months)\b",
+    re.I,
+)
+# "Apple revenue last year", "annual revenue": a year of quarters, like TTM.
+_YEAR_OF_QUARTERS = re.compile(
+    r"\b(?:last|past|previous|prior)\s+year\b|\bannual(?:ly)?\b|\byearly\b|\bfull[\s-]year\b",
+    re.I,
+)
+YEAR_OF_QUARTERS_BANNER = (
+    "The last year: these are the four latest quarters, shown one by one rather "
+    "than summed."
+)
+_WHY_CHANGE = re.compile(r"^\s*why\b", re.I)
+WHY_CHANGE_BANNER = (
+    "Filings report what changed, not why: here is the change. Management explains "
+    "the quarter in the 10-Q's MD&A, and “what changed in the latest 10-Q” shows it."
+)
+_YEAR_TO_DATE = re.compile(r"\b(?:ytd|year[\s-]+to[\s-]+date)\b", re.I)
+# "since 2023": every quarter from the start of that year.
+_SINCE_YEAR = re.compile(r"\bsince\s+(?:fy\s*|fiscal\s+(?:year\s+)?)?(?P<y>(?:19|20)\d{2})\b", re.I)
+_MAX_SINCE_QUARTERS = 20
+# "H1 2026", "first half of fiscal 2026": two named quarters.
+_HALF_YEAR = re.compile(
+    rf"\b{_CALENDAR_WORD}(?:h(?P<h>[12])|(?P<hw>first|second|1st|2nd)\s+half(?:\s+of)?)\s*"
+    rf"{_FISCAL_WORD}{_YEAR}",
     re.I,
 )
 TRAILING_YEAR_BANNER = (
@@ -375,6 +400,25 @@ def parse_named_periods(message: str) -> tuple[NamedPeriodSpec, ...]:
     """Every period the message names, in the order named, without repeats."""
     found: list[tuple[int, NamedPeriodSpec]] = []
     taken: list[tuple[int, int]] = []
+    for match in _HALF_YEAR.finditer(message):
+        start, end = match.span()
+        if any(start < other_end and end > other_start for other_start, other_end in taken):
+            continue
+        groups = match.groupdict()
+        raw_year = groups["y"]
+        year = int(raw_year) + (2000 if len(raw_year) == 2 else 0)
+        second = groups.get("h") == "2" or (groups.get("hw") or "").casefold() in ("second", "2nd")
+        first_quarter = 3 if second else 1
+        taken.append((start, end))
+        for offset in (0, 1):
+            found.append(
+                (
+                    start + offset,
+                    NamedPeriodSpec(
+                        year=year, quarter=first_quarter + offset, calendar=bool(groups.get("cal"))
+                    ),
+                )
+            )
     for pattern in _NAMED_PERIOD_PATTERNS:
         for match in pattern.finditer(message):
             start, end = match.span()
@@ -410,7 +454,20 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     match = _LAST_N_QUARTERS.search(message)
     yoy = _YOY.search(message) is not None
     named = parse_named_periods(message)
-    if not named and match is None and not yoy and _TRAILING_YEAR.search(message):
+    since = _SINCE_YEAR.search(message)
+    if not named and match is None and not yoy and since is not None:
+        today = date.today()
+        count = (today.year - int(since.group("y"))) * 4 + (today.month + 2) // 3
+        return patch.model_copy(
+            update={
+                "set_periods": PeriodSelection(
+                    kind="last_n_quarters", count=max(1, min(count, _MAX_SINCE_QUARTERS))
+                )
+            }
+        )
+    if not named and match is None and not yoy and (
+        _TRAILING_YEAR.search(message) or _YEAR_OF_QUARTERS.search(message)
+    ):
         # "TTM revenue": show the four quarters that make up the trailing year.
         return patch.model_copy(
             update={"set_periods": PeriodSelection(kind="last_n_quarters", count=4)}
@@ -1179,6 +1236,30 @@ def _order_by_metric(result: TurnResult, metric: str) -> TurnResult:
     return result.model_copy(update={"table_rows": rows, "ordered_by": metric})
 
 
+def _order_companies_by_metric(result: TurnResult, metric: str) -> TurnResult:
+    """Order named companies by their latest ``metric``, largest first ("sort by revenue")."""
+    latest: dict[str, TableRow] = {}
+    for row in result.table_rows:
+        if row.metric != metric or row.comparison is not None or row.value is None:
+            continue
+        key = row.cik or row.company_name
+        shown = latest.get(key)
+        if shown is None or (row.end_date or date.min) > (shown.end_date or date.min):
+            latest[key] = row
+    if not latest:
+        return result
+    first_seen = list(dict.fromkeys(row.cik or row.company_name for row in result.table_rows))
+
+    def order(company: str) -> tuple[bool, Decimal, int]:
+        row = latest.get(company)
+        value = row.value if row is not None else None
+        return (value is None, -(value or Decimal(0)), first_seen.index(company))
+
+    ranking = {company: index for index, company in enumerate(sorted(first_seen, key=order))}
+    rows = sorted(result.table_rows, key=lambda row: ranking[row.cik or row.company_name])
+    return result.model_copy(update={"table_rows": rows})
+
+
 def _fill_identity(result: TurnResult, spec: AnalysisSpec) -> TurnResult:
     """Give a failed cell the company's name and ticker, not the typed query.
 
@@ -1377,6 +1458,11 @@ def run_spec_turn_context(
     merged = _fill_identity(merged, spec)
     if "order_by_metric" in spec.operations and spec.constituents is not None and spec.metrics:
         merged = _order_by_metric(merged, spec.metrics[0])
+    elif "order_by_metric" in spec.operations and spec.companies and spec.metrics:
+        named = [
+            metric for metric in _unique_metrics_from_phrase(message) if metric in spec.metrics
+        ]
+        merged = _order_companies_by_metric(merged, named[0] if named else spec.metrics[0])
     # Planner notes first: a corrected company name explains the whole answer.
     planner_notes = [
         note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
@@ -1512,6 +1598,19 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         )
     if spec.periods.kind == "last_n_quarters" and _TRAILING_YEAR.search(message):
         notes.append(TRAILING_YEAR_BANNER)
+    elif (
+        spec.periods.kind == "last_n_quarters"
+        and _YEAR_OF_QUARTERS.search(message)
+        and not _YOY.search(message)
+    ):
+        notes.append(YEAR_OF_QUARTERS_BANNER)
+    if _WHY_CHANGE.search(message):
+        notes.append(WHY_CHANGE_BANNER)
+    if _YEAR_TO_DATE.search(message):
+        notes.append(
+            f"Year-to-date totals aren't supported yet, so this shows {window}. "
+            "Try “last 4 quarters”."
+        )
     if spec.periods.kind == "named":
         notes.extend(_named_period_notes(spec))
         if spec.constituents is not None:
@@ -1533,6 +1632,13 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         for newer, older in zip(dates, dates[1:], strict=False)
     ):
         notes.append(FISCAL_Q4_GAP_BANNER)
+    asked = _LAST_N_QUARTERS.search(message)
+    if spec.periods.kind == "last_n_quarters" and asked is not None:
+        raw = asked.group(1).casefold()
+        wanted = _NUMBER_WORDS.get(raw, int(raw) if raw.isdigit() else 0)
+        shown = max((len(dates) for dates in windows), default=0)
+        if 0 < shown < wanted:
+            notes.append(f"The filings here hold only {shown} of the {wanted} quarters asked for.")
     return notes
 
 

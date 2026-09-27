@@ -19,6 +19,7 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec
+from financial_analyst_agent.issuer_index import expand_groups
 
 STARTER_QUESTIONS: tuple[str, ...] = (
     "How is Nvidia doing?",
@@ -63,7 +64,15 @@ _ADVICE = re.compile(
     r"\b(?:should i (?:buy|sell|invest|hold|short)|(?:good|bad) (?:buy|investment|stock)"
     r"|worth (?:buying|investing)|invest in|price target|stock (?:go up|go down|rise|fall)"
     r"|buy or sell|undervalued|overvalued|buy the dip)\b"
+    r"|\b(?:is|are)\b.{1,40}?\ba (?:good |bad |strong |safe )?(?:buy|sell|hold)\b"
 )
+START_OVER_MESSAGE = "Started over. Ask about any company, industry or period."
+UNDO_MESSAGE = (
+    "I can't undo a step yet. Say what to change instead (“remove Apple”, “just "
+    "revenue”, “last 4 quarters”), or start over."
+)
+_START_OVER = re.compile(r"^(?:start (?:over|again|fresh)|reset|clear|new (?:question|analysis))$")
+_UNDO = re.compile(r"^(?:undo|go back|back|revert|undo that)$")
 _WHY = re.compile(r"^why\b")
 _CHART = re.compile(
     r"^(?:can you |please )?(?:chart|plot|graph|visuali[sz]e|draw)(?: it| that| this| them)?$"
@@ -71,6 +80,37 @@ _CHART = re.compile(
 CHART_MESSAGE = (
     "Charts appear on their own when an answer has several quarters or several "
     "companies. Ask for a window or add a company, and the chart follows."
+)
+SMALLEST_MESSAGE = (
+    "Rankings start from the largest companies by market cap, so I can't list the "
+    "smallest yet."
+)
+_SMALLEST = re.compile(r"\b(?:smallest|tiniest|bottom\s+\d+)\b")
+_SMALLEST_GROUP = re.compile(
+    r"\b(?:smallest|tiniest|bottom)\s+(?:\d+\s+)?(?P<group>[a-z&][a-z& -]*?)\s+"
+    r"(?:companies|company|stocks|firms)\b"
+)
+UNSUPPORTED_MESSAGE = (
+    "I can't look up {names} yet. I answer from reported 10-Q figures such as "
+    "revenue, net income, margins, EPS and cash flow."
+)
+# Figures people ask for that the metric catalog does not hold, in the words the
+# reply uses. Checked only when the question names no metric the catalog knows,
+# so "Apple revenue and dividends" still answers revenue.
+_UNSUPPORTED_METRICS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bp\s*/\s*e\b|\bpe ratio\b|\bprice[ -]to[ -]earnings\b"), "P/E ratio"),
+    (re.compile(r"\broe\b|\breturn on equity\b"), "return on equity"),
+    (re.compile(r"\broa\b|\breturn on assets\b"), "return on assets"),
+    (re.compile(r"\bebitda\b"), "EBITDA"),
+    (re.compile(r"\b(?:stock|share) price\b|\bstock performance\b"), "stock price"),
+    (re.compile(r"\btotal assets\b"), "total assets"),
+    (re.compile(r"\b(?:total )?liabilities\b"), "liabilities"),
+    (re.compile(r"\bbook value\b|\bshareholders'? equity\b"), "book value"),
+    (re.compile(r"\bcash\b(?!\s+flows?)(?! from)"), "cash"),
+    (re.compile(r"\b(?:total )?debt\b|\bleverage\b"), "debt"),
+    (re.compile(r"\bdividends?\b"), "dividends"),
+    (re.compile(r"\bbuybacks?\b|\b(?:share |stock )?repurchases?\b"), "share buybacks"),
+    (re.compile(r"\bheadcount\b|\bemployees\b"), "headcount"),
 )
 _WHY_MAX_WORDS = 6
 _THANKS_MAX_WORDS = 4
@@ -126,6 +166,27 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
                 f"What changed in {name}'s latest 10-Q?",
             ],
         )
+    if _START_OVER.match(text):
+        return _guide(START_OVER_MESSAGE, list(STARTER_QUESTIONS))
+    if _UNDO.match(text):
+        return _guide(UNDO_MESSAGE, ["start over"] if spec is not None else [])
+    if _SMALLEST.search(text):
+        group = _SMALLEST_GROUP.search(text)
+        suggestion = (
+            f"Top 5 {group.group('group')} companies by revenue"
+            if group is not None
+            else STARTER_QUESTIONS[2]
+        )
+        return _guide(SMALLEST_MESSAGE, [suggestion])
+    unsupported = _unsupported_metrics(text)
+    if unsupported:
+        named = _named_company(message, index) or _spec_company(spec)
+        suggestions = (
+            [f"How is {named[0]} doing?", f"{named[0]} free cash flow last 4 quarters"]
+            if named is not None
+            else list(STARTER_QUESTIONS[:3])
+        )
+        return _guide(UNSUPPORTED_MESSAGE.format(names=_joined(unsupported)), suggestions)
     if _CHART.match(text):
         return _guide(CHART_MESSAGE, ["last 4 quarters", "show year-over-year"])
     if _WHY.match(text) and len(text.split()) <= _WHY_MAX_WORDS:
@@ -137,31 +198,73 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
     return None
 
 
+def resets_analysis(message: str) -> bool:
+    """Whether a message asks to drop the current analysis ("start over")."""
+    return _START_OVER.match(_normalized(message)) is not None
+
+
+def _unsupported_metrics(text: str) -> list[str]:
+    """Names of the uncatalogued figures a question asks for, when it asks for no other."""
+    from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+    found = [name for pattern, name in _UNSUPPORTED_METRICS if pattern.search(text)]
+    if not found or resolve_metric_phrase(text).kind != "unknown":
+        return []
+    return found
+
+
+def _joined(names: list[str]) -> str:
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " or " + names[-1]
+
+
 def not_recorded_reply(message: str, index: Any, outside: Any) -> TurnResult | None:
-    """A reply for a figures question about a company the recording left out.
+    """A reply for a figures question naming only companies the recording left out.
 
     ``outside`` is the live snapshot's index on the recorded runtime. A company it
     finds that ``index`` does not was not recorded, and saying so beats answering
-    about the companies already on screen.
+    about the companies already on screen. When the question also names recorded
+    companies, those are answered and ``not_recorded_banner`` names the rest.
     """
-    missing = _unrecorded_company(message, index, outside)
-    if missing is None:
+    missing = unrecorded_companies(message, index, outside)
+    if not missing:
         return None
-    return _guide(NOT_RECORDED_MESSAGE.format(name=missing), list(STARTER_QUESTIONS[:3]))
+    find = getattr(index, "find", None)
+    if callable(find) and find(expand_groups(message)):
+        return None
+    return _guide(NOT_RECORDED_MESSAGE.format(name=missing[0]), list(STARTER_QUESTIONS[:3]))
 
 
-def _unrecorded_company(message: str, index: Any, outside: Any) -> str | None:
-    """Display name of a company ``outside`` finds in the message but ``index`` lacks."""
+def not_recorded_banner(missing: list[str]) -> str:
+    """ "Amazon.com and Meta Platforms aren't in the recorded demo, so …"."""
+    if len(missing) == 1:
+        return (
+            f"{missing[0]} isn't in the recorded demo, so it is left out. With live "
+            "data, any US-listed operating company works."
+        )
+    names = ", ".join(missing[:-1]) + " and " + missing[-1]
+    return (
+        f"{names} aren't in the recorded demo, so they are left out. With live data, "
+        "any US-listed operating company works."
+    )
+
+
+def unrecorded_companies(message: str, index: Any, outside: Any) -> list[str]:
+    """Display names of companies ``outside`` finds in the message but ``index`` lacks."""
     find = getattr(index, "find", None)
     outside_find = getattr(outside, "find", None)
     if not callable(find) or not callable(outside_find):
-        return None
-    for mention in outside_find(message):
+        return []
+    missing: list[str] = []
+    for mention in outside_find(expand_groups(message)):
         if find(mention.typed):
             continue
         display = getattr(outside, "display_name", lambda value: value)(mention.query)
-        return short_name(display) or mention.typed
-    return None
+        name = short_name(display) or mention.typed
+        if name not in missing:
+            missing.append(name)
+    return missing
 
 
 def _named_company(message: str, index: Any) -> tuple[str, str] | None:

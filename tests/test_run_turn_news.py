@@ -133,7 +133,7 @@ def test_run_turn_news_and_explain_refuses_empty_hits_without_essay() -> None:
     assert result.tool_traces[0].tool == "search_news"
     assert result.tool_traces[0].args["query"] == NVIDIA_SUPPLY_QUERY
     assert result.message is not None
-    assert "usable" in result.message.casefold()
+    assert "articles i can cite" in result.message.casefold()
 
 
 def test_run_turn_news_and_explain_refuses_provider_failure_without_essay() -> None:
@@ -282,4 +282,4 @@ def test_recorded_runtime_refuses_news_without_matching_recording() -> None:
     assert result.essay is None
     assert result.citations == []
     assert result.message is not None
-    assert "usable" in result.message.casefold()
+    assert "articles i can cite" in result.message.casefold()

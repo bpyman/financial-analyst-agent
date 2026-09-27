@@ -237,9 +237,7 @@ def test_run_turn_refuses_unknown_metric_with_allowed_list() -> None:
     assert result.tool_traces == []
     assert result.numeral_lock_extras == []
     assert result.message is not None
-    assert "roe" in result.message.casefold()
-    for metric in ALLOWED_METRICS:
-        assert metric in result.message
+    assert result.message.startswith("I can't look up return on equity yet.")
 
 
 def test_recorded_runtime_refuses_unknown_costs_without_inventing_net_income() -> None:

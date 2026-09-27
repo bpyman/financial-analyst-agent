@@ -133,6 +133,26 @@ _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
 _TYPO_CUTOFF = 0.84
 _TYPO_MIN_LENGTH = 5
+# A four-letter word is corrected only when one letter is missing ("aple").
+_SHORT_TYPO_LENGTH = 4
+
+
+# Groups people name as if they were one company.
+_GROUPS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"\b(?:the\s+)?(?:magnificent|mag)\s*(?:7|seven)\b", re.I),
+        "Apple, Microsoft, Alphabet, Amazon, Nvidia, Meta and Tesla",
+    ),
+    (re.compile(r"\bfaang\b", re.I), "Meta, Apple, Amazon, Netflix and Alphabet"),
+    (re.compile(r"\bfang\b", re.I), "Meta, Amazon, Netflix and Alphabet"),
+)
+
+
+def expand_groups(question: str) -> str:
+    """ "Magnificent 7 revenue" → the seven companies' names, so each is looked up."""
+    for pattern, names in _GROUPS:
+        question = pattern.sub(names, question)
+    return question
 
 
 def normalize(text: str) -> str:
@@ -261,6 +281,18 @@ class IssuerIndex:
         for word in normalize(question).split():
             start = position
             position += len(word) + 1
+            if len(word) == _SHORT_TYPO_LENGTH and word.isalpha() and word not in ignore:
+                short = _one_letter_missing(word, candidates)
+                if (
+                    short is not None
+                    and word not in _GENERIC_WORDS
+                    and word not in self.phrases
+                    and all(mention.query != self.phrases[short] for mention in mentions)
+                ):
+                    mentions.append(
+                        CompanyMention(self.phrases[short], start, word, corrected=True)
+                    )
+                continue
             if (
                 len(word) < _TYPO_MIN_LENGTH
                 or not word.isalpha()
@@ -278,6 +310,23 @@ class IssuerIndex:
 
     def display_name(self, query: str) -> str:
         return self.display_names.get(query.upper(), query)
+
+
+def _one_letter_missing(word: str, candidates: list[str]) -> str | None:
+    """The one five-letter single-word name that ``word`` is missing a letter of.
+
+    The dropped letter is inside the word: "Appl" is a prefix of several names
+    (Apple, Applied Materials, AppLovin), so it is left for the resolver to refuse.
+    """
+    found = [
+        phrase
+        for phrase in candidates
+        if len(phrase) == len(word) + 1
+        and " " not in phrase
+        and phrase[0] == word[0]
+        and any(phrase[:cut] + phrase[cut + 1 :] == word for cut in range(1, len(phrase) - 1))
+    ]
+    return found[0] if len(found) == 1 else None
 
 
 def _char_to_word_offset(question: str, match: re.Match[str]) -> int:

@@ -33,7 +33,14 @@ from financial_analyst_agent.evidence_store import (
     retain_result_evidence,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.guide import guide_reply, not_recorded_reply, suggest_follow_ups
+from financial_analyst_agent.guide import (
+    guide_reply,
+    not_recorded_banner,
+    not_recorded_reply,
+    resets_analysis,
+    suggest_follow_ups,
+    unrecorded_companies,
+)
 from financial_analyst_agent.observability import (
     bind_log_context,
     call_provider,
@@ -88,12 +95,25 @@ class ConversationTurn(BaseModel):
 
 _NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
 _MAX_ANSWER_WORDS = 6
+_ORDINAL_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "one": 1, "two": 2, "three": 3}
+_ORDINAL_ANSWER = re.compile(
+    r"(?:option |number |#)?(\d|first|second|third|fourth|one|two|three)(?: one| option)?"
+    r"|(?:the )?(first|second|third|fourth)(?: one| option)?"
+)
 
 
 def _match_clarification_answer(
     pending: PendingClarification, message: str
 ) -> str | None:
     """Return the chosen candidate when the message answers the open question."""
+    ordinal = _ORDINAL_ANSWER.fullmatch(message.strip().casefold().rstrip(".!"))
+    if ordinal is not None:
+        # "2" or "the second one" picks from the options as they were shown.
+        raw = ordinal.group(1) or ordinal.group(2)
+        position = int(raw) if raw.isdigit() else _ORDINAL_WORDS[raw]
+        if 1 <= position <= len(pending.candidates):
+            return pending.candidates[position - 1]
+        return None
     if pending.kind == "ambiguous_metric":
         if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
             # "What was Microsoft's net income?" names a candidate but is a new
@@ -159,6 +179,9 @@ def _resume_pending(
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
     from financial_analyst_agent.graph.spec_turn import TurnContext, run_spec_turn_context
 
+    if _ORDINAL_ANSWER.fullmatch(message.strip().casefold().rstrip(".!")):
+        # The turn reads its wording too: "2" names no metric, the choice does.
+        message = answer.replace("_", " ")
     if pending.kind == "ambiguous_metric":
         if pending.metric_role == "remove":
             patch = pending.patch.model_copy(
@@ -191,6 +214,26 @@ def _resume_pending(
         ),
         runtime,
     )
+
+
+_PEER_COUNT = 3
+
+
+def _with_peers(proposal: Any, ranking: Any) -> Any:
+    """Add the largest companies in the named company's industry ("… to its peers")."""
+    if getattr(proposal, "peers", False) is not True or not getattr(proposal, "companies", None):
+        return proposal
+    lookup = getattr(ranking, "lookup_member", None)
+    peers = getattr(ranking, "peers", None)
+    if not callable(lookup) or not callable(peers):
+        return proposal
+    try:
+        member = lookup(proposal.companies[0])
+    except Exception:
+        return proposal
+    found = peers(member.cik, limit=_PEER_COUNT)
+    proposal.companies = [*proposal.companies, *(peer.ticker for peer in found)]
+    return proposal
 
 
 def start_thread(thread_id: str, runtime: RuntimeKind, *, store: ThreadStore) -> ThreadState:
@@ -285,10 +328,11 @@ def run_conversation_turn(
         )
         if guide is not None:
             result = guide
-            analysis_spec = prior.analysis_spec
-            persist_spec = prior.analysis_spec
+            analysis_spec = None if resets_analysis(message) else prior.analysis_spec
+            persist_spec = analysis_spec
         elif not resumed:
             proposal: Any = _complete(runtime.completer, message, prior.analysis_spec)
+            proposal = _with_peers(proposal, runtime.ranking)
 
             if is_filing_change_proposal(proposal):
                 result = run_workflow_turn(
@@ -329,6 +373,15 @@ def run_conversation_turn(
                     ),
                     turn_runtime,
                 )
+                left_out = unrecorded_companies(
+                    message,
+                    getattr(runtime.completer, "index", None),
+                    getattr(runtime.completer, "outside_index", None),
+                )
+                if left_out:
+                    result = result.model_copy(
+                        update={"banners": [*result.banners, not_recorded_banner(left_out)]}
+                    )
                 pending_from_result = _pending_from_clarify(
                     result, proposed_patch, message
                 )

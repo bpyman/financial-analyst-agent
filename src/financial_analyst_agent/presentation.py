@@ -208,6 +208,9 @@ def long_quarter_banner(rows: list[TableRow]) -> str:
     for row in rows:
         if row.value is None or row.start_date is None or row.end_date is None:
             continue
+        if row.comparison is not None:
+            # A change row spans both quarters it compares, not one long quarter.
+            continue
         days = (row.end_date - row.start_date).days + 1
         if days > _LONG_QUARTER_DAYS:
             name = short_name(row.company_name) or row.company_name
@@ -444,6 +447,8 @@ class Presentation:
     suggestions: tuple[str, ...] = ()
     # "info" for a guide reply, "warning" for a refusal.
     message_tone: str = "warning"
+    # One sentence that answers the question before the table ("grew 17.8%").
+    headline: str | None = None
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -541,24 +546,37 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     chips: list[str] = []
     companies = getattr(spec, "companies", ())
     for company in companies:
-        chips.append(company.ticker or company.name)
+        label = company.ticker or company.name
+        if label and label != "unknown":
+            chips.append(label)
     constituents = getattr(spec, "constituents", None)
     if constituents is not None:
         chips.append(f"{constituents.industry} top {constituents.limit}")
     for metric in getattr(spec, "metrics", ()):
         chips.append(_humanize_field(str(metric)))
     periods = getattr(spec, "periods", None)
-    if periods is not None:
+    if constituents is not None:
+        # A ranking shows each company's latest quarter whatever period was named.
+        chips.append("Latest quarter")
+    elif periods is not None:
         kind = getattr(periods, "kind", "")
         if kind == "last_n_quarters":
-            chips.append(f"Last {periods.count} quarters")
+            chips.append(
+                "Last quarter" if periods.count == 1 else f"Last {periods.count} quarters"
+            )
         elif kind == "named":
             chips.append(getattr(periods, "label", "") or "Named period")
         else:
             chips.append("Latest quarter")
     for operation in getattr(spec, "operations", ()):
+        if operation in _SILENT_OPERATIONS:
+            continue
         chips.append(_humanize_field(str(operation)))
     return tuple(chips)
+
+
+# The ranking's banner already says what it is ordered by.
+_SILENT_OPERATIONS = frozenset({"order_by_metric"})
 
 
 def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:
@@ -916,6 +934,7 @@ def present_turn(result: TurnResult) -> Presentation:
         clarify_prompt=_clarify_prompt(result),
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
+        headline=growth_headline(result.table_rows),
     )
 
 
@@ -1198,6 +1217,9 @@ def _format_cell(row: TableRow, key: str) -> str:
             formatted = format_metric_value(row.metric, value)
             if row.comparison is not None and value > 0:
                 formatted = f"+{formatted}"
+            percent = change_percent(row)
+            if percent is not None:
+                formatted = f"{formatted} ({'+' if percent > 0 else ''}{percent:.1f}%)"
         return formatted + (DERIVED_MARK if is_derived(row) else "")
     if key == "metric":
         return _humanize_field(str(value))
@@ -1208,6 +1230,62 @@ def _format_cell(row: TableRow, key: str) -> str:
     if key == "rank":
         return str(value)
     return str(value)
+
+
+def growth_headline(rows: list[TableRow]) -> str | None:
+    """ "Year over year, Microsoft's revenue grew 17.8% and Apple's grew 16.4%."
+
+    Each company's latest year-over-year change of the one amount the table
+    shows, fastest first; None when there is no such change to state.
+    """
+    metrics = {row.metric for row in rows if row.comparison == "yoy"}
+    if len(metrics) != 1:
+        return None
+    latest: dict[str, TableRow] = {}
+    for row in rows:
+        if row.comparison != "yoy" or change_percent(row) is None:
+            continue
+        key = row.cik or row.company_name
+        shown = latest.get(key)
+        if shown is None or (row.end_date or date.min) > (shown.end_date or date.min):
+            latest[key] = row
+    if not latest:
+        return None
+    ordered = sorted(
+        latest.values(), key=lambda row: change_percent(row) or Decimal(0), reverse=True
+    )
+    label = _humanize_field(next(iter(metrics))).lower()
+    parts: list[str] = []
+    for index, row in enumerate(ordered):
+        percent = change_percent(row) or Decimal(0)
+        verb = "grew" if percent >= 0 else "fell"
+        name = short_name(row.company_name) or row.company_name
+        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        subject = f"{owner} {label}" if index == 0 else owner
+        mark = DERIVED_MARK if is_derived(row) else ""
+        parts.append(f"{subject} {verb} {abs(percent):.1f}%{mark}")
+    if len(parts) == 1:
+        ended = format_date(ordered[0].end_date) if ordered[0].end_date else ""
+        return f"Year over year, {parts[0]} in the quarter ended {ended}."
+    joined = ", ".join(parts[:-1]) + " and " + parts[-1]
+    return f"Year over year, {joined}, each in its latest quarter."
+
+
+def change_percent(row: TableRow) -> Decimal | None:
+    """A change row's change as a percent of the level it starts from, or None.
+
+    Margins change in points, and a base at or below zero has no meaningful percent.
+    """
+    if row.comparison is None or row.value is None or row.metric in PERCENT_FORMULAS:
+        return None
+    if not row.components or row.components[0].value is None:
+        return None
+    base = Decimal(str(row.components[0].value))
+    if base <= 0:
+        return None
+    return (Decimal(str(row.value)) / base * Decimal("100")).quantize(
+        _TENTH, rounding=ROUND_HALF_UP
+    )
 
 
 def _format_banner(banner: str) -> str:

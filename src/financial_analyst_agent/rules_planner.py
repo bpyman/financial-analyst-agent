@@ -21,7 +21,12 @@ from financial_analyst_agent.graph.spec_turn import (
     parse_named_periods,
 )
 from financial_analyst_agent.guide import short_name
-from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex, normalize
+from financial_analyst_agent.issuer_index import (
+    CompanyMention,
+    IssuerIndex,
+    expand_groups,
+    normalize,
+)
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
@@ -242,7 +247,7 @@ _FILING_WORDS = (
 def _is_filing_change_query(normalized: str) -> bool:
     asks_change = re.search(
         r"what(?:['’]?s| has| is)? (?:changed|new)|filing change|\bchanges? (?:in|to)\b"
-        r"|\bdiff(?:erence)?s? (?:in|between)\b",
+        r"|\bdiff(?:erence)?s? (?:in|between)\b|\bsummar(?:y|ise|ize)\b",
         normalized,
     )
     return asks_change is not None and any(token in normalized for token in _FILING_WORDS)
@@ -278,7 +283,18 @@ def _is_exploratory_query(normalized: str) -> bool:
     return "exploratory" in normalized
 
 
-_RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading)\b")
+_PEERS = re.compile(
+    r"\b(?:peers?|competitors?|rivals?|comparables?|similar (?:companies|firms|to)"
+    r"|companies like)\b"
+)
+_SORT_BY = re.compile(r"^(?:sort|order|rank)(?:ed)?\s+(?:them\s+|it\s+|these\s+)?by\s+.+$")
+_LIST_WORDING = re.compile(r"\b(?:vs|versus|compare[ds]?|and|or|against)\b|,")
+_RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading|rank|ranked|ranking)\b")
+# "Which tech company has the highest net margin?" ranks an industry by a metric.
+_WHICH_HIGHEST = re.compile(
+    r"\bwhich\s+(?P<group>[a-z&][a-z&\- ]*?)\s+(?:companies|company|stocks|stock|firms|firm)?\s*"
+    r"(?:has|have|had|is|are|with)\s+the\s+(?:highest|most|biggest|largest|best|greatest|top)\b"
+)
 _ORDER_WORDING = re.compile(
     r"\b(?:by|in terms of|ranked by|sorted by|with the (?:most|highest|biggest|largest))\b"
 )
@@ -329,7 +345,8 @@ def _ranked_industry(normalized: str) -> str:
     text = re.sub(r"\boil and gas\b", "oil & gas", text)
     text = re.split(r"\s+(?:and|with|plus)\s+|,", text, maxsplit=1)[0]
     match = re.search(
-        r"\b(?:top|biggest|largest|leading)\s+(?:\d+\s+)?(?:companies\s+in\s+(?:the\s+)?)?(.+)$",
+        r"\b(?:top|biggest|largest|leading|rank(?:ed)?)\s+(?:the\s+)?(?:top\s+)?(?:\d+\s+)?"
+        r"(?:companies\s+in\s+(?:the\s+)?)?(.+)$",
         text,
     ) or re.search(r"\b\d+\s+(?:biggest|largest)\s+(.+)$", text)
     if match is None:
@@ -368,6 +385,7 @@ class DemoCompleter:
         return issuer_index() if self._recorded else None
 
     def complete(self, query: str, current_spec: object = None) -> Any:
+        query = expand_groups(query)
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
         mentions = self.index.find(query)
@@ -375,6 +393,20 @@ class DemoCompleter:
         if not mentions:
             mentions = self.index.correct(query, ignore=_METRIC_WORDS)
             notes = tuple(_mention_note(self.index, mention) for mention in mentions)
+        elif _LIST_WORDING.search(normalized):
+            # "Microsoft vs Aple": a misspelled name beside a correct one still counts.
+            named_words = frozenset(
+                word for mention in mentions for word in normalize(mention.typed).split()
+            )
+            known = {mention.query for mention in mentions}
+            extra = [
+                mention
+                for mention in self.index.correct(query, ignore=_METRIC_WORDS | named_words)
+                if mention.query not in known
+            ]
+            if extra:
+                mentions = sorted([*mentions, *extra], key=lambda mention: mention.start)
+                notes = tuple(_mention_note(self.index, mention) for mention in extra)
         companies = [mention.query for mention in mentions]
 
         if _is_filing_change_query(normalized):
@@ -398,11 +430,14 @@ class DemoCompleter:
             if follow_up is not None:
                 return follow_up
 
-        if len(companies) < 2 and _RANK_WORDS.search(normalized):
-            industry = _ranked_industry(normalized)
+        which = _WHICH_HIGHEST.search(normalized) if not companies else None
+        if len(companies) < 2 and (_RANK_WORDS.search(normalized) or which is not None):
+            industry = which.group("group") if which is not None else _ranked_industry(normalized)
             limit = _limit(normalized)
             if metric in ALLOWED_METRICS:
-                ordered = metric != "market_cap" and bool(_ORDER_WORDING.search(normalized))
+                ordered = metric != "market_cap" and (
+                    which is not None or bool(_ORDER_WORDING.search(normalized))
+                )
                 return SimpleNamespace(
                     intent=Intent.RANK_AND_LOOKUP,
                     industry=industry,
@@ -412,6 +447,15 @@ class DemoCompleter:
                     order_by_metric=ordered,
                 )
             return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit)
+        if len(companies) == 1 and _PEERS.search(normalized):
+            # "Compare Nvidia to its peers": the conversation adds the peers.
+            return SimpleNamespace(
+                intent=Intent.COMPARE,
+                companies=companies,
+                metric=metric if metric != "unknown" else OVERVIEW_PLAN,
+                notes=notes,
+                peers=True,
+            )
         # "Meta margin Q2 2026 vs Q2 2025" compares periods of one company.
         compare_words = re.search(r"\b(?:compare|vs|versus)\b", normalized) and not (
             len(companies) == 1 and len(parse_named_periods(normalized)) >= 2
@@ -466,7 +510,16 @@ def _follow_up(
         return SpecPatch(
             mode="extend", ranked_request=(spec.constituents.industry, int(top.group(1)))
         )
-    if _RANK_WORDS.search(normalized):
+    sort = _SORT_BY.match(normalized.strip(" .?!"))
+    if sort is not None and spec.companies and not companies:
+        # "sort by revenue": order the companies on screen, largest first.
+        wanted = metric if metric in ALLOWED_METRICS else None
+        return SpecPatch(
+            mode="extend",
+            add_metrics=(wanted,) if wanted and wanted not in spec.metrics else (),
+            add_operations=("order_by_metric",),
+        )
+    if _RANK_WORDS.search(normalized) or _WHICH_HIGHEST.search(normalized):
         # "largest pharma companies by net income" is a new ranking, not an edit.
         return None
     if companies and metric == "unknown" and spec.companies:

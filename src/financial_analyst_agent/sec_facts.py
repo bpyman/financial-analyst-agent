@@ -66,6 +66,11 @@ class SECDataSource(Protocol):
     def close(self) -> None: ...
 
 
+_PERIODIC_FORMS = frozenset({"10-Q", "10-K", "10-Q/A", "10-K/A"})
+# Fewer periodic reports than this marks a new registrant worth a predecessor check.
+_THIN_HISTORY = 4
+
+
 def _related_lookup_ciks(
     resolved_cik: str,
     filings: list[Filing],
@@ -97,9 +102,18 @@ def _select_or_derive(
     cik: str,
     *,
     report_date: date | None,
+    filer_ciks: Mapping[str, str] | None = None,
 ) -> FinancialFact:
     fact = _select_or_derive_in_unit(
-        records, filings, metric, unit, company_name, ticker, cik, report_date=report_date
+        records,
+        filings,
+        metric,
+        unit,
+        company_name,
+        ticker,
+        cik,
+        report_date=report_date,
+        filer_ciks=filer_ciks,
     )
     # EPS is filtered by its "USD/shares" unit but is still an amount in dollars.
     return fact if fact.currency == "USD" else fact.model_copy(update={"currency": "USD"})
@@ -115,19 +129,25 @@ def _select_or_derive_in_unit(
     cik: str,
     *,
     report_date: date | None,
+    filer_ciks: Mapping[str, str] | None = None,
 ) -> FinancialFact:
-    """A reported quarter when a filing has one, else a derived quarter (ADR 0007)."""
+    """A reported quarter when a filing has one, else a derived quarter (ADR 0007).
+
+    ``filer_ciks`` names the registrant whose EDGAR folder holds a filing, when
+    it is not ``cik`` (a predecessor's reports, see ``SecFactLookup._filings``).
+    """
     by_accession = {filing.accession_number: filing for filing in filings}
+    folders = filer_ciks or {}
 
     def source_url_for_filing(filing: Filing) -> str:
-        return build_filing_source_url(cik, filing)
+        return build_filing_source_url(folders.get(filing.accession_number, cik), filing)
 
     def source_url_for_accession(accession: str) -> str:
         filing = by_accession.get(accession)
         if filing is not None:
-            return build_filing_source_url(cik, filing)
+            return source_url_for_filing(filing)
         return build_filing_source_url(
-            cik,
+            folders.get(accession, cik),
             Filing(
                 form="",
                 accession_number=accession,
@@ -201,6 +221,7 @@ class SecFactLookup:
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
         self._fiscal_labels_by_cik: dict[str, dict[str, FiscalLabel]] = {}
+        self._predecessor_ciks: dict[str, str | None] = {}
         if client is not None:
             self._client: SECDataSource = client
             self._owns_client = False
@@ -229,6 +250,71 @@ class SecFactLookup:
             payload = self._client.get_submissions(cik)
             self._submissions_by_cik[cik] = payload
         return payload
+
+    def _filings(self, cik: str) -> list[Filing]:
+        """The issuer's filings, with its predecessor's when it is a new registrant.
+
+        A holding-company reorganisation (ExxonMobil in 2026) gives the listed
+        company a new CIK whose history starts at the reorganisation. Its first
+        reports are filed jointly with the old registrant, so the old CIK is found
+        from them, and its filings supply the quarters before.
+        """
+        filings = parse_submissions(self._cached_submissions(cik))
+        if cik not in self._predecessor_ciks:
+            self._predecessor_ciks[cik] = self._find_predecessor(cik, filings)
+        predecessor = self._predecessor_ciks[cik]
+        if predecessor is None:
+            return filings
+        known = {filing.accession_number for filing in filings}
+        older = [
+            filing
+            for filing in parse_submissions(self._cached_submissions(predecessor))
+            if filing.accession_number not in known
+        ]
+        return sorted([*filings, *older], key=lambda filing: filing.filed_date, reverse=True)
+
+    def _with_predecessor_facts(
+        self, records: list[FactRecord], predecessor: str, metric: Metric, unit: str
+    ) -> tuple[list[FactRecord], dict[str, str]]:
+        """``records`` plus the predecessor's, so a quarter can span the reorganisation."""
+        try:
+            payload = self._cached_company_facts(predecessor)
+        except ProviderError as exc:
+            if exc.details.get("status_code") != 404:
+                raise
+            return records, {}
+        older, _rejections = parse_company_facts(payload, metric, unit)
+        seen = {(record.accession_number, record.start_date, record.end_date) for record in records}
+        extra = [
+            record
+            for record in older
+            if (record.accession_number, record.start_date, record.end_date) not in seen
+        ]
+        own = {record.accession_number for record in records}
+        folders = {
+            record.accession_number: predecessor
+            for record in extra
+            if record.accession_number not in own
+        }
+        return [*records, *extra], folders
+
+    def _find_predecessor(self, cik: str, filings: list[Filing]) -> str | None:
+        periodic = [filing for filing in filings if filing.form in _PERIODIC_FORMS]
+        if len(periodic) >= _THIN_HISTORY:
+            return None
+        for filing in periodic:
+            other = parse_cik(filing.accession_number.split("-", 1)[0])
+            if other is None or other == cik:
+                continue
+            try:
+                theirs = parse_submissions(self._cached_submissions(other))
+            except ProviderError:
+                continue
+            # A filing agent's own submissions do not list its client's report;
+            # a joint registrant's do.
+            if any(item.accession_number == filing.accession_number for item in theirs):
+                return other
+        return None
 
     def _cached_company_facts(self, cik: str) -> dict[str, Any]:
         if cik in self._company_facts_by_cik:
@@ -268,8 +354,7 @@ class SecFactLookup:
                 details={"cik": resolved.cik},
             )
         ticker = resolved.tickers[0] if resolved.tickers else company.upper()
-        submissions_payload = self._cached_submissions(resolved.cik)
-        filings = parse_submissions(submissions_payload)
+        filings = self._filings(resolved.cik)
         # "Latest" is the newest period any 10-Q or 10-K covers (ADR 0007).
         target = report_date if report_date is not None else latest_period_end(filings)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
@@ -283,6 +368,12 @@ class SecFactLookup:
                 last_missing = exc
                 continue
             records, _rejections = parse_company_facts(company_facts_payload, parsed_metric, unit)
+            filer_ciks: dict[str, str] = {}
+            predecessor = self._predecessor_ciks.get(resolved.cik)
+            if cik == resolved.cik and predecessor is not None:
+                records, filer_ciks = self._with_predecessor_facts(
+                    records, predecessor, parsed_metric, unit
+                )
             name = self._display_names.get(resolved.cik, resolved.name)
             targets: list[date | None] = [target]
             if report_date is None:
@@ -299,6 +390,7 @@ class SecFactLookup:
                         ticker,
                         cik,
                         report_date=period,
+                        filer_ciks=filer_ciks,
                     )
                 except (UnsupportedQuarterlyFactError, FilingNotFoundError) as exc:
                     last_unsupported = exc
@@ -341,10 +433,19 @@ class SecFactLookup:
         cik: str,
         *,
         report_date: date | None,
+        filer_ciks: Mapping[str, str] | None = None,
     ) -> FinancialFact:
         try:
             return _select_or_derive(
-                records, filings, metric, unit, company_name, ticker, cik, report_date=report_date
+                records,
+                filings,
+                metric,
+                unit,
+                company_name,
+                ticker,
+                cik,
+                report_date=report_date,
+                filer_ciks=filer_ciks,
             )
         except UnsupportedQuarterlyFactError:
             if metric is not Metric.GROSS_PROFIT:
@@ -364,6 +465,7 @@ class SecFactLookup:
                         ticker,
                         cik,
                         report_date=report_date,
+                        filer_ciks=filer_ciks,
                     )
                 )
             revenue, cost = parts
@@ -395,13 +497,17 @@ class SecFactLookup:
         """
         tickers_payload = self._cached_company_tickers()
         resolved = resolve_company(company, tickers_payload)
-        filings = parse_submissions(self._cached_submissions(resolved.cik))
-        try:
-            labels = self._fiscal_labels(resolved.cik)
-        except ProviderError as exc:
-            if exc.details.get("status_code") != 404:
-                raise
-            labels = {}
+        filings = self._filings(resolved.cik)
+        labels: dict[str, FiscalLabel] = {}
+        predecessor = self._predecessor_ciks.get(resolved.cik)
+        for cik in (predecessor, resolved.cik):
+            if cik is None:
+                continue
+            try:
+                labels.update(self._fiscal_labels(cik))
+            except ProviderError as exc:
+                if exc.details.get("status_code") != 404:
+                    raise
         return periods_from_filings(filings, labels)
 
     def files_quarterly(self, company: str) -> tuple[bool, str]:
@@ -414,9 +520,7 @@ class SecFactLookup:
         """Newest-first distinct quarterly report dates for a company."""
         tickers_payload = self._cached_company_tickers()
         resolved = resolve_company(company, tickers_payload)
-        submissions_payload = self._cached_submissions(resolved.cik)
-        filings = parse_submissions(submissions_payload)
-        return tuple(list_quarterly_report_dates(filings, limit=limit))
+        return tuple(list_quarterly_report_dates(self._filings(resolved.cik), limit=limit))
 
     def get_filing_document(self, cik: str, accession: str, document: str) -> str:
         getter = getattr(self._client, "get_filing_document", None)
