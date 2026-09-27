@@ -64,7 +64,9 @@ _LAST_N_QUARTERS = re.compile(
     re.IGNORECASE,
 )
 _YOY = re.compile(
-    r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year)\b",
+    r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year"
+    r"|(?:over|in) the (?:last|past) year|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
+    r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?)\b",
     re.IGNORECASE,
 )
 _STANDALONE_LOOKUP = re.compile(
@@ -140,6 +142,49 @@ def plan_to_spec_patch(plan: Any) -> SpecPatch:
     raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
 
 
+# Wording that asks for numbers without naming a metric. Each maps to the
+# metrics that answer it, so the window shows data instead of a refusal.
+OVERVIEW_METRICS: tuple[str, ...] = (
+    "revenue",
+    "net_income",
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+)
+_BIGGER = re.compile(r"\b(?:bigger|larger|biggest|largest|size)\b", re.IGNORECASE)
+_PROFITABLE = re.compile(r"\b(?:more|most|less|least)?\s*profitab(?:le|ility)\b", re.IGNORECASE)
+_GROWING = re.compile(
+    r"\b(?:grow(?:ing|n|th)?|grew|changed?|trend(?:ing)?|doing over time)\b", re.IGNORECASE
+)
+_OVERVIEW = re.compile(
+    r"\b(?:overview|snapshot|summary|profile|financials|fundamentals|numbers|"
+    r"key metrics|at a glance|tell me about|how (?:is|are|was)|how's|doing|results)\b",
+    re.IGNORECASE,
+)
+_OVERVIEW_MAX_WORDS = 3
+
+
+def implied_metrics(message: str) -> tuple[str, ...]:
+    """Metrics a question implies when it names none ("Which is bigger?")."""
+    if _BIGGER.search(message):
+        return ("market_cap", "revenue")
+    if _PROFITABLE.search(message):
+        return ("net_income", "net_margin")
+    if _GROWING.search(message):
+        return ("revenue",)
+    if _OVERVIEW.search(message) or len(message.split()) <= _OVERVIEW_MAX_WORDS:
+        return OVERVIEW_METRICS
+    return ()
+
+
+def _names_companies(patch: SpecPatch) -> bool:
+    return (
+        patch.ranked_request is None
+        and bool(patch.add_companies)
+        and all(company and company != "unknown" for company in patch.add_companies)
+    )
+
+
 def bind_metrics_from_message(
     patch: SpecPatch, message: str, *, intent: Intent | None = None
 ) -> tuple[SpecPatch, TurnResult | None]:
@@ -169,6 +214,10 @@ def bind_metrics_from_message(
     # No metric phrase in the analyst's wording.
     if patch.mode == "extend":
         return patch, None
+    guessed = [metric for metric in patch.add_metrics if metric in ALLOWED_METRICS]
+    implied = implied_metrics(message) if _names_companies(patch) and not guessed else ()
+    if implied:
+        return patch.model_copy(update={"add_metrics": implied}), None
     if patch.ranked_request is not None and not patch.add_metrics:
         return patch, None
     # Replace-mode metric question with an unknown phrase: refuse like execute_turn
@@ -817,6 +866,36 @@ def merge_task_results(
     )
 
 
+def _fill_identity(result: TurnResult, spec: AnalysisSpec) -> TurnResult:
+    """Give a failed cell the company's name and ticker, not the typed query.
+
+    A cell that never reached a filing carries only the query ("walmart");
+    the spec resolved that query to a snapshot company, so show that one.
+    """
+    known = {
+        company.query.casefold(): company
+        for company in spec.companies
+        if company.cik and company.name
+    }
+    if not known or not any(not row.cik for row in result.table_rows):
+        return result
+    # The name the company's other cells already show, so one table names it once.
+    shown = {row.cik: row.company_name for row in result.table_rows if row.cik}
+    rows = [
+        row.model_copy(
+            update={
+                "company_name": shown.get(match.cik, match.name),
+                "ticker": match.ticker,
+                "cik": match.cik,
+            }
+        )
+        if not row.cik and (match := known.get(row.company_name.casefold())) is not None
+        else row
+        for row in result.table_rows
+    ]
+    return result.model_copy(update={"table_rows": rows})
+
+
 def run_spec_turn_context(
     ctx: TurnContext, runtime: Runtime
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
@@ -937,7 +1016,12 @@ def run_spec_turn_context(
     )
     across = "across_periods" in spec.operations
     merged = merge_task_results(tasks, results, across_periods=across)
-    notes = _period_notes(message, spec)
+    merged = _fill_identity(merged, spec)
+    # Planner notes first: a corrected company name explains the whole answer.
+    planner_notes = [
+        note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
+    ]
+    notes = [*planner_notes, *_period_notes(message, spec)]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
     return merged, spec, patch

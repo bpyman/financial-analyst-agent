@@ -10,7 +10,8 @@
       "exchange": "NYSE",
       "market_cap": "1114757656520",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000731766",
@@ -20,7 +21,8 @@
       "exchange": "NYSE",
       "market_cap": "341998101102",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Medical - Healthcare Plans"
     },
     {
       "cik": "0000200406",
@@ -30,7 +32,8 @@
       "exchange": "NYSE",
       "market_cap": "653612648388",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0001551152",
@@ -40,7 +43,8 @@
       "exchange": "NYSE",
       "market_cap": "467140021872",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000310158",
@@ -50,7 +54,8 @@
       "exchange": "NYSE",
       "market_cap": "367361026800",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000097745",
@@ -60,7 +65,8 @@
       "exchange": "NYSE",
       "market_cap": "249579418050",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Medical - Diagnostics & Research"
     },
     {
       "cik": "0000001800",
@@ -70,7 +76,8 @@
       "exchange": "NYSE",
       "market_cap": "175287835584",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Medical - Devices"
     },
     {
       "cik": "0000313616",
@@ -80,7 +87,8 @@
       "exchange": "NYSE",
       "market_cap": "157925817031",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Medical - Diagnostics & Research"
     },
     {
       "cik": "0000318154",
@@ -90,7 +98,8 @@
       "exchange": "NASDAQ",
       "market_cap": "223768333880",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000078003",
@@ -100,7 +109,8 @@
       "exchange": "NYSE",
       "market_cap": "163402944800",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000882095",
@@ -110,7 +120,8 @@
       "exchange": "NASDAQ",
       "market_cap": "187146431544",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Drug Manufacturers - General"
     },
     {
       "cik": "0000019617",
@@ -120,7 +131,8 @@
       "exchange": "NYSE",
       "market_cap": "919232700600",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Banks - Diversified"
     },
     {
       "cik": "0000070858",
@@ -130,7 +142,8 @@
       "exchange": "NYSE",
       "market_cap": "402376653000",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Banks - Diversified"
     },
     {
       "cik": "0000072971",
@@ -140,7 +153,8 @@
       "exchange": "NYSE",
       "market_cap": "250901280000",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Banks - Diversified"
     },
     {
       "cik": "0000886982",
@@ -150,7 +164,8 @@
       "exchange": "NYSE",
       "market_cap": "275964298150",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Financial - Capital Markets"
     },
     {
       "cik": "0000320193",
@@ -160,7 +175,8 @@
       "exchange": "NASDAQ",
       "market_cap": "5009416510920",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Consumer Electronics"
     },
     {
       "cik": "0000789019",
@@ -170,7 +186,8 @@
       "exchange": "NASDAQ",
       "market_cap": "3832846143500",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Software - Infrastructure"
     },
     {
       "cik": "0001652044",
@@ -180,7 +197,8 @@
       "exchange": "NASDAQ",
       "market_cap": "4139313608328",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Internet Content & Information"
     },
     {
       "cik": "0001652044",
@@ -190,7 +208,8 @@
       "exchange": "NASDAQ",
       "market_cap": "4139313608328",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Internet Content & Information"
     },
     {
       "cik": "0001045810",
@@ -200,7 +219,8 @@
       "exchange": "NASDAQ",
       "market_cap": "5451420470000",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Semiconductors"
     },
     {
       "cik": "0001730168",
@@ -210,7 +230,8 @@
       "exchange": "NASDAQ",
       "market_cap": "1678521799800",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Semiconductors"
     },
     {
       "cik": "0001341439",
@@ -220,7 +241,8 @@
       "exchange": "NYSE",
       "market_cap": "394854827600",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Software - Infrastructure"
     },
     {
       "cik": "0000002488",
@@ -230,7 +252,8 @@
       "exchange": "NASDAQ",
       "market_cap": "1028305278000",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Semiconductors"
     },
     {
       "cik": "0000858877",
@@ -240,7 +263,8 @@
       "exchange": "NASDAQ",
       "market_cap": "420551078756",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Communication Equipment"
     },
     {
       "cik": "0001321655",
@@ -250,7 +274,8 @@
       "exchange": "NASDAQ",
       "market_cap": "435495596900",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Software - Infrastructure"
     },
     {
       "cik": "0000006951",
@@ -260,7 +285,8 @@
       "exchange": "NASDAQ",
       "market_cap": "385070115000",
       "is_etf": false,
-      "is_fund": false
+      "is_fund": false,
+      "industry": "Semiconductors"
     }
   ]
 }

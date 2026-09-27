@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
 import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
@@ -28,9 +28,12 @@ export interface ClarifyControls {
 export function Answer({
   presentation,
   clarify,
+  onSuggest,
 }: {
   presentation: Presentation;
   clarify?: ClarifyControls;
+  /** Set on the latest answer only: sends a suggested question. */
+  onSuggest?: (question: string) => void;
 }) {
   const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
   const { essay, citations, disclosures } = presentation;
@@ -47,7 +50,12 @@ export function Answer({
       {fact_card && <FactCard card={fact_card} />}
       {chart && <AnswerChart chart={chart} />}
       {table && table.rows.length > 0 && <DataTable table={table} />}
-      {message && <Callout kind="warning">{message}</Callout>}
+      {message &&
+        (presentation.message_tone === "info" ? (
+          <p className="text-[15px] leading-relaxed text-fg">{message}</p>
+        ) : (
+          <Callout kind="warning">{message}</Callout>
+        ))}
       {essay && (
         <WrittenAnswer
           essay={essay}
@@ -66,7 +74,35 @@ export function Answer({
       )}
       {evidence.length > 0 && <EvidenceInspector items={evidence} />}
       {traces.length > 0 && <Traces traces={traces} />}
+      {onSuggest && (presentation.suggestions?.length ?? 0) > 0 && (
+        <Suggestions items={presentation.suggestions} onSuggest={onSuggest} />
+      )}
     </div>
+  );
+}
+
+function Suggestions({
+  items,
+  onSuggest,
+}: {
+  items: string[];
+  onSuggest: (question: string) => void;
+}) {
+  return (
+    <nav aria-label="Suggested next questions" className="flex flex-wrap items-center gap-2 pt-1">
+      <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-subtle">Next</span>
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onSuggest(item)}
+          className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
+        >
+          {item}
+          <ArrowRight className="size-3.5 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
+        </button>
+      ))}
+    </nav>
   );
 }
 

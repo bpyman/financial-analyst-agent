@@ -4,7 +4,7 @@ Run it after ``build-universe-snapshot`` so the public demo, which is locked to
 the recorded runtime, shows the same freeze as the live runtime.
 
 First, ``fixture_universe_snapshot.json`` takes the freeze's ``as_of`` and each
-of its companies' market caps from ``universe_snapshot.json`` (membership and
+of its companies' market caps and industries from ``universe_snapshot.json`` (membership and
 sectors stay as they are).
 
 Then ``sec_fixture_recordings.json`` is re-recorded from live EDGAR. The
@@ -62,17 +62,19 @@ DISPLAY_NAMES: dict[int, str] = {
 
 
 def _sync_fixture_snapshot() -> str:
-    """Carry the live freeze's date and market caps into the recorded snapshot."""
+    """Carry the live freeze's date, market caps, and industries into the recorded snapshot."""
     raw = FIXTURE_SNAPSHOT.read_text()
     fixture = json.loads(raw)
     live = json.loads(LIVE_SNAPSHOT.read_text())
     caps = {company["cik"]: company["market_cap"] for company in live["companies"]}
+    industries = {company["cik"]: company.get("industry", "") for company in live["companies"]}
     missing = [c["ticker"] for c in fixture["companies"] if c["cik"] not in caps]
     if missing:
         raise SystemExit(f"The live snapshot has no row for {missing}; update the fixture")
     fixture["as_of"] = live["as_of"]
     for company in fixture["companies"]:
         company["market_cap"] = caps[company["cik"]]
+        company["industry"] = industries[company["cik"]]
     trailer = "\n" if raw.endswith("\n") else ""
     FIXTURE_SNAPSHOT.write_text(json.dumps(fixture, indent=2) + trailer)
     return str(live["as_of"])

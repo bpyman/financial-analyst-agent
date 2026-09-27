@@ -776,10 +776,16 @@ def test_mixed_metrics_keep_the_table_without_a_misleading_chart(across_periods:
     presented = present_turn(result)
 
     assert presented.table is not None
-    assert len(presented.table.rows) == 4
     assert presented.chart is None
-    assert "metric" in presented.table.keys
-    assert presented.table.headers[presented.table.keys.index("value")] == "Value"
+    if across_periods:
+        assert len(presented.table.rows) == 4
+        assert "metric" in presented.table.keys
+        assert presented.table.headers[presented.table.keys.index("value")] == "Value"
+    else:
+        # One quarter per company: a row per company, a column per metric.
+        assert len(presented.table.rows) == 2
+        assert presented.table.headers[2:4] == ("Revenue", "Net margin")
+        assert presented.table.rows[1][:4] == ("Apple", "AAPL", "$1.00 B", "25.0%")
 
 
 def test_lookup_table_names_value_column_after_the_metric_when_amounts_are_missing() -> None:

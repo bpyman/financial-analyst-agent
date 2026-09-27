@@ -236,3 +236,7 @@ class TurnResult(BaseModel):
     citations: list[NewsHit] = Field(default_factory=list)
     candidates: tuple[str, ...] = ()
     disclosure_changes: list[DisclosureChange] = Field(default_factory=list)
+    # Questions the window offers next, phrased so the planner reads them.
+    suggestions: list[str] = Field(default_factory=list)
+    # A guide reply (help, greetings, advice declined) rather than a refusal.
+    guide: bool = False

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
 from typing import Any, Literal
@@ -256,6 +257,47 @@ def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
     raise ProviderError(f"Filing accession {accession} was not found in supported submissions")
 
 
+def _pretty(iso: str) -> str:
+    try:
+        day = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return f"{day:%b} {day.day}, {day.year}"
+
+
+_YEAR = 365
+_SAME_QUARTER_DAYS = 20
+
+
+def _year_apart_quarterlies(recent: dict[str, Any]) -> tuple[str, str] | None:
+    """The newest 10-Q and the 10-Q for the same quarter a year before it.
+
+    A year apart compares like with like: the same fiscal quarter, so seasonal
+    wording does not read as change. Without one, the previous 10-Q stands in.
+    """
+    accessions = recent.get("accessionNumber")
+    forms = recent.get("form")
+    dates = recent.get("reportDate")
+    if not (isinstance(accessions, list) and isinstance(forms, list) and isinstance(dates, list)):
+        return None
+    quarterlies: list[tuple[date, str]] = []
+    for accession, form, raw in zip(accessions, forms, dates, strict=False):
+        if form != "10-Q" or not isinstance(raw, str) or not isinstance(accession, str):
+            continue
+        try:
+            quarterlies.append((date.fromisoformat(raw), accession))
+        except ValueError:
+            continue
+    quarterlies.sort(reverse=True)
+    if len(quarterlies) < 2:
+        return None
+    newest_date, newest = quarterlies[0]
+    for when, accession in quarterlies[1:]:
+        if abs((newest_date - when).days - _YEAR) <= _SAME_QUARTER_DAYS:
+            return accession, newest
+    return quarterlies[1][1], newest
+
+
 def _filing_date(recent: dict[str, Any], accession: str) -> str:
     accessions = recent.get("accessionNumber")
     if not isinstance(accessions, list):
@@ -285,6 +327,8 @@ def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tupl
     if query.strip():
         if len(found) >= 2:
             return found[0], found[1]
+        if found:
+            return found[0], ""
         return "", ""
     return plan_older, plan_newer
 
@@ -323,12 +367,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             },
         )
     ]
-    if not company or not older or not newer:
+    if not company or company == "unknown" or bool(older) != bool(newer):
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message="Filing change needs one company and two accession numbers.",
+            message=(
+                "Name one company to compare its latest 10-Q with the same quarter a "
+                "year earlier, or give two accession numbers."
+            ),
         )
     try:
         resolved = resolve_company(company, _tickers_payload(runtime))
@@ -340,10 +387,21 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
+    chosen_banner = ""
     changes: list[DisclosureChange] = []
     section_errors: list[str] = []
     try:
         recent = _submissions_recent(runtime, cik)
+        if not older:
+            pair = _year_apart_quarterlies(recent)
+            if pair is None:
+                raise ProviderError("Fewer than two 10-Q filings are available for this company")
+            older, newer = pair
+            chosen_banner = (
+                f"Comparing {resolved.name}'s latest 10-Q (quarter ended "
+                f"{_pretty(_filing_date(recent, newer))}) with the one for "
+                f"{_pretty(_filing_date(recent, older))}."
+            )
         older, newer = _order_accessions(recent, older, newer)
         traces[0] = traces[0].model_copy(
             update={
@@ -394,7 +452,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             renderer=RendererKind.REFUSE,
             message="No reviewed-section changes were found between those filings.",
         )
-    banners: list[str] = []
+    banners: list[str] = [chosen_banner] if chosen_banner else []
     traces[0] = traces[0].model_copy(
         update={
             "provenance": {

@@ -40,6 +40,8 @@ PRESENTATION_KEYS = {
     "message",
     "candidates",
     "clarify_prompt",
+    "suggestions",
+    "message_tone",
 }
 
 # Keys of a thread view (web/lib/types.ts ThreadView).

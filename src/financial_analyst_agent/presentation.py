@@ -328,6 +328,10 @@ class Presentation:
     disclosures: tuple[DisplayDisclosure, ...] = ()
     # The question a clarification asks; set only when candidates are offered.
     clarify_prompt: str | None = None
+    # Next questions the window offers as one-tap chips.
+    suggestions: tuple[str, ...] = ()
+    # "info" for a guide reply, "warning" for a refusal.
+    message_tone: str = "warning"
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -676,6 +680,10 @@ def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
     return tuple(unique)
 
 
+GUIDE_LABEL = "Guide"
+REFUSED_LABEL = "Not answered"
+
+
 def present_turn(result: TurnResult) -> Presentation:
     fact_card = None
     table = None
@@ -711,7 +719,13 @@ def present_turn(result: TurnResult) -> Presentation:
     )
     return Presentation(
         intent=result.intent.value,
-        intent_label=intent_label(result.intent.value),
+        intent_label=(
+            GUIDE_LABEL
+            if result.guide
+            else REFUSED_LABEL
+            if result.renderer is RendererKind.REFUSE
+            else intent_label(result.intent.value)
+        ),
         banners=tuple(_format_banner(banner) for banner in result.banners),
         traces=tuple(
             _display_trace(trace, names=_names_by_cik(result.table_rows))
@@ -733,6 +747,8 @@ def present_turn(result: TurnResult) -> Presentation:
         ),
         candidates=tuple(_humanize_field(name) for name in result.candidates),
         clarify_prompt=_clarify_prompt(result),
+        suggestions=tuple(result.suggestions),
+        message_tone="info" if result.guide else "warning",
     )
 
 
@@ -740,6 +756,10 @@ _UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$"
 _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
 _FRIENDLY_MESSAGES = {
+    "No recorded filing document": (
+        "The recorded demo holds filing text for Microsoft only, so “what changed” "
+        "works for Microsoft here. With live data, any company's 10-Qs can be compared."
+    ),
     "Analysis has no companies or ranked constituents": (
         "I couldn't tell which company you mean. Name a company or ticker, "
         "for example “What was Apple's revenue?”"
@@ -835,7 +855,86 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
     return None
 
 
+WIDE_VALUE_PREFIX = "value:"
+
+
+def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable | None:
+    """One row per company and a column per metric, when each cell has one value.
+
+    "How is Apple doing?" and "their operating margin" read across a row, not
+    down a list of company-metric pairs. Provenance stays per value in the
+    evidence list, so the wide table carries no filing columns.
+    """
+    metrics = list(dict.fromkeys(row.metric for row in rows if row.metric))
+    if len(metrics) < 2 or any(row.comparison is not None for row in rows):
+        return None
+    cells: dict[str, dict[str, TableRow]] = {}
+    for row in rows:
+        entity = row.cik or row.company_name
+        if row.metric in cells.setdefault(entity, {}):
+            return None
+        cells[entity][row.metric] = row
+    ranked = intent in (Intent.RANK, Intent.RANK_AND_LOOKUP) and any(
+        row.rank is not None for row in rows
+    )
+    keys = [
+        *(["rank"] if ranked else []),
+        "company_name",
+        "ticker",
+        *(f"{WIDE_VALUE_PREFIX}{metric}" for metric in metrics),
+        "end_date",
+    ]
+    headers = tuple(
+        _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
+        if key.startswith(WIDE_VALUE_PREFIX)
+        else "Quarter ended"
+        if key == "end_date"
+        else format_field_name(key)
+        for key in keys
+    )
+    rendered: list[tuple[str, ...]] = []
+    numbers: list[tuple[int | float | None, ...]] = []
+    for by_metric in cells.values():
+        first = next(iter(by_metric.values()))
+        identity = next((row for row in by_metric.values() if row.ticker), first)
+        ends = [row.end_date for row in by_metric.values() if row.end_date is not None]
+        text: list[str] = []
+        values: list[int | float | None] = []
+        for key in keys:
+            if key.startswith(WIDE_VALUE_PREFIX):
+                cell = by_metric.get(key[len(WIDE_VALUE_PREFIX) :])
+                if cell is None:
+                    text.append("")
+                    values.append(None)
+                elif cell.value is None:
+                    text.append(format_reason(cell.reason) if cell.reason else "")
+                    values.append(None)
+                else:
+                    text.append(format_metric_value(cell.metric, cell.value))
+                    values.append(float(cell.value))
+            elif key == "end_date":
+                text.append(format_date(max(ends)) if ends else "")
+                values.append(None)
+            elif key == "rank":
+                rank = identity.rank if identity.rank is not None else first.rank
+                text.append(str(rank) if rank is not None else "")
+                values.append(rank)
+            else:
+                text.append(_format_cell(identity, key))
+                values.append(None)
+        rendered.append(tuple(text))
+        numbers.append(tuple(values))
+    if not any(any(value) for value in (row[2:] for row in rendered)):
+        return None
+    return DisplayTable(
+        headers=headers, keys=tuple(keys), rows=tuple(rendered), numbers=tuple(numbers)
+    )
+
+
 def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> DisplayTable:
+    wide = _wide_table(rows, intent=intent)
+    if wide is not None:
+        return wide
     allowed = (
         _RANK_TABLE_KEYS
         if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)

@@ -63,7 +63,8 @@ export function tableColumns(table: DisplayTable, mode: TableMode): TableColumn[
   keys.forEach((key, index) => {
     if (merged && key === "ticker") return;
     if (mode === "compact" && PROVENANCE.has(key)) return;
-    const kind = KIND[key] ?? "text";
+    // A wide table has a value column per metric ("value:revenue").
+    const kind = KIND[key] ?? (key.startsWith("value:") ? "value" : "text");
     columns.push({
       key,
       header: headers[index] ?? key,
