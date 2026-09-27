@@ -45,6 +45,7 @@ _REASON_LABELS = {
     "period_mismatch": "Period mismatch",
     "ambiguous_concept": "Ambiguous concept",
     "zero_denominator": "Zero denominator",
+    "source_unavailable": "Source unavailable",
 }
 _FIELD_LABELS = {
     "cik": "CIK",

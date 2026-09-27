@@ -7,7 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import copy_context
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from functools import partial
 from types import SimpleNamespace
 from typing import Any
@@ -16,6 +16,7 @@ from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     MISSING_FACT,
     QUALITATIVE_INTENTS,
+    SOURCE_UNAVAILABLE,
     STRUCTURED_INTENTS,
     ComponentProvenance,
     Intent,
@@ -42,6 +43,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     resolve_spec,
     validate_spec,
 )
+from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _ADD_EDIT = re.compile(
@@ -498,8 +500,21 @@ def execute_compiled_task(
     raise ValueError(f"unsupported compiled task: {task.kind!r}")
 
 
+RANKED_LATEST_QUARTER_BANNER = (
+    "Ranked lists show each company's latest quarter. "
+    "Name the companies to see a multi-quarter window."
+)
+TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
+
+
 def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
-    """Isolate an unexpected cell failure as a typed partial or refuse."""
+    """Isolate an unexpected cell failure as a typed partial or refuse.
+
+    A provider failure (an EDGAR outage, retries exhausted) is not evidence that
+    the filing lacks the fact, so it gets its own reason. The raw exception text
+    never reaches the visitor.
+    """
+    reason = SOURCE_UNAVAILABLE if isinstance(exc, ProviderError) else MISSING_FACT
     if task.kind == "lookup" and task.company_queries and task.metric:
         return TurnResult(
             intent=Intent.LOOKUP,
@@ -512,7 +527,7 @@ def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
                     cik="",
                     metric=task.metric,
                     end_date=task.report_date,
-                    reason=MISSING_FACT,
+                    reason=reason,
                 )
             ],
         )
@@ -528,7 +543,7 @@ def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
                     cik="",
                     metric=task.metric,
                     end_date=task.report_date,
-                    reason=MISSING_FACT,
+                    reason=reason,
                 )
                 for company in task.company_queries
             ],
@@ -537,7 +552,7 @@ def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
         intent=Intent.LOOKUP,
         tool_traces=[],
         renderer=RendererKind.REFUSE,
-        message=str(exc),
+        message=TASK_FAILURE_MESSAGE,
     )
 
 
@@ -574,7 +589,8 @@ def dispatch_compiled_tasks(
     workers = min(max_workers, total)
     ordered: list[TurnResult | None] = [None] * total
     done = 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
         futures = {
             pool.submit(
                 copy_context().run,
@@ -593,6 +609,11 @@ def dispatch_compiled_tasks(
             done += 1
             if on_progress is not None:
                 on_progress(done, total)
+    except BaseException:
+        # A quota stop (or any escape) must not wait for the queued tasks to run.
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown(wait=True)
     assert all(result is not None for result in ordered)
     return [result for result in ordered if result is not None]
 
@@ -661,6 +682,32 @@ def _yoy_prior_date(end: date) -> date:
         return end.replace(year=end.year - 1, day=28)
 
 
+# One fiscal quarter is 13 weeks, or 14 in a 53-week year; calendar quarters run
+# 90 to 92 days. Anything outside this band pairs non-adjacent quarters.
+_ADJACENT_QUARTER_GAP = (timedelta(days=84), timedelta(days=105))
+
+
+def _adjacent_quarters(newer: date, older: date) -> bool:
+    low, high = _ADJACENT_QUARTER_GAP
+    return low <= newer - older <= high
+
+
+def _yoy_prior(row: TableRow, ordered: list[TableRow]) -> TableRow | None:
+    """The row a year earlier, allowing for 52/53-week fiscal calendars."""
+    assert row.end_date is not None
+    target = _yoy_prior_date(row.end_date)
+    best: TableRow | None = None
+    for candidate in ordered:
+        if candidate is row or candidate.end_date is None:
+            continue
+        distance = abs(candidate.end_date - target)
+        if distance > FISCAL_WEEK_TOLERANCE:
+            continue
+        if best is None or distance < abs((best.end_date or date.min) - target):
+            best = candidate
+    return best
+
+
 def across_period_change_rows(levels: list[TableRow]) -> list[TableRow]:
     """Sequential and year-over-year change from period-aligned level cells."""
     by_key: dict[tuple[str, str], list[TableRow]] = {}
@@ -673,13 +720,14 @@ def across_period_change_rows(levels: list[TableRow]) -> list[TableRow]:
     for group in by_key.values():
         ordered = sorted(group, key=lambda r: r.end_date or date.min, reverse=True)
         for newer, older in zip(ordered, ordered[1:], strict=False):
-            changes.append(_change_row(newer, older, comparison="sequential"))
-        by_end = {row.end_date: row for row in ordered if row.end_date is not None}
+            assert newer.end_date is not None and older.end_date is not None
+            # A missing quarter in the window must not turn into a two-quarter
+            # change labelled "sequential".
+            if _adjacent_quarters(newer.end_date, older.end_date):
+                changes.append(_change_row(newer, older, comparison="sequential"))
         for row in ordered:
-            if row.end_date is None:
-                continue
-            prior = by_end.get(_yoy_prior_date(row.end_date))
-            if prior is None or prior is row:
+            prior = _yoy_prior(row, ordered)
+            if prior is None:
                 continue
             changes.append(_change_row(row, prior, comparison="yoy"))
     return changes
@@ -853,7 +901,14 @@ def run_spec_turn_context(
         max_workers=max_workers,
     )
     across = "across_periods" in spec.operations
-    return merge_task_results(tasks, results, across_periods=across), spec, patch
+    merged = merge_task_results(tasks, results, across_periods=across)
+    if spec.constituents is not None and spec.periods.kind == "last_n_quarters":
+        # compile_tasks does not expand ranked lists over a period window; say so
+        # instead of showing a "Last N quarters" chip over one quarter of data.
+        merged = merged.model_copy(
+            update={"banners": [*merged.banners, RANKED_LATEST_QUARTER_BANNER]}
+        )
+    return merged, spec, patch
 
 
 def run_spec_turn(

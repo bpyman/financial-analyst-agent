@@ -425,9 +425,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                 "llm", lambda: essay_completer.complete_essay(topic, grounding)
             )
             extras = _numeral_lock_extras(essay, grounding)
-            banners.append(MODEL_ANALYSIS_BANNER)
             if extras:
+                # The summary is withheld; say why rather than label nothing.
                 essay = None
+                banners.append(
+                    "The model's summary was withheld because it quoted numbers "
+                    "that are not in these filings."
+                )
+            else:
+                banners.append(MODEL_ANALYSIS_BANNER)
         except ProviderError:
             essay = None
     return TurnResult(

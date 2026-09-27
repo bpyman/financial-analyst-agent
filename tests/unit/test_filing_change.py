@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
+from financial_analyst_agent.contracts import MODEL_ANALYSIS_BANNER, Intent, RendererKind, Runtime
 from financial_analyst_agent.filing_change import (
     SectionId,
     diff_paragraphs,
@@ -338,6 +338,9 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
     )
     assert result.essay is None
     assert result.numeral_lock_extras
+    # The model-analysis banner labels a summary; none is shown, so say why instead.
+    assert MODEL_ANALYSIS_BANNER not in result.banners
+    assert any("withheld" in banner for banner in result.banners)
 
 
 def test_run_filing_change_refuses_when_accessions_are_missing() -> None:

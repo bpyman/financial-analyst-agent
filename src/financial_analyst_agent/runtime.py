@@ -2,6 +2,8 @@
 
 import json
 import re
+import threading
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -282,12 +284,48 @@ class DemoCompleter:
         )
 
 
+@lru_cache(maxsize=4)
+def _cached_ranking(path: Path | None, _mtime_ns: int) -> SnapshotRanking:
+    return SnapshotRanking.from_path(path)
+
+
+def _snapshot_ranking(path: Path | None) -> SnapshotRanking:
+    """The snapshot is immutable per file version; parse it once, not on every turn."""
+    from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH
+
+    resolved = path or DEFAULT_SNAPSHOT_PATH
+    return _cached_ranking(path, resolved.stat().st_mtime_ns)
+
+
+_SEC_CLIENTS: dict[tuple[object, ...], SECClient] = {}
+_SEC_CLIENTS_LOCK = threading.Lock()
+
+
+def _shared_sec_client(settings: Settings) -> SECClient:
+    """One SEC client (and connection pool) per configuration for the process.
+
+    A client per turn left an unclosed httpx pool behind on every live turn.
+    """
+    key = (
+        settings.sec_user_agent,
+        settings.sec_base_url,
+        settings.sec_max_requests_per_second,
+        settings.sec_timeout_seconds,
+    )
+    with _SEC_CLIENTS_LOCK:
+        client = _SEC_CLIENTS.get(key)
+        if client is None:
+            client = SECClient(settings)
+            _SEC_CLIENTS[key] = client
+        return client
+
+
 def recorded_runtime() -> Runtime:
     """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
-        ranking=SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+        ranking=_snapshot_ranking(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=RecordedNewsSearch(),
         essay=RecordedEssayCompleter(),
         kind=RuntimeKind.RECORDED,
@@ -306,11 +344,11 @@ def live_runtime(
     essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else RecordedEssayCompleter()
     news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
-    client = CachingSECDataSource(SECClient(resolved), Path(cache_dir), budget=budget)
+    client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
     return Runtime(
         completer=completer,
         facts=SecFactLookup(client=client),
-        ranking=SnapshotRanking.from_path(),
+        ranking=_snapshot_ranking(None),
         news=news,
         essay=essay,
         kind=RuntimeKind.LIVE,

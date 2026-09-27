@@ -1,6 +1,7 @@
 """Synchronous SEC EDGAR HTTP client."""
 
 import json
+import threading
 import time
 from typing import Any
 
@@ -19,6 +20,43 @@ _DEFAULT_RETRY_DELAY_SECONDS = 1.0
 _MAX_RETRY_DELAY_SECONDS = 5.0
 
 
+class _RateLimiter:
+    """Space requests at least ``min_interval`` apart across threads.
+
+    Each caller reserves the next free slot under the lock, then sleeps outside
+    it, so concurrent workers queue instead of all reading the same timestamp.
+    """
+
+    def __init__(self, min_interval: float) -> None:
+        self._min_interval = min_interval
+        self._lock = threading.Lock()
+        self._next_slot = 0.0
+
+    def acquire(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            slot = max(now, self._next_slot)
+            self._next_slot = slot + self._min_interval
+        wait = slot - now
+        if wait > 0:
+            time.sleep(wait)
+
+
+# EDGAR's fair-access limit is per host, so every client in the process shares one
+# limiter per rate: a new client per turn must not reset the budget.
+_SHARED_LIMITERS: dict[float, _RateLimiter] = {}
+_SHARED_LIMITERS_LOCK = threading.Lock()
+
+
+def _shared_limiter(min_interval: float) -> _RateLimiter:
+    with _SHARED_LIMITERS_LOCK:
+        limiter = _SHARED_LIMITERS.get(min_interval)
+        if limiter is None:
+            limiter = _RateLimiter(min_interval)
+            _SHARED_LIMITERS[min_interval] = limiter
+        return limiter
+
+
 class SECClient:
     """HTTP client for SEC EDGAR JSON APIs with rate limiting and retry."""
 
@@ -28,9 +66,9 @@ class SECClient:
         self._timeout = settings.sec_timeout_seconds
         self._owns_client = client is None
         self._client = client
-        self._min_interval = 1.0 / settings.sec_max_requests_per_second
-        self._last_request_at = 0.0
+        self._limiter = _shared_limiter(1.0 / settings.sec_max_requests_per_second)
         self._closed = False
+        self._client_lock = threading.Lock()
 
     def close(self) -> None:
         if self._closed:
@@ -41,16 +79,13 @@ class SECClient:
             self._client = None
 
     def _http(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=self._timeout)
-        return self._client
+        with self._client_lock:
+            if self._client is None:
+                self._client = httpx.Client(timeout=self._timeout)
+            return self._client
 
     def _acquire(self) -> None:
-        now = time.monotonic()
-        wait = self._min_interval - (now - self._last_request_at)
-        if wait > 0:
-            time.sleep(wait)
-        self._last_request_at = time.monotonic()
+        self._limiter.acquire()
 
     def _fetch_json(self, url: str) -> object:
         def _run() -> object:

@@ -256,6 +256,11 @@ def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
     if len(uniques) == 1:
         return uniques[0]
     if len(uniques) > 1:
-        metrics = tuple(phrase.metric for phrase in uniques if phrase.metric is not None)
+        # "Apple's revenue and Microsoft's revenue" names one metric twice.
+        metrics = tuple(
+            dict.fromkeys(phrase.metric for phrase in uniques if phrase.metric is not None)
+        )
+        if len(metrics) == 1:
+            return MetricPhraseResolution(kind="unique", metric=metrics[0], metrics=metrics)
         return MetricPhraseResolution(kind="unique", metrics=metrics)
     return MetricPhraseResolution(kind="unknown")
