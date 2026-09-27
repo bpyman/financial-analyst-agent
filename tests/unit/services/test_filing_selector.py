@@ -106,8 +106,9 @@ def test_list_quarterly_report_dates_newest_first_limited() -> None:
             accession_number="c",
         ),
     ]
-    assert list_quarterly_report_dates(filings, limit=1) == [NEWER]
-    assert list_quarterly_report_dates(filings, limit=2) == [NEWER, OLDER]
+    # A 10-K's year end is the fiscal fourth quarter (ADR 0007).
+    assert list_quarterly_report_dates(filings, limit=1) == [date(2024, 12, 31)]
+    assert list_quarterly_report_dates(filings, limit=3) == [date(2024, 12, 31), NEWER, OLDER]
 
 
 def test_named_report_date_matches_a_52_53_week_quarter_end_days_away() -> None:

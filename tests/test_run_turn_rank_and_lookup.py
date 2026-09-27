@@ -98,18 +98,17 @@ def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None
     assert unitedhealth.start_date == RECORDED_PERIOD_START
     assert unitedhealth.end_date == RECORDED_PERIOD_END
 
-    # Pfizer reported a quarterly net loss; Abbott tags no quarterly net income
-    # under a supported concept, so its row says so rather than guessing.
+    # Pfizer reported a quarterly net loss. SEC has not yet added Abbott's
+    # newest 10-Q to companyfacts, so its row shows the newest quarter SEC has.
     assert pfizer.ticker == "PFE"
     assert pfizer.value == Decimal("-248000000")
     abbott = next(row for row in middle if row.ticker == "ABT")
-    assert abbott.value is None
-    assert abbott.reason == "missing_fact"
-    assert abbott.accession_number is None
+    assert abbott.value == Decimal("1077000000")
+    assert abbott.end_date == date(2026, 3, 31)
+    assert abbott.accession_number == "0001628280-26-028357"
     for row in middle:
-        if row.ticker != "ABT":
-            assert row.value is not None
-            assert row.reason is None
+        assert row.value is not None
+        assert row.reason is None
 
 
 def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:

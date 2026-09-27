@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlparse
 
+from financial_analyst_agent.contracts import PER_SHARE_METRICS
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
@@ -48,6 +49,7 @@ _REASON_LABELS = {
     "ambiguous_concept": "Ambiguous concept",
     "zero_denominator": "Zero denominator",
     "source_unavailable": "Source unavailable",
+    "not_reported_for_quarter": "Reported for the year only",
 }
 _FIELD_LABELS = {
     "comparison": "Change",
@@ -75,7 +77,19 @@ _FIELD_LABELS = {
     "sga_ratio": "SG&A ratio",
     "effective_tax_rate": "Effective tax rate",
     "interest_coverage": "Interest coverage",
+    "eps_diluted": "Diluted EPS",
+    "eps_basic": "Basic EPS",
+    "operating_cash_flow": "Operating cash flow",
+    "capital_expenditure": "Capital expenditure",
+    "free_cash_flow": "Free cash flow",
 }
+# Marks a derived quarter in a table cell; the banner below explains it.
+DERIVED_MARK = " †"
+DERIVED_BANNER = (
+    "† Derived quarter: the filings report this amount only for a longer period, "
+    "so it is the longer period minus the shorter one (for a fiscal fourth quarter, "
+    "the 10-K's full year minus the 10-Q's nine months). Both filings are in the evidence."
+)
 
 
 def format_usd(value: Decimal) -> str:
@@ -100,6 +114,11 @@ def format_usd(value: Decimal) -> str:
 def format_percent(ratio: Decimal) -> str:
     percent = (ratio * Decimal("100")).quantize(_TENTH, rounding=ROUND_HALF_UP)
     return f"{percent:.1f}%"
+
+
+def format_per_share(value: Decimal) -> str:
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value).quantize(_CENTS, rounding=ROUND_HALF_UP):.2f}"
 
 
 def format_multiple(ratio: Decimal) -> str:
@@ -133,8 +152,8 @@ def format_field_name(key: str) -> str:
 def format_reason(reason: str) -> str:
     label = _REASON_LABELS.get(reason)
     if label is None:
-        label = " ".join(part.capitalize() for part in reason.split("_"))
-    return f"{reason} ({label})"
+        label = " ".join(reason.split("_")).capitalize()
+    return label
 
 
 def format_metric_value(metric: str, value: Decimal | None) -> str:
@@ -144,7 +163,14 @@ def format_metric_value(metric: str, value: Decimal | None) -> str:
         return format_multiple(value)
     if metric in PERCENT_FORMULAS:
         return format_percent(value)
+    if metric in PER_SHARE_METRICS:
+        return format_per_share(value)
     return format_usd(value)
+
+
+def is_derived(row: TableRow) -> bool:
+    """A derived quarter, or a value computed from one (ADR 0007)."""
+    return bool(row.derivation) or any(component.derivation for component in row.components)
 
 
 _TOOL_HEADERS = {
@@ -202,6 +228,8 @@ def chart_value_kind(metric: str) -> str:
         return "multiple"
     if metric in PERCENT_FORMULAS:
         return "percent"
+    if metric in PER_SHARE_METRICS:
+        return "per_share"
     return "usd"
 
 
@@ -437,8 +465,11 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
         chips.append(_humanize_field(str(metric)))
     periods = getattr(spec, "periods", None)
     if periods is not None:
-        if getattr(periods, "kind", "") == "last_n_quarters":
+        kind = getattr(periods, "kind", "")
+        if kind == "last_n_quarters":
             chips.append(f"Last {periods.count} quarters")
+        elif kind == "named":
+            chips.append(getattr(periods, "label", "") or "Named period")
         else:
             chips.append("Latest quarter")
     for operation in getattr(spec, "operations", ()):
@@ -587,6 +618,8 @@ def _period_label(start: date | None, end: date | None) -> str:
 def _selection_rule(row: TableRow) -> str:
     if row.metric in SNAPSHOT_METRICS:
         return _SNAPSHOT_RULE
+    if row.derivation:
+        return f"Derived quarter: {row.derivation}. Both reported facts are listed."
     if row.components:
         return _FORMULA_RULE
     if row.comparison == "yoy":
@@ -637,6 +670,18 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
     )
 
 
+def _component_rule(component: Any) -> str:
+    derivation = getattr(component, "derivation", None)
+    if derivation:
+        return f"Derived quarter: {derivation}. Both reported facts are listed."
+    if (component.end_date - component.start_date).days > 110:
+        return f"Reported {component.form} amount for the stated period."
+    return (
+        f"Standalone {component.form} component fact for the stated period; "
+        "no year-to-date derivation."
+    )
+
+
 def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
     period = _period_label(component.start_date, component.end_date)
     return EvidenceItem(
@@ -654,16 +699,16 @@ def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
         accession_number=component.accession_number,
         form=component.form,
         source_url=component.source_url,
-        selection_rule=(
-            f"Standalone {component.form} component fact for the stated period; "
-            "no year-to-date derivation."
-        ),
+        selection_rule=_component_rule(component),
     )
 
 
 def _evidence_items(row: TableRow) -> tuple[EvidenceItem, ...]:
     items = [_evidence_item(row)]
-    items.extend(_evidence_from_component(row, component) for component in row.components)
+    items.extend(_evidence_from_component(row, part) for part in row.derived_from)
+    for component in row.components:
+        items.append(_evidence_from_component(row, component))
+        items.extend(_evidence_from_component(row, part) for part in component.derived_from)
     return tuple(items)
 
 
@@ -717,6 +762,9 @@ def present_turn(result: TurnResult) -> Presentation:
         )
         for item in result.disclosure_changes
     )
+    banners = [_format_banner(banner) for banner in result.banners]
+    if any(is_derived(row) for row in result.table_rows if row.value is not None):
+        banners.append(DERIVED_BANNER)
     return Presentation(
         intent=result.intent.value,
         intent_label=(
@@ -726,7 +774,7 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.renderer is RendererKind.REFUSE
             else intent_label(result.intent.value)
         ),
-        banners=tuple(_format_banner(banner) for banner in result.banners),
+        banners=tuple(banners),
         traces=tuple(
             _display_trace(trace, names=_names_by_cik(result.table_rows))
             for trace in result.tool_traces
@@ -767,6 +815,15 @@ _FRIENDLY_MESSAGES = {
     "No 10-Q or 10-Q/A filing found": (
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
         "6-K reports instead, which this app does not read yet."
+    ),
+    "Per-share figures for this quarter are reported only for a longer period": (
+        "Filings report per-share figures such as EPS for a fiscal fourth quarter "
+        "only inside the full-year total, and EPS cannot be subtracted the way "
+        "revenue can, so there is no fourth-quarter figure to show."
+    ),
+    "No reported or derivable quarter exists for metric": (
+        "This company's filings do not report that metric for this quarter. Banks, "
+        "for example, do not report revenue the way operating companies do."
     ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
@@ -827,15 +884,13 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
         form = form or first.form
         accession_number = accession_number or first.accession_number
         source_url = source_url or first.source_url
+    lead = "Derived quarter †" if is_derived(row) else "Latest standalone quarter"
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,
         metric_header=_humanize_field(row.metric),
         amount=format_metric_value(row.metric, row.value),
-        period_label=(
-            "Latest standalone quarter · "
-            f"{format_date(row.start_date)} – {format_date(row.end_date)}"
-        ),
+        period_label=f"{lead} · {format_date(row.start_date)} – {format_date(row.end_date)}",
         form=form,
         accession_number=accession_number,
         concept=concept,
@@ -1001,8 +1056,8 @@ def _format_cell(row: TableRow, key: str) -> str:
     if key == "value":
         formatted = format_metric_value(row.metric, value)
         if row.comparison is not None and value > 0:
-            return f"+{formatted}"
-        return formatted
+            formatted = f"+{formatted}"
+        return formatted + (DERIVED_MARK if is_derived(row) else "")
     if key == "metric":
         return _humanize_field(str(value))
     if key in {"start_date", "end_date"}:
@@ -1063,6 +1118,9 @@ def _append_trace_field(
     label = _humanize_field(str(key))
     if key == "components" and isinstance(value, list):
         _append_component_fields(fields, value)
+        return
+    if key == "derivation" and isinstance(value, dict):
+        _append_derivation_fields(fields, value)
         return
     if key == "hits" and isinstance(value, list):
         fields.append((label, _format_hit_traces(value)))
@@ -1141,6 +1199,24 @@ _COMPONENT_FIELD_ORDER = (
     "source",
     "source_url",
 )
+
+
+def _append_derivation_fields(fields: list[tuple[str, str]], derivation: dict[str, Any]) -> None:
+    fields.append(("Derived", str(derivation.get("label") or "Derived quarter")))
+    parts = derivation.get("parts")
+    if not isinstance(parts, list):
+        return
+    for index, part in enumerate(parts):
+        if not isinstance(part, dict):
+            continue
+        period = _period_label(
+            _as_iso_date(part.get("start_date")), _as_iso_date(part.get("end_date"))
+        )
+        label = f"{'Minus ' if index else ''}{part.get('form') or 'Filing'} {period}".strip()
+        fields.append((label, _format_component_amount(part.get("value"))))
+        url = part.get("source_url")
+        if url:
+            _append_trace_field(fields, "source_url", url)
 
 
 def _append_component_fields(fields: list[tuple[str, str]], components: list[Any]) -> None:

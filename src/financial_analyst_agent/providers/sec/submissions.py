@@ -10,7 +10,10 @@ from financial_analyst_agent.domain.models import Filing
 from financial_analyst_agent.providers.sec.identity import require_matching_payload_cik
 
 _ACCESSION_PATTERN = re.compile(r"^\d{10}-\d{2}-\d{6}$")
-_QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
+# 10-Ks are kept for the fiscal fourth quarter they cover (ADR 0007).
+_PERIODIC_FORMS = frozenset(
+    {FormType.FORM_10_Q, FormType.FORM_10_Q_A, FormType.FORM_10_K, FormType.FORM_10_K_A}
+)
 
 
 def require_matching_submissions_cik(payload: dict[str, Any], cik: str) -> dict[str, Any]:
@@ -55,7 +58,7 @@ def validate_submissions_response(
 
 
 def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
-    """Parse quarterly filings from a SEC submissions response."""
+    """Parse 10-Q and 10-K filings from a SEC submissions response."""
     filings_section = payload.get("filings")
     if not isinstance(filings_section, dict):
         raise ProviderError("submissions payload missing filings object")
@@ -79,7 +82,7 @@ def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
         # Every provider-supplied field is type-checked before use, so malformed data
         # raises the sanitized provider boundary error instead of a built-in TypeError.
         form = _require_provider_string(raw_form, "form", index)
-        if form not in _QUARTERLY_FORMS:
+        if form not in _PERIODIC_FORMS:
             continue
         accession_number = _require_provider_string(
             accession_numbers[index], "accessionNumber", index

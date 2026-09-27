@@ -7,6 +7,7 @@ from financial_analyst_agent.domain.errors import FilingNotFoundError
 from financial_analyst_agent.domain.models import Filing
 
 _QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
+ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
 # A 52/53-week fiscal quarter ends on a weekday up to six days from the calendar
 # quarter end (Apple's March 28 against Microsoft's March 31), never a neighbouring
 # quarter, which ends about 90 days away.
@@ -72,14 +73,60 @@ def get_candidate_filings(
     return amendments + originals
 
 
+def get_annual_filings(filings: list[Filing], *, report_date: date) -> list[Filing]:
+    """10-K / 10-K/A filings for one fiscal year end, amendments first.
+
+    Like ``get_candidate_filings``, a 52/53-week year end a few days off the
+    named date stands for it; an empty list means no 10-K covers the date.
+    """
+    annual = [
+        filing
+        for filing in filings
+        if filing.form in ANNUAL_FORMS
+        and abs(filing.report_date - report_date) <= FISCAL_WEEK_TOLERANCE
+    ]
+    if not annual:
+        return []
+    nearest = min(abs(filing.report_date - report_date) for filing in annual)
+    annual = [filing for filing in annual if abs(filing.report_date - report_date) == nearest]
+    return sorted(
+        annual,
+        key=lambda filing: (filing.form == FormType.FORM_10_K_A, filing.filed_date),
+        reverse=True,
+    )
+
+
+def latest_period_end(filings: list[Filing]) -> date | None:
+    """The newest period any 10-Q or 10-K covers."""
+    ends = [
+        filing.report_date
+        for filing in filings
+        if filing.form in _QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
+    ]
+    return max(ends) if ends else None
+
+
 def list_quarterly_report_dates(
     filings: list[Filing],
     *,
     limit: int,
 ) -> list[date]:
-    """Newest-first distinct 10-Q / 10-Q/A report dates, up to ``limit``."""
+    """Newest-first distinct quarter ends, up to ``limit``.
+
+    A 10-K's year end is the fiscal fourth quarter's end, so it is listed
+    beside the 10-Q dates (ADR 0007).
+    """
     if limit < 1:
         return []
-    quarterly = [filing for filing in filings if filing.form in _QUARTERLY_FORMS]
-    unique = sorted({filing.report_date for filing in quarterly}, reverse=True)
+    periodic = [
+        filing
+        for filing in filings
+        if filing.form in _QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
+    ]
+    unique: list[date] = []
+    for day in sorted({filing.report_date for filing in periodic}, reverse=True):
+        # A 10-K/A dated a day off its 10-K is the same period, not a new quarter.
+        if unique and unique[-1] - day <= FISCAL_WEEK_TOLERANCE:
+            continue
+        unique.append(day)
     return unique[:limit]

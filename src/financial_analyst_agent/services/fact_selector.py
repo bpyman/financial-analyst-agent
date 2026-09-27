@@ -1,17 +1,27 @@
 """Pure deterministic quarterly fact selection from normalized XBRL records."""
 
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 from financial_analyst_agent.domain.enums import DataSourceKind, FormType, Metric
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     FilingNotFoundError,
+    PerShareNotDerivableError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FactRecord, Filing, FinancialFact
+from financial_analyst_agent.domain.models import (
+    Derivation,
+    DerivationPart,
+    FactRecord,
+    Filing,
+    FinancialFact,
+)
 from financial_analyst_agent.services.filing_selector import get_candidate_filings
-from financial_analyst_agent.services.metric_catalog import get_concept_candidates
+from financial_analyst_agent.services.metric_catalog import (
+    PER_SHARE_METRICS,
+    get_concept_candidates,
+)
 
 _QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
 _MIN_QUARTER_DAYS = 70
@@ -227,4 +237,194 @@ def select_quarterly_fact_with_filing_fallback(
     raise UnsupportedQuarterlyFactError(
         "No directly reported standalone-quarter fact exists for metric",
         details={"metric": metric.value},
+    )
+
+
+# --- Derived quarters (ADR 0007) -------------------------------------------------
+
+_ANNUAL_DAYS = (350, 380)
+_NINE_MONTH_DAYS = (250, 290)
+_CUMULATIVE_MIN_DAYS = _MAX_QUARTER_DAYS + 1
+# The shorter cumulative amount ends one quarter before the longer one.
+_ONE_QUARTER_EARLIER_DAYS = (60, 120)
+FOURTH_QUARTER_LABEL = "Fiscal year (10-K) minus nine months (10-Q)"
+YEAR_TO_DATE_LABEL = "Year to date minus the previous quarter's year to date (10-Qs)"
+
+
+def _days_between(fact: FactRecord) -> int | None:
+    if fact.start_date is None:
+        return None
+    return _duration_days(fact.start_date, fact.end_date)
+
+
+def _within(days: int | None, bounds: tuple[int, int]) -> bool:
+    return days is not None and bounds[0] <= days <= bounds[1]
+
+
+def _part(fact: FactRecord, source_url: str) -> DerivationPart:
+    assert fact.start_date is not None
+    return DerivationPart(
+        value=fact.value,
+        start_date=fact.start_date,
+        end_date=fact.end_date,
+        form=fact.form,
+        accession_number=fact.accession_number,
+        taxonomy=fact.taxonomy,
+        concept=fact.concept,
+        filed_date=fact.filed_date,
+        source_url=source_url,
+    )
+
+
+def _one_quarter_shorter(concept_facts: list[FactRecord], longer: FactRecord) -> FactRecord | None:
+    """The same-start cumulative amount ending one quarter before ``longer``."""
+    low, high = _ONE_QUARTER_EARLIER_DAYS
+    shorter = [
+        fact
+        for fact in concept_facts
+        if fact.start_date == longer.start_date
+        and fact.form in _QUARTERLY_FORMS
+        and fact.unit.upper() == longer.unit.upper()
+        and low <= (longer.end_date - fact.end_date).days <= high
+        and (_days_between(fact) or 0) >= _MIN_QUARTER_DAYS
+    ]
+    if not shorter:
+        return None
+    # Every copy of the shorter amount must share one end date, or the pair is unclear.
+    newest_end = max(fact.end_date for fact in shorter)
+    return _resolve_same_concept_candidates(
+        [fact for fact in shorter if fact.end_date == newest_end]
+    )
+
+
+def _derived_fact(
+    longer: FactRecord,
+    shorter: FactRecord,
+    *,
+    method: str,
+    label: str,
+    metric: Metric,
+    currency: str,
+    company_name: str,
+    ticker: str,
+    cik: str,
+    source_url: str,
+    source_url_for_accession: Callable[[str], str],
+) -> FinancialFact:
+    return FinancialFact(
+        company_name=company_name,
+        ticker=ticker,
+        cik=cik,
+        metric=metric,
+        value=longer.value - shorter.value,
+        currency=currency.upper(),
+        start_date=shorter.end_date + timedelta(days=1),
+        end_date=longer.end_date,
+        form=longer.form,
+        filed_date=longer.filed_date,
+        accession_number=longer.accession_number,
+        taxonomy=longer.taxonomy,
+        concept=longer.concept,
+        source_url=source_url,
+        directly_reported=False,
+        derivation=Derivation(
+            method=method,
+            label=label,
+            parts=[
+                _part(longer, source_url),
+                _part(shorter, source_url_for_accession(shorter.accession_number)),
+            ],
+        ),
+        source=DataSourceKind.SEC_XBRL,
+    )
+
+
+def derive_quarter(
+    facts: list[FactRecord],
+    filing: Filing,
+    metric: Metric,
+    currency: str,
+    company_name: str,
+    ticker: str,
+    cik: str,
+    source_url: str,
+    source_url_for_accession: Callable[[str], str],
+) -> FinancialFact:
+    """The quarter ending on ``filing``'s report date, when no filing reports it alone.
+
+    A 10-K gives the fiscal fourth quarter as the fiscal year minus nine months;
+    a 10-Q gives a cash-flow quarter as year to date minus the previous quarter's
+    year to date. A standalone quarter the 10-K happens to report is used as is.
+    Per-share figures are never derived.
+    """
+    annual = filing.form in (FormType.FORM_10_K, FormType.FORM_10_K_A)
+    per_share = False
+    for taxonomy, concept in get_concept_candidates(metric):
+        concept_facts = [
+            fact
+            for fact in facts
+            if fact.taxonomy == taxonomy
+            and fact.concept == concept
+            and fact.unit.upper() == currency.upper()
+        ]
+        in_filing = [
+            fact
+            for fact in concept_facts
+            if fact.accession_number == filing.accession_number
+            and fact.end_date == filing.report_date
+        ]
+        if annual:
+            standalone = [
+                fact
+                for fact in in_filing
+                if _is_standalone_quarter_duration(fact.start_date, fact.end_date)
+            ]
+            if standalone:
+                return _build_financial_fact(
+                    _resolve_same_concept_candidates(standalone),
+                    metric,
+                    currency,
+                    company_name,
+                    ticker,
+                    cik,
+                    source_url,
+                )
+        bounds = _ANNUAL_DAYS if annual else (_CUMULATIVE_MIN_DAYS, _NINE_MONTH_DAYS[1])
+        longer_candidates = [fact for fact in in_filing if _within(_days_between(fact), bounds)]
+        if not longer_candidates:
+            continue
+        if metric in PER_SHARE_METRICS:
+            per_share = True
+            continue
+        longer = _resolve_same_concept_candidates(longer_candidates)
+        shorter = _one_quarter_shorter(concept_facts, longer)
+        if shorter is None or (
+            annual and not _within(_days_between(shorter), _NINE_MONTH_DAYS)
+        ):
+            continue
+        return _derived_fact(
+            longer,
+            shorter,
+            method="annual_minus_nine_months" if annual else "year_to_date_difference",
+            label=FOURTH_QUARTER_LABEL if annual else YEAR_TO_DATE_LABEL,
+            metric=metric,
+            currency=currency,
+            company_name=company_name,
+            ticker=ticker,
+            cik=cik,
+            source_url=source_url,
+            source_url_for_accession=source_url_for_accession,
+        )
+    if per_share:
+        raise PerShareNotDerivableError(
+            "Per-share figures for this quarter are reported only for a longer period",
+            details={"metric": metric.value, "report_date": filing.report_date.isoformat()},
+        )
+    raise UnsupportedQuarterlyFactError(
+        "No reported or derivable quarter exists for metric",
+        details={
+            "metric": metric.value,
+            "filing_accession": filing.accession_number,
+            "report_date": filing.report_date.isoformat(),
+        },
     )
