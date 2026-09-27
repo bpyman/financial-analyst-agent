@@ -116,6 +116,17 @@ def _paragraphs(section_text: str) -> list[str]:
     return [block for block in blocks if len(block) > 20 or block.lower().startswith("item")]
 
 
+_MONTH = (
+    r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+)
+_DATES = re.compile(rf"\b{_MONTH}\s+\d{{1,2}},?\s+(?:19|20)\d{{2}}\b|\b(?:19|20)\d{{2}}\b")
+
+
+def _undated(paragraph: str) -> str:
+    """The paragraph with its dates and years masked, for matching across a year."""
+    return _DATES.sub("<date>", " ".join(paragraph.split()))
+
+
 def diff_paragraphs(
     older: str,
     newer: str,
@@ -128,7 +139,11 @@ def diff_paragraphs(
 ) -> list[DisclosureChange]:
     left = _paragraphs(older)
     right = _paragraphs(newer)
-    matcher = SequenceMatcher(a=left, b=right, autojunk=False)
+    # Matched with dates masked: a paragraph that differs only by its dates ("the
+    # quarter ended March 31, 2026" a year on) is the same disclosure, not a change.
+    matcher = SequenceMatcher(
+        a=[_undated(text) for text in left], b=[_undated(text) for text in right], autojunk=False
+    )
     changes: list[DisclosureChange] = []
     label = SECTION_LABELS[section]
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():

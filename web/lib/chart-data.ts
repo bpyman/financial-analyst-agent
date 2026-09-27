@@ -28,6 +28,8 @@ export interface LineSeries {
 
 export interface LineRow {
   period: string;
+  /** The period end as epoch milliseconds (UTC), or null when the server sent no date. */
+  time: number | null;
   amounts: Record<string, string>;
   /** Series whose latest point is in this row. */
   last?: string[];
@@ -46,7 +48,11 @@ export function lineRows(spec: LineChartSpec): LineRow[] {
   const series = lineSeries(spec);
   const lastIndex = new Map<string, number>();
   const rows = spec.records.map((record, index) => {
-    const row: LineRow = { period: spec.period_labels[index] ?? String(record.Period ?? ""), amounts: {} };
+    const row: LineRow = {
+      period: spec.period_labels[index] ?? String(record.Period ?? ""),
+      time: periodTime(record.Period),
+      amounts: {},
+    };
     for (const { key, name } of series) {
       const value = record[name];
       row[key] = typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -62,6 +68,80 @@ export function lineRows(spec: LineChartSpec): LineRow[] {
     (rows[index].last ??= []).push(key);
   }
   return rows;
+}
+
+function periodTime(value: unknown): number | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) ? time : null;
+}
+
+const DAY = 86_400_000;
+
+/**
+ * Whether the rows interleave companies on different fiscal calendars (Nvidia's
+ * quarter ending July 26 beside AMD's ending June 27). Two period ends less than
+ * about half a quarter apart cannot both be one company's consecutive quarters.
+ * Such rows are placed on a time axis, so each company's quarters sit at their
+ * own dates and its line joins them.
+ */
+export function calendarsDiffer(rows: LineRow[]): boolean {
+  const times = rows.map((row) => row.time);
+  if (times.some((time) => time === null)) return false;
+  const sorted = (times as number[]).slice().sort((a, b) => a - b);
+  return sorted.some((time, index) => index > 0 && time - sorted[index - 1] < 45 * DAY);
+}
+
+/**
+ * Calendar quarter ends (Mar 31, Jun 30, Sep 30, Dec 31) within the rows' dates,
+ * for a time axis. At most ``max`` ticks: every other quarter when there are more.
+ */
+export function quarterTicks(rows: LineRow[], max = 8): number[] {
+  const times = rows.map((row) => row.time).filter((time): time is number => time !== null);
+  if (times.length === 0) return [];
+  const low = Math.min(...times);
+  const high = Math.max(...times);
+  const ticks: number[] = [];
+  const start = new Date(low);
+  let year = start.getUTCFullYear();
+  let month = Math.floor(start.getUTCMonth() / 3) * 3; // quarter's first month
+  for (;;) {
+    // The day before the next quarter's first day is this quarter's end.
+    const end = Date.UTC(year, month + 3, 1) - DAY;
+    if (end > high) break;
+    if (end >= low) ticks.push(end);
+    month += 3;
+    if (month >= 12) {
+      month -= 12;
+      year += 1;
+    }
+  }
+  if (ticks.length <= max) return ticks;
+  const step = Math.ceil(ticks.length / max);
+  // Keep the newest quarter, where the story ends.
+  return ticks.filter((_, index) => (ticks.length - 1 - index) % step === 0);
+}
+
+/**
+ * Which side of its last point each series' end label goes. The highest ending
+ * series labels above and the lowest below, so two labels never sit between
+ * the lines; any in between take the side their final segment leaves open.
+ */
+export function endLabelSides(rows: LineRow[], series: LineSeries[]): Record<string, "above" | "below"> {
+  const sides: Record<string, "above" | "below"> = {};
+  const ends: { key: string; value: number }[] = [];
+  for (const { key } of series) {
+    const values = rows.map((row) => row[key]).filter((value): value is number => typeof value === "number");
+    const [previous, last] = values.slice(-2);
+    sides[key] = values.length > 1 && last < previous ? "below" : "above";
+    if (values.length > 0) ends.push({ key, value: values[values.length - 1] });
+  }
+  if (ends.length > 1) {
+    ends.sort((a, b) => a.value - b.value);
+    sides[ends[0].key] = "below";
+    sides[ends[ends.length - 1].key] = "above";
+  }
+  return sides;
 }
 
 export interface BarRow {

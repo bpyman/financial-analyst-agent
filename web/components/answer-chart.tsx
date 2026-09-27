@@ -18,9 +18,12 @@ import type { BarShapeProps } from "recharts/types/cartesian/Bar";
 import type { DotItemDotProps } from "recharts/types/util/types";
 import {
   barRows,
+  calendarsDiffer,
+  endLabelSides,
   lineRows,
   lineSeries,
   niceTicks,
+  quarterTicks,
   valueDomain,
   type BarRow,
   type LineRow,
@@ -92,6 +95,8 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
   const domain: [number, number] = [ticks[0], ticks[ticks.length - 1]];
   const endLabels = endLabelsFit(rows, series, domain) ? endLabelSides(rows, series) : null;
   const lone = series.length === 1 ? series[0] : null;
+  // Companies on different fiscal calendars: each quarter at its own date.
+  const staggered = series.length > 1 && calendarsDiffer(rows);
   return (
     <ComposedChart
       responsive
@@ -108,15 +113,31 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
         </defs>
       )}
       <CartesianGrid vertical={false} stroke={GRID} />
-      <XAxis
-        dataKey="period"
-        tickLine={false}
-        axisLine={{ stroke: GRID }}
-        tick={<PeriodTick />}
-        interval={0}
-        height={40}
-        padding={{ left: 24, right: 24 }}
-      />
+      {staggered ? (
+        <XAxis
+          dataKey="time"
+          type="number"
+          scale="time"
+          domain={["dataMin", "dataMax"]}
+          ticks={quarterTicks(rows)}
+          tickLine={false}
+          axisLine={{ stroke: GRID }}
+          tick={<QuarterTick />}
+          interval={0}
+          height={40}
+          padding={{ left: 24, right: 24 }}
+        />
+      ) : (
+        <XAxis
+          dataKey="period"
+          tickLine={false}
+          axisLine={{ stroke: GRID }}
+          tick={<PeriodTick />}
+          interval={0}
+          height={40}
+          padding={{ left: 24, right: 24 }}
+        />
+      )}
       <YAxis
         tickFormatter={(value: number) => axisTick(value, chart.value_kind)}
         tick={AXIS_TICK}
@@ -131,7 +152,13 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
         cursor={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
         position={{ y: 0 }}
         offset={16}
-        content={(props) => <TrendTooltip {...props} series={series} />}
+        content={(props) => (
+          <TrendTooltip
+            {...props}
+            // A time axis row holds one calendar's quarter; the others are not missing.
+            series={staggered ? series.filter(({ key }) => props.payload?.[0]?.payload?.[key] != null) : series}
+          />
+        )}
         isAnimationActive={false}
       />
       {lone && (
@@ -147,7 +174,7 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
         />
       )}
       {series.map(({ key, color }) =>
-        hasGap(rows, key) ? (
+        !staggered && hasGap(rows, key) ? (
           // A missing quarter is bridged faintly, never drawn as a reported value.
           <Line
             key={`${key}-gap`}
@@ -172,6 +199,8 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
           name={name}
           dataKey={key}
           type="linear"
+          // On a time axis the other calendar's rows are not gaps in this line.
+          connectNulls={staggered}
           stroke={color}
           strokeWidth={2}
           strokeLinecap="round"
@@ -210,17 +239,6 @@ function endLabelsFit(rows: LineRow[], series: LineSeries[], [low, high]: [numbe
   return ends.every((value, index) => index === 0 || (value - ends[index - 1]) / span > 0.14);
 }
 
-/** Put each end label on the side its final segment leaves open. */
-function endLabelSides(rows: LineRow[], series: LineSeries[]): Record<string, "above" | "below"> {
-  const sides: Record<string, "above" | "below"> = {};
-  for (const { key } of series) {
-    const values = rows.map((row) => row[key]).filter((value): value is number => typeof value === "number");
-    const [previous, last] = values.slice(-2);
-    sides[key] = values.length > 1 && last < previous ? "below" : "above";
-  }
-  return sides;
-}
-
 function TrendDot({
   cx,
   cy,
@@ -255,6 +273,23 @@ function TrendDot({
   );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A calendar quarter end on a time axis: "Jun" over "2026". */
+function QuarterTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: number } }) {
+  const date = new Date(payload?.value ?? 0);
+  return (
+    <text x={x} y={y} textAnchor="middle" fontSize={11} fill="var(--subtle)">
+      <tspan x={x} dy={14} fill="var(--muted)">
+        {MONTHS[date.getUTCMonth()]}
+      </tspan>
+      <tspan x={x} dy={13}>
+        {date.getUTCFullYear()}
+      </tspan>
+    </text>
+  );
+}
+
 /** "Mar 31, 2026" on two lines, so four quarters fit a phone. */
 function PeriodTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
   const text = payload?.value ?? "";
@@ -283,7 +318,7 @@ function TrendTooltip({
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as LineRow;
   return (
-    <TooltipBox title={String(label ?? row.period)}>
+    <TooltipBox title={row.period || String(label ?? "")}>
       {series.map(({ key, name, color }) => (
         <div key={key} className="flex items-center gap-2.5">
           <LineKey color={color} />

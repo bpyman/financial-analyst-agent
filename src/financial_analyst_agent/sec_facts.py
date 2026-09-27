@@ -17,7 +17,10 @@ from financial_analyst_agent.domain.models import FactRecord, Filing, FinancialF
 from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.providers.sec.company_facts import parse_company_facts
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
-from financial_analyst_agent.providers.sec.submissions import parse_submissions
+from financial_analyst_agent.providers.sec.submissions import (
+    files_quarterly_reports,
+    parse_submissions,
+)
 from financial_analyst_agent.providers.sec.tickers import parse_cik
 from financial_analyst_agent.providers.sec.urls import build_filing_source_url
 from financial_analyst_agent.services.fact_selector import (
@@ -400,6 +403,12 @@ class SecFactLookup:
                 raise
             labels = {}
         return periods_from_filings(filings, labels)
+
+    def files_quarterly(self, company: str) -> tuple[bool, str]:
+        """(Whether the company files 10-Qs, its name). False for 20-F/40-F filers."""
+        resolved = resolve_company(company, self._cached_company_tickers())
+        name = self._display_names.get(resolved.cik, resolved.name)
+        return files_quarterly_reports(self._cached_submissions(resolved.cik)), name
 
     def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
         """Newest-first distinct quarterly report dates for a company."""

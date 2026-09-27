@@ -178,7 +178,7 @@ def _named_company(message: str, index: Any) -> tuple[str, str] | None:
 
 _SUFFIX = re.compile(
     r"(?:,?\s+(?:inc|incorporated|corp|corporation|co|company|ltd|plc|holdings|group"
-    r"|& co|and company)\.?)+$",
+    r"|& co|and company|a/s|ag|s\.?a|n\.?v|se)\.?)+$",
     re.IGNORECASE,
 )
 
