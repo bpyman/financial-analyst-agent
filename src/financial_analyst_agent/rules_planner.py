@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
+from financial_analyst_agent.graph.spec_turn import parse_named_periods
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
@@ -390,7 +391,11 @@ class DemoCompleter:
                     intent=Intent.RANK_AND_LOOKUP, industry=industry, limit=limit, metric=metric
                 )
             return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit)
-        if len(companies) >= 2 or re.search(r"\b(?:compare|vs|versus)\b", normalized):
+        # "Meta margin Q2 2026 vs Q2 2025" compares periods of one company.
+        compare_words = re.search(r"\b(?:compare|vs|versus)\b", normalized) and not (
+            len(companies) == 1 and len(parse_named_periods(normalized)) >= 2
+        )
+        if len(companies) >= 2 or compare_words:
             return SimpleNamespace(
                 intent=Intent.COMPARE, companies=companies, metric=metric, notes=notes
             )

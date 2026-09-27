@@ -1212,6 +1212,10 @@ def _already_present_notes(
     return [f"{' and '.join(names)} {'is' if len(names) == 1 else 'are'} already in this analysis."]
 
 
+def _possessive(name: str) -> str:
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
 def _short_date(day: date) -> str:
     return f"{day:%b} {day.day}, {day.year}"
 
@@ -1230,12 +1234,12 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
     if single and not periods.named[0].calendar and len(dated) == 1:
         company = dated[0]
         notes.append(
-            f"{short_name(company.name) or company.query}'s {label} ended "
+            f"{_possessive(short_name(company.name) or company.query)} {label} ended "
             f"{_short_date(own[company.query.casefold()][0])}."
         )
     elif single and not periods.named[0].calendar and dated:
         ends = [
-            f"{short_name(company.name) or company.query}'s ended "
+            f"{_possessive(short_name(company.name) or company.query)} ended "
             f"{_short_date(own[company.query.casefold()][0])}"
             for company in spec.companies
             if own.get(company.query.casefold())

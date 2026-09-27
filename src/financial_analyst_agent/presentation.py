@@ -836,8 +836,8 @@ _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$"
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
 _FRIENDLY_MESSAGES = {
     "No recorded filing document": (
-        "The recorded demo holds filing text for Microsoft only, so “what changed” "
-        "works for Microsoft here. With live data, any company's 10-Qs can be compared."
+        "The recorded demo holds 10-Q text only for the companies it recorded, and "
+        "this filing is not among them. With live data, any company's 10-Qs can be compared."
     ),
     "Analysis has no companies or ranked constituents": (
         "I couldn't tell which company you mean. Name a company or ticker, "
@@ -1085,9 +1085,14 @@ def _format_cell(row: TableRow, key: str) -> str:
     if _cell_empty(value):
         return ""
     if key == "value":
-        formatted = format_metric_value(row.metric, value)
-        if row.comparison is not None and value > 0:
-            formatted = f"+{formatted}"
+        if row.comparison is not None and row.metric in PERCENT_FORMULAS:
+            # A change in a margin is in percentage points, not percent.
+            points = (value * Decimal("100")).quantize(_TENTH, rounding=ROUND_HALF_UP)
+            formatted = f"{'+' if points > 0 else ''}{points:.1f} pts"
+        else:
+            formatted = format_metric_value(row.metric, value)
+            if row.comparison is not None and value > 0:
+                formatted = f"+{formatted}"
         return formatted + (DERIVED_MARK if is_derived(row) else "")
     if key == "metric":
         return _humanize_field(str(value))
