@@ -17,6 +17,7 @@ from typing import Any
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex
+from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
 
@@ -181,6 +182,16 @@ def _industry_from_query(normalized: str) -> str:
 
 
 def _metric_from_query(normalized: str) -> str:
+    resolved = resolve_metric_phrase(normalized)
+    if resolved.kind == "unique" and resolved.metric in (
+        "eps_diluted",
+        "eps_basic",
+        "operating_cash_flow",
+        "capital_expenditure",
+        "free_cash_flow",
+    ):
+        # Catalog phrases the older tables below predate ("EPS", "free cash flow").
+        return resolved.metric
     for phrase, metric in _REPORTED_PHRASES:
         if phrase in normalized:
             return metric
@@ -277,7 +288,7 @@ _METRIC_WORDS = frozenset(
     word
     for phrase, _metric in (*_REPORTED_PHRASES, *_FORMULA_PHRASES)
     for word in phrase.split()
-)
+) | frozenset({"eps", "earnings", "share", "cash", "flow", "free", "capex", "capital", "spending"})
 
 
 @lru_cache(maxsize=4)

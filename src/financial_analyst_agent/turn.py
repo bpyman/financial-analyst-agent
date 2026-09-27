@@ -479,13 +479,17 @@ def _partial_lookup_reason(exc: BaseException) -> str:
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
 
 
-def _compare_unresolved_row(issuer: str, metric: str, reason: str) -> TableRow:
+def _compare_unresolved_row(
+    issuer: str, metric: str, reason: str, report_date: date | None = None
+) -> TableRow:
+    # A dated cell keeps its quarter, so a window table shows it on that quarter's row.
     return TableRow(
         company_name=issuer,
         ticker="",
         cik="",
         metric=metric,
         reason=reason,
+        end_date=report_date,
     )
 
 
@@ -522,7 +526,11 @@ def compare_metrics(
                     for component in component_names
                 ]
         except _LOOKUP_FAILURES as exc:
-            rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
+            rows.append(
+                _compare_unresolved_row(
+                    issuer, metric, _partial_lookup_reason(exc), report_date=report_date
+                )
+            )
             continue
         identity = fetched[0]
         if identity.cik in seen_ciks:
