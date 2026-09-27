@@ -33,6 +33,7 @@ from financial_analyst_agent.evidence_store import (
     retain_result_evidence,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
+from financial_analyst_agent.guide import guide_reply, suggest_follow_ups
 from financial_analyst_agent.observability import (
     bind_log_context,
     call_provider,
@@ -85,11 +86,19 @@ class ConversationTurn(BaseModel):
     proposed_patch: SpecPatch | None = None
 
 
+_NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
+_MAX_ANSWER_WORDS = 6
+
+
 def _match_clarification_answer(
     pending: PendingClarification, message: str
 ) -> str | None:
     """Return the chosen candidate when the message answers the open question."""
     if pending.kind == "ambiguous_metric":
+        if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
+            # "What was Microsoft's net income?" names a candidate but is a new
+            # question; answering the held patch would drop its company.
+            return None
         resolved = resolve_metric_phrase(message)
         if resolved.kind != "unique":
             return None
@@ -268,7 +277,14 @@ def run_conversation_turn(
             else:
                 discarded_clarification = True
 
-        if not resumed:
+        guide = None if resumed else guide_reply(
+            message, prior.analysis_spec, getattr(runtime.completer, "index", None)
+        )
+        if guide is not None:
+            result = guide
+            analysis_spec = prior.analysis_spec
+            persist_spec = prior.analysis_spec
+        elif not resumed:
             proposal: Any = _complete(runtime.completer, message, prior.analysis_spec)
 
             if is_filing_change_proposal(proposal):
@@ -327,6 +343,10 @@ def run_conversation_turn(
             result = result.model_copy(update={"banners": banners})
 
         result = label_reused_evidence(result, reused=bool(cached_facts.reused_ids))
+        if not result.suggestions and guide is None:
+            result = result.model_copy(
+                update={"suggestions": suggest_follow_ups(result, analysis_spec, runtime.ranking)}
+            )
 
         result_ref = retain_result_evidence(evidence, result)
         new_fact_refs = tuple(

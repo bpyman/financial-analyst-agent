@@ -28,6 +28,14 @@ export function axisTick(value: number, kind: ValueKind): string {
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+/**
+ * Trace values keep their line breaks: Markdown joins single newlines into one
+ * line, so each becomes a hard break. Blank lines still separate paragraphs.
+ */
+export function hardBreaks(text: string): string {
+  return text.replace(/([^\n])\n(?=[^\n])/g, "$1  \n");
+}
+
 const MD_LINK = /^\[([^\]]+)\]\(([^)]+)\)$/;
 
 /** Trace values arrive as plain text or a single markdown link. */

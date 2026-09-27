@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
-import { cn, parseLink, safeHref } from "@/lib/format";
+import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerChart } from "./answer-chart";
 import { Clarify } from "./clarify";
@@ -28,9 +28,12 @@ export interface ClarifyControls {
 export function Answer({
   presentation,
   clarify,
+  onSuggest,
 }: {
   presentation: Presentation;
   clarify?: ClarifyControls;
+  /** Set on the latest answer only: sends a suggested question. */
+  onSuggest?: (question: string) => void;
 }) {
   const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
   const { essay, citations, disclosures } = presentation;
@@ -47,7 +50,12 @@ export function Answer({
       {fact_card && <FactCard card={fact_card} />}
       {chart && <AnswerChart chart={chart} />}
       {table && table.rows.length > 0 && <DataTable table={table} />}
-      {message && <Callout kind="warning">{message}</Callout>}
+      {message &&
+        (presentation.message_tone === "info" ? (
+          <p className="text-[15px] leading-relaxed text-fg">{message}</p>
+        ) : (
+          <Callout kind="warning">{message}</Callout>
+        ))}
       {essay && (
         <WrittenAnswer
           essay={essay}
@@ -66,7 +74,35 @@ export function Answer({
       )}
       {evidence.length > 0 && <EvidenceInspector items={evidence} />}
       {traces.length > 0 && <Traces traces={traces} />}
+      {onSuggest && (presentation.suggestions?.length ?? 0) > 0 && (
+        <Suggestions items={presentation.suggestions} onSuggest={onSuggest} />
+      )}
     </div>
+  );
+}
+
+function Suggestions({
+  items,
+  onSuggest,
+}: {
+  items: string[];
+  onSuggest: (question: string) => void;
+}) {
+  return (
+    <nav aria-label="Suggested next questions" className="flex flex-wrap items-center gap-2 pt-1">
+      <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-subtle">Next</span>
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onSuggest(item)}
+          className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
+        >
+          {item}
+          <ArrowRight className="size-3.5 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -246,12 +282,17 @@ function EvidenceField({
   );
 }
 
+const TRACES_SHOWN = 5;
+
 export function Traces({ traces }: { traces: DisplayTrace[] }) {
+  // A window over several quarters makes a step per cell; show the first few.
+  const [all, setAll] = useState(false);
+  const shown = all ? traces : traces.slice(0, TRACES_SHOWN);
   return (
     <section aria-label="How this answer was fetched">
       <SectionLabel className="mb-2">How this answer was fetched</SectionLabel>
       <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-        {traces.map((trace, index) => (
+        {shown.map((trace, index) => (
           <details key={`${trace.header}-${index}`} className="group">
             <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-surface-2/60 [&::-webkit-details-marker]:hidden">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
@@ -269,6 +310,16 @@ export function Traces({ traces }: { traces: DisplayTrace[] }) {
             </div>
           </details>
         ))}
+        {traces.length > shown.length && (
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            className="flex w-full items-center justify-center gap-1.5 px-4 py-2.5 text-[13px] text-muted transition-colors hover:bg-surface-2/60 hover:text-fg"
+          >
+            Show all {traces.length} steps
+            <ChevronDown className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
     </section>
   );
@@ -299,7 +350,7 @@ function TraceRow({ label, value }: { label: string; value: string }) {
       <div className="col-span-2 min-w-0">
         {label && <dt className="mb-1 font-medium text-fg">{label}</dt>}
         <dd>
-          <SafeMarkdown text={value} className="text-[12.5px] text-muted" />
+          <SafeMarkdown text={hardBreaks(value)} className="text-[12.5px] text-muted" />
         </dd>
       </div>
     );

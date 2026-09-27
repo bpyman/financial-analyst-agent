@@ -19,7 +19,6 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict
 from datetime import UTC, datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +36,9 @@ from financial_analyst_agent.domain.errors import (
 )
 from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
-from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import (
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
+    _snapshot_ranking,
     default_runtime_kind,
     resolve_runtime_kind,
     runtime_for,
@@ -168,10 +167,30 @@ def _valid_thread_id(thread_id: str) -> str:
     return str(parsed)
 
 
-@lru_cache(maxsize=2)
+PURGE_INTERVAL_SECONDS = 60
+
+
+class _Throttle:
+    """Says yes at most once per interval, across request threads."""
+
+    def __init__(self, interval_seconds: float) -> None:
+        self._interval = interval_seconds
+        self._last: datetime | None = None
+        self._lock = threading.Lock()
+
+    def due(self, now: datetime) -> bool:
+        with self._lock:
+            if self._last is not None and (now - self._last).total_seconds() < self._interval:
+                return False
+            self._last = now
+            return True
+
+
 def _snapshot_as_of(kind: RuntimeKind) -> str:
+    # Cached per file version, so a refreshed snapshot shows its new date
+    # without a restart.
     path = FIXTURE_UNIVERSE_SNAPSHOT_PATH if kind is RuntimeKind.RECORDED else None
-    return SnapshotRanking.from_path(path).snapshot_as_of()
+    return _snapshot_ranking(path).snapshot_as_of()
 
 
 def presentation_json(result: TurnResult) -> dict[str, Any]:
@@ -241,6 +260,7 @@ def create_app(
     resolved = settings or get_settings()
     store = LocalThreadStore(store_root or thread_store_root())
     turn_locks = TurnLocks()
+    purge = _Throttle(PURGE_INTERVAL_SECONDS)
 
     app = FastAPI(
         title="Financial analyst agent",
@@ -309,11 +329,15 @@ def create_app(
     @app.get("/api/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
         valid = _valid_thread_id(thread_id)
-        store.purge_expired(
-            now=datetime.now(UTC),
-            ttl_seconds=resolved.thread_ttl_seconds,
-            keep=turn_locks.held,
-        )
+        now = datetime.now(UTC)
+        if purge.due(now):
+            # Every open window polls this route; a full store scan per poll
+            # would grow with the number of threads.
+            store.purge_expired(
+                now=now,
+                ttl_seconds=resolved.thread_ttl_seconds,
+                keep=turn_locks.held,
+            )
         return thread_view(store, valid, resolved, turn_in_flight=turn_locks.held(valid))
 
     @app.delete("/api/threads/{thread_id}", status_code=204)

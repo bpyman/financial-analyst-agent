@@ -40,6 +40,8 @@ PRESENTATION_KEYS = {
     "message",
     "candidates",
     "clarify_prompt",
+    "suggestions",
+    "message_tone",
 }
 
 # Keys of a thread view (web/lib/types.ts ThreadView).
@@ -225,8 +227,10 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
     assert examples == [
         "What was Microsoft's latest quarterly revenue?",
         "What is Apple's market cap?",
+        "How is Nvidia doing?",
         "Compare Eli Lilly and Merck net margins",
         "What are the top 10 tech companies and R&D spend for each?",
+        "Top 5 semiconductor companies by revenue",
         "What's going on with Eli Lilly's obesity drugs?",
         "How could AI change bank underwriting?",
         "add Apple",

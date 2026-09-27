@@ -4,6 +4,7 @@ import json
 import re
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -184,6 +185,91 @@ def build_universe_snapshot(
     return UniverseSnapshot(as_of=as_of, source=source, companies=companies)
 
 
+# Everyday words for groups narrower than a sector, matched against each
+# company's ``industry``. A value ending in " -" matches every industry with
+# that prefix ("Banks -" covers "Banks - Regional" and "Banks - Diversified").
+INDUSTRY_GROUP_ALIASES: dict[str, tuple[str, ...]] = {
+    "semiconductor": ("Semiconductors",),
+    "chip": ("Semiconductors",),
+    "chipmaker": ("Semiconductors",),
+    "chip maker": ("Semiconductors",),
+    "software": ("Software -",),
+    "bank": ("Banks", "Banks -"),
+    "banking": ("Banks", "Banks -"),
+    "biotech": ("Biotechnology",),
+    "pharma": ("Drug Manufacturers -", "Medical - Pharmaceuticals"),
+    "pharmaceutical": ("Drug Manufacturers -", "Medical - Pharmaceuticals"),
+    "drugmaker": ("Drug Manufacturers -",),
+    "drug maker": ("Drug Manufacturers -",),
+    "insurer": ("Insurance -",),
+    "insurance": ("Insurance -",),
+    "reit": ("REIT -",),
+    "oil": ("Oil & Gas",),
+    "oil and gas": ("Oil & Gas",),
+    "oil & gas": ("Oil & Gas",),
+    "retailer": (
+        "Specialty Retail",
+        "Discount Stores",
+        "Department Stores",
+        "Apparel - Retail",
+        "Grocery Stores",
+        "Home Improvement",
+    ),
+    "retail": (
+        "Specialty Retail",
+        "Discount Stores",
+        "Department Stores",
+        "Apparel - Retail",
+        "Grocery Stores",
+        "Home Improvement",
+    ),
+    "airline": ("Airlines, Airports & Air Services",),
+    "automaker": ("Auto - Manufacturers",),
+    "carmaker": ("Auto - Manufacturers",),
+    "car maker": ("Auto - Manufacturers",),
+    "auto": ("Auto -",),
+    "defense": ("Aerospace & Defense",),
+    "aerospace": ("Aerospace & Defense",),
+    "telecom": ("Telecommunications Services",),
+    "medical device": ("Medical - Devices",),
+    "medtech": ("Medical - Devices", "Medical - Instruments & Supplies"),
+    "restaurant": ("Restaurants",),
+    "railroad": ("Railroads",),
+    "beverage": ("Beverages -",),
+    "internet": ("Internet Content & Information",),
+    "asset manager": ("Asset Management",),
+    "asset management": ("Asset Management",),
+}
+
+
+@dataclass(frozen=True)
+class IndustryGroup:
+    """What a ranking request covers: one sector, or named industries."""
+
+    label: str
+    sector: str | None = None
+    industries: frozenset[str] = frozenset()
+
+    def includes(self, company: UniverseCompany) -> bool:
+        if self.sector is not None:
+            return company.sector == self.sector
+        return company.industry in self.industries
+
+
+def _singular(word: str) -> str:
+    return word[:-1] if word.endswith("s") and not word.endswith("ss") else word
+
+
+_GROUP_SUFFIX = re.compile(
+    r"\s+(?:companies|company|stocks|firms|names|sector|industry)$", re.IGNORECASE
+)
+
+
+def _normalize_group(text: str) -> str:
+    text = _GROUP_SUFFIX.sub("", " ".join(text.strip().casefold().split()))
+    return " ".join(_singular(word) for word in text.split())
+
+
 def resolve_industry(industry: str, snapshot: UniverseSnapshot) -> str | None:
     normalized = " ".join(industry.strip().casefold().split())
     if normalized in INDUSTRY_ALIASES:
@@ -193,6 +279,48 @@ def resolve_industry(industry: str, snapshot: UniverseSnapshot) -> str | None:
         if sector.casefold() == normalized:
             return sector
     return None
+
+
+def resolve_industry_group(industry: str, snapshot: UniverseSnapshot) -> IndustryGroup | None:
+    """A sector by name or alias, else the industries an everyday word names.
+
+    "technology" is a sector; "semiconductors", "banks", or "software companies"
+    are industries inside one, ranked on their own.
+    """
+    sector = resolve_industry(industry, snapshot) or resolve_industry(
+        _normalize_group(industry), snapshot
+    )
+    if sector is not None:
+        return IndustryGroup(label=sector, sector=sector)
+    wanted = _normalize_group(industry)
+    if not wanted:
+        return None
+    present = {company.industry for company in snapshot.companies if company.industry}
+    patterns = INDUSTRY_GROUP_ALIASES.get(wanted, ())
+    matched = {
+        name
+        for name in present
+        for pattern in patterns
+        if name == pattern or (pattern.endswith(" -") and name.startswith(pattern))
+        or (pattern == "Oil & Gas" and name.startswith(pattern))
+    }
+    if not matched:
+        matched = {name for name in present if _normalize_group(name) == wanted}
+    if not matched:
+        # "regional banks" names "Banks - Regional" word for word.
+        words = set(wanted.split())
+        matched = {
+            name for name in present if words <= set(_normalize_group(name).split())
+        }
+    if not matched:
+        return None
+    if len(matched) == 1:
+        label = next(iter(matched))
+    else:
+        label = _GROUP_SUFFIX.sub("", " ".join(industry.split())).strip()
+        label = label[:1].upper() + label[1:]
+        label = re.sub(r"\breits?\b", "REITs", label, flags=re.IGNORECASE)
+    return IndustryGroup(label=label, industries=frozenset(matched))
 
 
 def allowed_industry_names(snapshot: UniverseSnapshot) -> tuple[str, ...]:

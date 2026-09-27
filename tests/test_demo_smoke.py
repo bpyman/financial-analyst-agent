@@ -54,13 +54,28 @@ def test_add_apple_after_microsoft_four_quarters_returns_apple_revenue() -> None
     }
 
 
-def test_filing_change_without_accessions_refuses_instead_of_selecting() -> None:
+def test_filing_change_without_accessions_compares_the_same_quarter_a_year_apart() -> None:
     plan = DemoCompleter().complete("What changed in Microsoft's MD&A")
     assert plan.intent is Intent.FILING_CHANGE
     assert plan.older_accession == ""
     assert plan.newer_accession == ""
     result = run_turn("What changed in Microsoft's MD&A", recorded_runtime())
     assert result.intent is Intent.FILING_CHANGE
+    assert result.renderer is RendererKind.TABLE
+    # Deterministic code picks the filings, and says which.
+    assert {item.older_accession for item in result.disclosure_changes} == {
+        RECORDED_FILING_OLDER
+    }
+    assert {item.newer_accession for item in result.disclosure_changes} == {
+        RECORDED_FILING_NEWER
+    }
+    assert any("same quarter" in banner or "latest 10-Q" in banner for banner in result.banners)
+
+
+def test_filing_change_with_one_accession_refuses() -> None:
+    result = run_turn(
+        f"What changed in Microsoft's MD&A since {RECORDED_FILING_OLDER}", recorded_runtime()
+    )
     assert result.renderer is RendererKind.REFUSE
     assert "accession" in (result.message or "").lower()
 

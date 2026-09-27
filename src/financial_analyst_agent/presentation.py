@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlparse
 
+from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
     EXPLORATORY_RESEARCH_BANNER,
@@ -82,15 +83,16 @@ def format_usd(value: Decimal) -> str:
     amount = abs(value)
     if amount == 0:
         return "$0"
-    if amount >= _TRILLION:
-        scaled = (amount / _TRILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} T"
-    if amount >= _BILLION:
-        scaled = (amount / _BILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} B"
-    if amount >= _MILLION:
-        scaled = (amount / _MILLION).quantize(_CENTS, rounding=ROUND_HALF_UP)
-        return f"{sign}${scaled:.2f} M"
+    units = ((_TRILLION, "T"), (_BILLION, "B"), (_MILLION, "M"))
+    for index, (unit, suffix) in enumerate(units):
+        if amount < unit:
+            continue
+        scaled = (amount / unit).quantize(_CENTS, rounding=ROUND_HALF_UP)
+        if scaled >= 1000 and index > 0:
+            # Rounding reached the next unit: $999,996,000 is "$1.00 B", not "$1000.00 M".
+            unit, suffix = units[index - 1]
+            scaled = (amount / unit).quantize(_CENTS, rounding=ROUND_HALF_UP)
+        return f"{sign}${scaled:.2f} {suffix}"
     grouped = f"{int(amount):,}"
     return f"{sign}${grouped}"
 
@@ -326,6 +328,10 @@ class Presentation:
     disclosures: tuple[DisplayDisclosure, ...] = ()
     # The question a clarification asks; set only when candidates are offered.
     clarify_prompt: str | None = None
+    # Next questions the window offers as one-tap chips.
+    suggestions: tuple[str, ...] = ()
+    # "info" for a guide reply, "warning" for a refusal.
+    message_tone: str = "warning"
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -440,6 +446,23 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     return tuple(chips)
 
 
+def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:
+    """Map each period end to the latest end within a fiscal week of it.
+
+    Apple's March 28 and Microsoft's March 31 are one quarter on the chart, not
+    two points a few days apart.
+    """
+    buckets: dict[date, date] = {}
+    cluster: list[date] = []
+    for end in sorted(ends):
+        if cluster and end - cluster[0] > FISCAL_WEEK_TOLERANCE:
+            buckets.update(dict.fromkeys(cluster, cluster[-1]))
+            cluster = []
+        cluster.append(end)
+    buckets.update(dict.fromkeys(cluster, cluster[-1]))
+    return buckets
+
+
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
     comparison_free = [
         row for row in result.table_rows if row.comparison is None
@@ -463,13 +486,15 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     if not rank_cross_section and any(
         len(periods) >= 2 for periods in periods_by_company.values()
     ):
+        buckets = _fiscal_week_buckets(
+            {row.end_date for row in rows if row.end_date is not None}
+        )
         merged: dict[date, dict[str, object]] = {}
         for row in rows:
             if row.end_date is None:
                 continue
-            bucket = merged.setdefault(
-                row.end_date, {"Period": row.end_date.isoformat()}
-            )
+            period = buckets[row.end_date]
+            bucket = merged.setdefault(period, {"Period": period.isoformat()})
             bucket[row.company_name] = (
                 float(row.value) if row.value is not None else None
             )
@@ -655,6 +680,10 @@ def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
     return tuple(unique)
 
 
+GUIDE_LABEL = "Guide"
+REFUSED_LABEL = "Not answered"
+
+
 def present_turn(result: TurnResult) -> Presentation:
     fact_card = None
     table = None
@@ -690,7 +719,13 @@ def present_turn(result: TurnResult) -> Presentation:
     )
     return Presentation(
         intent=result.intent.value,
-        intent_label=intent_label(result.intent.value),
+        intent_label=(
+            GUIDE_LABEL
+            if result.guide
+            else REFUSED_LABEL
+            if result.renderer is RendererKind.REFUSE
+            else intent_label(result.intent.value)
+        ),
         banners=tuple(_format_banner(banner) for banner in result.banners),
         traces=tuple(
             _display_trace(trace, names=_names_by_cik(result.table_rows))
@@ -712,6 +747,8 @@ def present_turn(result: TurnResult) -> Presentation:
         ),
         candidates=tuple(_humanize_field(name) for name in result.candidates),
         clarify_prompt=_clarify_prompt(result),
+        suggestions=tuple(result.suggestions),
+        message_tone="info" if result.guide else "warning",
     )
 
 
@@ -719,6 +756,10 @@ _UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$"
 _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
 _FRIENDLY_MESSAGES = {
+    "No recorded filing document": (
+        "The recorded demo holds filing text for Microsoft only, so “what changed” "
+        "works for Microsoft here. With live data, any company's 10-Qs can be compared."
+    ),
     "Analysis has no companies or ranked constituents": (
         "I couldn't tell which company you mean. Name a company or ticker, "
         "for example “What was Apple's revenue?”"
@@ -814,7 +855,116 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
     return None
 
 
+WIDE_VALUE_PREFIX = "value:"
+
+
+_COMPARISON_ORDER = {None: 0, "sequential": 1, "yoy": 2}
+
+
+def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable | None:
+    """A row per company and quarter (and change), a column per metric.
+
+    "How is Apple doing?" and "their operating margin" read across a row, not
+    down a list of company-metric pairs; over a window, each quarter is one row
+    and each change one more. Provenance stays per value in the evidence list,
+    so the wide table carries no filing columns.
+    """
+    metrics = list(dict.fromkeys(row.metric for row in rows if row.metric))
+    if len(metrics) < 2:
+        return None
+    cells: dict[tuple[str, date | None, str | None], dict[str, TableRow]] = {}
+    for row in rows:
+        place: tuple[str, date | None, str | None] = (
+            row.cik or row.company_name,
+            row.end_date,
+            row.comparison,
+        )
+        if row.metric in cells.setdefault(place, {}):
+            return None
+        cells[place][row.metric] = row
+    # Failed cells carry no date: fold them into their company's only row.
+    for undated in [place for place in cells if place[1] is None and place[2] is None]:
+        dated = [other for other in cells if other[0] == undated[0] and other != undated]
+        if len(dated) == 1 and not set(cells[undated]) & set(cells[dated[0]]):
+            cells[dated[0]].update(cells.pop(undated))
+    entities = list(dict.fromkeys(slot[0] for slot in cells))
+    ordered = sorted(
+        cells,
+        key=lambda slot: (
+            entities.index(slot[0]),
+            _COMPARISON_ORDER.get(slot[2], 3) > 0,
+            -(slot[1].toordinal() if slot[1] else 0),
+            _COMPARISON_ORDER.get(slot[2], 3),
+        ),
+    )
+    ranked = intent in (Intent.RANK, Intent.RANK_AND_LOOKUP) and any(
+        row.rank is not None for row in rows
+    )
+    changes = any(slot[2] is not None for slot in cells)
+    keys = [
+        *(["rank"] if ranked else []),
+        "company_name",
+        "ticker",
+        *(["comparison"] if changes else []),
+        *(f"{WIDE_VALUE_PREFIX}{metric}" for metric in metrics),
+        "end_date",
+    ]
+    headers = tuple(
+        _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
+        if key.startswith(WIDE_VALUE_PREFIX)
+        else "Quarter ended"
+        if key == "end_date"
+        else format_field_name(key)
+        for key in keys
+    )
+    rendered: list[tuple[str, ...]] = []
+    numbers: list[tuple[int | float | None, ...]] = []
+    for group in ordered:
+        by_metric = cells[group]
+        first = next(iter(by_metric.values()))
+        identity = next((row for row in by_metric.values() if row.ticker), first)
+        ends = [row.end_date for row in by_metric.values() if row.end_date is not None]
+        text: list[str] = []
+        values: list[int | float | None] = []
+        for key in keys:
+            if key.startswith(WIDE_VALUE_PREFIX):
+                cell = by_metric.get(key[len(WIDE_VALUE_PREFIX) :])
+                if cell is None:
+                    text.append("")
+                    values.append(None)
+                elif cell.value is None:
+                    # A narrow cell: the label alone ("Missing fact"), code in evidence.
+                    text.append(_REASON_LABELS.get(cell.reason or "", "") or "")
+                    values.append(None)
+                else:
+                    text.append(_format_cell(cell, "value"))
+                    values.append(float(cell.value))
+            elif key == "end_date":
+                text.append(format_date(max(ends)) if ends else "")
+                values.append(None)
+            elif key == "rank":
+                rank = identity.rank if identity.rank is not None else first.rank
+                text.append(str(rank) if rank is not None else "")
+                values.append(rank)
+            elif key == "comparison":
+                text.append(_format_cell(first, "comparison"))
+                values.append(None)
+            else:
+                text.append(_format_cell(identity, key))
+                values.append(None)
+        rendered.append(tuple(text))
+        numbers.append(tuple(values))
+    if not any(value is not None for row in numbers for value in row):
+        return None
+    return DisplayTable(
+        headers=headers, keys=tuple(keys), rows=tuple(rendered), numbers=tuple(numbers)
+    )
+
+
 def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> DisplayTable:
+    wide = _wide_table(rows, intent=intent)
+    if wide is not None:
+        return wide
     allowed = (
         _RANK_TABLE_KEYS
         if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
@@ -948,6 +1098,9 @@ def _display_trace(trace: Any, *, names: dict[str, str] | None = None) -> Displa
     if names and isinstance(company, str) and company in names:
         # Ranked lookups run by CIK; the header reads better with the name.
         args["company"] = names[company]
+    issuers = args.get("issuers")
+    if names and isinstance(issuers, list):
+        args["issuers"] = [names.get(str(item), item) for item in issuers]
     identity = _trace_identity(args)
     period = _trace_period(trace)
     what = identity or "this request"

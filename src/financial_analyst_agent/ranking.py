@@ -14,7 +14,7 @@ from financial_analyst_agent.universe import (
     is_common_operating_listing,
     load_universe_snapshot,
     preferred_listing,
-    resolve_industry,
+    resolve_industry_group,
 )
 
 
@@ -37,8 +37,8 @@ class SnapshotRanking:
         return cls(load_universe_snapshot(path))
 
     def rank_companies(self, industry: str, limit: int) -> RankTable:
-        sector = resolve_industry(industry, self._snapshot)
-        if sector is None:
+        group = resolve_industry_group(industry, self._snapshot)
+        if group is None:
             allowed = ", ".join(allowed_industry_names(self._snapshot))
             raise UnknownIndustryError(
                 f"Unknown industry {industry!r}. Allowed: {allowed}",
@@ -46,7 +46,7 @@ class SnapshotRanking:
         ranked = [
             company
             for company in self._snapshot.companies
-            if company.sector == sector and is_common_operating_listing(company)
+            if group.includes(company) and is_common_operating_listing(company)
         ]
         by_cik: dict[str, list[UniverseCompany]] = {}
         for company in ranked:
@@ -57,9 +57,12 @@ class SnapshotRanking:
         return RankTable(
             as_of=_format_as_of(self._snapshot.as_of),
             source=self._snapshot.source,
-            sector=sector,
+            sector=group.label,
             companies=tuple(selected),
         )
+
+    def snapshot_companies(self) -> tuple[UniverseCompany, ...]:
+        return tuple(self._snapshot.companies)
 
     def snapshot_as_of(self) -> str:
         return _format_as_of(self._snapshot.as_of)
@@ -80,6 +83,26 @@ class SnapshotRanking:
                 details={"query": company},
             )
         return preferred_listing(listings)
+
+    def peers(
+        self, cik: str, *, exclude: frozenset[str] = frozenset(), limit: int = 3
+    ) -> tuple[UniverseCompany, ...]:
+        """The largest other companies in ``cik``'s industry, for "add a peer" suggestions."""
+        own = next((row for row in self._snapshot.companies if row.cik == cik), None)
+        if own is None or not own.industry:
+            return ()
+        seen = {cik, *exclude}
+        found: list[UniverseCompany] = []
+        for row in self._snapshot.companies:
+            if (
+                row.industry == own.industry
+                and row.cik not in seen
+                and is_common_operating_listing(row)
+            ):
+                seen.add(row.cik)
+                found.append(row)
+        found.sort(key=lambda row: row.market_cap, reverse=True)
+        return tuple(found[:limit])
 
     def _operating_ticker_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {}

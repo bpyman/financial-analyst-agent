@@ -343,7 +343,24 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
     assert any("withheld" in banner for banner in result.banners)
 
 
-def test_run_filing_change_refuses_when_accessions_are_missing() -> None:
+def test_run_filing_change_refuses_without_a_company_or_with_one_accession() -> None:
+    for company, older in (("", ""), ("Microsoft", "0000950170-25-061046")):
+        result = run_filing_change(
+            SimpleNamespace(
+                intent=Intent.FILING_CHANGE,
+                company=company,
+                older_accession=older,
+                newer_accession="",
+                section="mda",
+            ),
+            Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        )
+        assert result.renderer is RendererKind.REFUSE
+        assert "accession" in (result.message or "").lower()
+        assert not result.disclosure_changes
+
+
+def test_run_filing_change_without_accessions_picks_a_year_apart() -> None:
     result = run_filing_change(
         SimpleNamespace(
             intent=Intent.FILING_CHANGE,
@@ -354,9 +371,9 @@ def test_run_filing_change_refuses_when_accessions_are_missing() -> None:
         ),
         Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
     )
-    assert result.renderer is RendererKind.REFUSE
-    assert "accession" in (result.message or "").lower()
-    assert not result.disclosure_changes
+    assert result.renderer is RendererKind.TABLE
+    assert result.disclosure_changes
+    assert any("latest 10-Q" in banner for banner in result.banners)
 
 
 def test_run_filing_change_orders_accessions_by_report_date() -> None:
@@ -389,7 +406,9 @@ def test_run_filing_change_uses_query_accessions_not_plan() -> None:
     assert {item.older_accession for item in result.disclosure_changes} == {OLDER}
 
 
-def test_run_filing_change_refuses_planner_accessions_absent_from_query() -> None:
+def test_run_filing_change_ignores_planner_accessions_absent_from_query() -> None:
+    # The model never picks filings: accessions only it proposed are dropped and
+    # deterministic code picks a year-apart pair instead, saying so.
     result = run_filing_change(
         SimpleNamespace(
             company="Microsoft",
@@ -400,8 +419,7 @@ def test_run_filing_change_refuses_planner_accessions_absent_from_query() -> Non
         Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
         query="What changed in Microsoft's MD&A",
     )
-    assert result.renderer is RendererKind.REFUSE
-    assert "accession" in (result.message or "").lower()
+    assert any("latest 10-Q" in banner for banner in result.banners)
 
 
 def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:

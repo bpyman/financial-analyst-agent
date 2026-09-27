@@ -34,6 +34,7 @@ CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "What was Microsoft's latest quarterly revenue?",
             "What is Apple's market cap?",
+            "How is Nvidia doing?",
         ),
     ),
     (
@@ -41,6 +42,7 @@ CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "Compare Eli Lilly and Merck net margins",
             "What are the top 10 tech companies and R&D spend for each?",
+            "Top 5 semiconductor companies by revenue",
         ),
     ),
     (

@@ -21,11 +21,15 @@ class PeriodSelection(BaseModel):
     ``latest_quarter`` keeps one-shot behaviour. ``last_n_quarters`` re-runs
     metrics across a window; ``report_dates`` (newest first) are concrete bounds
     when known, otherwise execution discovers them from the facts adapter.
+    ``company_report_dates`` holds another company's own quarter ends, keyed by
+    its casefolded query, for companies whose fiscal calendar differs from the
+    first company's (Walmart's April quarter beside Microsoft's March one).
     """
 
     kind: Literal["latest_quarter", "last_n_quarters"] = "latest_quarter"
     count: int | None = None
     report_dates: tuple[date, ...] = ()
+    company_report_dates: tuple[tuple[str, tuple[date, ...]], ...] = ()
 
     @model_validator(mode="after")
     def _check_window(self) -> PeriodSelection:
@@ -322,6 +326,37 @@ def _base_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     )
 
 
+def _quarter_phase(day: date) -> int:
+    """Month of the quarter grid a period end sits on (0, 1 or 2).
+
+    A 52/53-week quarter ends up to a week either side of a month end, so a
+    date in a month's first half counts as the previous month's end.
+    """
+    month = day.month if day.day >= 15 else day.month - 1
+    return month % 3
+
+
+def calendar_groups(spec: AnalysisSpec) -> list[tuple[tuple[str, ...], tuple[date, ...]]]:
+    """Named companies grouped by the quarter ends their window uses, in spec order.
+
+    A company with no dates of its own, or whose quarters end on the same
+    calendar grid as the first company's (Apple's March 28 beside Microsoft's
+    March 31), shares the window's ``report_dates`` so rows cover the same
+    periods; a company on another grid (Nvidia's April quarter) keeps its own.
+    """
+    reference = spec.periods.report_dates
+    own = dict(spec.periods.company_report_dates)
+    groups: dict[tuple[date, ...], list[str]] = {}
+    for company in spec.companies:
+        dates = own.get(company.query.casefold(), reference)
+        if not dates or not reference or _quarter_phase(dates[0]) == _quarter_phase(
+            reference[0]
+        ):
+            dates = reference
+        groups.setdefault(dates, []).append(company.query)
+    return [(tuple(queries), dates) for dates, queries in groups.items()]
+
+
 def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     """Compile a resolved spec into typed tasks without executing providers.
 
@@ -342,6 +377,22 @@ def compile_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     )
     if not expandable:
         return base
+    groups = calendar_groups(spec)
+    if len(groups) > 1:
+        # Each calendar asks for its own quarter ends; one shared date would
+        # miss every quarter of a company whose fiscal quarters end elsewhere.
+        return tuple(
+            CompiledTask(
+                kind="compare",
+                company_queries=queries,
+                metric=task.metric,
+                report_date=dates[index],
+            )
+            for index in range(spec.periods.count or 0)
+            for task in expandable
+            for queries, dates in groups
+            if index < len(dates)
+        )
     return tuple(
         task.model_copy(update={"report_date": report_date})
         for report_date in spec.periods.report_dates

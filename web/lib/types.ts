@@ -112,6 +112,10 @@ export interface Presentation {
   candidates: string[];
   /** The question a clarification asks; null unless candidates are offered. */
   clarify_prompt: string | null;
+  /** Next questions offered as one-tap chips, in words the planner reads. */
+  suggestions: string[];
+  /** "info" for a guide reply (help, greetings), "warning" for a refusal. */
+  message_tone: "info" | "warning";
 }
 
 export interface Turn {

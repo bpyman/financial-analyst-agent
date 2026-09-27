@@ -39,6 +39,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     SpecPatch,
     SpecRejection,
     apply_patch,
+    calendar_groups,
     compile_tasks,
     resolve_spec,
     validate_spec,
@@ -63,7 +64,9 @@ _LAST_N_QUARTERS = re.compile(
     re.IGNORECASE,
 )
 _YOY = re.compile(
-    r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year)\b",
+    r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year"
+    r"|(?:over|in) the (?:last|past) year|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
+    r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?)\b",
     re.IGNORECASE,
 )
 _STANDALONE_LOOKUP = re.compile(
@@ -139,6 +142,49 @@ def plan_to_spec_patch(plan: Any) -> SpecPatch:
     raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
 
 
+# Wording that asks for numbers without naming a metric. Each maps to the
+# metrics that answer it, so the window shows data instead of a refusal.
+OVERVIEW_METRICS: tuple[str, ...] = (
+    "revenue",
+    "net_income",
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+)
+_BIGGER = re.compile(r"\b(?:bigger|larger|biggest|largest|size)\b", re.IGNORECASE)
+_PROFITABLE = re.compile(r"\b(?:more|most|less|least)?\s*profitab(?:le|ility)\b", re.IGNORECASE)
+_GROWING = re.compile(
+    r"\b(?:grow(?:ing|n|th)?|grew|changed?|trend(?:ing)?|doing over time)\b", re.IGNORECASE
+)
+_OVERVIEW = re.compile(
+    r"\b(?:overview|snapshot|summary|profile|financials|fundamentals|numbers|"
+    r"key metrics|at a glance|tell me about|how (?:is|are|was)|how's|doing|results)\b",
+    re.IGNORECASE,
+)
+_OVERVIEW_MAX_WORDS = 3
+
+
+def implied_metrics(message: str) -> tuple[str, ...]:
+    """Metrics a question implies when it names none ("Which is bigger?")."""
+    if _BIGGER.search(message):
+        return ("market_cap", "revenue")
+    if _PROFITABLE.search(message):
+        return ("net_income", "net_margin")
+    if _GROWING.search(message):
+        return ("revenue",)
+    if _OVERVIEW.search(message) or len(message.split()) <= _OVERVIEW_MAX_WORDS:
+        return OVERVIEW_METRICS
+    return ()
+
+
+def _names_companies(patch: SpecPatch) -> bool:
+    return (
+        patch.ranked_request is None
+        and bool(patch.add_companies)
+        and all(company and company != "unknown" for company in patch.add_companies)
+    )
+
+
 def bind_metrics_from_message(
     patch: SpecPatch, message: str, *, intent: Intent | None = None
 ) -> tuple[SpecPatch, TurnResult | None]:
@@ -168,6 +214,10 @@ def bind_metrics_from_message(
     # No metric phrase in the analyst's wording.
     if patch.mode == "extend":
         return patch, None
+    guessed = [metric for metric in patch.add_metrics if metric in ALLOWED_METRICS]
+    implied = implied_metrics(message) if _names_companies(patch) and not guessed else ()
+    if implied:
+        return patch.model_copy(update={"add_metrics": implied}), None
     if patch.ranked_request is not None and not patch.add_metrics:
         return patch, None
     # Replace-mode metric question with an unknown phrase: refuse like execute_turn
@@ -383,34 +433,60 @@ def refine_patch_from_message(
     return patch
 
 
+def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
+    try:
+        return tuple(listing(company, limit=count))
+    except (AttributeError, TypeError):
+        return ()
+
+
 def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:
-    """Fill last_n_quarters report_dates from the facts port when the patch omitted them."""
-    if spec.periods.kind != "last_n_quarters" or spec.periods.report_dates:
+    """Fill last_n_quarters report dates from the facts port.
+
+    The first company's quarter ends become ``report_dates``; every other named
+    company gets its own, so a company on a different fiscal calendar is asked
+    for its quarters rather than the first company's. Dates already on the spec
+    are kept, so a follow-up that adds a company lists only that company.
+    """
+    if spec.periods.kind != "last_n_quarters":
         return spec
-    count = spec.periods.count or 1
     listing = getattr(runtime.facts, "list_quarterly_report_dates", None)
     if listing is None:
         return spec
-    company = ""
-    if spec.companies:
-        company = spec.companies[0].query
-    elif spec.constituents is not None and spec.constituents.members:
-        company = spec.constituents.members[0].query
-    if not company:
+    queries = [company.query for company in spec.companies]
+    if not queries and spec.constituents is not None and spec.constituents.members:
+        queries = [spec.constituents.members[0].query]
+    if not queries:
         return spec
-    try:
-        dates = tuple(listing(company, limit=count))
-    except (AttributeError, TypeError):
+    periods = spec.periods
+    listed_first = False
+    if not periods.report_dates:
+        dates = _listed_dates(listing, queries[0], periods.count or 1)
+        if not dates:
+            return spec
+        periods = periods.model_copy(update={"count": len(dates), "report_dates": dates})
+        listed_first = True
+    known = dict(periods.company_report_dates)
+    if listed_first and spec.companies:
+        known[queries[0].casefold()] = periods.report_dates
+    for company in spec.companies:
+        key = company.query.casefold()
+        if key in known:
+            continue
+        try:
+            dates = _listed_dates(listing, company.query, periods.count or 1)
+        except SessionQuotaError:
+            raise
+        except Exception:
+            # This company's cells report their own failure; it must not refuse
+            # the whole window for the companies that do resolve.
+            continue
+        if dates:
+            known[key] = dates
+    periods = periods.model_copy(update={"company_report_dates": tuple(known.items())})
+    if periods == spec.periods:
         return spec
-    if not dates:
-        return spec
-    return spec.model_copy(
-        update={
-            "periods": spec.periods.model_copy(
-                update={"count": len(dates), "report_dates": dates}
-            )
-        }
-    )
+    return spec.model_copy(update={"periods": periods})
 
 
 def is_filing_change_proposal(proposal: Any) -> bool:
@@ -507,6 +583,10 @@ RANKED_LATEST_QUARTER_BANNER = (
 FISCAL_Q4_GAP_BANNER = (
     "This window skips fiscal fourth quarters: companies report them in the 10-K, "
     "not a 10-Q, so they have no standalone quarterly fact."
+)
+CALENDARS_DIFFER_BANNER = (
+    "These companies' fiscal quarters end on different dates, "
+    "so each row shows the company's own quarter."
 )
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
 
@@ -786,6 +866,36 @@ def merge_task_results(
     )
 
 
+def _fill_identity(result: TurnResult, spec: AnalysisSpec) -> TurnResult:
+    """Give a failed cell the company's name and ticker, not the typed query.
+
+    A cell that never reached a filing carries only the query ("walmart");
+    the spec resolved that query to a snapshot company, so show that one.
+    """
+    known = {
+        company.query.casefold(): company
+        for company in spec.companies
+        if company.cik and company.name
+    }
+    if not known or not any(not row.cik for row in result.table_rows):
+        return result
+    # The name the company's other cells already show, so one table names it once.
+    shown = {row.cik: row.company_name for row in result.table_rows if row.cik}
+    rows = [
+        row.model_copy(
+            update={
+                "company_name": shown.get(match.cik, match.name),
+                "ticker": match.ticker,
+                "cik": match.cik,
+            }
+        )
+        if not row.cik and (match := known.get(row.company_name.casefold())) is not None
+        else row
+        for row in result.table_rows
+    ]
+    return result.model_copy(update={"table_rows": rows})
+
+
 def run_spec_turn_context(
     ctx: TurnContext, runtime: Runtime
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
@@ -906,7 +1016,12 @@ def run_spec_turn_context(
     )
     across = "across_periods" in spec.operations
     merged = merge_task_results(tasks, results, across_periods=across)
-    notes = _period_notes(message, spec)
+    merged = _fill_identity(merged, spec)
+    # Planner notes first: a corrected company name explains the whole answer.
+    planner_notes = [
+        note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
+    ]
+    notes = [*planner_notes, *_period_notes(message, spec)]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
     return merged, spec, patch
@@ -941,9 +1056,15 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         # compile_tasks does not expand ranked lists over a period window; say so
         # instead of showing a "Last N quarters" chip over one quarter of data.
         notes.append(RANKED_LATEST_QUARTER_BANNER)
-    dates = spec.periods.report_dates
+    windows = [spec.periods.report_dates]
+    if spec.periods.kind == "last_n_quarters" and spec.companies:
+        groups = calendar_groups(spec)
+        windows = [dates for _, dates in groups]
+        if len(groups) > 1:
+            notes.append(CALENDARS_DIFFER_BANNER)
     if any(
         not _adjacent_quarters(newer, older)
+        for dates in windows
         for newer, older in zip(dates, dates[1:], strict=False)
     ):
         notes.append(FISCAL_Q4_GAP_BANNER)

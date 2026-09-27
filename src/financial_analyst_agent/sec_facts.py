@@ -1,5 +1,6 @@
 """SEC fact lookup over an injectable live or recorded data source."""
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Protocol
 
@@ -63,7 +64,11 @@ class SecFactLookup:
         self,
         settings: Settings | None = None,
         client: SECDataSource | None = None,
+        display_names: Mapping[str, str] | None = None,
     ) -> None:
+        # SEC's ticker file titles companies "AMAZON COM INC"; the snapshot
+        # knows them as "Amazon.com, Inc.". Keyed by 10-digit CIK.
+        self._display_names: Mapping[str, str] = display_names or {}
         self._tickers: dict[str, Any] | None = None
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
@@ -147,7 +152,7 @@ class SecFactLookup:
                     filings,
                     parsed_metric,
                     _SUPPORTED_CURRENCY,
-                    resolved.name,
+                    self._display_names.get(resolved.cik, resolved.name),
                     ticker,
                     cik,
                     source_url_for_filing,
