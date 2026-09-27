@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
+from financial_analyst_agent.services.fiscal_periods import FiscalPeriod
 
 Q1 = date(2025, 3, 31)
 Q2 = date(2025, 6, 30)
@@ -43,6 +44,15 @@ class _PeriodFacts:
         dates = self.dates_by_company.get(company, FOUR_QUARTERS)
         return dates[:limit]
 
+    def fiscal_periods(self, company: str) -> tuple[FiscalPeriod, ...]:
+        # Calendar-year filers: each quarter end names its own calendar quarter.
+        return tuple(
+            FiscalPeriod(
+                end=end, fiscal_year=end.year, quarter=(end.month - 1) // 3 + 1, form="10-Q"
+            )
+            for end in self.dates_by_company.get(company, FOUR_QUARTERS)
+        )
+
     def get_financials(
         self, company: str, metric: str, *, report_date: date | None = None
     ) -> SimpleNamespace:
@@ -54,8 +64,10 @@ class _PeriodFacts:
                 f"no standalone quarter for {company} {metric} {report_date.isoformat()}"
             )
         value = self.values[(company, metric, report_date)]
-        start = date(report_date.year, report_date.month - 2, 1) if report_date.month > 2 else date(
-            report_date.year - 1, 10, 1
+        start = (
+            date(report_date.year, report_date.month - 2, 1)
+            if report_date.month > 2
+            else date(report_date.year - 1, 10, 1)
         )
         return SimpleNamespace(
             company_name=company,

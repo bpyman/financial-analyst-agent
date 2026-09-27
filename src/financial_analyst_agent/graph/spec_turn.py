@@ -35,6 +35,7 @@ from financial_analyst_agent.domain.errors import (
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
     CompiledTask,
+    NamedPeriodSpec,
     PeriodSelection,
     SpecPatch,
     SpecRejection,
@@ -44,7 +45,9 @@ from financial_analyst_agent.graph.analysis_spec import (
     resolve_spec,
     validate_spec,
 )
+from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
+from financial_analyst_agent.services.fiscal_periods import dates_for
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _ADD_EDIT = re.compile(
@@ -80,6 +83,33 @@ _STANDALONE_COMPARE = re.compile(
 _COMPARE_TO_ISSUER = re.compile(
     r"^\s*compare\s+to\s+(.+?)\s*$",
     re.IGNORECASE,
+)
+_YEAR = r"'?(?P<y>(?:19|20)\d{2}|\d{2})\b"
+_FISCAL_WORD = r"(?:(?:fy|fiscal(?:\s+year)?)\s*)?"
+_CALENDAR_WORD = r"(?P<cal>calendar\s+(?:year\s+)?|cy\s*)?"
+_QUARTER_WORDS = {
+    "first": 1,
+    "1st": 1,
+    "second": 2,
+    "2nd": 2,
+    "third": 3,
+    "3rd": 3,
+    "fourth": 4,
+    "4th": 4,
+}
+# Named periods, most specific first: "Q3 2024", "Q3 FY25", "2024 Q3", "third
+# quarter of fiscal 2024", "fiscal 2025", "FY24", "calendar 2025", "in 2024".
+_NAMED_PERIOD_PATTERNS = (
+    re.compile(rf"\b{_CALENDAR_WORD}q(?P<q>[1-4])\s*(?:of\s+)?{_FISCAL_WORD}{_YEAR}", re.I),
+    re.compile(rf"\b{_CALENDAR_WORD}(?P<y>(?:19|20)\d{{2}})\s*q(?P<q>[1-4])\b", re.I),
+    re.compile(
+        rf"\b{_CALENDAR_WORD}(?P<qw>first|second|third|fourth|1st|2nd|3rd|4th)\s+"
+        rf"(?:fiscal\s+)?quarter\s+(?:of\s+)?{_FISCAL_WORD}{_YEAR}",
+        re.I,
+    ),
+    re.compile(rf"\b(?P<cal>calendar(?:\s+year)?\s+|cy\s*){_YEAR}", re.I),
+    re.compile(rf"\b(?:fy|fiscal(?:\s+year)?)\s*{_YEAR}", re.I),
+    re.compile(r"\b(?:in|for|during)\s+(?P<y>(?:19|20)\d{2})\b", re.I),
 )
 _NUMBER_WORDS = {
     "two": 2,
@@ -263,10 +293,58 @@ def _period_count_from_match(match: re.Match[str] | None, *, yoy: bool) -> int:
     return count
 
 
+def parse_named_periods(message: str) -> tuple[NamedPeriodSpec, ...]:
+    """Every period the message names, in the order named, without repeats."""
+    found: list[tuple[int, NamedPeriodSpec]] = []
+    taken: list[tuple[int, int]] = []
+    for pattern in _NAMED_PERIOD_PATTERNS:
+        for match in pattern.finditer(message):
+            start, end = match.span()
+            if any(start < other_end and end > other_start for other_start, other_end in taken):
+                continue
+            groups = match.groupdict()
+            raw_year = groups["y"]
+            year = int(raw_year) + (2000 if len(raw_year) == 2 else 0)
+            quarter = None
+            if groups.get("q"):
+                quarter = int(groups["q"])
+            elif groups.get("qw"):
+                quarter = _QUARTER_WORDS[groups["qw"].casefold()]
+            taken.append((start, end))
+            found.append(
+                (
+                    start,
+                    NamedPeriodSpec(year=year, quarter=quarter, calendar=bool(groups.get("cal"))),
+                )
+            )
+    ordered = [period for _start, period in sorted(found, key=lambda item: item[0])]
+    return tuple(dict.fromkeys(ordered))
+
+
+def _with_year_earlier(named: tuple[NamedPeriodSpec, ...]) -> tuple[NamedPeriodSpec, ...]:
+    """Add the same period a year earlier, so a year-over-year change has a base."""
+    earlier = [period.model_copy(update={"year": period.year - 1}) for period in named]
+    return tuple(dict.fromkeys([*named, *earlier]))
+
+
 def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     """Period windows come from the analyst's wording, not a model slug."""
     match = _LAST_N_QUARTERS.search(message)
     yoy = _YOY.search(message) is not None
+    named = parse_named_periods(message)
+    if named:
+        operations = patch.add_operations
+        quarters = [period for period in named if period.quarter is not None]
+        if yoy:
+            named = _with_year_earlier(named)
+        if (yoy or len(quarters) >= 2) and "across_periods" not in operations:
+            operations = (*operations, "across_periods")
+        return patch.model_copy(
+            update={
+                "set_periods": PeriodSelection(kind="named", named=named),
+                "add_operations": operations,
+            }
+        )
     if match is None and not yoy:
         return patch
     operations = patch.add_operations
@@ -448,6 +526,8 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
     for its quarters rather than the first company's. Dates already on the spec
     are kept, so a follow-up that adds a company lists only that company.
     """
+    if spec.periods.kind == "named":
+        return _materialize_named_periods(spec, runtime)
     if spec.periods.kind != "last_n_quarters":
         return spec
     listing = getattr(runtime.facts, "list_quarterly_report_dates", None)
@@ -487,6 +567,57 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
     if periods == spec.periods:
         return spec
     return spec.model_copy(update={"periods": periods})
+
+
+def _named_dates(periods: Any, named: tuple[NamedPeriodSpec, ...]) -> tuple[date, ...]:
+    matched = {
+        day
+        for spec in named
+        for day in dates_for(tuple(periods), spec.year, spec.quarter, calendar=spec.calendar)
+    }
+    return tuple(sorted(matched, reverse=True))
+
+
+def _materialize_named_periods(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:
+    """Each company's own quarter ends for the named periods (ADR 0007).
+
+    "Q3 FY2024" is Apple's quarter ended June 29 and Microsoft's ended March 31;
+    each company's filings say which is which. A company without a filing for
+    the period gets no cells, and the turn says so.
+    """
+    lister = getattr(runtime.facts, "fiscal_periods", None)
+    if lister is None:
+        return spec
+    periods = spec.periods
+    known = dict(periods.company_report_dates)
+    for company in spec.companies:
+        key = company.query.casefold()
+        if key in known:
+            continue
+        try:
+            listed = lister(company.query)
+        except SessionQuotaError:
+            raise
+        except Exception:
+            # This company's cells report their own failure.
+            continue
+        known[key] = _named_dates(listed, periods.named)
+    first = next(
+        (known[company.query.casefold()] for company in spec.companies
+         if known.get(company.query.casefold())),
+        (),
+    )
+    longest = max((len(dates) for dates in known.values()), default=0)
+    updated = periods.model_copy(
+        update={
+            "report_dates": first,
+            "count": longest or None,
+            "company_report_dates": tuple(known.items()),
+        }
+    )
+    if updated == periods:
+        return spec
+    return spec.model_copy(update={"periods": updated})
 
 
 def is_filing_change_proposal(proposal: Any) -> bool:
@@ -983,6 +1114,21 @@ def run_spec_turn_context(
             None,
             patch,
         )
+    if spec.periods.kind == "named" and spec.companies and not spec.periods.report_dates:
+        return (
+            _rejection_result(
+                SpecRejection(
+                    code="empty_spec",
+                    message=(
+                        f"No filings found for {spec.periods.label}. Periods are fiscal "
+                        "years as each company names them; filings older than about "
+                        "ten years may not be available."
+                    ),
+                )
+            ),
+            None,
+            patch,
+        )
     if spec.periods.kind == "last_n_quarters" and not spec.periods.report_dates:
         return (
             _rejection_result(
@@ -1038,6 +1184,43 @@ _SPECIFIC_PERIOD = re.compile(
 )
 
 
+def _short_date(day: date) -> str:
+    return f"{day:%b} {day.day}, {day.year}"
+
+
+def _named_period_notes(spec: AnalysisSpec) -> list[str]:
+    """Say which quarter ends a named fiscal period stands for, and who has none."""
+    notes: list[str] = []
+    periods = spec.periods
+    own = dict(periods.company_report_dates)
+    label = periods.label
+    missing = [
+        company.name for company in spec.companies if not own.get(company.query.casefold())
+    ]
+    single = len(periods.named) == 1 and periods.named[0].quarter is not None
+    dated = [company for company in spec.companies if own.get(company.query.casefold())]
+    if single and not periods.named[0].calendar and len(dated) == 1:
+        company = dated[0]
+        notes.append(
+            f"{short_name(company.name) or company.query}'s {label} ended "
+            f"{_short_date(own[company.query.casefold()][0])}."
+        )
+    elif single and not periods.named[0].calendar and dated:
+        ends = [
+            f"{short_name(company.name) or company.query}'s ended "
+            f"{_short_date(own[company.query.casefold()][0])}"
+            for company in spec.companies
+            if own.get(company.query.casefold())
+        ]
+        if ends:
+            notes.append(
+                f"{label} is each company's own fiscal quarter: " + "; ".join(ends) + "."
+            )
+    if missing and len(missing) < len(spec.companies):
+        notes.append(f"No filing for {label} from {', '.join(missing)}.")
+    return notes
+
+
 def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
     """Say plainly when the window shown is not the one the analyst asked for."""
     notes: list[str] = []
@@ -1047,11 +1230,16 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         else "the latest quarter"
     )
     named = _SPECIFIC_PERIOD.search(message)
-    if named is not None:
+    if named is not None and spec.periods.kind != "named":
         notes.append(
-            f"Specific periods such as “{named.group(0)}” are not supported yet; "
-            f"this shows {window}."
+            f"I couldn't read “{named.group(0)}” as a period; this shows {window}. "
+            "Try “Q3 2024” or “fiscal 2025”."
         )
+    if spec.periods.kind == "named":
+        notes.extend(_named_period_notes(spec))
+        if spec.constituents is not None:
+            notes.append(RANKED_LATEST_QUARTER_BANNER)
+        return notes
     if spec.constituents is not None and spec.periods.kind == "last_n_quarters":
         # compile_tasks does not expand ranked lists over a period window; say so
         # instead of showing a "Last N quarters" chip over one quarter of data.

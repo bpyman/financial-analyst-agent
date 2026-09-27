@@ -88,6 +88,24 @@ def _select_or_derive(
     *,
     report_date: date | None,
 ) -> FinancialFact:
+    fact = _select_or_derive_in_unit(
+        records, filings, metric, unit, company_name, ticker, cik, report_date=report_date
+    )
+    # EPS is filtered by its "USD/shares" unit but is still an amount in dollars.
+    return fact if fact.currency == "USD" else fact.model_copy(update={"currency": "USD"})
+
+
+def _select_or_derive_in_unit(
+    records: list[FactRecord],
+    filings: list[Filing],
+    metric: Metric,
+    unit: str,
+    company_name: str,
+    ticker: str,
+    cik: str,
+    *,
+    report_date: date | None,
+) -> FinancialFact:
     """A reported quarter when a filing has one, else a derived quarter (ADR 0007)."""
     by_accession = {filing.accession_number: filing for filing in filings}
 

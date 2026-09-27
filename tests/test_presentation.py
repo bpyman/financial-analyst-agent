@@ -194,7 +194,7 @@ def test_present_lookup_uses_fact_card_not_table() -> None:
     assert card.ticker == "GOOG"
     assert card.metric_header == "Net income"
     assert card.amount == "$62.58 B"
-    assert card.period_label == "Latest standalone quarter · Jan 1, 2026 – Mar 31, 2026"
+    assert card.period_label == "Standalone quarter · Jan 1, 2026 – Mar 31, 2026"
     assert card.form == "10-Q"
     assert card.accession_number == "0001652044-26-000048"
     assert card.concept == "NetIncomeLoss"

@@ -8,7 +8,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import PER_SHARE_METRICS
+from financial_analyst_agent.services.fact_selector import (
+    FOURTH_QUARTER_LABEL,
+    YEAR_TO_DATE_LABEL,
+)
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
+from financial_analyst_agent.services.fiscal_periods import GROSS_PROFIT_LABEL
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
     EXPLORATORY_RESEARCH_BANNER,
@@ -83,13 +88,17 @@ _FIELD_LABELS = {
     "capital_expenditure": "Capital expenditure",
     "free_cash_flow": "Free cash flow",
 }
-# Marks a derived quarter in a table cell; the banner below explains it.
+# Marks a derived value in a table cell; a banner says how it was derived.
 DERIVED_MARK = " †"
-DERIVED_BANNER = (
-    "† Derived quarter: the filings report this amount only for a longer period, "
-    "so it is the longer period minus the shorter one (for a fiscal fourth quarter, "
-    "the 10-K's full year minus the 10-Q's nine months). Both filings are in the evidence."
-)
+_DERIVED_NOTES = {
+    FOURTH_QUARTER_LABEL: (
+        "a fiscal fourth quarter is the 10-K's full year minus the 10-Q's nine months"
+    ),
+    YEAR_TO_DATE_LABEL: (
+        "a cash-flow quarter is the 10-Q's year to date minus the previous quarter's"
+    ),
+    GROSS_PROFIT_LABEL: "gross profit is revenue minus cost of revenue",
+}
 
 
 def format_usd(value: Decimal) -> str:
@@ -166,6 +175,25 @@ def format_metric_value(metric: str, value: Decimal | None) -> str:
     if metric in PER_SHARE_METRICS:
         return format_per_share(value)
     return format_usd(value)
+
+
+def derived_banner(rows: list[TableRow]) -> str:
+    """One line on how the table's derived values were computed, or ""."""
+    labels: list[str] = []
+    for row in rows:
+        if row.value is None:
+            continue
+        for label in [row.derivation, *(component.derivation for component in row.components)]:
+            if label and label not in labels:
+                labels.append(label)
+    if not labels:
+        return ""
+    notes = [_DERIVED_NOTES.get(label, label) for label in labels]
+    return (
+        "† Derived from reported figures because the filings do not report it on its own: "
+        + "; ".join(notes)
+        + ". Both source facts are in the evidence."
+    )
 
 
 def is_derived(row: TableRow) -> bool:
@@ -763,8 +791,9 @@ def present_turn(result: TurnResult) -> Presentation:
         for item in result.disclosure_changes
     )
     banners = [_format_banner(banner) for banner in result.banners]
-    if any(is_derived(row) for row in result.table_rows if row.value is not None):
-        banners.append(DERIVED_BANNER)
+    derived = derived_banner(result.table_rows)
+    if derived:
+        banners.append(derived)
     return Presentation(
         intent=result.intent.value,
         intent_label=(
@@ -884,7 +913,7 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
         form = form or first.form
         accession_number = accession_number or first.accession_number
         source_url = source_url or first.source_url
-    lead = "Derived quarter †" if is_derived(row) else "Latest standalone quarter"
+    lead = "Derived †" if is_derived(row) else "Standalone quarter"
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,

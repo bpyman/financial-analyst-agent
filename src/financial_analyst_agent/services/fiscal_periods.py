@@ -102,37 +102,25 @@ def periods_from_filings(
     return tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True))
 
 
-@dataclass(frozen=True)
-class NamedPeriod:
-    """A period the analyst named: fiscal (default) or calendar, quarter or whole year."""
-
-    year: int
-    quarter: int | None = None
-    calendar: bool = False
-
-    def label(self) -> str:
-        if self.calendar:
-            return f"calendar Q{self.quarter} {self.year}" if self.quarter else str(self.year)
-        return f"Q{self.quarter} FY{self.year}" if self.quarter else f"fiscal {self.year}"
-
-
 def calendar_quarter(end: date) -> tuple[int, int]:
     """(year, quarter) holding the middle of the quarter that ends on ``end``."""
     middle = end - timedelta(days=45)
     return middle.year, (middle.month - 1) // 3 + 1
 
 
-def dates_for(periods: tuple[FiscalPeriod, ...], named: NamedPeriod) -> tuple[date, ...]:
-    """Newest-first quarter ends a named period covers for one company."""
+def dates_for(
+    periods: tuple[FiscalPeriod, ...], year: int, quarter: int | None, *, calendar: bool
+) -> tuple[date, ...]:
+    """Newest-first quarter ends a named year (or one of its quarters) covers."""
     matched: list[date] = []
     for period in periods:
-        if named.calendar:
-            year, quarter = calendar_quarter(period.end)
+        if calendar:
+            period_year, period_quarter = calendar_quarter(period.end)
         else:
             if period.fiscal_year is None or period.quarter is None:
                 continue
-            year, quarter = period.fiscal_year, period.quarter
-        if year == named.year and (named.quarter is None or quarter == named.quarter):
+            period_year, period_quarter = period.fiscal_year, period.quarter
+        if period_year == year and (quarter is None or period_quarter == quarter):
             matched.append(period.end)
     return tuple(matched)
 
