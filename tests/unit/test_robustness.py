@@ -162,3 +162,18 @@ def test_dated_lookup_error_is_not_retried_as_latest_quarter() -> None:
         cached.get_financials("Apple", "revenue", report_date=date(2025, 6, 28))
 
     assert calls == [date(2025, 6, 28)]
+
+
+def test_evidence_cache_passes_the_snapshot_name_through() -> None:
+    class _Named:
+        def display_name(self, cik: str, fallback: str) -> str:
+            return "Pfizer Inc." if cik == "0000078003" else fallback
+
+    class _Bare:
+        pass
+
+    named = EvidenceCachedFacts(_Named(), InMemoryEvidenceStore(), prior_ids=frozenset())
+    bare = EvidenceCachedFacts(_Bare(), InMemoryEvidenceStore(), prior_ids=frozenset())
+
+    assert named.display_name("0000078003", "PFIZER INC") == "Pfizer Inc."
+    assert bare.display_name("0000078003", "PFIZER INC") == "PFIZER INC"
