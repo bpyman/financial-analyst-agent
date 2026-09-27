@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-09-26T21:03:37.822811Z",
+  "as_of": "2026-09-27T10:54:00.695314Z",
   "source": "fmp_universe_snapshot",
   "companies": [
     {
@@ -150,10 +150,10 @@
     {
       "cik": "0001067983",
       "name": "Berkshire Hathaway Inc.",
-      "ticker": "BRK-A",
+      "ticker": "BRK-B",
       "sector": "Financial Services",
       "exchange": "NYSE",
-      "market_cap": "1090881812188",
+      "market_cap": "1090246355201",
       "is_etf": false,
       "is_fund": false,
       "industry": "Insurance - Diversified"
@@ -2415,6 +2415,17 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Chemicals - Specialty"
+    },
+    {
+      "cik": "0001166691",
+      "name": "Comcast Corporation",
+      "ticker": "CMCSA",
+      "sector": "Communication Services",
+      "exchange": "NASDAQ",
+      "market_cap": "77750628191",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Telecommunications Services"
     },
     {
       "cik": "0001437107",
@@ -5304,6 +5315,17 @@
       "industry": "Banks - Regional"
     },
     {
+      "cik": "0001754301",
+      "name": "Fox Corporation",
+      "ticker": "FOXA",
+      "sector": "Communication Services",
+      "exchange": "NASDAQ",
+      "market_cap": "27656500448",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Entertainment"
+    },
+    {
       "cik": "0000029534",
       "name": "Dollar General Corporation",
       "ticker": "DG",
@@ -5771,17 +5793,6 @@
       "industry": "Restaurants"
     },
     {
-      "cik": "0001754301",
-      "name": "Fox Corporation",
-      "ticker": "FOX",
-      "sector": "Communication Services",
-      "exchange": "NASDAQ",
-      "market_cap": "24793063823",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Entertainment"
-    },
-    {
       "cik": "0000798354",
       "name": "Fiserv, Inc.",
       "ticker": "FISV",
@@ -5969,17 +5980,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Financial - Credit Services"
-    },
-    {
-      "cik": "0001560385",
-      "name": "Liberty Media Corporation",
-      "ticker": "FWONK",
-      "sector": "Communication Services",
-      "exchange": "NASDAQ",
-      "market_cap": "23709807264",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Entertainment"
     },
     {
       "cik": "0001967680",
@@ -6294,6 +6294,17 @@
       "is_fund": false,
       "industry": "Biotechnology",
       "files_quarterly": false
+    },
+    {
+      "cik": "0001560385",
+      "name": "Formula One Group",
+      "ticker": "FWONA",
+      "sector": "Communication Services",
+      "exchange": "NASDAQ",
+      "market_cap": "21667370638",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Entertainment"
     },
     {
       "cik": "0000060086",
@@ -7199,17 +7210,6 @@
       "industry": "Consulting Services"
     },
     {
-      "cik": "0001564708",
-      "name": "News Corporation",
-      "ticker": "NWS",
-      "sector": "Communication Services",
-      "exchange": "NASDAQ",
-      "market_cap": "17379871228",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Publishing"
-    },
-    {
       "cik": "0001043277",
       "name": "C.H. Robinson Worldwide, Inc.",
       "ticker": "CHRW",
@@ -7579,6 +7579,17 @@
       "files_quarterly": false
     },
     {
+      "cik": "0001564708",
+      "name": "News Corporation",
+      "ticker": "NWSA",
+      "sector": "Communication Services",
+      "exchange": "NASDAQ",
+      "market_cap": "15992345461",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Publishing"
+    },
+    {
       "cik": "0000857005",
       "name": "PTC Inc.",
       "ticker": "PTC",
@@ -7924,17 +7935,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Oil & Gas Midstream"
-    },
-    {
-      "cik": "0001166691",
-      "name": "Comcast Holdings Corp.",
-      "ticker": "CCZ",
-      "sector": "Communication Services",
-      "exchange": "NYSE",
-      "market_cap": "14712388772",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Telecommunications Services"
     },
     {
       "cik": "0001333986",
@@ -12323,6 +12323,17 @@
       "industry": "Security & Protection Services"
     },
     {
+      "cik": "0001617640",
+      "name": "Zillow Group, Inc. Class A",
+      "ticker": "ZG",
+      "sector": "Communication Services",
+      "exchange": "NASDAQ",
+      "market_cap": "7040679744",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Internet Content & Information"
+    },
+    {
       "cik": "0000785786",
       "name": "Plexus Corp.",
       "ticker": "PLXS",
@@ -12544,17 +12555,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Oil & Gas Drilling"
-    },
-    {
-      "cik": "0001617640",
-      "name": "Zillow Group, Inc. Class C",
-      "ticker": "Z",
-      "sector": "Communication Services",
-      "exchange": "NASDAQ",
-      "market_cap": "6831622018",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Internet Content & Information"
     },
     {
       "cik": "0001718512",
@@ -20946,17 +20946,6 @@
       "industry": "Medical - Healthcare Information Services"
     },
     {
-      "cik": "0001504619",
-      "name": "PennantPark Floating Rate Capital Ltd.",
-      "ticker": "PFLA",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "2480829550",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001801169",
       "name": "Opendoor Technologies Inc.",
       "ticker": "OPEN",
@@ -23085,6 +23074,17 @@
       "industry": "Biotechnology"
     },
     {
+      "cik": "0001336917",
+      "name": "Under Armour, Inc.",
+      "ticker": "UAA",
+      "sector": "Consumer Cyclical",
+      "exchange": "NYSE",
+      "market_cap": "1889797129",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Apparel - Manufacturers"
+    },
+    {
       "cik": "0001504461",
       "name": "NGL Energy Partners LP",
       "ticker": "NGL",
@@ -23183,17 +23183,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Travel Services"
-    },
-    {
-      "cik": "0001336917",
-      "name": "Under Armour, Inc.",
-      "ticker": "UA",
-      "sector": "Consumer Cyclical",
-      "exchange": "NYSE",
-      "market_cap": "1864201682",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Apparel - Manufacturers"
     },
     {
       "cik": "0001158895",
@@ -27696,17 +27685,6 @@
       "industry": "Industrial - Machinery"
     },
     {
-      "cik": "0001412100",
-      "name": "Maiden Holdings North America, Ltd.",
-      "ticker": "MHNC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "1015990250",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Insurance - Life"
-    },
-    {
       "cik": "0000748268",
       "name": "Red Cat Holdings, Inc.",
       "ticker": "RCAT",
@@ -30803,6 +30781,17 @@
       "industry": "Independent Power Producers"
     },
     {
+      "cik": "0001504619",
+      "name": "PennantPark Floating Rate Capital Ltd.",
+      "ticker": "PFLT",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "693533093",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Asset Management"
+    },
+    {
       "cik": "0000076282",
       "name": "Park-Ohio Holdings Corp.",
       "ticker": "PKOH",
@@ -31537,17 +31526,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Electrical Equipment & Parts"
-    },
-    {
-      "cik": "0001766478",
-      "name": "Angel Oak Mortgage REIT, Inc. 9",
-      "ticker": "AOMN",
-      "sector": "Real Estate",
-      "exchange": "NYSE",
-      "market_cap": "625857243",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "REIT - Mortgage"
     },
     {
       "cik": "0001789940",
@@ -35497,17 +35475,6 @@
       "industry": "Conglomerates"
     },
     {
-      "cik": "0002076163",
-      "name": "ProCap Financial, Inc.",
-      "ticker": "BRR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "368634243",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Financial - Capital Markets"
-    },
-    {
       "cik": "0001211583",
       "name": "Fennec Pharmaceuticals Inc.",
       "ticker": "FENC",
@@ -35773,6 +35740,17 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Travel Lodging"
+    },
+    {
+      "cik": "0002076163",
+      "name": "ProCap Financial, Inc. Common Stock",
+      "ticker": "SVIA",
+      "sector": "Financial Services",
+      "exchange": "NASDAQ",
+      "market_cap": "355048214",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Financial - Capital Markets"
     },
     {
       "cik": "0001338940",
@@ -36578,17 +36556,6 @@
       "is_fund": false,
       "industry": "Electrical Equipment & Parts",
       "files_quarterly": false
-    },
-    {
-      "cik": "0001377936",
-      "name": "Saratoga Investment Corp.",
-      "ticker": "SAY",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "314273330",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0002007596",
@@ -37479,6 +37446,17 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Apparel - Retail"
+    },
+    {
+      "cik": "0001377936",
+      "name": "Saratoga Investment Corp.",
+      "ticker": "SAR",
+      "sector": "Financial Services",
+      "exchange": "NYSE",
+      "market_cap": "279074383",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Asset Management"
     },
     {
       "cik": "0001625641",
@@ -40077,6 +40055,17 @@
       "industry": "Insurance - Specialty"
     },
     {
+      "cik": "0001766478",
+      "name": "Angel Oak Mortgage, Inc.",
+      "ticker": "AOMR",
+      "sector": "Real Estate",
+      "exchange": "NYSE",
+      "market_cap": "188105585",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "REIT - Mortgage"
+    },
+    {
       "cik": "0001605301",
       "name": "CB Financial Services, Inc.",
       "ticker": "CBFV",
@@ -40945,17 +40934,6 @@
       "files_quarterly": false
     },
     {
-      "cik": "0001505952",
-      "name": "Domo, Inc.",
-      "ticker": "DOMO",
-      "sector": "Technology",
-      "exchange": "NASDAQ",
-      "market_cap": "155392375",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Software - Application"
-    },
-    {
       "cik": "0001856365",
       "name": "FinWise Bancorp",
       "ticker": "FINW",
@@ -41157,6 +41135,17 @@
       "is_fund": false,
       "industry": "Biotechnology",
       "files_quarterly": false
+    },
+    {
+      "cik": "0001505952",
+      "name": "Huckleberry.ai, Inc. Class B",
+      "ticker": "HUCK",
+      "sector": "Technology",
+      "exchange": "NASDAQ",
+      "market_cap": "147513325",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Software - Application"
     },
     {
       "cik": "0000704440",
@@ -46736,6 +46725,17 @@
       "files_quarterly": false
     },
     {
+      "cik": "0001846416",
+      "name": "ONE Nuclear Energy Inc.",
+      "ticker": "ONEN",
+      "sector": "Utilities",
+      "exchange": "NASDAQ",
+      "market_cap": "49225000",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Independent Power Producers"
+    },
+    {
       "cik": "0001720250",
       "name": "Kandi Technologies Group, Inc.",
       "ticker": "KNDI",
@@ -50070,6 +50070,17 @@
       "files_quarterly": false
     },
     {
+      "cik": "0001897245",
+      "name": "EnerSyn Global Inc.",
+      "ticker": "ESYN",
+      "sector": "Consumer Cyclical",
+      "exchange": "NASDAQ",
+      "market_cap": "19788800",
+      "is_etf": false,
+      "is_fund": false,
+      "industry": "Restaurants"
+    },
+    {
       "cik": "0001066764",
       "name": "Bimergen Energy Corporation",
       "ticker": "BESS",
@@ -51629,17 +51640,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Biotechnology"
-    },
-    {
-      "cik": "0001376986",
-      "name": "Tennessee Valley Authority",
-      "ticker": "TVC",
-      "sector": "Utilities",
-      "exchange": "NYSE",
-      "market_cap": "12495000",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Diversified Utilities"
     },
     {
       "cik": "0001826660",
