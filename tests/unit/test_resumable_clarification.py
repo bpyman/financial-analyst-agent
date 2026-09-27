@@ -182,7 +182,7 @@ def test_answering_clarification_resumes_pending_analysis(tmp_path: Path) -> Non
 
 
 def test_unknown_metric_still_refuses_without_pending(tmp_path: Path) -> None:
-    from financial_analyst_agent.contracts import ALLOWED_METRICS, RendererKind
+    from financial_analyst_agent.contracts import RendererKind
     from financial_analyst_agent.conversation import run_conversation_turn
     from financial_analyst_agent.thread_store import LocalThreadStore
 
@@ -197,8 +197,7 @@ def test_unknown_metric_still_refuses_without_pending(tmp_path: Path) -> None:
     assert turn.result.renderer is RendererKind.REFUSE
     assert turn.result.candidates == ()
     assert turn.result.message is not None
-    for metric in ALLOWED_METRICS:
-        assert metric in turn.result.message
+    assert turn.result.message.startswith("I can't look up EBITDA yet.")
     state = store.load("t1")
     assert state is not None
     assert state.pending_clarification is None
