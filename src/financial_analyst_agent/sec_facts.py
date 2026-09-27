@@ -46,8 +46,9 @@ from financial_analyst_agent.services.metric_catalog import (
 from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
 
 # How many periods back "latest" may step when SEC has not yet added the
-# newest filing's numbers to companyfacts.
-_LATEST_FALLBACK = 2
+# newest filings' numbers to companyfacts. A year: Citigroup's companyfacts
+# lagged two 10-Qs in September 2026.
+_LATEST_FALLBACK = 4
 
 
 class SECDataSource(Protocol):
@@ -285,7 +286,7 @@ class SecFactLookup:
                 targets = list(list_quarterly_report_dates(filings, limit=_LATEST_FALLBACK))
             for period in targets:
                 try:
-                    return self._select_with_fallbacks(
+                    fact = self._select_with_fallbacks(
                         company_facts_payload,
                         records,
                         filings,
@@ -304,6 +305,10 @@ class SecFactLookup:
                         break
                     # SEC has not yet added the newest filing to companyfacts;
                     # "latest" is then the newest quarter it has.
+                    continue
+                if period is not None and period != targets[0]:
+                    fact = fact.model_copy(update={"newer_filing_end": targets[0]})
+                return fact
         if isinstance(last_unsupported, FilingNotFoundError):
             raise UnsupportedQuarterlyFactError(
                 str(last_unsupported),

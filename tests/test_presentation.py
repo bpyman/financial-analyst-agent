@@ -1322,3 +1322,29 @@ def test_rank_and_lookup_table_carries_metric_values_as_numbers_for_sorting() ->
     assert sorted(values, reverse=True) == [11_730_000_000.0, 8_920_000_000.0, 2_530_000_000.0]
     rank_index = table.keys.index("rank")
     assert [numbers[rank_index] for numbers in table.numbers] == [3, 2, 8]
+
+
+def test_a_quarter_sec_has_not_added_yet_is_named() -> None:
+    from financial_analyst_agent.presentation import newer_filing_banner
+
+    def row(name: str, pending: date | None) -> TableRow:
+        return TableRow(
+            company_name=name,
+            ticker="C",
+            cik="0000831001",
+            metric="net_income",
+            value=Decimal("2471000000"),
+            newer_filing_end=pending,
+        )
+
+    one = newer_filing_banner([row("Citigroup Inc.", date(2026, 6, 30)), row("Apple Inc.", None)])
+    two = newer_filing_banner(
+        [row("Citigroup Inc.", date(2026, 6, 30)), row("Abbott Laboratories", date(2026, 6, 30))]
+    )
+
+    assert one == (
+        "SEC's structured data does not yet include Citigroup's filing for the quarter ended "
+        "Jun 30, 2026, so Citigroup is shown for the newest quarter SEC has."
+    )
+    assert "Citigroup (quarter ended Jun 30, 2026) and Abbott Laboratories" in two
+    assert newer_filing_banner([row("Apple Inc.", None)]) == ""

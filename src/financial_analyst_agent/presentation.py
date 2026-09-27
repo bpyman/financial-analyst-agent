@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import PER_SHARE_METRICS
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
+from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     YEAR_TO_DATE_LABEL,
@@ -195,6 +196,32 @@ def derived_banner(rows: list[TableRow]) -> str:
         + "; ".join(notes)
         + ". Both source facts are in the evidence."
     )
+
+
+def newer_filing_banner(rows: list[TableRow]) -> str:
+    """Say which companies' newest filed quarter SEC's structured data still lacks, or ""."""
+    pending: dict[str, date] = {}
+    for row in rows:
+        if row.value is not None and row.newer_filing_end is not None:
+            name = short_name(row.company_name) or row.ticker
+            pending.setdefault(name, row.newer_filing_end)
+    if not pending:
+        return ""
+    if len(pending) == 1:
+        ((name, end),) = pending.items()
+        return (
+            f"SEC's structured data does not yet include {name}'s filing for the quarter "
+            f"ended {_date(end)}, so {name} is shown for the newest quarter SEC has."
+        )
+    filings = [f"{name} (quarter ended {_date(end)})" for name, end in pending.items()]
+    return (
+        "SEC's structured data does not yet include the newest filings from "
+        f"{_join_words(filings)}, so those companies are shown for the newest quarter SEC has."
+    )
+
+
+def _date(day: date) -> str:
+    return f"{day:%b} {day.day}, {day.year}"
 
 
 def is_derived(row: TableRow) -> bool:
@@ -812,6 +839,9 @@ def present_turn(result: TurnResult) -> Presentation:
     derived = derived_banner(result.table_rows)
     if derived:
         banners.append(derived)
+    newer = newer_filing_banner(result.table_rows)
+    if newer:
+        banners.append(newer)
     return Presentation(
         intent=result.intent.value,
         intent_label=(

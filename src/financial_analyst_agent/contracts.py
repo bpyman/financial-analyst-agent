@@ -223,6 +223,8 @@ class TableRow(BaseModel):
     # A derived quarter (ADR 0007): how it was computed, and the facts it came from.
     derivation: str | None = None
     derived_from: list[ComponentProvenance] = Field(default_factory=list)
+    # A newer quarter is filed but not yet in SEC's structured data (see FinancialFact).
+    newer_filing_end: date | None = None
 
 
 class DisclosureChange(BaseModel):
