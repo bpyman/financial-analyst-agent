@@ -113,6 +113,44 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
   await expect(analyst.conversation()).toBeHidden();
 });
 
+test("a reload keeps the window from starting another thread until the saved one is back", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Verify a quarterly fact");
+  const savedId = await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"));
+  expect(savedId).toBeTruthy();
+
+  let releaseThread = () => {};
+  const threadHeld = new Promise<void>((resolve) => (releaseThread = resolve));
+  await page.route(/\/api\/threads\/[0-9a-f-]+$/, async (route) => {
+    if (route.request().method() === "GET") await threadHeld;
+    await route.continue();
+  });
+  const created: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/threads") {
+      created.push(request.url());
+    }
+  });
+  await page.reload();
+
+  const loading = page.getByRole("button", { name: "Loading your thread" });
+  await expect(loading).toBeDisabled();
+  const composer = page.getByRole("textbox", { name: "Ask a question" });
+  await composer.fill("What was Apple's latest quarterly revenue?");
+  await composer.press("Enter");
+  await expect(loading).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start over" })).toBeDisabled();
+
+  releaseThread();
+  await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
+  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Start over" })).toBeEnabled();
+  expect(created).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"))).toBe(savedId);
+});
+
 test("the storefront reports the deployment's runtime and asks for that runtime's snapshot", async ({ page }) => {
   const asked = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/meta");
   await new Analyst(page).open();

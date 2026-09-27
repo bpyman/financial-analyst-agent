@@ -5,6 +5,7 @@ import {
   LOCKED_LIVE_NOTICE,
   THREAD_STORAGE_KEY,
   askOnThread,
+  isCurrentThread,
   memoryStore,
   resumeThread,
   startOverIfLocked,
@@ -89,6 +90,51 @@ describe("resumeThread", () => {
     const outage = new ApiError("The analysis service is unreachable.", 502);
     await expect(resumeThread(fakeApi({ "t-1": outage }), store)).rejects.toBe(outage);
     expect(store.getItem(THREAD_STORAGE_KEY)).toBe("t-1");
+  });
+
+  it("drops a restoration that lands after the analyst started another thread", async () => {
+    const api = fakeApi({ "t-1": view({ thread_id: "t-1", turn_count: 3 }) });
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    api.getThread.mockImplementationOnce(async (id) => {
+      await held;
+      return view({ thread_id: id, turn_count: 3 });
+    });
+
+    const resuming = resumeThread(api, store);
+    const started = await startThread(api, store, "recorded", "t-1");
+    release();
+
+    expect(await resuming).toBeNull();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started.view.thread_id);
+  });
+
+  it("does not forget the new thread when the one it replaced comes back expired", async () => {
+    const api = fakeApi();
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "gone" });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    api.getThread.mockImplementationOnce(async () => {
+      await held;
+      throw new ApiError("Unknown thread.", 404);
+    });
+
+    const resuming = resumeThread(api, store);
+    store.setItem(THREAD_STORAGE_KEY, "new-1");
+    release();
+
+    expect(await resuming).toBeNull();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe("new-1");
+  });
+});
+
+describe("isCurrentThread", () => {
+  it("is true only for the thread this browser holds", () => {
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-2" });
+    expect(isCurrentThread(store, "t-2")).toBe(true);
+    expect(isCurrentThread(store, "t-1")).toBe(false);
+    expect(isCurrentThread(memoryStore(), "t-1")).toBe(false);
   });
 });
 

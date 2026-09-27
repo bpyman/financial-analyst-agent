@@ -55,24 +55,33 @@ export interface ThreadOutcome<V> {
   notice: string | null;
 }
 
+/** Whether `threadId` is still this browser's thread, not one Start over replaced. */
+export function isCurrentThread(store: KeyValueStore, threadId: string): boolean {
+  return store.getItem(THREAD_STORAGE_KEY) === threadId;
+}
+
 /**
  * The stored thread, if the server still has it. A thread that comes back
  * unknown or empty has expired (TTL or a restarted host): it is forgotten and
  * the analyst is told. An outage rethrows and keeps the id for a retry.
+ * `null` when the stored thread changed while it loaded (Start over, or a new
+ * thread): the answer is stale and must not replace the one in use.
  */
 export async function resumeThread(
   api: ThreadApi,
   store: KeyValueStore,
-): Promise<ThreadOutcome<ThreadView | null>> {
+): Promise<ThreadOutcome<ThreadView | null> | null> {
   const threadId = store.getItem(THREAD_STORAGE_KEY);
   if (!threadId) return { view: null, notice: null };
   let view: ThreadView;
   try {
     view = await api.getThread(threadId);
   } catch (error) {
+    if (!isCurrentThread(store, threadId)) return null;
     if (error instanceof ApiError && error.status === 404) return forget(store);
     throw error;
   }
+  if (!isCurrentThread(store, threadId)) return null;
   if (view.runtime === null && view.turns.length === 0) return forget(store);
   return { view, notice: null };
 }

@@ -15,6 +15,7 @@ import {
   THREAD_STORAGE_KEY,
   askOnThread,
   browserStore,
+  isCurrentThread,
   resumeThread,
   startOverIfLocked,
   startThread,
@@ -73,7 +74,10 @@ export function AnalystWindow() {
 
   const runtime: RuntimeKind = view?.runtime ?? chosenRuntime ?? meta?.runtime.default ?? "recorded";
   const locked = meta?.runtime.locked ?? false;
-  const busy = turn.status === "running" || switching;
+  // Until the saved thread is back, a question or Start over would start another
+  // thread under it, and the restored one would then replace it on screen.
+  const resuming = !booted && storedThreadId !== null;
+  const busy = turn.status === "running" || switching || resuming;
 
   // Wake on visit, then resume the stored thread. A reload mid-turn finds the
   // turn still in flight: show it running and poll until the answer lands.
@@ -103,7 +107,8 @@ export function AnalystWindow() {
 
     resumeThread(threadApi, store)
       .then((resumed) => {
-        if (signal.aborted) return;
+        // `null`: the analyst started another thread while this one loaded.
+        if (signal.aborted || resumed === null) return;
         setView(resumed.view);
         if (resumed.notice) setNotice({ kind: "info", text: resumed.notice });
         if (resumed.view?.turn_in_flight) void reattach(resumed.view);
@@ -177,7 +182,7 @@ export function AnalystWindow() {
 
   async function send(text: string) {
     const message = text.trim();
-    if (!message || inFlight.current) return;
+    if (!message || inFlight.current || resuming) return;
     inFlight.current = true;
     dispatch({ type: "send", message });
     setDraft("");
@@ -222,16 +227,20 @@ export function AnalystWindow() {
     }
     if (stale && threadId) {
       // A failed turn can still have changed the thread (its turn and budget
-      // counts); redraw from the server rather than keep the pre-turn view.
-      getThread(threadId)
-        .then(setView)
+      // counts); redraw from the server rather than keep the pre-turn view,
+      // unless the analyst has started over since.
+      const failedId = threadId;
+      getThread(failedId)
+        .then((latest) => {
+          if (isCurrentThread(store, failedId)) setView(latest);
+        })
         .catch(() => undefined);
     }
   }
 
   /** Start over on `next`: the same runtime, or the other one when the switch flips. */
   async function restart(next: RuntimeKind) {
-    if (inFlight.current) return;
+    if (inFlight.current || resuming) return;
     inFlight.current = true;
     setSwitching(true);
     setNotice(null);
@@ -259,7 +268,6 @@ export function AnalystWindow() {
   }
 
   const hasThread = (view?.turns.length ?? 0) > 0 || turn.status !== "idle";
-  const resuming = !booted && storedThreadId !== null;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -315,6 +323,7 @@ export function AnalystWindow() {
         onChange={setDraft}
         onSend={send}
         busy={busy}
+        busyLabel={resuming ? "Loading your thread" : "Analysis running"}
         placeholder={meta?.example_query ?? FALLBACK_PLACEHOLDER}
         maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
         inputRef={inputRef}
