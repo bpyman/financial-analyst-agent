@@ -17,9 +17,7 @@ from financial_analyst_agent.turn import (
 )
 from test_run_turn_lookup import ALLOWED_METRICS
 
-MSFT_GOOG_OPERATING_MARGINS_QUERY = (
-    "compare Microsoft and Google operating margins"
-)
+MSFT_GOOG_OPERATING_MARGINS_QUERY = "compare Microsoft and Google operating margins"
 UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROE"
 
 # Fixture-runtime gold literals (recorded facts, not live SEC).
@@ -44,8 +42,7 @@ MICROSOFT_ACCESSION = "0001193125-26-191507"
 MICROSOFT_OPERATING_INCOME_CONCEPT = "OperatingIncomeLoss"
 MICROSOFT_REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 MICROSOFT_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/789019/"
-    "000119312526191507/msft-20260331.htm"
+    "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm"
 )
 
 ALPHABET_OPERATING_INCOME = Decimal("39696000000")
@@ -55,17 +52,18 @@ ALPHABET_ACCESSION = "0001652044-26-000048"
 ALPHABET_OPERATING_INCOME_CONCEPT = "OperatingIncomeLoss"
 ALPHABET_REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 ALPHABET_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/1652044/"
-    "000165204426000048/goog-20260331.htm"
+    "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000048/goog-20260331.htm"
 )
 
 
-def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -> None:
+def test_run_turn_compares_microsoft_and_google_margins_for_the_same_quarter() -> None:
     result = run_turn(MSFT_GOOG_OPERATING_MARGINS_QUERY, recorded_runtime())
 
     assert result.intent is Intent.COMPARE
     assert result.renderer is RendererKind.TABLE
-    assert result.banners == [PERIODS_DIFFER_BANNER]
+    # Microsoft's fiscal Q4 (derived from its 10-K) and Alphabet's Q2 both end
+    # 30 June 2026, so no periods-differ banner.
+    assert result.banners == []
     assert result.numeral_lock_extras == []
     assert result.message is None
 
@@ -81,21 +79,19 @@ def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -
     assert microsoft.ticker == MICROSOFT_TICKER
     assert microsoft.cik == MICROSOFT_CIK
     assert microsoft.metric == "operating_margin"
-    # Each issuer's latest quarter differs: each margin is shown for its own
-    # quarter, and the banner says the periods differ.
-    assert microsoft.value == MICROSOFT_OPERATING_INCOME / MICROSOFT_REVENUE
-    assert microsoft.start_date == PERIOD_START
-    assert microsoft.end_date == PERIOD_END
-    assert microsoft.reason is None
-    _assert_operating_margin_components(
-        microsoft,
-        operating_income=MICROSOFT_OPERATING_INCOME,
-        revenue=MICROSOFT_REVENUE,
-        accession=MICROSOFT_ACCESSION,
-        operating_income_concept=MICROSOFT_OPERATING_INCOME_CONCEPT,
-        revenue_concept=MICROSOFT_REVENUE_CONCEPT,
-        source_url=MICROSOFT_SOURCE_URL,
+    assert microsoft.value == RECORDED_MICROSOFT_Q4_OPERATING_INCOME / RECORDED_MICROSOFT_Q4_REVENUE
+    assert (microsoft.start_date, microsoft.end_date) == (
+        ALPHABET_PERIOD_START,
+        ALPHABET_PERIOD_END,
     )
+    assert microsoft.reason is None
+    components = {component.metric: component for component in microsoft.components}
+    assert components["operating_income"].value == RECORDED_MICROSOFT_Q4_OPERATING_INCOME
+    assert components["revenue"].value == RECORDED_MICROSOFT_Q4_REVENUE
+    for component in components.values():
+        assert component.form == "10-K"
+        assert component.derivation is not None
+        assert [part.form for part in component.derived_from] == ["10-K", "10-Q"]
 
     assert alphabet.company_name == ALPHABET_NAME
     assert alphabet.ticker == ALPHABET_TICKER
@@ -117,15 +113,17 @@ def test_run_turn_flags_microsoft_and_google_margins_from_different_quarters() -
     )
 
 
-# Alphabet's latest recorded 10-Q (the quarter to June 2026) is a quarter newer
-# than Microsoft's, whose next 10-Q had not been filed at the recording.
+# Microsoft's fiscal fourth quarter: its FY2026 10-K minus nine months to March.
+RECORDED_MICROSOFT_Q4_OPERATING_INCOME = Decimal("40603000000")
+RECORDED_MICROSOFT_Q4_REVENUE = Decimal("90007000000")
+
+# Alphabet's latest recorded 10-Q, the quarter to June 2026.
 RECORDED_ALPHABET_OPERATING_INCOME = Decimal("40770000000")
 RECORDED_ALPHABET_REVENUE = Decimal("119796000000")
 RECORDED_ALPHABET_ACCESSION = "0001652044-26-000071"
 RECORDED_ALPHABET_REVENUE_CONCEPT = "Revenues"
 RECORDED_ALPHABET_SOURCE_URL = (
-    "https://www.sec.gov/Archives/edgar/data/1652044/"
-    "000165204426000071/goog-20260630.htm"
+    "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000071/goog-20260630.htm"
 )
 
 
@@ -372,9 +370,7 @@ class _ZeroRevenueFacts(_MissingMicrosoftFacts):
                 cik=MICROSOFT_CIK,
                 metric=metric,
                 value=(
-                    MICROSOFT_OPERATING_INCOME
-                    if metric == "operating_income"
-                    else Decimal("0")
+                    MICROSOFT_OPERATING_INCOME if metric == "operating_income" else Decimal("0")
                 ),
                 start_date=PERIOD_START,
                 end_date=PERIOD_END,

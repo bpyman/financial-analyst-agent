@@ -407,7 +407,7 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
 GOOGLE_MARKET_CAP_QUERY = "What was Google's market cap?"
 SHOPIFY_MARKET_CAP_QUERY = "What was Shopify's market cap?"
 ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("4139313608328")
-SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
 
 
 class _ShopifyMarketCapCompleter:

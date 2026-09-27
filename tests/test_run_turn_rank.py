@@ -30,7 +30,7 @@ from financial_analyst_agent.universe import (
 
 HEALTHCARE_TOP_10_QUERY = "What are the top 10 companies in healthcare?"
 FIXTURE_SNAPSHOT_PATH = FIXTURE_UNIVERSE_SNAPSHOT_PATH
-SNAPSHOT_AS_OF = "2026-09-26T21:03:37.822811+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
 
 
 def _gold_rank_runtime() -> Runtime:

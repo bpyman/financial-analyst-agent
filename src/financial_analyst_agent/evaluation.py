@@ -50,8 +50,8 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.LOOKUP,
             RendererKind.TABLE,
             expect_tickers=("MSFT",),
-            expect_values=("39340000000",),
-            expect_accessions=("0001193125-26-191507",),
+            expect_values=("44047000000",),
+            expect_accessions=("0001193125-26-323660",),
             expect_concepts=(
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"
                 "ExtraordinaryItemsNoncontrollingInterest",

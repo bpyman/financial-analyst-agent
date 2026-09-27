@@ -46,11 +46,12 @@ def test_add_apple_after_microsoft_four_quarters_returns_apple_revenue() -> None
         if row.ticker == "AAPL" and row.value is not None and row.comparison is None
     }
     # Apple's 52/53-week quarters end a few days before Microsoft's; its fiscal
-    # fourth quarter (to September) is in a 10-K, so that row stays empty.
+    # fourth quarter (to September) is derived from the 10-K (ADR 0007).
     assert valued == {
+        date(2026, 6, 27): 109_417_000_000,
         date(2026, 3, 28): 111_184_000_000,
         date(2025, 12, 27): 143_756_000_000,
-        date(2025, 3, 29): 95_359_000_000,
+        date(2025, 9, 27): 102_466_000_000,
     }
 
 
@@ -106,7 +107,8 @@ def test_compare_four_quarters_story_presents_each_quarter_on_its_own() -> None:
     assert len(headers) == len(set(headers)) == 4
     assert all("get_financials" not in header for header in headers)
     labels = [item.label for item in presented.evidence]
-    assert len(labels) == len(set(labels)) == 4
+    # Four quarters, plus the 10-K year and 10-Q nine months behind the derived Q4.
+    assert len(labels) == len(set(labels)) == 6
     september = next(
         item for item in presented.evidence if item.period_label == "Jul 1, 2025 – Sep 30, 2025"
     )

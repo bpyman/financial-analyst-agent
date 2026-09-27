@@ -55,6 +55,10 @@ Beyond the guided stories, try these. Follow-ups such as `add Apple` patch the a
 3. What are the top 10 tech companies and R&D spend for each?
 4. add Apple
 5. make that the last four quarters
+6. Apple diluted EPS in Q3 FY2025
+7. Compare Cisco and Oracle revenue calendar Q2 2026
+
+Named periods ("Q3 2024", "fiscal 2025", "calendar Q2 2026") use each company's own fiscal calendar. A fiscal fourth quarter, which companies report only inside the 10-K, is derived as the year minus the nine months and marked † with both source facts in the evidence; per-share figures are never derived ([ADR 0007](docs/adr/0007-derived-quarters-and-per-share.md)).
 
 The recorded runtime replays captured SEC, news, and model responses through the same orchestration and renderer as the live runtime. It proves orchestration, not EDGAR freshness. `APP_MODE=live` with the keys in `.env` runs the live runtime.
 
