@@ -13,6 +13,8 @@ _ACCESSION_PATTERN = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
 _DOMESTIC_PERIODIC_FORMS = frozenset({"10-K", "10-KT", "10-Q", "10-QT"})
 _FOREIGN_ANNUAL_FORMS = frozenset({"20-F", "40-F"})
+# Only foreign private issuers furnish 6-Ks or register on a 20-F/40-F.
+_FOREIGN_ONLY_FORMS = frozenset({"6-K", "20FR12B", "20FR12G", "40FR12B", "40FR12G"})
 
 
 def require_matching_submissions_cik(payload: dict[str, Any], cik: str) -> dict[str, Any]:
@@ -61,10 +63,13 @@ def files_quarterly_reports(payload: dict[str, Any]) -> bool:
 
     Foreign private issuers report annually on 20-F/40-F and furnish 6-Ks, so
     they have no 10-Q facts to rank on. Judging by the latest report keeps
-    issuers that switched to 10-K/10-Q, and drops ones that switched away.
-    An issuer with neither kind in its recent filings is given the benefit of
-    the doubt: large banks' prospectus supplements can crowd out their 10-Qs.
-    Amendments are ignored so a late 20-F/A cannot outrank a newer 10-Q.
+    issuers that switched to 10-K/10-Q, and drops ones that switched away;
+    amendments are ignored so a late 20-F/A cannot outrank a newer 10-Q.
+
+    A newly listed foreign issuer has no annual report yet, so with no periodic
+    report at all a 6-K or 20-F registration still marks it foreign. Otherwise
+    it gets the benefit of the doubt: large banks' prospectus supplements can
+    crowd their 10-Qs out of the recent list.
     """
     filings = payload.get("filings")
     recent = filings.get("recent") if isinstance(filings, dict) else None
@@ -80,7 +85,7 @@ def files_quarterly_reports(payload: dict[str, Any]) -> bool:
         if form in _DOMESTIC_PERIODIC_FORMS or form in _FOREIGN_ANNUAL_FORMS
     ]
     if not periodic:
-        return True
+        return _FOREIGN_ONLY_FORMS.isdisjoint(forms)
     _filed, domestic = max(periodic)
     return domestic
 

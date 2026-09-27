@@ -122,7 +122,8 @@
       "market_cap": "1359798029200",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Semiconductors"
+      "industry": "Semiconductors",
+      "files_quarterly": false
     },
     {
       "cik": "0000723125",
@@ -6191,7 +6192,8 @@
       "market_cap": "22264305070",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Application"
+      "industry": "Software - Application",
+      "files_quarterly": false
     },
     {
       "cik": "0000091576",
@@ -7607,7 +7609,8 @@
       "market_cap": "15774613800",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Other Precious Metals"
+      "industry": "Other Precious Metals",
+      "files_quarterly": false
     },
     {
       "cik": "0001878848",
@@ -13168,7 +13171,8 @@
       "market_cap": "6257462240",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Gold"
+      "industry": "Gold",
+      "files_quarterly": false
     },
     {
       "cik": "0001723690",
@@ -14876,7 +14880,8 @@
       "market_cap": "5098833530",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Aerospace & Defense"
+      "industry": "Aerospace & Defense",
+      "files_quarterly": false
     },
     {
       "cik": "0001556593",
@@ -16688,7 +16693,8 @@
       "market_cap": "4081167354",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Silver"
+      "industry": "Silver",
+      "files_quarterly": false
     },
     {
       "cik": "0001483934",
@@ -20130,7 +20136,8 @@
       "market_cap": "2716725900",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Biotechnology"
+      "industry": "Biotechnology",
+      "files_quarterly": false
     },
     {
       "cik": "0001328581",
@@ -21650,7 +21657,8 @@
       "market_cap": "2238589937",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Computer Hardware"
+      "industry": "Computer Hardware",
+      "files_quarterly": false
     },
     {
       "cik": "0001830487",
@@ -22359,7 +22367,8 @@
       "market_cap": "2053639408",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Independent Power Producers"
+      "industry": "Independent Power Producers",
+      "files_quarterly": false
     },
     {
       "cik": "0001828365",
@@ -25704,7 +25713,8 @@
       "market_cap": "1338573741",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Manufacturing - Metal Fabrication"
+      "industry": "Manufacturing - Metal Fabrication",
+      "files_quarterly": false
     },
     {
       "cik": "0002086771",
@@ -26620,7 +26630,8 @@
       "market_cap": "1187619640",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Gold"
+      "industry": "Gold",
+      "files_quarterly": false
     },
     {
       "cik": "0000918965",
@@ -30586,7 +30597,8 @@
       "market_cap": "714680000",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Industrial Materials"
+      "industry": "Industrial Materials",
+      "files_quarterly": false
     },
     {
       "cik": "0001334388",
@@ -31847,7 +31859,8 @@
       "market_cap": "605961130",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Application"
+      "industry": "Software - Application",
+      "files_quarterly": false
     },
     {
       "cik": "0001234006",
@@ -31935,7 +31948,8 @@
       "market_cap": "596845054",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Application"
+      "industry": "Software - Application",
+      "files_quarterly": false
     },
     {
       "cik": "0001873835",
@@ -32601,7 +32615,8 @@
       "market_cap": "540833825",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Other Precious Metals"
+      "industry": "Other Precious Metals",
+      "files_quarterly": false
     },
     {
       "cik": "0000720858",
@@ -37262,7 +37277,8 @@
       "market_cap": "283909066",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Medical - Pharmaceuticals"
+      "industry": "Medical - Pharmaceuticals",
+      "files_quarterly": false
     },
     {
       "cik": "0001501697",
@@ -37906,7 +37922,8 @@
       "market_cap": "263830000",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Other Precious Metals"
+      "industry": "Other Precious Metals",
+      "files_quarterly": false
     },
     {
       "cik": "0000893847",
@@ -39115,7 +39132,8 @@
       "market_cap": "220669263",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Infrastructure"
+      "industry": "Software - Infrastructure",
+      "files_quarterly": false
     },
     {
       "cik": "0001678660",
@@ -43184,7 +43202,8 @@
       "market_cap": "95804200",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Application"
+      "industry": "Software - Application",
+      "files_quarterly": false
     },
     {
       "cik": "0001213037",
@@ -43610,7 +43629,8 @@
       "market_cap": "87478600",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Industrial - Machinery"
+      "industry": "Industrial - Machinery",
+      "files_quarterly": false
     },
     {
       "cik": "0001755058",
@@ -48821,7 +48841,8 @@
       "market_cap": "30030000",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Engineering & Construction"
+      "industry": "Engineering & Construction",
+      "files_quarterly": false
     },
     {
       "cik": "0002029039",
@@ -50249,7 +50270,8 @@
       "market_cap": "18831000",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Application"
+      "industry": "Software - Application",
+      "files_quarterly": false
     },
     {
       "cik": "0000843006",
@@ -50851,7 +50873,8 @@
       "market_cap": "15521735",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Drug Manufacturers - Specialty & Generic"
+      "industry": "Drug Manufacturers - Specialty & Generic",
+      "files_quarterly": false
     },
     {
       "cik": "0002011458",
@@ -51238,7 +51261,8 @@
       "market_cap": "14000629",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Communication Equipment"
+      "industry": "Communication Equipment",
+      "files_quarterly": false
     },
     {
       "cik": "0000878932",
@@ -51682,7 +51706,8 @@
       "market_cap": "12212515",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Advertising Agencies"
+      "industry": "Advertising Agencies",
+      "files_quarterly": false
     },
     {
       "cik": "0000948708",
@@ -52383,7 +52408,8 @@
       "market_cap": "10210179",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Specialty Retail"
+      "industry": "Specialty Retail",
+      "files_quarterly": false
     },
     {
       "cik": "0001707910",
@@ -52775,7 +52801,8 @@
       "market_cap": "9177865",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Software - Infrastructure"
+      "industry": "Software - Infrastructure",
+      "files_quarterly": false
     },
     {
       "cik": "0001470683",
@@ -54644,7 +54671,8 @@
       "market_cap": "4294378",
       "is_etf": false,
       "is_fund": false,
-      "industry": "Security & Protection Services"
+      "industry": "Security & Protection Services",
+      "files_quarterly": false
     },
     {
       "cik": "0002032341",

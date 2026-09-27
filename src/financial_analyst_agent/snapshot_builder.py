@@ -239,7 +239,7 @@ def _annotate_with_sec(snapshot: UniverseSnapshot, settings: Settings) -> Univer
     finally:
         sec.close()
     flagged = sum(1 for company in annotated.companies if not company.files_quarterly)
-    print(f"{flagged} companies file 20-F/40-F instead of 10-Q; ranking skips them")
+    print(f"{flagged} companies are foreign filers with no 10-Qs; ranking skips them")
     if failed:
         print(f"Could not read SEC submissions for {len(failed)} CIKs: {', '.join(failed)}")
     return annotated
