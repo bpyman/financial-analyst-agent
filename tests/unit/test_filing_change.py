@@ -376,6 +376,25 @@ def test_run_filing_change_without_accessions_picks_a_year_apart() -> None:
     assert any("latest 10-Q" in banner for banner in result.banners)
 
 
+def test_filing_change_banner_uses_the_snapshot_name() -> None:
+    class _NamedFacts(_Facts):
+        def display_name(self, cik: str, fallback: str) -> str:
+            return "The Microsoft Company, Inc." if cik == CIK else fallback
+
+    result = run_filing_change(
+        SimpleNamespace(
+            intent=Intent.FILING_CHANGE,
+            company="Microsoft",
+            older_accession="",
+            newer_accession="",
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_NamedFacts()),  # type: ignore[arg-type]
+    )
+
+    assert any(banner.startswith("Comparing Microsoft's latest 10-Q") for banner in result.banners)
+
+
 def test_run_filing_change_orders_accessions_by_report_date() -> None:
     result = run_filing_change(
         SimpleNamespace(

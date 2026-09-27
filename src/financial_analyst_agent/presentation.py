@@ -870,13 +870,14 @@ _FRIENDLY_MESSAGES = {
         "revenue can, so there is no fourth-quarter figure to show."
     ),
     "No reported or derivable quarter exists for metric": (
-        "This company's filings do not report that metric for this quarter. Banks, "
-        "for example, do not report revenue the way operating companies do."
+        "This company's filings do not report that metric for this quarter. Not every "
+        "company reports every line item: banks, for example, report neither revenue "
+        "nor capital spending the way operating companies do."
     ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
-        "metric. Banks, for example, do not report revenue the way operating "
-        "companies do."
+        "metric. Not every company reports every line item: banks, for example, "
+        "report neither revenue nor capital spending the way operating companies do."
     ),
 }
 

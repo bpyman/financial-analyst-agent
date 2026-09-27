@@ -15,11 +15,14 @@ from financial_analyst_agent.graph.analysis_spec import (
     RankedSet,
     ResolvedCompany,
     SpecPatch,
+    apply_patch,
+    resolve_spec,
 )
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_METRICS,
     bind_metrics_from_message,
     bind_periods_from_message,
+    plan_to_spec_patch,
 )
 from financial_analyst_agent.guide import guide_reply, short_name, suggest_follow_ups
 from financial_analyst_agent.issuer_index import IssuerIndex
@@ -191,6 +194,44 @@ def test_short_follow_ups_lean_on_the_current_analysis() -> None:
     assert add_company == SpecPatch(mode="extend", add_companies=("NVDA",))
 
 
+def test_which_one_after_a_swap_compares_the_two_companies() -> None:
+    swapped = resolve_spec(
+        apply_patch(
+            _spec("NVDA"),
+            SpecPatch(mode="extend", remove_companies=("NVDA",), add_companies=("AMD",)),
+        )
+    )
+    planner = DemoCompleter()
+
+    which = planner.complete("which one is more profitable", current_spec=swapped)
+    only = planner.complete("is it profitable", current_spec=swapped)
+    kept = resolve_spec(apply_patch(swapped, SpecPatch(mode="extend", add_metrics=("capex",))))
+
+    assert swapped.earlier_companies == ("NVDA",)
+    assert which == SpecPatch(
+        mode="extend", add_companies=("NVDA",), add_metrics=("net_income", "net_margin")
+    )
+    assert only.add_companies == ()
+    assert kept.earlier_companies == ("NVDA",)
+
+
+def test_compare_without_a_metric_is_an_overview() -> None:
+    planner = _live()
+
+    for question in ("Compare Nvidia and AMD", "how does Nvidia stack up against AMD?"):
+        plan = planner.complete(question)
+        patch, refusal = bind_metrics_from_message(
+            plan_to_spec_patch(plan), question, intent=plan.intent
+        )
+        assert refusal is None, question
+        assert patch.add_metrics == OVERVIEW_METRICS, question
+    ebitda = planner.complete("compare apple and microsoft ebitda")
+    _patch, refusal = bind_metrics_from_message(
+        plan_to_spec_patch(ebitda), "compare apple and microsoft ebitda", intent=ebitda.intent
+    )
+    assert refusal is not None and refusal.renderer is RendererKind.REFUSE
+
+
 def test_top_n_narrows_a_ranking_and_a_new_ranking_is_not_an_edit() -> None:
     planner = DemoCompleter()
     ranked = AnalysisSpec(
@@ -262,6 +303,7 @@ def test_short_names_drop_legal_suffixes() -> None:
     assert short_name("NVIDIA Corporation") == "NVIDIA"
     assert short_name("Eli Lilly and Company") == "Eli Lilly"
     assert short_name("JPMorgan Chase & Co.") == "JPMorgan Chase"
+    assert short_name("The Goldman Sachs Group, Inc.") == "Goldman Sachs"
 
 
 def test_several_metrics_for_one_quarter_read_across_one_row() -> None:

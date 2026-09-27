@@ -185,7 +185,9 @@ _SUFFIX = re.compile(
 
 def short_name(name: str) -> str:
     """ "NVIDIA Corporation" → "NVIDIA"; "Eli Lilly and Company" → "Eli Lilly"."""
-    return _SUFFIX.sub("", name.strip()).strip(" ,.")
+    short = _SUFFIX.sub("", name.strip()).strip(" ,.")
+    # "The Goldman Sachs Group, Inc." reads as "Goldman Sachs".
+    return re.sub(r"^the\s+(?=\S)", "", short, flags=re.IGNORECASE)
 
 
 _METRIC_IDEAS: tuple[str, ...] = ("net_margin", "operating_margin", "revenue", "gross_margin")

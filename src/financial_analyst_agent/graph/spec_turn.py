@@ -216,6 +216,8 @@ _OVERVIEW = re.compile(
     re.IGNORECASE,
 )
 _OVERVIEW_MAX_WORDS = 3
+# A planner's metric for "Compare Nvidia and AMD": companies and nothing else.
+OVERVIEW_PLAN = "overview"
 
 
 def implied_metrics(message: str) -> tuple[str, ...]:
@@ -290,6 +292,8 @@ def bind_metrics_from_message(
         return patch, None
     guessed = [metric for metric in patch.add_metrics if metric in ALLOWED_METRICS]
     implied = implied_metrics(message) if _names_companies(patch) and not guessed else ()
+    if not implied and _names_companies(patch) and OVERVIEW_PLAN in patch.add_metrics:
+        implied = OVERVIEW_METRICS
     if implied:
         return patch.model_copy(update={"add_metrics": implied}), None
     if patch.ranked_request is not None and not patch.add_metrics:

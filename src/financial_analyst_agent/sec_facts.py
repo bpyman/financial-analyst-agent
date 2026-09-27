@@ -206,6 +206,10 @@ class SecFactLookup:
         self._client = SECClient(settings)
         self._owns_client = True
 
+    def display_name(self, cik: str, fallback: str) -> str:
+        """The snapshot's name for a company, or ``fallback`` (SEC's title)."""
+        return self._display_names.get(cik, fallback)
+
     def close(self) -> None:
         if self._owns_client:
             self._client.close()

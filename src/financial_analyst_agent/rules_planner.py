@@ -15,9 +15,13 @@ from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import implied_metrics, parse_named_periods
+from financial_analyst_agent.graph.spec_turn import (
+    OVERVIEW_PLAN,
+    implied_metrics,
+    parse_named_periods,
+)
 from financial_analyst_agent.guide import short_name
-from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex
+from financial_analyst_agent.issuer_index import CompanyMention, IssuerIndex, normalize
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
@@ -404,6 +408,8 @@ class DemoCompleter:
             len(companies) == 1 and len(parse_named_periods(normalized)) >= 2
         )
         if len(companies) >= 2 or compare_words:
+            if metric == "unknown" and len(companies) >= 2 and _names_only(query, mentions):
+                metric = OVERVIEW_PLAN
             return SimpleNamespace(
                 intent=Intent.COMPARE, companies=companies, metric=metric, notes=notes
             )
@@ -417,6 +423,22 @@ class DemoCompleter:
 _IMPLIED_WORDING = re.compile(
     r"\b(?:profitab|bigger|larger|biggest|largest|grow(?:ing|n|th)?\b|grew\b)", re.IGNORECASE
 )
+
+_COMPARE_FILLER = frozenset(
+    """
+    compare comparing comparison and vs versus against with to between the how do does
+    stack up side by
+    """.split()  # noqa: SIM905
+)
+
+
+def _names_only(query: str, mentions: list[CompanyMention]) -> bool:
+    """Whether a question is companies and compare words alone ("Compare Nvidia and AMD")."""
+    named = {word for mention in mentions for word in normalize(mention.typed).split()}
+    return all(word in named or word in _COMPARE_FILLER for word in normalize(query).split())
+
+
+_WHICH_OF_TWO = re.compile(r"\b(?:which (?:one|is|of)|both|them|compared?|vs|versus)\b")
 
 
 def _follow_up(
@@ -455,7 +477,15 @@ def _follow_up(
         and _IMPLIED_WORDING.search(normalized)
     ):
         # "which one is more profitable?" asks the current analysis a new question.
-        return SpecPatch(mode="extend", add_metrics=implied_metrics(normalized))
+        earlier = (
+            spec.earlier_companies
+            if len(spec.companies) == 1 and _WHICH_OF_TWO.search(normalized)
+            else ()
+        )
+        # After "what about AMD?", "which one" means Nvidia and AMD.
+        return SpecPatch(
+            mode="extend", add_companies=earlier, add_metrics=implied_metrics(normalized)
+        )
     if companies or metric not in ALLOWED_METRICS:
         return None
     if not (spec.companies or spec.constituents is not None):
