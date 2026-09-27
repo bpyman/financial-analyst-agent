@@ -225,6 +225,26 @@ def _names_companies(patch: SpecPatch) -> bool:
     )
 
 
+def _names_new_subject(patch: SpecPatch, spec: AnalysisSpec) -> bool:
+    """Whether the patch names a company or ranking the current analysis lacks.
+
+    A model planner often repeats the current company in a follow-up's plan, so
+    naming a company already on screen is not a new question.
+    """
+    if patch.ranked_request is not None:
+        return spec.constituents is None or (
+            patch.ranked_request[0].casefold() != spec.constituents.industry.casefold()
+        )
+    if not _names_companies(patch):
+        return False
+    known = {
+        label.casefold()
+        for company in spec.companies
+        for label in (company.query, company.name, company.ticker)
+    }
+    return any(company.casefold() not in known for company in patch.add_companies)
+
+
 def bind_metrics_from_message(
     patch: SpecPatch, message: str, *, intent: Intent | None = None
 ) -> tuple[SpecPatch, TurnResult | None]:
@@ -506,7 +526,11 @@ def refine_patch_from_message(
         _STANDALONE_LOOKUP.search(message.strip()) is not None
         or _STANDALONE_COMPARE.search(message.strip()) is not None
     )
-    if patch.set_periods is not None and patch.mode == "replace" and not standalone:
+    # A period on its own ("for Q3 2024", "last 8 quarters") edits the current
+    # analysis. One that names another company or ranking ("Microsoft TTM net
+    # income") is a new question and keeps what it names.
+    period_only = not _names_new_subject(patch, current_spec)
+    if patch.set_periods is not None and patch.mode == "replace" and not standalone and period_only:
         return patch.model_copy(
             update={
                 "mode": "extend",

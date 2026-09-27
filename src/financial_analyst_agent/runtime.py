@@ -142,7 +142,7 @@ def _shared_sec_client(settings: Settings) -> SECClient:
 def recorded_runtime() -> Runtime:
     """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
-        completer=DemoCompleter(recorded_issuer_index()),
+        completer=DemoCompleter(recorded_issuer_index(), recorded=True),
         facts=SecFactLookup(
             client=RecordedSECDataSource(),
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),

@@ -886,6 +886,11 @@ def _friendly_message(message: str | None) -> str | None:
         supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
         return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
     missing = _COMPANY_NOT_FOUND.match(message)
+    if missing is not None and missing.group("query").strip().casefold() in ("", "unknown"):
+        return (
+            "I couldn't tell which company you mean. Name it or use its ticker, "
+            "for example “Apple revenue” or “AAPL revenue”."
+        )
     if missing is not None:
         return (
             f"I couldn't find a company called “{missing.group('query')}” in the "

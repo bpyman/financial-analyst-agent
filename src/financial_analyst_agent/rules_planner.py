@@ -343,14 +343,20 @@ class DemoCompleter:
     default, the live snapshot's on the live runtime.
     """
 
-    def __init__(self, index: IssuerIndex | None = None) -> None:
+    def __init__(self, index: IssuerIndex | None = None, *, recorded: bool = False) -> None:
         self._index = index
+        self._recorded = recorded
 
     @property
     def index(self) -> IssuerIndex:
         if self._index is None:
             self._index = recorded_issuer_index()
         return self._index
+
+    @property
+    def outside_index(self) -> IssuerIndex | None:
+        """The live snapshot's index on the recorded runtime, to name what was not recorded."""
+        return issuer_index() if self._recorded else None
 
     def complete(self, query: str, current_spec: object = None) -> Any:
         normalized = query.strip().casefold()
