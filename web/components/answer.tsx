@@ -282,12 +282,17 @@ function EvidenceField({
   );
 }
 
+const TRACES_SHOWN = 5;
+
 export function Traces({ traces }: { traces: DisplayTrace[] }) {
+  // A window over several quarters makes a step per cell; show the first few.
+  const [all, setAll] = useState(false);
+  const shown = all ? traces : traces.slice(0, TRACES_SHOWN);
   return (
     <section aria-label="How this answer was fetched">
       <SectionLabel className="mb-2">How this answer was fetched</SectionLabel>
       <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-        {traces.map((trace, index) => (
+        {shown.map((trace, index) => (
           <details key={`${trace.header}-${index}`} className="group">
             <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-surface-2/60 [&::-webkit-details-marker]:hidden">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
@@ -305,6 +310,16 @@ export function Traces({ traces }: { traces: DisplayTrace[] }) {
             </div>
           </details>
         ))}
+        {traces.length > shown.length && (
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            className="flex w-full items-center justify-center gap-1.5 px-4 py-2.5 text-[13px] text-muted transition-colors hover:bg-surface-2/60 hover:text-fg"
+          >
+            Show all {traces.length} steps
+            <ChevronDown className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
     </section>
   );

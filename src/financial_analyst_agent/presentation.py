@@ -858,29 +858,54 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
 WIDE_VALUE_PREFIX = "value:"
 
 
+_COMPARISON_ORDER = {None: 0, "sequential": 1, "yoy": 2}
+
+
 def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable | None:
-    """One row per company and a column per metric, when each cell has one value.
+    """A row per company and quarter (and change), a column per metric.
 
     "How is Apple doing?" and "their operating margin" read across a row, not
-    down a list of company-metric pairs. Provenance stays per value in the
-    evidence list, so the wide table carries no filing columns.
+    down a list of company-metric pairs; over a window, each quarter is one row
+    and each change one more. Provenance stays per value in the evidence list,
+    so the wide table carries no filing columns.
     """
     metrics = list(dict.fromkeys(row.metric for row in rows if row.metric))
-    if len(metrics) < 2 or any(row.comparison is not None for row in rows):
+    if len(metrics) < 2:
         return None
-    cells: dict[str, dict[str, TableRow]] = {}
+    cells: dict[tuple[str, date | None, str | None], dict[str, TableRow]] = {}
     for row in rows:
-        entity = row.cik or row.company_name
-        if row.metric in cells.setdefault(entity, {}):
+        place: tuple[str, date | None, str | None] = (
+            row.cik or row.company_name,
+            row.end_date,
+            row.comparison,
+        )
+        if row.metric in cells.setdefault(place, {}):
             return None
-        cells[entity][row.metric] = row
+        cells[place][row.metric] = row
+    # Failed cells carry no date: fold them into their company's only row.
+    for undated in [place for place in cells if place[1] is None and place[2] is None]:
+        dated = [other for other in cells if other[0] == undated[0] and other != undated]
+        if len(dated) == 1 and not set(cells[undated]) & set(cells[dated[0]]):
+            cells[dated[0]].update(cells.pop(undated))
+    entities = list(dict.fromkeys(slot[0] for slot in cells))
+    ordered = sorted(
+        cells,
+        key=lambda slot: (
+            entities.index(slot[0]),
+            _COMPARISON_ORDER.get(slot[2], 3) > 0,
+            -(slot[1].toordinal() if slot[1] else 0),
+            _COMPARISON_ORDER.get(slot[2], 3),
+        ),
+    )
     ranked = intent in (Intent.RANK, Intent.RANK_AND_LOOKUP) and any(
         row.rank is not None for row in rows
     )
+    changes = any(slot[2] is not None for slot in cells)
     keys = [
         *(["rank"] if ranked else []),
         "company_name",
         "ticker",
+        *(["comparison"] if changes else []),
         *(f"{WIDE_VALUE_PREFIX}{metric}" for metric in metrics),
         "end_date",
     ]
@@ -894,7 +919,8 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     )
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
-    for by_metric in cells.values():
+    for group in ordered:
+        by_metric = cells[group]
         first = next(iter(by_metric.values()))
         identity = next((row for row in by_metric.values() if row.ticker), first)
         ends = [row.end_date for row in by_metric.values() if row.end_date is not None]
@@ -907,10 +933,11 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                     text.append("")
                     values.append(None)
                 elif cell.value is None:
-                    text.append(format_reason(cell.reason) if cell.reason else "")
+                    # A narrow cell: the label alone ("Missing fact"), code in evidence.
+                    text.append(_REASON_LABELS.get(cell.reason or "", "") or "")
                     values.append(None)
                 else:
-                    text.append(format_metric_value(cell.metric, cell.value))
+                    text.append(_format_cell(cell, "value"))
                     values.append(float(cell.value))
             elif key == "end_date":
                 text.append(format_date(max(ends)) if ends else "")
@@ -919,12 +946,15 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                 rank = identity.rank if identity.rank is not None else first.rank
                 text.append(str(rank) if rank is not None else "")
                 values.append(rank)
+            elif key == "comparison":
+                text.append(_format_cell(first, "comparison"))
+                values.append(None)
             else:
                 text.append(_format_cell(identity, key))
                 values.append(None)
         rendered.append(tuple(text))
         numbers.append(tuple(values))
-    if not any(any(value) for value in (row[2:] for row in rendered)):
+    if not any(value is not None for row in numbers for value in row):
         return None
     return DisplayTable(
         headers=headers, keys=tuple(keys), rows=tuple(rendered), numbers=tuple(numbers)
@@ -1068,6 +1098,9 @@ def _display_trace(trace: Any, *, names: dict[str, str] | None = None) -> Displa
     if names and isinstance(company, str) and company in names:
         # Ranked lookups run by CIK; the header reads better with the name.
         args["company"] = names[company]
+    issuers = args.get("issuers")
+    if names and isinstance(issuers, list):
+        args["issuers"] = [names.get(str(item), item) for item in issuers]
     identity = _trace_identity(args)
     period = _trace_period(trace)
     what = identity or "this request"

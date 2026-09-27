@@ -190,3 +190,20 @@ test("the window installs as an app with the project's icons", async ({ page, re
     expect(response.headers()["content-type"]).toBe("image/png");
   }
 });
+
+test("a company on its own gets an overview, and a suggestion extends it", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.ask("How is Nvidia doing?");
+
+  const table = analyst.tables();
+  await expect(table.getByRole("columnheader", { name: "Net margin" })).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(2);
+
+  const next = page.getByRole("navigation", { name: "Suggested next questions" });
+  await next.getByRole("button", { name: "show year-over-year" }).click();
+  await analyst.waitForTurn(2);
+  await expect(analyst.tables().last().getByRole("cell", { name: "Year over year" }).first()).toBeVisible();
+  // Only the latest answer offers next questions.
+  await expect(next).toHaveCount(1);
+});

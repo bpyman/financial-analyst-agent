@@ -238,3 +238,35 @@ def test_several_metrics_for_one_quarter_read_across_one_row() -> None:
     assert table is not None
     assert table.keys == ("company_name", "ticker", "value:revenue", "value:net_margin", "end_date")
     assert table.rows == (("Apple Inc.", "AAPL", "$109.42 B", "27.2%", "Jun 27, 2026"),)
+
+
+def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> None:
+    def row(metric: str, end: date, value: str, comparison: str | None = None) -> TableRow:
+        return TableRow(
+            company_name="Apple Inc.",
+            ticker="AAPL",
+            cik="0000320193",
+            metric=metric,
+            value=Decimal(value),
+            end_date=end,
+            comparison=comparison,  # type: ignore[arg-type]
+        )
+
+    new, old = date(2026, 6, 27), date(2025, 6, 28)
+    rows = [
+        row("revenue", new, "110"),
+        row("net_margin", new, "0.27"),
+        row("revenue", old, "100"),
+        row("net_margin", old, "0.25"),
+        row("revenue", new, "10", "yoy"),
+        row("net_margin", new, "0.02", "yoy"),
+    ]
+    result = TurnResult(
+        intent=Intent.LOOKUP, renderer=RendererKind.TABLE, table_rows=rows, tool_traces=[]
+    )
+
+    table = present_turn(result).table
+
+    assert table is not None
+    assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
+    assert table.rows[2][3:5] == ("+$10", "+2.0%")

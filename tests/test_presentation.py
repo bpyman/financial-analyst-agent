@@ -778,9 +778,9 @@ def test_mixed_metrics_keep_the_table_without_a_misleading_chart(across_periods:
     assert presented.table is not None
     assert presented.chart is None
     if across_periods:
-        assert len(presented.table.rows) == 4
-        assert "metric" in presented.table.keys
-        assert presented.table.headers[presented.table.keys.index("value")] == "Value"
+        # A row per quarter, newest first, a column per metric.
+        assert presented.table.headers[2:5] == ("Revenue", "Net margin", "Quarter ended")
+        assert [row[4] for row in presented.table.rows] == ["Mar 31, 2026", "Mar 31, 2025"]
     else:
         # One quarter per company: a row per company, a column per metric.
         assert len(presented.table.rows) == 2

@@ -196,6 +196,11 @@ def suggest_follow_ups(result: TurnResult, spec: AnalysisSpec | None, ranking: A
     return ideas[:_MAX_SUGGESTIONS]
 
 
+_FOREIGN_FORM = re.compile(
+    r"\b(?:limited|plc|ag|n\.?v\.?|s\.?a\.?|se|s\.?p\.?a\.?|a/s|asa|ab)\.?$", re.IGNORECASE
+)
+
+
 def _peer_name(spec: AnalysisSpec, ranking: Any) -> str | None:
     peers = getattr(ranking, "peers", None)
     if not callable(peers):
@@ -204,6 +209,9 @@ def _peer_name(spec: AnalysisSpec, ranking: Any) -> str | None:
     for company in spec.companies:
         if not company.cik:
             continue
-        for peer in peers(company.cik, exclude=ciks, limit=1):
+        for peer in peers(company.cik, exclude=ciks, limit=5):
+            if _FOREIGN_FORM.search(peer.name):
+                # Foreign filers report on 20-F, not 10-Q: a peer with no data.
+                continue
             return short_name(peer.name) or peer.ticker
     return None
