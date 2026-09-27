@@ -211,3 +211,27 @@ def test_main_annotates_an_existing_snapshot_in_place(
 def test_packaged_fixture_snapshot_lists_only_quarterly_filers() -> None:
     snapshot = load_universe_snapshot(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
     assert all(company.files_quarterly for company in snapshot.companies)
+
+
+def test_a_note_on_its_own_stem_does_not_stand_in_for_the_common_share() -> None:
+    from financial_analyst_agent.universe import preferred_listing
+
+    def listing(ticker: str, cap: str) -> UniverseCompany:
+        return UniverseCompany(
+            cik="0001166691",
+            name="Comcast",
+            ticker=ticker,
+            sector="Communication Services",
+            exchange="NASDAQ",
+            market_cap=Decimal(cap),
+        )
+
+    assert (
+        preferred_listing([listing("CCZ", "14712388772"), listing("CMCSA", "77750628191")]).ticker
+        == "CMCSA"
+    )
+    # An extension of the common symbol still loses whatever its vendor cap says.
+    assert (
+        preferred_listing([listing("SO", "90000000000"), listing("SOMN", "99000000000")]).ticker
+        == "SO"
+    )

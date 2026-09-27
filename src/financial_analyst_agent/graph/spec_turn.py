@@ -102,6 +102,8 @@ _QUARTER_WORDS = {
 _NAMED_PERIOD_PATTERNS = (
     re.compile(rf"\b{_CALENDAR_WORD}q(?P<q>[1-4])\s*(?:of\s+)?{_FISCAL_WORD}{_YEAR}", re.I),
     re.compile(rf"\b{_CALENDAR_WORD}(?P<y>(?:19|20)\d{{2}})\s*q(?P<q>[1-4])\b", re.I),
+    # Sell-side shorthand: "2Q 2026", "3Q25", "4QFY24".
+    re.compile(rf"\b{_CALENDAR_WORD}(?P<q>[1-4])q\s*{_FISCAL_WORD}{_YEAR}", re.I),
     re.compile(
         rf"\b{_CALENDAR_WORD}(?P<qw>first|second|third|fourth|1st|2nd|3rd|4th)\s+"
         rf"(?:fiscal\s+)?quarter\s+(?:of\s+)?{_FISCAL_WORD}{_YEAR}",
@@ -110,6 +112,14 @@ _NAMED_PERIOD_PATTERNS = (
     re.compile(rf"\b(?P<cal>calendar(?:\s+year)?\s+|cy\s*){_YEAR}", re.I),
     re.compile(rf"\b(?:fy|fiscal(?:\s+year)?)\s*{_YEAR}", re.I),
     re.compile(r"\b(?:in|for|during)\s+(?P<y>(?:19|20)\d{2})\b", re.I),
+)
+_TRAILING_YEAR = re.compile(
+    r"\b(?:ttm|ltm|trailing[\s-]+(?:twelve|12)[\s-]+months?|(?:last|past)\s+(?:twelve|12)\s+months)\b",
+    re.I,
+)
+TRAILING_YEAR_BANNER = (
+    "Trailing twelve months: these are the four latest quarters, shown one by one "
+    "rather than summed."
 )
 _NUMBER_WORDS = {
     "two": 2,
@@ -332,6 +342,11 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     match = _LAST_N_QUARTERS.search(message)
     yoy = _YOY.search(message) is not None
     named = parse_named_periods(message)
+    if not named and match is None and not yoy and _TRAILING_YEAR.search(message):
+        # "TTM revenue": show the four quarters that make up the trailing year.
+        return patch.model_copy(
+            update={"set_periods": PeriodSelection(kind="last_n_quarters", count=4)}
+        )
     if named:
         operations = patch.add_operations
         quarters = [period for period in named if period.quarter is not None]
@@ -1180,6 +1195,7 @@ def run_spec_turn_context(
 _SPECIFIC_PERIOD = re.compile(
     r"\b(?:"
     r"q[1-4]\s*(?:fy\s*)?'?\d{2,4}"
+    r"|[1-4]q\s*(?:fy\s*)?'?\d{2,4}"
     r"|(?:fy|fiscal(?:\s+year)?)\s*'?\d{2,4}"
     r"|(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\s+(?:of\s+)?(?:fy\s*)?\d{4}"
     r"|(?:in|for|during)\s+(?:19|20)\d{2}"
@@ -1267,6 +1283,8 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
             f"I couldn't read “{named.group(0)}” as a period; this shows {window}. "
             "Try “Q3 2024” or “fiscal 2025”."
         )
+    if spec.periods.kind == "last_n_quarters" and _TRAILING_YEAR.search(message):
+        notes.append(TRAILING_YEAR_BANNER)
     if spec.periods.kind == "named":
         notes.extend(_named_period_notes(spec))
         if spec.constituents is not None:

@@ -120,7 +120,10 @@ def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
     """Pick the common operating listing for one CIK.
 
     Note/preferred tickers are often a longer extension of the common symbol
-    (SO vs SOMN) and can carry inflated vendor market caps.
+    (SO vs SOMN) and can carry inflated vendor market caps, so extensions go
+    first. Of what is left, the largest market cap wins: a note on its own
+    stem (Comcast's CCZ beside CMCSA) is valued at its issue size, far below
+    the equity, while share classes (GOOG, GOOGL) carry about the same cap.
     """
     listings = list(rows)
     if len(listings) == 1:
@@ -133,7 +136,7 @@ def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
     ]
     if not stems:
         stems = listings
-    return min(stems, key=lambda row: (len(row.ticker), -row.market_cap))
+    return min(stems, key=lambda row: (-row.market_cap, len(row.ticker)))
 
 
 class UniverseSnapshot(BaseModel):

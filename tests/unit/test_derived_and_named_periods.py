@@ -206,6 +206,8 @@ def test_per_share_amounts_show_cents() -> None:
             "Q3 2024 vs Q3 2023",
             [NamedPeriodSpec(year=2024, quarter=3), NamedPeriodSpec(year=2023, quarter=3)],
         ),
+        ("Visa net margin 2Q 2026", [NamedPeriodSpec(year=2026, quarter=2)]),
+        ("4QFY24 EPS", [NamedPeriodSpec(year=2024, quarter=4)]),
         ("revenue for the last 4 quarters", []),
         ("top 5 banks", []),
     ],
@@ -301,3 +303,29 @@ def test_derived_values_are_marked_and_explained() -> None:
     values = [r[presented.table.keys.index("value:revenue")] for r in presented.table.rows]
     assert values == ["$102.47 B †", "$102.47 B"]
     assert any("10-K's full year minus the 10-Q's nine months" in b for b in presented.banners)
+
+
+def test_trailing_twelve_months_shows_the_four_quarters_behind_it() -> None:
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+
+    for question in ("Apple TTM revenue", "revenue over the trailing twelve months"):
+        patch = bind_periods_from_message(SpecPatch(mode="replace"), question)
+        assert patch.set_periods == PeriodSelection(kind="last_n_quarters", count=4)
+
+
+def test_everyday_nicknames_name_the_company() -> None:
+    from financial_analyst_agent.issuer_index import IssuerIndex
+    from financial_analyst_agent.universe import UniverseCompany
+
+    def company(ticker: str, name: str) -> UniverseCompany:
+        return UniverseCompany(
+            cik="0000000001", name=name, ticker=ticker, sector="x", exchange="NYSE", market_cap=1
+        )
+
+    index = IssuerIndex.build(
+        [company("PEP", "PepsiCo, Inc."), company("KO", "The Coca-Cola Company")]
+    )
+
+    assert [m.query for m in index.find("Compare Coke and Pepsi EPS")] == ["KO", "PEP"]
+    # A nickname for a company the snapshot lacks names nobody.
+    assert index.find("Facebook revenue") == []
