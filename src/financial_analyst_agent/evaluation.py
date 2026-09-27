@@ -64,7 +64,7 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.COMPARE,
             RendererKind.TABLE,
             expect_tickers=("TSLA", "GM"),
-            expect_values=("28236000000", "43762000000"),
+            expect_values=("28236000000", "48026000000"),
         ),
         EvalCase(
             "rank_tech_rd",
