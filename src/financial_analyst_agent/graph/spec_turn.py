@@ -34,6 +34,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
 )
 from financial_analyst_agent.graph.analysis_spec import (
+    MAX_RANKED_COMPANIES,
     AnalysisSpec,
     CompiledTask,
     NamedPeriodSpec,
@@ -1309,6 +1310,7 @@ def run_spec_turn_context(
         *_already_present_notes(patch, current_spec, spec),
         *_period_notes(message, spec),
         *_short_ranking_notes(spec),
+        *_capped_ranking_notes(patch),
     ]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
@@ -1337,6 +1339,16 @@ def _short_ranking_notes(spec: AnalysisSpec) -> list[str]:
     return [
         f"The snapshot holds only {count} {noun} in {ranked.industry}, so this list "
         f"is shorter than the {ranked.limit} asked for."
+    ]
+
+
+def _capped_ranking_notes(patch: SpecPatch) -> list[str]:
+    """Say so when a ranking asked for more companies than one lists."""
+    if patch.ranked_request is None or patch.ranked_request[1] <= MAX_RANKED_COMPANIES:
+        return []
+    return [
+        f"A ranking lists at most {MAX_RANKED_COMPANIES} companies, so this shows the "
+        f"top {MAX_RANKED_COMPANIES} rather than {patch.ranked_request[1]}."
     ]
 
 

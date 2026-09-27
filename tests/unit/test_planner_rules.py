@@ -20,6 +20,7 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_METRICS,
+    _capped_ranking_notes,
     _order_by_metric,
     bind_metrics_from_message,
     bind_periods_from_message,
@@ -172,6 +173,20 @@ def test_ordering_by_a_metric_reranks_the_members() -> None:
     assert any(banner.startswith("Ordered by revenue.") for banner in presented.banners)
     assert presented.chart is not None
     assert presented.chart.caption.startswith("Ordered by revenue among the largest by market cap")
+
+
+def test_a_ranking_lists_at_most_25_companies() -> None:
+    ranking = SnapshotRanking(load_universe_snapshot())
+    patch = SpecPatch(mode="replace", ranked_request=("tech", 1000))
+
+    spec = resolve_spec(apply_patch(None, patch), ranking=ranking)
+
+    assert spec.constituents is not None
+    assert len(spec.constituents.members) == spec.constituents.limit == 25
+    assert _capped_ranking_notes(patch) == [
+        "A ranking lists at most 25 companies, so this shows the top 25 rather than 1000."
+    ]
+    assert _capped_ranking_notes(SpecPatch(mode="replace", ranked_request=("tech", 5))) == []
 
 
 def test_gics_sector_names_and_common_industry_words_resolve() -> None:

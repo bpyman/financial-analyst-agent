@@ -126,6 +126,10 @@ class SpecDraft(BaseModel):
     earlier_companies: tuple[str, ...] = ()
 
 
+# A ranking lists at most this many companies: each one with a filed metric
+# is a lookup, and "top 1000" once took eight minutes of SEC requests.
+MAX_RANKED_COMPANIES = 25
+
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"}
 )
@@ -229,7 +233,8 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
     if draft.ranked_request is not None:
         if ranking is None:
             raise RuntimeError("ranked analysis requires a ranking adapter")
-        industry, limit = draft.ranked_request
+        industry, asked = draft.ranked_request
+        limit = min(asked, MAX_RANKED_COMPANIES)
         table = ranking.rank_companies(industry, limit)
         members = tuple(
             ResolvedCompany(
