@@ -102,6 +102,15 @@ _ORDINAL_ANSWER = re.compile(
 )
 
 
+def _candidate_named_by_word(candidates: tuple[str, ...], message: str) -> str | None:
+    """ "net" or "per share" picks the one candidate whose name holds those words."""
+    words = set(re.findall(r"[a-z]+", message.casefold()))
+    if not words:
+        return None
+    named = [candidate for candidate in candidates if words <= set(candidate.split("_"))]
+    return named[0] if len(named) == 1 else None
+
+
 def _match_clarification_answer(
     pending: PendingClarification, message: str
 ) -> str | None:
@@ -121,7 +130,7 @@ def _match_clarification_answer(
             return None
         resolved = resolve_metric_phrase(message)
         if resolved.kind != "unique":
-            return None
+            return _candidate_named_by_word(pending.candidates, message)
         metrics: tuple[str, ...]
         if resolved.metrics:
             metrics = resolved.metrics
@@ -133,7 +142,8 @@ def _match_clarification_answer(
             return None
         chosen = metrics[0]
         if chosen not in pending.candidates:
-            return None
+            # "per share" names EPS on its own, but here it picks dividends per share.
+            return _candidate_named_by_word(pending.candidates, message)
         return chosen
     if pending.kind == "ambiguous_mode":
         text = message.strip().casefold()
@@ -167,6 +177,9 @@ def _pending_from_clarify(
     )
 
 
+_ADD_WORDS = re.compile(r"(?:and|also|plus|add|include|with)\b", re.IGNORECASE)
+
+
 def _resume_pending(
     pending: PendingClarification,
     answer: str,
@@ -179,8 +192,8 @@ def _resume_pending(
 ) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
     from financial_analyst_agent.graph.spec_turn import TurnContext, run_spec_turn_context
 
-    if _ORDINAL_ANSWER.fullmatch(message.strip().casefold().rstrip(".!")):
-        # The turn reads its wording too: "2" names no metric, the choice does.
+    if pending.kind == "ambiguous_metric" and resolve_metric_phrase(message).metric != answer:
+        # The turn reads its wording too: "2" or "net" names no one metric, the choice does.
         message = answer.replace("_", " ")
     if pending.kind == "ambiguous_metric":
         if pending.metric_role == "remove":
@@ -189,6 +202,10 @@ def _resume_pending(
             )
         else:
             patch = pending.patch.model_copy(update={"add_metrics": (answer,)})
+            if patch.add_companies and not _ADD_WORDS.match(pending.question.strip()):
+                # "Apple margin" after Microsoft revenue is a question of its own:
+                # the chosen margin replaces revenue rather than joining it.
+                patch = patch.model_copy(update={"mode": "replace", "remove_companies": ()})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
         return run_spec_turn_context(

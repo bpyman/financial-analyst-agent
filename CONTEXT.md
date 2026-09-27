@@ -32,6 +32,14 @@ _Avoid_: TTM, derived quarter, restatement
 A quarter the filings report only inside a longer period, computed by one of the two subtractions in ADR 0007 (fiscal year minus nine months; year to date minus the previous year to date), labelled, with both reported facts as provenance. Per-share figures are never derived.
 _Avoid_: estimate, implied quarter, TTM
 
+**Trailing year**:
+The four quarters ending on a report date as one amount: the 10-K's fiscal year, or after a 10-Q the last fiscal year plus this year to date minus the same months a year earlier (ADR 0008). Return on equity and P/E use it.
+_Avoid_: annualised quarter, TTM sum of four rows
+
+**Balance-sheet amount**:
+An amount a filing reports at its report date rather than over the quarter (cash, shareholders' equity), shown "At" that date.
+_Avoid_: quarterly cash, period balance
+
 **Named period**:
 A fiscal quarter or year the analyst names ("Q3 2024", "fiscal 2025"), read as each company's own fiscal calendar from the fiscal year and period its filings declare; "calendar" names a calendar quarter instead.
 _Avoid_: date range, calendar quarter (unqualified)

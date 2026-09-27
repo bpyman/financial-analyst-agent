@@ -727,7 +727,8 @@ def test_metric_legend_lists_closed_catalog() -> None:
     assert all("(" not in name and "_" not in name for name in legend)
     assert "Diluted EPS" in legend
     assert "Free cash flow" in legend
-    assert len(legend) == 24
+    assert "EBITDA" in legend and "P/E ratio" in legend and "Share price" in legend
+    assert len(legend) == 33
 
 
 def test_metric_groups_split_reported_from_calculated() -> None:
@@ -747,9 +748,13 @@ def test_metric_groups_split_reported_from_calculated() -> None:
         "Effective tax rate",
         "Interest coverage",
         "Free cash flow",
+        "EBITDA",
+        "Return on equity",
+        "P/E ratio",
     )
     assert "Operating cash flow" in groups["Reported (SEC EDGAR)"]
-    assert groups["Daily snapshot (FMP)"] == ("Market cap",)
+    assert "Cash and equivalents" in groups["Reported (SEC EDGAR)"]
+    assert groups["Daily snapshot (FMP)"] == ("Market cap", "Share price")
 
 
 @pytest.mark.parametrize("across_periods", [True, False])

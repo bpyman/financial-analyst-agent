@@ -21,6 +21,17 @@ class Metric(StrEnum):
     EPS_BASIC = "eps_basic"
     OPERATING_CASH_FLOW = "operating_cash_flow"
     CAPITAL_EXPENDITURE = "capital_expenditure"
+    DEPRECIATION_AMORTIZATION = "depreciation_amortization"
+    DIVIDENDS_PAID = "dividends_paid"
+    DIVIDENDS_PER_SHARE = "dividends_per_share"
+    # Balance-sheet amounts at the quarter's end date, not over the quarter.
+    CASH = "cash"
+    SHAREHOLDERS_EQUITY = "shareholders_equity"
+    # Net income over the four quarters ending on the report date (ADR 0008).
+    NET_INCOME_TTM = "net_income_ttm"
+    # The two halves of D&A, for filers that tag no combined line (Microsoft).
+    DEPRECIATION = "depreciation"
+    AMORTIZATION_OF_INTANGIBLES = "amortization_of_intangibles"
 
 
 class FormType(StrEnum):

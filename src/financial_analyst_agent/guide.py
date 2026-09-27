@@ -29,7 +29,8 @@ STARTER_QUESTIONS: tuple[str, ...] = (
 )
 HELP_MESSAGE = (
     "I answer from companies' SEC filings. Ask for a quarterly figure (revenue, "
-    "net income, margins, EPS, free cash flow), name a period (“Q3 2024”, "
+    "net income, margins, EPS, free cash flow, EBITDA, cash, dividends, return on "
+    "equity, P/E, share price), name a period (“Q3 2024”, "
     "“fiscal 2025”), compare companies, rank an industry, track a metric over "
     "several quarters, or see what changed in a 10-Q. Every number links to the "
     "filing it came from."
@@ -92,23 +93,18 @@ _SMALLEST_GROUP = re.compile(
 )
 UNSUPPORTED_MESSAGE = (
     "I can't look up {names} yet. I answer from reported 10-Q figures such as "
-    "revenue, net income, margins, EPS and cash flow."
+    "revenue, net income, margins, EPS, cash flow, cash, dividends and P/E."
 )
 # Figures people ask for that the metric catalog does not hold, in the words the
 # reply uses. Checked only when the question names no metric the catalog knows,
 # so "Apple revenue and dividends" still answers revenue.
 _UNSUPPORTED_METRICS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bp\s*/\s*e\b|\bpe ratio\b|\bprice[ -]to[ -]earnings\b"), "P/E ratio"),
-    (re.compile(r"\broe\b|\breturn on equity\b"), "return on equity"),
     (re.compile(r"\broa\b|\breturn on assets\b"), "return on assets"),
-    (re.compile(r"\bebitda\b"), "EBITDA"),
-    (re.compile(r"\b(?:stock|share) price\b|\bstock performance\b"), "stock price"),
+    (re.compile(r"\bstock performance\b|\bshare price (?:history|chart)\b"), "stock performance"),
+    (re.compile(r"\bdividend yield\b"), "dividend yield"),
     (re.compile(r"\btotal assets\b"), "total assets"),
     (re.compile(r"\b(?:total )?liabilities\b"), "liabilities"),
-    (re.compile(r"\bbook value\b|\bshareholders'? equity\b"), "book value"),
-    (re.compile(r"\bcash\b(?!\s+flows?)(?! from)"), "cash"),
     (re.compile(r"\b(?:total )?debt\b|\bleverage\b"), "debt"),
-    (re.compile(r"\bdividends?\b"), "dividends"),
     (re.compile(r"\bbuybacks?\b|\b(?:share |stock )?repurchases?\b"), "share buybacks"),
     (re.compile(r"\bheadcount\b|\bemployees\b"), "headcount"),
 )

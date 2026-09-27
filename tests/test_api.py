@@ -106,7 +106,7 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
         label for label, _ in GUIDED_STORIES
     ]
     assert meta["snapshot"] == {
-        "banner": "Recorded universe snapshot as of Sep 27, 2026, 10:54 AM UTC",
+        "banner": "Recorded universe snapshot as of Sep 27, 2026, 10:43 PM UTC",
         "stale": False,
     }
     assert meta["metric_groups"][0]["title"] == "Reported (SEC EDGAR)"
@@ -247,7 +247,7 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
     assert list(groups) == ["Reported (SEC EDGAR)", "Calculated", "Daily snapshot (FMP)"]
     assert groups["Reported (SEC EDGAR)"][0] == "Revenue"
     assert "Gross margin" in groups["Calculated"]
-    assert groups["Daily snapshot (FMP)"] == ["Market cap"]
+    assert groups["Daily snapshot (FMP)"] == ["Market cap", "Share price"]
     assert not any("_" in name for names in groups.values() for name in names)
 
 

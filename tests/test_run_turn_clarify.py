@@ -69,7 +69,7 @@ def test_unknown_metric_still_refuses_with_full_catalog() -> None:
     assert result.renderer is RendererKind.REFUSE
     assert result.candidates == ()
     assert result.message is not None
-    assert result.message.startswith("I can't look up return on equity yet.")
+    assert result.message.startswith("I can't look up return on assets yet.")
 
 
 def test_unique_phrase_overrides_planner_metric() -> None:
@@ -110,4 +110,4 @@ def test_unknown_phrase_refuses_even_when_planner_guesses_net_income() -> None:
     assert result.renderer is RendererKind.REFUSE
     assert result.tool_traces == []
     assert result.message is not None
-    assert result.message.startswith("I can't look up return on equity yet.")
+    assert result.message.startswith("I can't look up return on assets yet.")

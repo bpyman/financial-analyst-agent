@@ -271,16 +271,16 @@ def test_add_multiple_companies_and_unknown_metric_phrase(tmp_path: Path) -> Non
     assert refused.analysis_spec is not None
     ebitda = run_conversation_turn(
         "t2",
-        "add EBITDA",
+        "add ROA",
         _runtime(
             _RecordingCompleter(
-                [SpecPatch(mode="extend", add_metrics=("ebitda",))]
+                [SpecPatch(mode="extend", add_metrics=("roa",))]
             )
         ),
         store=store,
     )
     assert ebitda.result.renderer is RendererKind.REFUSE
-    assert "ebitda" in (ebitda.result.message or "").casefold()
+    assert "return on assets" in (ebitda.result.message or "").casefold()
 
 
 def test_unmaterialized_window_refuses_instead_of_latest_quarter(tmp_path: Path) -> None:

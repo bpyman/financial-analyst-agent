@@ -77,7 +77,7 @@ def _cases() -> tuple[EvalCase, ...]:
         EvalCase(
             "refuse_unknown_metric",
             "ambiguity_refusal",
-            "What was Microsoft's ROE last quarter?",
+            "What was Microsoft's ROA last quarter?",
             Intent.LOOKUP,
             RendererKind.REFUSE,
         ),

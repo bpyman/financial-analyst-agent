@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 from financial_analyst_agent.domain.enums import FormType, Metric
+from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.domain.models import (
     Derivation,
     DerivationPart,
@@ -154,4 +156,46 @@ def gross_profit_from_components(revenue: FinancialFact, cost: FinancialFact) ->
                 parts=[part(revenue), part(cost)],
             ),
         }
+    )
+
+
+DEPRECIATION_AMORTIZATION_LABEL = "Depreciation plus amortization of intangible assets"
+
+
+def sum_of_components(metric: Metric, facts: list[FinancialFact]) -> FinancialFact:
+    """One amount as the sum of reported parts that cover the same period."""
+    first = facts[0]
+    period = (first.start_date, first.end_date)
+    if any((fact.start_date, fact.end_date) != period for fact in facts):
+        raise UnsupportedQuarterlyFactError(
+            "The parts of the amount cover different periods",
+            details={"metric": metric.value},
+        )
+    return first.model_copy(
+        update={
+            "metric": metric,
+            "value": sum((fact.value for fact in facts), start=Decimal(0)),
+            "concept": " + ".join(fact.concept for fact in facts),
+            "directly_reported": False,
+            "derivation": Derivation(
+                method="sum",
+                label=DEPRECIATION_AMORTIZATION_LABEL,
+                parts=[_derivation_part(fact) for fact in facts],
+            ),
+        }
+    )
+
+
+def _derivation_part(fact: FinancialFact) -> DerivationPart:
+    return DerivationPart(
+        value=fact.value,
+        start_date=fact.start_date,
+        end_date=fact.end_date,
+        form=fact.form,
+        accession_number=fact.accession_number,
+        taxonomy=fact.taxonomy,
+        concept=fact.concept,
+        filed_date=fact.filed_date,
+        source_url=fact.source_url,
+        derivation=fact.derivation,
     )

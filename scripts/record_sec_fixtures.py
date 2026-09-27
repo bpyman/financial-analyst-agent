@@ -70,12 +70,25 @@ DISPLAY_NAMES: dict[int, str] = {
 }
 
 
+def _with_price(company: dict[str, Any], price: str | None) -> dict[str, Any]:
+    """The company with its share price beside the market cap it was quoted with."""
+    updated: dict[str, Any] = {}
+    for field, value in company.items():
+        if field == "price":
+            continue
+        updated[field] = value
+        if field == "market_cap" and price is not None:
+            updated["price"] = price
+    return updated
+
+
 def _sync_fixture_snapshot() -> str:
-    """Carry the live freeze's date, caps, industries, and filer flags into the recorded one."""
+    """Carry the live freeze's date, caps, prices, industries, and filer flags across."""
     raw = FIXTURE_SNAPSHOT.read_text()
     fixture = json.loads(raw)
     live = json.loads(LIVE_SNAPSHOT.read_text())
     caps = {company["cik"]: company["market_cap"] for company in live["companies"]}
+    prices = {company["cik"]: company.get("price") for company in live["companies"]}
     industries = {company["cik"]: company.get("industry", "") for company in live["companies"]}
     # Like write_universe_snapshot, only a False flag is written.
     foreign = {c["cik"] for c in live["companies"] if c.get("files_quarterly", True) is False}
@@ -83,8 +96,9 @@ def _sync_fixture_snapshot() -> str:
     if missing:
         raise SystemExit(f"The live snapshot has no row for {missing}; update the fixture")
     fixture["as_of"] = live["as_of"]
-    for company in fixture["companies"]:
+    for index, company in enumerate(fixture["companies"]):
         company["market_cap"] = caps[company["cik"]]
+        fixture["companies"][index] = company = _with_price(company, prices[company["cik"]])
         company["industry"] = industries[company["cik"]]
         if company["cik"] in foreign:
             company["files_quarterly"] = False

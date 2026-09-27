@@ -66,6 +66,11 @@ REPORTED_METRICS: tuple[str, ...] = (
     "eps_basic",
     "operating_cash_flow",
     "capital_expenditure",
+    "depreciation_amortization",
+    "dividends_paid",
+    "dividends_per_share",
+    "cash",
+    "shareholders_equity",
 )
 FORMULA_METRICS: tuple[str, ...] = (
     "gross_margin",
@@ -76,8 +81,11 @@ FORMULA_METRICS: tuple[str, ...] = (
     "effective_tax_rate",
     "interest_coverage",
     "free_cash_flow",
+    "ebitda",
+    "return_on_equity",
+    "pe_ratio",
 )
-SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap",)
+SNAPSHOT_METRICS: tuple[str, ...] = ("market_cap", "price")
 ALLOWED_METRICS: tuple[str, ...] = REPORTED_METRICS + FORMULA_METRICS + SNAPSHOT_METRICS
 PERCENT_FORMULAS: tuple[str, ...] = (
     "gross_margin",
@@ -86,6 +94,7 @@ PERCENT_FORMULAS: tuple[str, ...] = (
     "rd_to_sales",
     "sga_ratio",
     "effective_tax_rate",
+    "return_on_equity",
 )
 FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "gross_margin": ("gross_profit", "revenue"),
@@ -96,10 +105,24 @@ FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "effective_tax_rate": ("income_tax_expense", "pretax_income"),
     "interest_coverage": ("operating_income", "interest_expense"),
     "free_cash_flow": ("operating_cash_flow", "capital_expenditure"),
+    "ebitda": ("operating_income", "depreciation_amortization"),
+    "return_on_equity": ("net_income_ttm", "shareholders_equity"),
+    "pe_ratio": ("market_cap", "net_income_ttm"),
 }
 # Formulas that subtract their second component instead of dividing by it.
 DIFFERENCE_FORMULAS: tuple[str, ...] = ("free_cash_flow",)
-PER_SHARE_METRICS: tuple[str, ...] = ("eps_diluted", "eps_basic")
+# Formulas that add their components.
+SUM_FORMULAS: tuple[str, ...] = ("ebitda",)
+# Formulas whose value is a multiple ("12.4x"), not a percent or an amount.
+MULTIPLE_FORMULAS: tuple[str, ...] = ("interest_coverage", "pe_ratio")
+# Formulas over the trailing year rather than one quarter (ADR 0008).
+TRAILING_YEAR_FORMULAS: tuple[str, ...] = ("return_on_equity", "pe_ratio")
+# Formulas with a snapshot component: computed for the latest period only,
+# since the snapshot holds today's market cap, not a past one (ADR 0008).
+MARKET_FORMULAS: tuple[str, ...] = ("pe_ratio",)
+# Balance-sheet amounts: one value at the quarter's end date (ADR 0008).
+INSTANT_METRICS: tuple[str, ...] = ("cash", "shareholders_equity")
+PER_SHARE_METRICS: tuple[str, ...] = ("eps_diluted", "eps_basic", "dividends_per_share", "price")
 
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
@@ -110,6 +133,10 @@ ZERO_DENOMINATOR = "zero_denominator"
 # A per-share figure for a quarter the filings do not report on its own
 # (fiscal Q4 EPS lives only in the annual total; ADR 0007).
 NOT_REPORTED_FOR_QUARTER = "not_reported_for_quarter"
+# A ratio that means nothing for these inputs: a P/E on a trailing-year loss.
+NOT_MEANINGFUL = "not_meaningful"
+# A snapshot-based figure asked for a past period (ADR 0008).
+LATEST_PERIOD_ONLY = "latest_period_only"
 MODEL_ANALYSIS_BANNER = "model-analysis"
 EXPLORATORY_RESEARCH_BANNER = "exploratory-research"
 SEARCH_NEWS_TOPIC = "news"

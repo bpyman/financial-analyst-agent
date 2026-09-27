@@ -90,6 +90,9 @@ class UniverseCompany(BaseModel):
     sector: str
     exchange: str = ""
     market_cap: DecimalStr
+    # Share price at the snapshot's as_of, from the same vendor row as market_cap.
+    # Snapshots built before prices were recorded leave it out.
+    price: DecimalStr | None = None
     is_etf: bool = False
     is_fund: bool = False
     industry: str = ""
@@ -173,6 +176,8 @@ def _snapshot_json(snapshot: UniverseSnapshot) -> str:
     for company in payload["companies"]:
         if not company.get("industry"):
             company.pop("industry", None)
+        if company.get("price") is None:
+            company.pop("price", None)
         # Only exceptions are written, so annotating a snapshot touches only them.
         if company.get("files_quarterly", True):
             company.pop("files_quarterly", None)

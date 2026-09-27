@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-09-27T10:54:00.695314Z",
+  "as_of": "2026-09-27T22:43:45.015184Z",
   "source": "universe_snapshot",
   "companies": [
     {
@@ -9,6 +9,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "1114757656520",
+      "price": "1183.72",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -20,6 +21,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "341998101102",
+      "price": "376.59",
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Healthcare Plans"
@@ -31,6 +33,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "653612648388",
+      "price": "271.22",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -42,6 +45,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "467140021872",
+      "price": "264.4",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -53,6 +57,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "367361026800",
+      "price": "148.74",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -64,6 +69,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "249579418050",
+      "price": "675",
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Diagnostics & Research"
@@ -75,6 +81,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "175287835584",
+      "price": "101.3",
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Devices"
@@ -86,6 +93,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "157925817031",
+      "price": "224.65",
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Diagnostics & Research"
@@ -97,6 +105,7 @@
       "sector": "Healthcare",
       "exchange": "NASDAQ",
       "market_cap": "223768333880",
+      "price": "414.61",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -108,6 +117,7 @@
       "sector": "Healthcare",
       "exchange": "NYSE",
       "market_cap": "163402944800",
+      "price": "28.67",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -119,6 +129,7 @@
       "sector": "Healthcare",
       "exchange": "NASDAQ",
       "market_cap": "187146431544",
+      "price": "150.93",
       "is_etf": false,
       "is_fund": false,
       "industry": "Drug Manufacturers - General"
@@ -130,6 +141,7 @@
       "sector": "Financial Services",
       "exchange": "NYSE",
       "market_cap": "919232700600",
+      "price": "343.06",
       "is_etf": false,
       "is_fund": false,
       "industry": "Banks - Diversified"
@@ -141,6 +153,7 @@
       "sector": "Financial Services",
       "exchange": "NYSE",
       "market_cap": "402376653000",
+      "price": "56.7",
       "is_etf": false,
       "is_fund": false,
       "industry": "Banks - Diversified"
@@ -152,6 +165,7 @@
       "sector": "Financial Services",
       "exchange": "NYSE",
       "market_cap": "250901280000",
+      "price": "82.97",
       "is_etf": false,
       "is_fund": false,
       "industry": "Banks - Diversified"
@@ -163,6 +177,7 @@
       "sector": "Financial Services",
       "exchange": "NYSE",
       "market_cap": "275964298150",
+      "price": "935.45",
       "is_etf": false,
       "is_fund": false,
       "industry": "Financial - Capital Markets"
@@ -174,6 +189,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "5009416510920",
+      "price": "341.07",
       "is_etf": false,
       "is_fund": false,
       "industry": "Consumer Electronics"
@@ -185,6 +201,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "3832846143500",
+      "price": "516.17",
       "is_etf": false,
       "is_fund": false,
       "industry": "Software - Infrastructure"
@@ -196,6 +213,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "4139313608328",
+      "price": "341.08",
       "is_etf": false,
       "is_fund": false,
       "industry": "Internet Content & Information"
@@ -207,6 +225,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "4139313608328",
+      "price": "341.08",
       "is_etf": false,
       "is_fund": false,
       "industry": "Internet Content & Information"
@@ -218,6 +237,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "5451420470000",
+      "price": "225.07",
       "is_etf": false,
       "is_fund": false,
       "industry": "Semiconductors"
@@ -229,6 +249,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "1678521799800",
+      "price": "352.81",
       "is_etf": false,
       "is_fund": false,
       "industry": "Semiconductors"
@@ -240,6 +261,7 @@
       "sector": "Technology",
       "exchange": "NYSE",
       "market_cap": "394854827600",
+      "price": "137.08",
       "is_etf": false,
       "is_fund": false,
       "industry": "Software - Infrastructure"
@@ -251,6 +273,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "1028305278000",
+      "price": "630.63",
       "is_etf": false,
       "is_fund": false,
       "industry": "Semiconductors"
@@ -262,6 +285,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "420551078756",
+      "price": "106.7",
       "is_etf": false,
       "is_fund": false,
       "industry": "Communication Equipment"
@@ -273,6 +297,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "435495596900",
+      "price": "189.67",
       "is_etf": false,
       "is_fund": false,
       "industry": "Software - Infrastructure"
@@ -284,6 +309,7 @@
       "sector": "Technology",
       "exchange": "NASDAQ",
       "market_cap": "385070115000",
+      "price": "485",
       "is_etf": false,
       "is_fund": false,
       "industry": "Semiconductors"

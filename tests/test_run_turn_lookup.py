@@ -18,7 +18,7 @@ from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
     "What was Google's net income based on their latest quarterly report?"
 )
-UNKNOWN_METRIC_QUERY = "What was Google's ROE based on their latest quarterly report?"
+UNKNOWN_METRIC_QUERY = "What was Google's ROA based on their latest quarterly report?"
 UNKNOWN_COSTS_QUERY = "What was Google's costs based on their latest quarterly report?"
 GOOGLE_GROSS_PROFIT_QUERY = "What was Google's gross profit based on their latest quarterly report?"
 GOOGLE_OPERATING_MARGIN_QUERY = (
@@ -89,7 +89,7 @@ class _UnknownMetricCompleter:
     def complete(self, query: str) -> SimpleNamespace:
         if query != UNKNOWN_METRIC_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
-        return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="roe")
+        return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="roa")
 
 
 class _ShopifyNetMarginCompleter:
@@ -237,7 +237,7 @@ def test_run_turn_refuses_unknown_metric_with_allowed_list() -> None:
     assert result.tool_traces == []
     assert result.numeral_lock_extras == []
     assert result.message is not None
-    assert result.message.startswith("I can't look up return on equity yet.")
+    assert result.message.startswith("I can't look up return on assets yet.")
 
 
 def test_recorded_runtime_refuses_unknown_costs_without_inventing_net_income() -> None:
@@ -405,7 +405,7 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
 GOOGLE_MARKET_CAP_QUERY = "What was Google's market cap?"
 SHOPIFY_MARKET_CAP_QUERY = "What was Shopify's market cap?"
 ALPHABET_SNAPSHOT_MARKET_CAP = Decimal("4139313608328")
-SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T22:43:45.015184+00:00"
 
 
 class _ShopifyMarketCapCompleter:
