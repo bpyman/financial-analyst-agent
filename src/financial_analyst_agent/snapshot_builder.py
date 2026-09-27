@@ -52,6 +52,14 @@ def _ticker_cik_index(tickers_payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def primary_tickers(tickers_payload: dict[str, Any]) -> dict[str, str]:
+    """The ticker SEC lists first for each CIK, which is its common share."""
+    primary: dict[str, str] = {}
+    for entry in extract_usable_ticker_entries(tickers_payload):
+        primary.setdefault(entry["cik"], entry["ticker"])
+    return primary
+
+
 def _canonical_exchange(payload: dict[str, Any]) -> str:
     short = str(payload.get("exchangeShortName") or "").strip()
     descriptive = str(payload.get("exchange") or "").strip()
@@ -90,9 +98,7 @@ def vendor_company_from_mapping(payload: dict[str, Any]) -> UniverseCompany | No
     cik = parse_cik(payload.get("cik"))
     if cik is None:
         return None
-    market_cap = _market_cap_to_decimal_str(
-        payload.get("market_cap", payload.get("marketCap"))
-    )
+    market_cap = _market_cap_to_decimal_str(payload.get("market_cap", payload.get("marketCap")))
     if market_cap is None:
         return None
     name = str(payload.get("name") or payload.get("companyName") or "").strip()
@@ -284,6 +290,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         written = write_universe_snapshot(_annotate_with_sec(existing, settings), args.output)
         print(f"Annotated {len(existing.companies)} companies in {written}")
         return
+    primary: dict[str, str] = {}
     if args.input is not None:
         rows = load_vendor_rows(args.input)
         source = "universe_snapshot"
@@ -294,12 +301,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             settings.require_user_agent()
         except ConfigurationError as exc:
             parser.error(str(exc))
-        rows = fetch_fmp_rows(api_key, settings=settings)
+        sec = SECClient(settings)
+        try:
+            identity = sec.get_company_tickers()
+        finally:
+            sec.close()
+        rows = fetch_fmp_rows(api_key, tickers_payload=identity, settings=settings)
+        primary = primary_tickers(identity)
         source = "fmp_universe_snapshot"
     snapshot = build_universe_snapshot(
         rows,
         as_of=datetime.now(UTC),
         source=source,
+        primary_tickers=primary,
     )
     if not snapshot.companies:
         raise ValueError(

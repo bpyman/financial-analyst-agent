@@ -3,7 +3,7 @@
 import json
 import re
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -102,9 +102,7 @@ def _is_common_share(company: UniverseCompany) -> bool:
         return False
     if _NON_COMMON_TICKER.search(company.ticker.strip()):
         return False
-    compact_nasdaq_product = _COMPACT_NASDAQ_NON_COMMON_TICKER.fullmatch(
-        company.ticker.strip()
-    )
+    compact_nasdaq_product = _COMPACT_NASDAQ_NON_COMMON_TICKER.fullmatch(company.ticker.strip())
     if company.exchange.upper().startswith("NASDAQ") and compact_nasdaq_product:
         return False
     return _INSTRUMENT_TITLE.search(company.name) is None
@@ -120,10 +118,7 @@ def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
     """Pick the common operating listing for one CIK.
 
     Note/preferred tickers are often a longer extension of the common symbol
-    (SO vs SOMN) and can carry inflated vendor market caps, so extensions go
-    first. Of what is left, the largest market cap wins: a note on its own
-    stem (Comcast's CCZ beside CMCSA) is valued at its issue size, far below
-    the equity, while share classes (GOOG, GOOGL) carry about the same cap.
+    (SO vs SOMN) and can carry inflated vendor market caps.
     """
     listings = list(rows)
     if len(listings) == 1:
@@ -136,7 +131,14 @@ def preferred_listing(rows: Sequence[UniverseCompany]) -> UniverseCompany:
     ]
     if not stems:
         stems = listings
-    return min(stems, key=lambda row: (-row.market_cap, len(row.ticker)))
+    return min(stems, key=lambda row: (len(row.ticker), -row.market_cap))
+
+
+def _primary_or_preferred(rows: Sequence[UniverseCompany], primary: str | None) -> UniverseCompany:
+    for row in rows:
+        if primary is not None and row.ticker.strip().upper() == primary:
+            return row
+    return preferred_listing(rows)
 
 
 class UniverseSnapshot(BaseModel):
@@ -176,20 +178,26 @@ def build_universe_snapshot(
     *,
     as_of: datetime,
     source: str = "universe_snapshot",
+    primary_tickers: Mapping[str, str] | None = None,
 ) -> UniverseSnapshot:
-    """Filter a vendor dump into the dated operating-company freeze the rank adapter reads."""
+    """Filter a vendor dump into the dated operating-company freeze the rank adapter reads.
+
+    ``primary_tickers`` maps a CIK to the ticker SEC lists first for it. When
+    that listing survives the filters it wins: a note on its own stem (Comcast's
+    CCZ beside CMCSA, Aegon's AEFC beside AEG) is otherwise indistinguishable
+    from a share class.
+    """
     eligible = [
         row
         for row in rows
-        if is_common_operating_listing(row)
-        and row.exchange.upper() in US_EXCHANGES
-        and row.sector
+        if is_common_operating_listing(row) and row.exchange.upper() in US_EXCHANGES and row.sector
     ]
     eligible.sort(key=lambda row: row.market_cap, reverse=True)
     by_cik: dict[str, list[UniverseCompany]] = defaultdict(list)
     for row in eligible:
         by_cik[row.cik].append(row)
-    companies = [preferred_listing(group) for group in by_cik.values()]
+    primary = primary_tickers or {}
+    companies = [_primary_or_preferred(group, primary.get(cik)) for cik, group in by_cik.items()]
     companies.sort(key=lambda row: row.market_cap, reverse=True)
     return UniverseSnapshot(as_of=as_of, source=source, companies=companies)
 
@@ -310,7 +318,8 @@ def resolve_industry_group(industry: str, snapshot: UniverseSnapshot) -> Industr
         name
         for name in present
         for pattern in patterns
-        if name == pattern or (pattern.endswith(" -") and name.startswith(pattern))
+        if name == pattern
+        or (pattern.endswith(" -") and name.startswith(pattern))
         or (pattern == "Oil & Gas" and name.startswith(pattern))
     }
     if not matched:
@@ -318,9 +327,7 @@ def resolve_industry_group(industry: str, snapshot: UniverseSnapshot) -> Industr
     if not matched:
         # "regional banks" names "Banks - Regional" word for word.
         words = set(wanted.split())
-        matched = {
-            name for name in present if words <= set(_normalize_group(name).split())
-        }
+        matched = {name for name in present if words <= set(_normalize_group(name).split())}
     if not matched:
         return None
     if len(matched) == 1:

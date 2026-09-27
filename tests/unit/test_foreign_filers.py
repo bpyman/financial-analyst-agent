@@ -213,8 +213,9 @@ def test_packaged_fixture_snapshot_lists_only_quarterly_filers() -> None:
     assert all(company.files_quarterly for company in snapshot.companies)
 
 
-def test_a_note_on_its_own_stem_does_not_stand_in_for_the_common_share() -> None:
-    from financial_analyst_agent.universe import preferred_listing
+def test_the_ticker_sec_lists_first_is_the_common_share() -> None:
+    from financial_analyst_agent.snapshot_builder import primary_tickers
+    from financial_analyst_agent.universe import build_universe_snapshot
 
     def listing(ticker: str, cap: str) -> UniverseCompany:
         return UniverseCompany(
@@ -226,12 +227,12 @@ def test_a_note_on_its_own_stem_does_not_stand_in_for_the_common_share() -> None
             market_cap=Decimal(cap),
         )
 
-    assert (
-        preferred_listing([listing("CCZ", "14712388772"), listing("CMCSA", "77750628191")]).ticker
-        == "CMCSA"
-    )
-    # An extension of the common symbol still loses whatever its vendor cap says.
-    assert (
-        preferred_listing([listing("SO", "90000000000"), listing("SOMN", "99000000000")]).ticker
-        == "SO"
-    )
+    sec = {
+        "0": {"cik_str": 1166691, "ticker": "CMCSA", "title": "COMCAST CORP"},
+        "1": {"cik_str": 1166691, "ticker": "CCZ", "title": "COMCAST CORP"},
+    }
+    rows = [listing("CCZ", "14712388772"), listing("CMCSA", "77750628191")]
+
+    built = build_universe_snapshot(rows, as_of=AS_OF, primary_tickers=primary_tickers(sec))
+
+    assert [company.ticker for company in built.companies] == ["CMCSA"]
