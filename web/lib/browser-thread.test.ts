@@ -4,6 +4,8 @@ import {
   EXPIRED_NOTICE,
   LOCKED_LIVE_NOTICE,
   THREAD_STORAGE_KEY,
+  askOnThread,
+  isCurrentThread,
   memoryStore,
   resumeThread,
   startOverIfLocked,
@@ -11,7 +13,7 @@ import {
   waitForTurn,
   type ThreadApi,
 } from "./browser-thread";
-import type { CreatedThread, RuntimeKind, ThreadView } from "./types";
+import type { CreatedThread, RuntimeKind, ThreadView, TurnEvent } from "./types";
 
 function view(overrides: Partial<ThreadView> = {}): ThreadView {
   return {
@@ -89,6 +91,51 @@ describe("resumeThread", () => {
     await expect(resumeThread(fakeApi({ "t-1": outage }), store)).rejects.toBe(outage);
     expect(store.getItem(THREAD_STORAGE_KEY)).toBe("t-1");
   });
+
+  it("drops a restoration that lands after the analyst started another thread", async () => {
+    const api = fakeApi({ "t-1": view({ thread_id: "t-1", turn_count: 3 }) });
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    api.getThread.mockImplementationOnce(async (id) => {
+      await held;
+      return view({ thread_id: id, turn_count: 3 });
+    });
+
+    const resuming = resumeThread(api, store);
+    const started = await startThread(api, store, "recorded", "t-1");
+    release();
+
+    expect(await resuming).toBeNull();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started.view.thread_id);
+  });
+
+  it("does not forget the new thread when the one it replaced comes back expired", async () => {
+    const api = fakeApi();
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "gone" });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    api.getThread.mockImplementationOnce(async () => {
+      await held;
+      throw new ApiError("Unknown thread.", 404);
+    });
+
+    const resuming = resumeThread(api, store);
+    store.setItem(THREAD_STORAGE_KEY, "new-1");
+    release();
+
+    expect(await resuming).toBeNull();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe("new-1");
+  });
+});
+
+describe("isCurrentThread", () => {
+  it("is true only for the thread this browser holds", () => {
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-2" });
+    expect(isCurrentThread(store, "t-2")).toBe(true);
+    expect(isCurrentThread(store, "t-1")).toBe(false);
+    expect(isCurrentThread(memoryStore(), "t-1")).toBe(false);
+  });
 });
 
 describe("startThread", () => {
@@ -162,6 +209,74 @@ describe("startOverIfLocked", () => {
     expect(api.createThread).toHaveBeenCalledWith("recorded");
     expect(started).toEqual({ view: expect.objectContaining({ runtime: "recorded" }), notice: LOCKED_LIVE_NOTICE });
     expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started?.view.thread_id);
+  });
+});
+
+describe("askOnThread", () => {
+  const answered = (threadId: string): TurnEvent[] => [
+    { event: "progress", data: { done: 0, total: 0 } },
+    { event: "thread", data: view({ thread_id: threadId, turn_count: 1 }) },
+  ];
+
+  /** The turn endpoint: `refusals` maps a thread id to the error its POST gets. */
+  function fakeTurns(refusals: Record<string, ApiError> = {}) {
+    return vi.fn(async function* (threadId: string): AsyncGenerator<TurnEvent> {
+      const refused = refusals[threadId];
+      if (refused) throw refused;
+      yield* answered(threadId);
+    });
+  }
+
+  async function collect(events: AsyncIterable<TurnEvent>): Promise<TurnEvent[]> {
+    const seen: TurnEvent[] = [];
+    for await (const event of events) seen.push(event);
+    return seen;
+  }
+
+  it("asks on the thread the server still has", async () => {
+    const api = fakeApi();
+    const runTurn = fakeTurns();
+    const onFresh = vi.fn();
+
+    const events = await collect(
+      askOnThread(api, memoryStore(), runTurn, "t-1", "hi", "recorded", onFresh),
+    );
+
+    expect(events).toEqual(answered("t-1"));
+    expect(api.createThread).not.toHaveBeenCalled();
+    expect(onFresh).not.toHaveBeenCalled();
+  });
+
+  it("asks again on a fresh thread when the server lost the stored one", async () => {
+    const api = fakeApi();
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "gone" });
+    const runTurn = fakeTurns({ gone: new ApiError("Unknown thread.", 404) });
+    const onFresh = vi.fn();
+
+    const events = await collect(askOnThread(api, store, runTurn, "gone", "hi", "live", onFresh));
+
+    expect(api.createThread).toHaveBeenCalledWith("live");
+    expect(runTurn.mock.calls).toEqual([
+      ["gone", "hi"],
+      ["new-1", "hi"],
+    ]);
+    expect(events).toEqual(answered("new-1"));
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe("new-1");
+    expect(onFresh).toHaveBeenCalledWith({
+      view: expect.objectContaining({ thread_id: "new-1" }),
+      notice: EXPIRED_NOTICE,
+    });
+  });
+
+  it("passes other refusals on, such as a busy service", async () => {
+    const api = fakeApi();
+    const busy = new ApiError("The analysis service is busy. Please try again in a moment.", 429);
+    const runTurn = fakeTurns({ "t-1": busy });
+
+    await expect(
+      collect(askOnThread(api, memoryStore(), runTurn, "t-1", "hi", "recorded", vi.fn())),
+    ).rejects.toBe(busy);
+    expect(api.createThread).not.toHaveBeenCalled();
   });
 });
 

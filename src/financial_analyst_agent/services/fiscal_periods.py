@@ -139,6 +139,7 @@ def gross_profit_from_components(revenue: FinancialFact, cost: FinancialFact) ->
             concept=fact.concept,
             filed_date=fact.filed_date,
             source_url=fact.source_url,
+            derivation=fact.derivation,
         )
 
     return revenue.model_copy(

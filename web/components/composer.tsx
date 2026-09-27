@@ -10,6 +10,7 @@ export function Composer({
   onChange,
   onSend,
   busy,
+  busyLabel = "Analysis running",
   placeholder,
   maxChars,
   inputRef,
@@ -18,6 +19,8 @@ export function Composer({
   onChange: (value: string) => void;
   onSend: (message: string) => void;
   busy: boolean;
+  /** What the send button says while it is busy. */
+  busyLabel?: string;
   placeholder: string;
   maxChars: number;
   inputRef: RefObject<HTMLTextAreaElement | null>;
@@ -70,7 +73,7 @@ export function Composer({
           <button
             type="submit"
             disabled={!canSend}
-            aria-label={busy ? "Analysis running" : "Send"}
+            aria-label={busy ? busyLabel : "Send"}
             className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-fg shadow-sm shadow-primary/30 transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none"
           >
             {busy ? (

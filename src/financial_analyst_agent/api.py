@@ -16,15 +16,17 @@ import logging
 import os
 import threading
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from financial_analyst_agent.config import Settings, get_settings
@@ -65,6 +67,9 @@ _LOGGER = logging.getLogger("financial_analyst_agent")
 PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
 MAX_MESSAGE_CHARS = 2000
 TURN_IN_FLIGHT_MESSAGE = "A turn is already running."
+UNKNOWN_THREAD_MESSAGE = "Unknown thread."
+BUSY_MESSAGE = "The analysis service is busy. Please try again in a moment."
+BUSY_RETRY_AFTER_SECONDS = 5
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "X-Accel-Buffering": "no",
@@ -143,6 +148,36 @@ class TurnLocks:
             return len(self._held)
 
 
+class TurnSlots:
+    """The process-wide cap on turns running at once, across every thread.
+
+    Each turn runs on its own OS thread, and a structured turn fans out to a
+    worker pool, so the single API process takes only a few at a time.
+    Admission never waits: a full house answers 429 before any work starts.
+    A slot is freed when its turn ends, whether or not anyone still listens.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self._limit = limit
+        self._running = 0
+        self._guard = threading.Lock()
+
+    def try_acquire(self) -> bool:
+        with self._guard:
+            if self._running >= self._limit:
+                return False
+            self._running += 1
+            return True
+
+    def release(self) -> None:
+        with self._guard:
+            self._running -= 1
+
+    def __len__(self) -> int:
+        with self._guard:
+            return self._running
+
+
 class CreateThreadRequest(BaseModel):
     """``runtime`` omitted means the deployment default (``APP_MODE``)."""
 
@@ -163,7 +198,7 @@ def _valid_thread_id(thread_id: str) -> str:
     try:
         parsed = uuid.UUID(thread_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Unknown thread.") from None
+        raise HTTPException(status_code=404, detail=UNKNOWN_THREAD_MESSAGE) from None
     return str(parsed)
 
 
@@ -204,14 +239,16 @@ def thread_view(
     settings: Settings,
     *,
     turn_in_flight: bool = False,
+    keep: Callable[[str], bool] = lambda _thread_id: False,
 ) -> dict[str, Any]:
     """Everything the window needs to draw one thread, as JSON-safe display records.
 
     ``turn_in_flight`` says a turn is running on the thread (a reloaded window
     polls until it ends); such a thread is not expired however old its last save.
+    The store asks ``keep`` again as it decides expiry, for a turn begun since.
     """
     ttl = None if turn_in_flight else settings.thread_ttl_seconds
-    state = store.load(thread_id, ttl_seconds=ttl)
+    state = store.load(thread_id, ttl_seconds=ttl, keep=keep)
     turns: list[dict[str, Any]] = []
     chips: tuple[str, ...] = ()
     pending = False
@@ -260,6 +297,7 @@ def create_app(
     resolved = settings or get_settings()
     store = LocalThreadStore(store_root or thread_store_root())
     turn_locks = TurnLocks()
+    turn_slots = TurnSlots(resolved.max_concurrent_turns)
     purge = _Throttle(PURGE_INTERVAL_SECONDS)
 
     app = FastAPI(
@@ -268,6 +306,21 @@ def create_app(
         openapi_url="/api/openapi.json",
     )
     app.state.turn_locks = turn_locks
+    app.state.turn_slots = turn_slots
+
+    @app.exception_handler(RequestValidationError)
+    async def plain_validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # FastAPI's default echoes the rejected input back; say what to fix instead.
+        too_long = any(error.get("type") == "string_too_long" for error in exc.errors())
+        detail = (
+            f"That message is longer than {MAX_MESSAGE_CHARS:,} characters. "
+            "Shorten it and send it again."
+            if too_long
+            else "The request was not in the form the analysis service expects."
+        )
+        return JSONResponse(status_code=422, content={"detail": detail})
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
         app.add_middleware(ProxyTokenGuard, token=proxy_token)
@@ -338,7 +391,13 @@ def create_app(
                 ttl_seconds=resolved.thread_ttl_seconds,
                 keep=turn_locks.held,
             )
-        return thread_view(store, valid, resolved, turn_in_flight=turn_locks.held(valid))
+        return thread_view(
+            store,
+            valid,
+            resolved,
+            turn_in_flight=turn_locks.held(valid),
+            keep=turn_locks.held,
+        )
 
     @app.delete("/api/threads/{thread_id}", status_code=204)
     def delete_thread(thread_id: str) -> Response:
@@ -359,6 +418,24 @@ def create_app(
             raise HTTPException(status_code=422, detail="Ask a question.")
         if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
+        try:
+            # Only a thread this API created takes turns: a made-up id would
+            # otherwise start a fresh thread, with a fresh quota, on every call.
+            # An expired thread is cleared here, under its turn lock.
+            prior = await run_in_threadpool(
+                store.load, valid, ttl_seconds=resolved.thread_ttl_seconds
+            )
+            if prior is None:
+                raise HTTPException(status_code=404, detail=UNKNOWN_THREAD_MESSAGE)
+            if not turn_slots.try_acquire():
+                raise HTTPException(
+                    status_code=429,
+                    detail=BUSY_MESSAGE,
+                    headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
+                )
+        except BaseException:
+            turn_locks.release(valid)
+            raise
 
         loop = asyncio.get_running_loop()
         events: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
@@ -371,21 +448,19 @@ def create_app(
             # The budget once its turn is reserved: saved even when the turn fails.
             reserved: SessionBudget | None = None
             try:
-                prior = store.load(valid, ttl_seconds=resolved.thread_ttl_seconds)
                 budget = SessionBudget.from_counts(
-                    turns=prior.turn_count if prior is not None else 0,
-                    live_sec_requests=prior.live_sec_requests if prior is not None else 0,
+                    turns=prior.turn_count,
+                    live_sec_requests=prior.live_sec_requests,
                     max_turns=resolved.max_turns_per_thread,
                     max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
                 )
                 budget.consume_turn()
                 reserved = budget
-                bound = prior.runtime if prior is not None else None
                 run_conversation_turn(
                     valid,
                     message,
                     runtime_for(
-                        bound or default_runtime_kind(resolved),
+                        prior.runtime or default_runtime_kind(resolved),
                         settings=resolved,
                         budget=budget,
                     ),
@@ -411,8 +486,10 @@ def create_app(
             return "thread", thread_view(store, valid, resolved)
 
         def work() -> None:
-            # Exactly one terminal event per turn, whatever raises; the lock is
-            # released first so the analyst's next turn is never refused.
+            # Exactly one terminal event per turn, whatever raises; the lock and
+            # the slot are released first so the analyst's next turn is never
+            # refused. A turn runs to its end even if its reader has gone, and
+            # only then frees its slot.
             terminal: tuple[str, dict[str, Any]] = (
                 "error",
                 {"message": public_error_message(Exception())},
@@ -423,10 +500,16 @@ def create_app(
                 _LOGGER.exception("api_turn_failed_after_run")
             finally:
                 turn_locks.release(valid)
+                turn_slots.release()
                 emit(*terminal)
 
         worker = threading.Thread(target=work, name=f"turn-{valid}", daemon=True)
-        worker.start()
+        try:
+            worker.start()
+        except BaseException:
+            turn_slots.release()
+            turn_locks.release(valid)
+            raise
 
         async def stream() -> AsyncIterator[str]:
             yield _sse("progress", {"done": 0, "total": 0})

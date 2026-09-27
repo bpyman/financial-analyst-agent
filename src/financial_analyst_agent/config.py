@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     thread_ttl_seconds: int = 7200
     max_turns_per_thread: int = 25
     max_live_sec_requests_per_thread: int = 25
+    max_concurrent_turns: int = 4
     snapshot_stale_after_days: int = 30
 
     model_config = SettingsConfigDict(
@@ -111,6 +112,13 @@ class Settings(BaseSettings):
         value = _reject_non_finite(value, "SEC_TIMEOUT_SECONDS")
         if value <= 0:
             raise ValueError("SEC_TIMEOUT_SECONDS must be greater than 0")
+        return value
+
+    @field_validator("max_concurrent_turns")
+    @classmethod
+    def validate_max_concurrent_turns(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("MAX_CONCURRENT_TURNS must be at least 1")
         return value
 
     @field_validator("fmp_base_url")

@@ -6,7 +6,13 @@
 export const PROXY_TOKEN_HEADER = "x-proxy-token";
 
 /** Response headers the browser needs; everything else from upstream is dropped. */
-const FORWARD_RESPONSE_HEADERS = ["content-type", "cache-control", "x-accel-buffering"];
+const FORWARD_RESPONSE_HEADERS = [
+  "content-type",
+  "cache-control",
+  "x-accel-buffering",
+  // How long a busy API (429) asks callers to wait.
+  "retry-after",
+];
 
 /**
  * Headers for the upstream API call. Built from an allowlist, so nothing the

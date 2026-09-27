@@ -445,4 +445,120 @@ def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -
     assert result.renderer is RendererKind.TABLE
     assert {item.section for item in result.disclosure_changes} == {"mda"}
     assert result.tool_traces[0].provenance["section_errors"] == ["Risk Factors was not found"]
-    assert any("Partial filing change" in banner for banner in result.banners)
+    assert (
+        "I couldn't find the Risk Factors section in one or both of these filings, so only "
+        "Management's Discussion and Analysis was compared."
+    ) in result.banners
+
+
+def _unchanged_facts(monkeypatch: pytest.MonkeyPatch) -> _Facts:
+    """Both filings carry the same text, so every section that can be read is unchanged."""
+    facts = _Facts()
+    monkeypatch.setattr(facts, "get_filing_document", lambda cik, accession, document: OLDER_HTML)
+    return facts
+
+
+def _without(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
+    import financial_analyst_agent.filing_change as filing_change
+
+    original = filing_change.extract_section
+
+    def extract(html: str, section: str) -> str:
+        return "" if section in missing else original(html, section)
+
+    monkeypatch.setattr(filing_change, "extract_section", extract)
+
+
+def _both_sections(facts: _Facts) -> Any:
+    return run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="mda and risk_factors",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+    )
+
+
+def test_unchanged_filings_say_no_changes_were_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _both_sections(_unchanged_facts(monkeypatch))
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message == "No reviewed-section changes were found between those filings."
+    assert "section_errors" not in result.tool_traces[0].provenance
+
+
+def test_unreadable_sections_are_not_reported_as_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _without(monkeypatch, "mda", "risk_factors")
+    result = _both_sections(_Facts())
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message == (
+        "I couldn't find the Management's Discussion and Analysis or Risk Factors "
+        "sections in one or both of these filings, so I couldn't compare them."
+    )
+    assert result.tool_traces[0].provenance["section_errors"] == [
+        "Management's Discussion and Analysis was not found",
+        "Risk Factors was not found",
+    ]
+
+
+def test_one_unreadable_section_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
+    _without(monkeypatch, "risk_factors")
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="risk_factors",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+    )
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message == (
+        "I couldn't find the Risk Factors section in one or both of these filings, "
+        "so I couldn't compare it."
+    )
+
+
+def test_no_changes_is_claimed_only_for_the_sections_compared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _without(monkeypatch, "risk_factors")
+    result = _both_sections(_unchanged_facts(monkeypatch))
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message == (
+        "Management's Discussion and Analysis did not change between these filings. "
+        "I couldn't find the Risk Factors section in one or both of these filings, "
+        "so it was not compared."
+    )
+    assert result.tool_traces[0].provenance["section_errors"] == ["Risk Factors was not found"]
+
+
+def test_a_summary_the_model_cannot_write_is_explained() -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+
+    class _Essay:
+        def complete_essay(self, query: str, tool_json: str = "") -> str:
+            raise ProviderError("No summary is shown for these filings.")
+
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft",
+            older_accession=OLDER,
+            newer_accession=NEWER,
+            section="mda",
+            summarize=True,
+        ),
+        Runtime(
+            completer=SimpleNamespace(),
+            facts=_Facts(),  # type: ignore[arg-type]
+            essay=_Essay(),
+        ),
+    )
+    assert result.renderer is RendererKind.TABLE
+    assert result.disclosure_changes
+    assert result.essay is None
+    assert MODEL_ANALYSIS_BANNER not in result.banners
+    assert "No summary is shown for these filings." in result.banners

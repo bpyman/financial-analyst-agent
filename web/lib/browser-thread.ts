@@ -2,7 +2,7 @@
 // resumes it; Start over and a runtime switch replace it with a new one.
 
 import { ApiError } from "./api";
-import type { CreatedThread, RuntimeKind, ThreadView } from "./types";
+import type { CreatedThread, RuntimeKind, ThreadView, TurnEvent } from "./types";
 
 export const THREAD_STORAGE_KEY = "financial-analyst-agent.thread-id";
 export const EXPIRED_NOTICE = "Your previous thread has expired, so this is a fresh start.";
@@ -55,24 +55,33 @@ export interface ThreadOutcome<V> {
   notice: string | null;
 }
 
+/** Whether `threadId` is still this browser's thread, not one Start over replaced. */
+export function isCurrentThread(store: KeyValueStore, threadId: string): boolean {
+  return store.getItem(THREAD_STORAGE_KEY) === threadId;
+}
+
 /**
  * The stored thread, if the server still has it. A thread that comes back
  * unknown or empty has expired (TTL or a restarted host): it is forgotten and
  * the analyst is told. An outage rethrows and keeps the id for a retry.
+ * `null` when the stored thread changed while it loaded (Start over, or a new
+ * thread): the answer is stale and must not replace the one in use.
  */
 export async function resumeThread(
   api: ThreadApi,
   store: KeyValueStore,
-): Promise<ThreadOutcome<ThreadView | null>> {
+): Promise<ThreadOutcome<ThreadView | null> | null> {
   const threadId = store.getItem(THREAD_STORAGE_KEY);
   if (!threadId) return { view: null, notice: null };
   let view: ThreadView;
   try {
     view = await api.getThread(threadId);
   } catch (error) {
+    if (!isCurrentThread(store, threadId)) return null;
     if (error instanceof ApiError && error.status === 404) return forget(store);
     throw error;
   }
+  if (!isCurrentThread(store, threadId)) return null;
   if (view.runtime === null && view.turns.length === 0) return forget(store);
   return { view, notice: null };
 }
@@ -106,6 +115,32 @@ export async function startThread(
   store.setItem(THREAD_STORAGE_KEY, created.thread_id);
   const view = await api.getThread(created.thread_id);
   return { view, notice: created.notice };
+}
+
+/**
+ * Ask `message` on `threadId`, yielding the turn's events. The server refuses
+ * (404) a turn on a thread it no longer has, before anything runs: it expired,
+ * or the host restarted, while the window sat open. Then start a fresh thread
+ * on `runtime`, hand it to `onFresh`, and ask there instead, once.
+ */
+export async function* askOnThread(
+  api: ThreadApi,
+  store: KeyValueStore,
+  runTurn: (threadId: string, message: string) => AsyncIterable<TurnEvent>,
+  threadId: string,
+  message: string,
+  runtime: RuntimeKind | undefined,
+  onFresh: (started: ThreadOutcome<ThreadView>) => void,
+): AsyncGenerator<TurnEvent> {
+  try {
+    yield* runTurn(threadId, message);
+    return;
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 404)) throw error;
+  }
+  const started = await startThread(api, store, runtime);
+  onFresh({ view: started.view, notice: started.notice ?? EXPIRED_NOTICE });
+  yield* runTurn(started.view.thread_id, message);
 }
 
 /**

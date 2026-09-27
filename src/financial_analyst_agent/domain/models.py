@@ -54,6 +54,9 @@ class DerivationPart(BaseModel):
     concept: str
     filed_date: date
     source_url: str
+    # Set when this part is itself derived (a fiscal Q4's revenue inside a gross
+    # profit), so the evidence keeps the filings it came from.
+    derivation: "Derivation | None" = None
 
 
 class Derivation(BaseModel):
@@ -62,6 +65,9 @@ class Derivation(BaseModel):
     method: str
     label: str
     parts: list[DerivationPart]
+
+
+DerivationPart.model_rebuild()
 
 
 class FinancialFact(BaseModel):

@@ -348,6 +348,28 @@ def _section_choice(query: str, fallback: str) -> str:
     return fallback
 
 
+def _labels(sections: list[SectionId]) -> str:
+    return " and ".join(SECTION_LABELS[section] for section in sections)
+
+
+def _unreadable_sentence(unreadable: list[SectionId]) -> str:
+    noun = "section" if len(unreadable) == 1 else "sections"
+    missing = " or ".join(SECTION_LABELS[section] for section in unreadable)
+    return f"I couldn't find the {missing} {noun} in one or both of these filings"
+
+
+def _unchanged_message(compared: list[SectionId], unreadable: list[SectionId]) -> str:
+    if not unreadable:
+        return "No reviewed-section changes were found between those filings."
+    if not compared:
+        pronoun = "it" if len(unreadable) == 1 else "them"
+        return f"{_unreadable_sentence(unreadable)}, so I couldn't compare {pronoun}."
+    return (
+        f"{_labels(compared)} did not change between these filings. "
+        f"{_unreadable_sentence(unreadable)}, so it was not compared."
+    )
+
+
 def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
     company = str(getattr(plan, "company", "") or "")
     older, newer = _accessions_from_query(
@@ -390,6 +412,8 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     chosen_banner = ""
     changes: list[DisclosureChange] = []
     section_errors: list[str] = []
+    compared: list[SectionId] = []
+    unreadable: list[SectionId] = []
     try:
         recent = _submissions_recent(runtime, cik)
         if not older:
@@ -423,7 +447,9 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             newer_section = extract_section(newer_html, section)
             if not older_section or not newer_section:
                 section_errors.append(f"{SECTION_LABELS[section]} was not found")
+                unreadable.append(section)
                 continue
+            compared.append(section)
             changes.extend(
                 diff_paragraphs(
                     older_section,
@@ -445,14 +471,6 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
-    if not changes:
-        return TurnResult(
-            intent=Intent.FILING_CHANGE,
-            tool_traces=traces,
-            renderer=RendererKind.REFUSE,
-            message="No reviewed-section changes were found between those filings.",
-        )
-    banners: list[str] = [chosen_banner] if chosen_banner else []
     traces[0] = traces[0].model_copy(
         update={
             "provenance": {
@@ -462,8 +480,20 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             }
         }
     )
-    if section_errors:
-        banners.append("Partial filing change: " + "; ".join(section_errors) + ".")
+    if not changes:
+        # "No changes" is claimed only for sections both filings let us compare.
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=_unchanged_message(compared, unreadable),
+        )
+    banners: list[str] = [chosen_banner] if chosen_banner else []
+    if unreadable:
+        banners.append(
+            _unreadable_sentence(unreadable)
+            + f", so only {_labels(compared)} was compared."
+        )
     grounding = json.dumps(
         [item.model_dump(mode="json") for item in changes],
         default=str,
@@ -492,8 +522,10 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                 )
             else:
                 banners.append(MODEL_ANALYSIS_BANNER)
-        except ProviderError:
+        except ProviderError as exc:
+            # The changes stand on their own; say plainly why no summary is shown.
             essay = None
+            banners.append(str(exc))
     return TurnResult(
         intent=Intent.FILING_CHANGE,
         tool_traces=traces,

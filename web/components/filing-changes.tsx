@@ -13,11 +13,15 @@ const KIND_TONE: Record<string, Tone> = {
 /** Each changed 10-Q section, previous and current text side by side (stacked on phones). */
 export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
   const { older_accession: older, newer_accession: newer } = items[0];
+  // Each item is one changed paragraph; several can sit in one section.
+  const sections = new Set(items.map((item) => item.section_label)).size;
   return (
     <section aria-label="Filing changes" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <SectionLabel>
-          {items.length === 1 ? "1 section changed" : `${items.length} sections changed`}
+          {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections} ${
+            sections === 1 ? "section" : "sections"
+          }`}
         </SectionLabel>
         {older && newer && (
           <div className="num flex items-center gap-1.5 text-[11px] text-subtle">

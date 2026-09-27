@@ -48,6 +48,50 @@ FIXTURE_EXPLAIN_ESSAY = (
     "and patient outreach."
 )
 FIXTURE_EXPLAIN_QUERY = "How can AI disrupt healthcare?"
+# Written from the recorded Microsoft 10-Q pair's changes, one per reviewed
+# section, and replayed only for that evidence. No numerals, so the numeral lock
+# has nothing to check against the grounding.
+RECORDED_DISCLOSURE_SUMMARIES = {
+    (RECORDED_FILING_OLDER, RECORDED_FILING_NEWER, "mda"): (
+        "Management's highlights now report faster Microsoft Cloud and Azure growth "
+        "and add the commercial remaining performance obligation, while Windows OEM "
+        "and Devices and Xbox content and services revenue now fell where a year "
+        "earlier they grew."
+    ),
+    (RECORDED_FILING_OLDER, RECORDED_FILING_NEWER, "risk_factors"): (
+        "The Risk Factors edits are small: competition now “could” rather than "
+        "“may” affect results, and the platform risk adds that scale is needed to "
+        "meet consumer demand."
+    ),
+}
+RECORDED_SUMMARY_MISSING = (
+    "No summary is shown: the recorded demo holds one only for the Microsoft 10-Qs "
+    "it recorded. The live runtime can summarize any filing pair."
+)
+
+
+def _recorded_disclosure_summary(tool_json: str) -> str:
+    """The recorded summary for exactly this evidence, one sentence per section."""
+    try:
+        payload = json.loads(tool_json)
+    except json.JSONDecodeError as exc:
+        raise ProviderError("Recorded disclosure changes were invalid") from exc
+    if not isinstance(payload, list) or not payload:
+        raise ProviderError(RECORDED_SUMMARY_MISSING)
+    keys: list[tuple[str, str, str]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ProviderError(RECORDED_SUMMARY_MISSING)
+        key = (
+            str(item.get("older_accession") or ""),
+            str(item.get("newer_accession") or ""),
+            str(item.get("section") or ""),
+        )
+        if key not in RECORDED_DISCLOSURE_SUMMARIES:
+            raise ProviderError(RECORDED_SUMMARY_MISSING)
+        if key not in keys:
+            keys.append(key)
+    return " ".join(RECORDED_DISCLOSURE_SUMMARIES[key] for key in keys)
 
 
 class RecordedEssayCompleter:
@@ -68,10 +112,7 @@ class RecordedEssayCompleter:
         } and "disclosure changes" not in query.casefold():
             raise ProviderError("No recorded fixture news essay for this prompt")
         if "disclosure changes" in query.casefold():
-            return (
-                "Management described stronger cloud demand and added an "
-                "AI product-liability risk."
-            )
+            return _recorded_disclosure_summary(tool_json)
         try:
             payload = json.loads(tool_json)
         except json.JSONDecodeError as exc:
@@ -142,7 +183,7 @@ def _shared_sec_client(settings: Settings) -> SECClient:
 def recorded_runtime() -> Runtime:
     """Replay captured SEC, news, and model responses; never touches the network."""
     return Runtime(
-        completer=DemoCompleter(recorded_issuer_index()),
+        completer=DemoCompleter(recorded_issuer_index(), recorded=True),
         facts=SecFactLookup(
             client=RecordedSECDataSource(),
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),

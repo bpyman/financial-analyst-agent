@@ -8,6 +8,7 @@ from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.enums import Metric
 from financial_analyst_agent.domain.errors import (
     FilingNotFoundError,
+    IneligibleIssuerError,
     PerShareNotDerivableError,
     ProviderError,
     UnsupportedQuarterlyFactError,
@@ -37,7 +38,12 @@ from financial_analyst_agent.services.fiscal_periods import (
     gross_profit_from_components,
     periods_from_filings,
 )
-from financial_analyst_agent.services.metric_catalog import metric_unit, parse_metric
+from financial_analyst_agent.services.metric_catalog import (
+    GROSS_PROFIT_EXCLUDING_CONCEPTS,
+    metric_unit,
+    parse_metric,
+)
+from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
 
 # How many periods back "latest" may step when SEC has not yet added the
 # newest filing's numbers to companyfacts.
@@ -245,6 +251,14 @@ class SecFactLookup:
         unit = metric_unit(parsed_metric)
         tickers_payload = self._cached_company_tickers()
         resolved = resolve_company(company, tickers_payload)
+        if resolved.cik in INELIGIBLE_ISSUER_CIKS:
+            # Lookup applies the ranking's membership rule (ADR 0002).
+            raise IneligibleIssuerError(
+                f"{resolved.name} is not an operating company (it is a fund, business "
+                "development company or similar listing), so its 10-Q figures are "
+                "outside what this analyst covers.",
+                details={"cik": resolved.cik},
+            )
         ticker = resolved.tickers[0] if resolved.tickers else company.upper()
         submissions_payload = self._cached_submissions(resolved.cik)
         filings = parse_submissions(submissions_payload)
@@ -343,6 +357,8 @@ class SecFactLookup:
             revenue, cost = parts
             if (revenue.start_date, revenue.end_date) != (cost.start_date, cost.end_date):
                 raise
+            if _reports_excluding_costs(payload, revenue.end_date):
+                raise
             return gross_profit_from_components(revenue, cost)
 
     def _fiscal_labels(self, cik: str) -> dict[str, FiscalLabel]:
@@ -389,3 +405,16 @@ class SecFactLookup:
         if not callable(getter):
             raise ProviderError("Filing documents are not available on this SEC source")
         return str(getter(cik, accession, document))
+
+
+def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
+    """Whether the company reports costs that "cost of revenue" leaves out, for ``end``."""
+    facts = payload.get("facts", {})
+    for taxonomy, concept in GROSS_PROFIT_EXCLUDING_CONCEPTS:
+        body = facts.get(taxonomy, {}).get(concept)
+        if body is None:
+            continue
+        for records in body.get("units", {}).values():
+            if any(record.get("end") == end.isoformat() for record in records):
+                return True
+    return False

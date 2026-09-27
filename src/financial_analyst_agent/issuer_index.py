@@ -52,11 +52,12 @@ _GENERIC_WORDS = frozenset(
     a about above after all also american an and any are as at bank banks be best big
     biggest by can capital central century citizens common compare could data did digital
     do does doing east eastern energy equity federal financial first for from general
-    global good great growth had has have health home how i in income industries
+    global good great growth had has have health healthcare home how i in income industries
     international is it its just last latest life margin market me medical micro more most
     much my national net new north northern of on one or our pacific people profit public
-    quarter quarters real revenue royal sales service services show so south southern
-    stock stocks than that the their them then there these they this to top total trust
+    quarter quarters real restaurant restaurants revenue royal sales service services show
+    so south southern stock stocks telecom than that the their them then there these they
+    this to top total trust
     united universal us value vs was were west western what when which who why will with
     world would year you your
     """.split()  # noqa: SIM905

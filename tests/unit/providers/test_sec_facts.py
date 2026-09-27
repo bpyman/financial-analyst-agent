@@ -534,3 +534,29 @@ def test_sec_fact_lookup_reuses_companyfacts_404_across_get_financials_calls() -
 
     assert first.value == second.value == Decimal("14525000000")
     assert counts == {"companyfacts": 2}
+
+
+def test_a_listing_on_the_ineligible_list_is_not_looked_up() -> None:
+    from financial_analyst_agent.domain.errors import IneligibleIssuerError
+
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path.endswith("company_tickers.json"):
+            return httpx.Response(
+                200,
+                json={"0": {"cik_str": 1287750, "ticker": "ARCC", "title": "ARES CAPITAL CORP"}},
+            )
+        return httpx.Response(404, json={"error": request.url.path})
+
+    settings = Settings(
+        sec_user_agent="FinancialAnalystAgent (dev@example.com)",
+        sec_max_requests_per_second=5.0,
+    )
+    client = SECClient(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    lookup = SecFactLookup(settings, client=client)
+    with pytest.raises(IneligibleIssuerError) as exc_info:
+        lookup.get_financials("ARCC", "eps_diluted")
+    assert "not an operating company" in str(exc_info.value)
+    assert not any("submissions" in path or "companyfacts" in path for path in requested)

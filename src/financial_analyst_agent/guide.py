@@ -39,6 +39,11 @@ ADVICE_MESSAGE = (
     "I don't give investment advice or price predictions. I can show what "
     "{subject} filings report, so you can judge for yourself."
 )
+NOT_RECORDED_MESSAGE = (
+    "{name} isn't in the recorded demo. It replays SEC filings for a fixed set of "
+    "companies, such as Apple, Microsoft, NVIDIA and JPMorgan Chase. With live "
+    "data, any US-listed operating company works."
+)
 WHY_MESSAGE = (
     "Filings report what happened, not why. Management explains the quarter in "
     "the MD&A section of the 10-Q, and I can show what changed there."
@@ -60,6 +65,13 @@ _ADVICE = re.compile(
     r"|buy or sell|undervalued|overvalued|buy the dip)\b"
 )
 _WHY = re.compile(r"^why\b")
+_CHART = re.compile(
+    r"^(?:can you |please )?(?:chart|plot|graph|visuali[sz]e|draw)(?: it| that| this| them)?$"
+)
+CHART_MESSAGE = (
+    "Charts appear on their own when an answer has several quarters or several "
+    "companies. Ask for a window or add a company, and the chart follows."
+)
 _WHY_MAX_WORDS = 6
 _THANKS_MAX_WORDS = 4
 
@@ -114,12 +126,41 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
                 f"What changed in {name}'s latest 10-Q?",
             ],
         )
+    if _CHART.match(text):
+        return _guide(CHART_MESSAGE, ["last 4 quarters", "show year-over-year"])
     if _WHY.match(text) and len(text.split()) <= _WHY_MAX_WORDS:
         named = _spec_company(spec)
         if named is None:
             return _guide(WHY_MESSAGE, list(STARTER_QUESTIONS[3:]))
         name, _query = named
         return _guide(WHY_MESSAGE, [f"What changed in {name}'s latest 10-Q?"])
+    return None
+
+
+def not_recorded_reply(message: str, index: Any, outside: Any) -> TurnResult | None:
+    """A reply for a figures question about a company the recording left out.
+
+    ``outside`` is the live snapshot's index on the recorded runtime. A company it
+    finds that ``index`` does not was not recorded, and saying so beats answering
+    about the companies already on screen.
+    """
+    missing = _unrecorded_company(message, index, outside)
+    if missing is None:
+        return None
+    return _guide(NOT_RECORDED_MESSAGE.format(name=missing), list(STARTER_QUESTIONS[:3]))
+
+
+def _unrecorded_company(message: str, index: Any, outside: Any) -> str | None:
+    """Display name of a company ``outside`` finds in the message but ``index`` lacks."""
+    find = getattr(index, "find", None)
+    outside_find = getattr(outside, "find", None)
+    if not callable(find) or not callable(outside_find):
+        return None
+    for mention in outside_find(message):
+        if find(mention.typed):
+            continue
+        display = getattr(outside, "display_name", lambda value: value)(mention.query)
+        return short_name(display) or mention.typed
     return None
 
 

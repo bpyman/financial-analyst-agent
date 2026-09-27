@@ -33,7 +33,7 @@ from financial_analyst_agent.evidence_store import (
     retain_result_evidence,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.guide import guide_reply, suggest_follow_ups
+from financial_analyst_agent.guide import guide_reply, not_recorded_reply, suggest_follow_ups
 from financial_analyst_agent.observability import (
     bind_log_context,
     call_provider,
@@ -143,6 +143,7 @@ def _pending_from_clarify(
         patch=patch,
         intent=result.intent,
         metric_role=metric_role,
+        question=message,
     )
 
 
@@ -182,7 +183,7 @@ def _resume_pending(
     patch = pending.patch.model_copy(update={"mode": mode})
     return run_spec_turn_context(
         TurnContext(
-            message=message,
+            message=pending.question or message,
             current_spec=current_spec,
             proposal=patch,
             on_progress=on_progress,
@@ -272,7 +273,9 @@ def run_conversation_turn(
                 else:
                     analysis_spec = None
                     persist_spec = prior.analysis_spec
-                pending_out = _pending_from_clarify(result, proposed_patch, message)
+                pending_out = _pending_from_clarify(
+                    result, proposed_patch, prior.pending_clarification.question or message
+                )
                 resumed = True
             else:
                 discarded_clarification = True
@@ -305,6 +308,16 @@ def run_conversation_turn(
                 )
                 persist_spec = None
                 analysis_spec = None
+            elif is_structured_proposal(proposal) and (
+                not_recorded := not_recorded_reply(
+                    message,
+                    getattr(runtime.completer, "index", None),
+                    getattr(runtime.completer, "outside_index", None),
+                )
+            ) is not None:
+                result = not_recorded
+                analysis_spec = prior.analysis_spec
+                persist_spec = prior.analysis_spec
             elif is_structured_proposal(proposal):
                 result, new_spec, proposed_patch = run_spec_turn_context(
                     TurnContext(

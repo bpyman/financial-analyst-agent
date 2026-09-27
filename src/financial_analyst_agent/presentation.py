@@ -547,11 +547,19 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     if not rank_cross_section and any(
         len(periods) >= 2 for periods in periods_by_company.values()
     ):
-        buckets = _fiscal_week_buckets(
-            {row.end_date for row in rows if row.end_date is not None}
-        )
+        # Valued rows decide whether a trend is worth drawing; every dated row
+        # keeps its quarter, so a missing one is a gap, not a skipped period.
+        series_companies = {row.company_name for row in rows}
+        dated = [
+            row
+            for row in comparison_free
+            if row.end_date is not None
+            and row.metric == rows[0].metric
+            and row.company_name in series_companies
+        ]
+        buckets = _fiscal_week_buckets({row.end_date for row in dated if row.end_date})
         merged: dict[date, dict[str, object]] = {}
-        for row in rows:
+        for row in dated:
             if row.end_date is None:
                 continue
             period = buckets[row.end_date]
@@ -735,11 +743,19 @@ def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
 
 def _evidence_items(row: TableRow) -> tuple[EvidenceItem, ...]:
     items = [_evidence_item(row)]
-    items.extend(_evidence_from_component(row, part) for part in row.derived_from)
-    for component in row.components:
-        items.append(_evidence_from_component(row, component))
-        items.extend(_evidence_from_component(row, part) for part in component.derived_from)
+    items.extend(_evidence_from_component(row, part) for part in _sources(row.derived_from))
+    items.extend(_evidence_from_component(row, part) for part in _sources(row.components))
     return tuple(items)
+
+
+def _sources(components: Any) -> list[Any]:
+    """Each component, then the facts it came from, however deep (a margin's
+    fiscal-Q4 revenue lists its 10-K and 10-Q)."""
+    flat: list[Any] = []
+    for component in components:
+        flat.append(component)
+        flat.extend(_sources(component.derived_from))
+    return flat
 
 
 def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
@@ -886,6 +902,11 @@ def _friendly_message(message: str | None) -> str | None:
         supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
         return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
     missing = _COMPANY_NOT_FOUND.match(message)
+    if missing is not None and missing.group("query").strip().casefold() in ("", "unknown"):
+        return (
+            "I couldn't tell which company you mean. Name it or use its ticker, "
+            "for example “Apple revenue” or “AAPL revenue”."
+        )
     if missing is not None:
         return (
             f"I couldn't find a company called “{missing.group('query')}” in the "
@@ -1249,6 +1270,12 @@ def _append_derivation_fields(fields: list[tuple[str, str]], derivation: dict[st
             _as_iso_date(part.get("start_date")), _as_iso_date(part.get("end_date"))
         )
         label = f"{'Minus ' if index else ''}{part.get('form') or 'Filing'} {period}".strip()
+        nested = part.get("derivation")
+        if isinstance(nested, dict):
+            # A derived part (a fiscal Q4 inside a gross profit) lists its own filings.
+            fields.append((f"{label} †", _format_component_amount(part.get("value"))))
+            _append_derivation_fields(fields, nested)
+            continue
         fields.append((label, _format_component_amount(part.get("value"))))
         url = part.get("source_url")
         if url:
