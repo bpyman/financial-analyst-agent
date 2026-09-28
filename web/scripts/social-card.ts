@@ -1,6 +1,6 @@
 /**
  * The GitHub social preview (`capture-portfolio.ts`): the landing page's headline on
- * the left, the window's own fact card on the right. Pure, so the unit tests pin it;
+ * the left, a chart from the window on the right. Pure, so the unit tests pin it;
  * the capture script supplies the headline, the card screenshot, and the fonts.
  */
 
@@ -15,7 +15,7 @@ export interface SocialCard {
   chips: string[];
   /** Where the project lives, printed at the bottom left. */
   repo: string;
-  /** The fact card as a PNG data URI, captured at 2x. */
+  /** The chart as a PNG data URI, captured at 2x. */
   card: string;
   /** Geist Sans and Geist Mono as woff2 data URIs, so the page needs no network. */
   fonts: { sans: string; mono: string };
@@ -51,8 +51,8 @@ h1 span{color:#8a93a0}
 .chips{position:absolute;left:72px;top:452px;width:600px;display:flex;gap:10px}
 .pill{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:1px solid #2d323b;background:#0e1014;border-radius:999px;padding:7px 14px;font-size:15px;color:#c5cad3}
 .dot{width:8px;height:8px;border-radius:50%;background:#34d399}
-.card{position:absolute;width:760px;right:-170px;top:128px;border-radius:16px;border:1px solid #2d323b;
-  box-shadow:0 30px 80px rgb(0 0 0/.6),0 0 0 1px rgb(255 255 255/.03);transform:perspective(1600px) rotateY(-8deg) rotateX(2deg)}
+.card{position:absolute;width:560px;right:44px;top:148px;border-radius:16px;border:1px solid #2d323b;
+  box-shadow:0 30px 80px rgb(0 0 0/.6),0 0 0 1px rgb(255 255 255/.03);transform:perspective(1600px) rotateY(-6deg) rotateX(2deg)}
 .repo{position:absolute;left:72px;bottom:48px;font-family:GeistMono,monospace;font-size:15px;color:#69717e}
 </style></head><body>
 <div class="glow"></div>

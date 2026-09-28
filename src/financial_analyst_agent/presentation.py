@@ -772,17 +772,20 @@ def _selection_rule(row: TableRow) -> str:
         return _SNAPSHOT_RULE
     if row.derivation:
         return f"Derived quarter: {row.derivation}. Both reported facts are listed."
-    if row.components:
+    # A compare row carries its one fact as a component; only a formula is calculated.
+    single = row.components[0] if len(row.components) == 1 else None
+    if row.components and (single is None or single.metric != row.metric):
         return _FORMULA_RULE
     if row.comparison == "yoy":
         return "Year-over-year change from two standalone periods."
     if row.comparison == "sequential":
         return "Sequential change from two standalone periods."
-    if row.form and row.start_date is not None and row.start_date == row.end_date:
-        return f"Balance-sheet amount the {row.form} reports at the stated date."
-    if row.form:
+    form = row.form or (single.form if single else None)
+    if form and row.start_date is not None and row.start_date == row.end_date:
+        return f"Balance-sheet amount the {form} reports at the stated date."
+    if form:
         return (
-            f"Standalone {row.form} fact for the stated period; "
+            f"Standalone {form} fact for the stated period; "
             "no year-to-date derivation."
         )
     return _LATEST_QUARTER_RULE

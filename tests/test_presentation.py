@@ -334,6 +334,49 @@ def test_evidence_inspector_uses_row_specific_selection_rules() -> None:
     assert "stated period" in quarter.selection_rule
 
 
+def test_compare_row_with_its_one_fact_as_component_reads_as_standalone() -> None:
+    # compare_metrics carries a plain metric's fact as a single component; that is
+    # a reported quarter, not a calculation.
+    fact = ComponentProvenance(
+        metric="revenue",
+        value=Decimal("94036000000"),
+        start_date=date(2026, 3, 29),
+        end_date=date(2026, 6, 27),
+        form="10-Q",
+        accession_number="0000320193-26-000020",
+        taxonomy="us-gaap",
+        concept="RevenueFromContractWithCustomerExcludingAssessedTax",
+        source_url="https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/",
+        source="sec_companyfacts",
+    )
+    ratio = fact.model_copy(update={"metric": "net_income", "value": Decimal("23434000000")})
+    row = TableRow(
+        company_name="Apple Inc.",
+        ticker="AAPL",
+        cik="0000320193",
+        metric="revenue",
+        value=fact.value,
+        currency="USD",
+        start_date=fact.start_date,
+        end_date=fact.end_date,
+        components=[fact],
+    )
+    margin = row.model_copy(
+        update={"metric": "net_margin", "value": Decimal("0.25"), "components": [ratio, fact]}
+    )
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[row, margin],
+    )
+    rules = {item.label: item.selection_rule for item in present_turn(result).evidence}
+    revenue_rule = next(rule for label, rule in rules.items() if "· Revenue ·" in label)
+    margin_rule = next(rule for label, rule in rules.items() if "Net margin" in label)
+    assert revenue_rule.startswith("Standalone 10-Q fact for the stated period")
+    assert "component facts" in margin_rule
+
+
 def test_present_rank_omits_empty_fact_columns_and_formats_market_cap() -> None:
     result = TurnResult(
         intent=Intent.RANK,
