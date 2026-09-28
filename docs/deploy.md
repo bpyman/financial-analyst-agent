@@ -78,9 +78,12 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 | --- | --- | --- | --- |
 | Render (API) | `APP_MODE` | `recorded` | `render.yaml` |
 | Render (API) | `PUBLIC_DEMO` | `true` | `render.yaml` |
-| Render (API) | `DEMO_LIVE_SEC` | `false` | `render.yaml` |
-| Render (API) | `ALLOW_PUBLIC_OPENAI` | `false` | `render.yaml` |
-| Render (API) | `ALLOW_PUBLIC_TAVILY` | `false` | `render.yaml` |
+| Render (API) | `DEMO_LIVE_SEC` | `true` | `render.yaml` |
+| Render (API) | `ALLOW_PUBLIC_OPENAI` | `true` | `render.yaml` |
+| Render (API) | `ALLOW_PUBLIC_TAVILY` | `true` | `render.yaml` |
+| Render (API) | `SEC_USER_AGENT` | app name and contact email, e.g. `FinancialAnalystAgent (you@example.com)` | Render dashboard (`sync: false`). Live SEC requests fail without it. |
+| Render (API) | `OPENAI_API_KEY` | an OpenAI key | Render dashboard (`sync: false`). Optional: without it the live runtime uses the rules planner and recorded essays. |
+| Render (API) | `TAVILY_API_KEY` | a Tavily key | Render dashboard (`sync: false`). Optional: without it the live runtime replays the recorded news. |
 | Render (API) | `API_PROXY_TOKEN` | a random secret (for example `openssl rand -hex 32`) | Render dashboard. `render.yaml` declares it with `sync: false`, so the Blueprint prompts for it on first sync and never stores it. |
 | Render (API) | `PORT` | `10000` by default | Render sets it. The image listens on `$PORT`. |
 | Render (API) | `HOST`, `PYTHONUNBUFFERED` | `0.0.0.0`, `1` | `Dockerfile` |
@@ -91,8 +94,14 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 
 Neither Vercel variable is `NEXT_PUBLIC_`, so neither reaches the browser bundle.
 Every other API setting keeps the default in `config.py` (thread TTL 7200 s, 25 turns
-per thread). The recorded runtime needs no SEC, OpenAI, or Tavily keys; do not set them
-on the public demo.
+per thread, 25 live SEC requests per thread). The public demo lands on the recorded
+runtime, which needs no keys, and visitors can switch to the live runtime. Nothing caps
+total OpenAI spend across threads, so set a monthly budget in the OpenAI dashboard.
+
+Render prompts for `sync: false` values only when a Blueprint is first created. On an
+existing service, add `SEC_USER_AGENT` (and the optional keys) under the service's
+**Environment** tab before the `render.yaml` change syncs, so the first live request
+does not fail for want of it.
 
 ## Render: the analysis API
 

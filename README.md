@@ -51,7 +51,7 @@ An evidence-first financial research agent over SEC filings. A language model re
 
 ## Try it
 
-Hosted demo (recorded runtime, no keys): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
+Hosted demo (opens on the recorded runtime; switch to Live for any listed company, straight from SEC EDGAR): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
 
 ![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
@@ -176,7 +176,7 @@ The rebuild also asks SEC EDGAR which companies are foreign private issuers (the
 uv run build-universe-snapshot --annotate-filers
 ```
 
-Then carry that freeze into the recorded runtime, which the public demo is locked to: this copies the freeze's date and market caps into the recorded ranking snapshot and re-records the latest 10-Qs from SEC EDGAR for every recorded company.
+Then carry that freeze into the recorded runtime, which the public demo opens on: this copies the freeze's date and market caps into the recorded ranking snapshot and re-records the latest 10-Qs from SEC EDGAR for every recorded company.
 
 ```text
 SEC_USER_AGENT="app-name you@example.com" uv run python scripts/record_sec_fixtures.py
