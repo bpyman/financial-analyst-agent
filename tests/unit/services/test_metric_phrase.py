@@ -100,9 +100,9 @@ def test_ebit_alias_is_unique_operating_income() -> None:
     assert resolved.metric == "operating_income"
 
 
-def test_ebitda_is_unknown() -> None:
+def test_ebitda_is_a_catalog_formula() -> None:
     resolved = resolve_metric_phrase("What was Google's EBITDA?")
-    assert resolved.kind == "unknown"
+    assert (resolved.kind, resolved.metric) == ("unique", "ebitda")
 
 
 def test_several_distinct_catalog_metrics_resolve_in_order() -> None:
@@ -127,9 +127,9 @@ def test_resolve_metric_phrase_multi_unique_is_not_ambiguous() -> None:
     assert resolved.candidates == ()
 
 
-def test_roe_is_unknown() -> None:
+def test_roa_is_unknown() -> None:
     resolved = resolve_metric_phrase(
-        "What was Google's ROE based on their latest quarterly report?"
+        "What was Google's ROA based on their latest quarterly report?"
     )
     assert resolved.kind == "unknown"
 

@@ -72,7 +72,35 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment"),
         ("us-gaap", "PaymentsToAcquireProductiveAssets"),
     ],
+    Metric.DEPRECIATION_AMORTIZATION: [
+        ("us-gaap", "DepreciationDepletionAndAmortization"),
+        ("us-gaap", "DepreciationAmortizationAndAccretionNet"),
+        ("us-gaap", "DepreciationAndAmortization"),
+    ],
+    Metric.DIVIDENDS_PAID: [
+        ("us-gaap", "PaymentsOfDividendsCommonStock"),
+        ("us-gaap", "PaymentsOfDividends"),
+    ],
+    Metric.DIVIDENDS_PER_SHARE: [
+        ("us-gaap", "CommonStockDividendsPerShareDeclared"),
+        ("us-gaap", "CommonStockDividendsPerShareCashPaid"),
+    ],
+    Metric.CASH: [
+        ("us-gaap", "CashAndCashEquivalentsAtCarryingValue"),
+        ("us-gaap", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"),
+        ("us-gaap", "Cash"),
+    ],
+    Metric.SHAREHOLDERS_EQUITY: [
+        ("us-gaap", "StockholdersEquity"),
+        ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"),
+    ],
 }
+METRIC_CONCEPTS[Metric.DEPRECIATION] = [("us-gaap", "Depreciation")]
+METRIC_CONCEPTS[Metric.AMORTIZATION_OF_INTANGIBLES] = [
+    ("us-gaap", "AmortizationOfIntangibleAssets")
+]
+# The trailing year reads the same concepts as the quarter it sums.
+METRIC_CONCEPTS[Metric.NET_INCOME_TTM] = METRIC_CONCEPTS[Metric.NET_INCOME]
 
 # Costs that show "cost of revenue" is not all of a company's cost of revenue: an
 # insurer's benefits and claims (UnitedHealth's medical costs) sit beside the cost
@@ -85,7 +113,13 @@ GROSS_PROFIT_EXCLUDING_CONCEPTS: tuple[tuple[str, str], ...] = (
 
 # Per-share amounts are reported in USD per share and are never derived by
 # subtraction: the share count moves during the year (ADR 0007).
-PER_SHARE_METRICS: frozenset[Metric] = frozenset({Metric.EPS_DILUTED, Metric.EPS_BASIC})
+PER_SHARE_METRICS: frozenset[Metric] = frozenset(
+    {Metric.EPS_DILUTED, Metric.EPS_BASIC, Metric.DIVIDENDS_PER_SHARE}
+)
+# Balance-sheet amounts: one value at the report date, never a duration (ADR 0008).
+INSTANT_METRICS: frozenset[Metric] = frozenset({Metric.CASH, Metric.SHAREHOLDERS_EQUITY})
+# Sums over the four quarters ending on the report date (ADR 0008).
+TRAILING_YEAR_METRICS: frozenset[Metric] = frozenset({Metric.NET_INCOME_TTM})
 
 
 def metric_unit(metric: Metric) -> str:
@@ -216,6 +250,55 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("net sales", "revenue"),
     ("sales", "revenue"),
     ("revenue", "revenue"),
+    ("depreciation and amortization", "depreciation_amortization"),
+    ("depreciation & amortization", "depreciation_amortization"),
+    ("depreciation_amortization", "depreciation_amortization"),
+    ("d&a", "depreciation_amortization"),
+    ("ebitda", "ebitda"),
+    ("return on equity", "return_on_equity"),
+    ("return on shareholders equity", "return_on_equity"),
+    ("return_on_equity", "return_on_equity"),
+    ("roe", "return_on_equity"),
+    ("price to earnings ratio", "pe_ratio"),
+    ("price to earnings", "pe_ratio"),
+    ("price-to-earnings ratio", "pe_ratio"),
+    ("price-to-earnings", "pe_ratio"),
+    ("price/earnings", "pe_ratio"),
+    ("p/e ratio", "pe_ratio"),
+    ("pe ratio", "pe_ratio"),
+    ("p/e", "pe_ratio"),
+    ("pe_ratio", "pe_ratio"),
+    ("earnings multiple", "pe_ratio"),
+    ("stock price", "price"),
+    ("share price", "price"),
+    ("stock prices", "price"),
+    ("share prices", "price"),
+    ("price per share", "price"),
+    ("trading at", "price"),
+    ("price", "price"),
+    ("cash and cash equivalents", "cash"),
+    ("cash and equivalents", "cash"),
+    ("cash on hand", "cash"),
+    ("cash balance", "cash"),
+    ("cash pile", "cash"),
+    ("cash position", "cash"),
+    ("cash", "cash"),
+    ("shareholders equity", "shareholders_equity"),
+    ("shareholders' equity", "shareholders_equity"),
+    ("stockholders equity", "shareholders_equity"),
+    ("stockholders' equity", "shareholders_equity"),
+    ("shareholder equity", "shareholders_equity"),
+    ("shareholders_equity", "shareholders_equity"),
+    ("book value", "shareholders_equity"),
+    ("dividends per share", "dividends_per_share"),
+    ("dividend per share", "dividends_per_share"),
+    ("dividends_per_share", "dividends_per_share"),
+    ("dps", "dividends_per_share"),
+    ("dividends paid", "dividends_paid"),
+    ("dividend payments", "dividends_paid"),
+    ("dividend payouts", "dividends_paid"),
+    ("cash dividends", "dividends_paid"),
+    ("dividends_paid", "dividends_paid"),
     ("market capitalization", "market_cap"),
     ("market cap", "market_cap"),
     ("market_cap", "market_cap"),
@@ -232,7 +315,16 @@ _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("net", ("net_income", "net_margin")),
     ("interest", ("interest_expense", "interest_coverage")),
     ("tax", ("income_tax_expense", "effective_tax_rate")),
+    ("dividends", ("dividends_per_share", "dividends_paid")),
+    ("dividend", ("dividends_per_share", "dividends_paid")),
+    ("equity", ("shareholders_equity", "return_on_equity")),
 )
+# A unique phrase that is part of a longer name it does not mean: the "cash"
+# in "cash flow" and "cash from operations", the "price" in "price target".
+_NOT_FOLLOWED_BY: dict[str, re.Pattern[str]] = {
+    "cash": re.compile(r"\s+(?:flows?|from|generation|burn|conversion)\b"),
+    "price": re.compile(r"\s+(?:targets?|increases?|hikes?|cuts?|war|elasticity)\b"),
+}
 
 
 def _phrase_spans(query: str, phrase: str) -> list[tuple[int, int]]:
@@ -244,7 +336,10 @@ def _phrase_spans(query: str, phrase: str) -> list[tuple[int, int]]:
 def _nonoverlapping_unique_matches(query: str) -> list[tuple[int, int, str]]:
     found: list[tuple[int, int, str]] = []
     for phrase, metric in _UNIQUE_PHRASES:
+        excluded = _NOT_FOLLOWED_BY.get(phrase)
         for start, end in _phrase_spans(query, phrase):
+            if excluded is not None and excluded.match(query, end):
+                continue
             found.append((start, end, metric))
     found.sort(key=lambda item: (item[0] - item[1], item[0]))
     accepted: list[tuple[int, int, str]] = []

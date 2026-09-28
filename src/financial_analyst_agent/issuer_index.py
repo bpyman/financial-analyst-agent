@@ -258,7 +258,8 @@ class IssuerIndex:
                     taken[slot] = True
                 if query not in found:
                     found[query] = CompanyMention(query, offsets[start], phrase)
-        for match in re.finditer(r"(?<![\w&])\$?([A-Za-z]{1,5})(?![\w&])", question):
+        # "P/E" and "S&P" are not the tickers P, E and S.
+        for match in re.finditer(r"(?<![\w&/])\$?([A-Za-z]{1,5})(?![\w&/])", question):
             raw = match.group(1)
             dollar = match.group(0).startswith("$")
             if not dollar and (raw != raw.upper() or raw in _NOT_TICKERS):

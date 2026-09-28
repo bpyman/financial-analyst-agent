@@ -380,6 +380,14 @@ def _unique_metrics_from_phrase(text: str) -> tuple[str, ...]:
     return ()
 
 
+def _companies_named_in(companies: tuple[str, ...], text: str) -> tuple[str, ...]:
+    """The planner's companies that ``text`` names in so many words."""
+    words = f" {normalize_words(text)} "
+    return tuple(
+        company for company in companies if f" {normalize_words(company)} " in words
+    )
+
+
 def _company_tokens(text: str) -> tuple[str, ...]:
     parts = re.split(r"\s+and\s+|,\s*", text, flags=re.IGNORECASE)
     return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
@@ -554,12 +562,14 @@ def refine_patch_from_message(
     if added is not None:
         token = added.group(1).strip(" .,")
         metrics = _unique_metrics_from_phrase(token)
+        # "add Google margin" adds Google as well as the margin.
+        named = _companies_named_in(patch.add_companies, token)
         if metrics:
             return patch.model_copy(
                 update={
                     "mode": "extend",
                     "add_metrics": metrics,
-                    "add_companies": (),
+                    "add_companies": named,
                     "ranked_request": None,
                 }
             )
@@ -568,7 +578,7 @@ def refine_patch_from_message(
             return patch.model_copy(
                 update={
                     "mode": "extend",
-                    "add_companies": (),
+                    "add_companies": named,
                     "ranked_request": None,
                 }
             )
@@ -1477,7 +1487,40 @@ def run_spec_turn_context(
     ]
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
-    return merged, spec, patch
+    return merged, _identity_from_rows(spec, merged), patch
+
+
+def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:
+    """Name a company the snapshot lacks as its filings do (Tesla → TSLA).
+
+    The recorded demo holds filings for companies outside its ranking snapshot;
+    the spec keeps only the typed query for those until a filing names them.
+    """
+    if all(company.ticker for company in spec.companies):
+        return spec
+    filed = [row for row in result.table_rows if row.ticker and row.cik]
+    companies = []
+    for company in spec.companies:
+        match = None
+        if not company.ticker:
+            query = company.query.casefold()
+            match = next(
+                (
+                    row
+                    for row in filed
+                    if row.ticker.casefold() == query
+                    or re.match(rf"{re.escape(query)}\b", row.company_name.casefold())
+                ),
+                None,
+            )
+        companies.append(
+            company
+            if match is None
+            else company.model_copy(
+                update={"cik": match.cik, "ticker": match.ticker, "name": match.company_name}
+            )
+        )
+    return spec.model_copy(update={"companies": tuple(companies)})
 
 
 _SPECIFIC_PERIOD = re.compile(

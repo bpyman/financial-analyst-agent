@@ -428,3 +428,197 @@ def derive_quarter(
             "report_date": filing.report_date.isoformat(),
         },
     )
+
+
+# --- Balance-sheet amounts and trailing years (ADR 0008) ----------------------------
+
+_ONE_YEAR_TOLERANCE_DAYS = 7
+_ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
+TRAILING_YEAR_LABEL = (
+    "Last fiscal year (10-K) plus this year to date minus the same months "
+    "a year earlier (10-Q)"
+)
+
+
+def select_instant_fact(
+    facts: list[FactRecord],
+    filing: Filing,
+    metric: Metric,
+    currency: str,
+    company_name: str,
+    ticker: str,
+    cik: str,
+    source_url: str,
+) -> FinancialFact:
+    """A balance-sheet amount at ``filing``'s report date, as that filing reports it.
+
+    An instant has no start; the fact's period starts and ends on the report date.
+    """
+    for taxonomy, concept in get_concept_candidates(metric):
+        candidates = [
+            fact
+            for fact in facts
+            if fact.taxonomy == taxonomy
+            and fact.concept == concept
+            and fact.start_date is None
+            and fact.accession_number == filing.accession_number
+            and fact.end_date == filing.report_date
+            and fact.unit.upper() == currency.upper()
+        ]
+        if not candidates:
+            continue
+        selected = _resolve_same_concept_candidates(candidates)
+        return _build_financial_fact(
+            selected.model_copy(update={"start_date": selected.end_date}),
+            metric,
+            currency,
+            company_name,
+            ticker,
+            cik,
+            source_url,
+        )
+    raise UnsupportedQuarterlyFactError(
+        "No balance-sheet amount is reported at the filing's report date",
+        details={
+            "metric": metric.value,
+            "filing_accession": filing.accession_number,
+            "report_date": filing.report_date.isoformat(),
+        },
+    )
+
+
+def _newest_filed(facts: list[FactRecord]) -> list[FactRecord]:
+    """The copies of an amount from its newest filing; later 10-Ks repeat it."""
+    newest = max(fact.filed_date for fact in facts)
+    return [fact for fact in facts if fact.filed_date == newest]
+
+
+def _near(day: date, target: date) -> bool:
+    return abs((day - target).days) <= _ONE_YEAR_TOLERANCE_DAYS
+
+
+def _one_year_earlier(day: date) -> date:
+    try:
+        return day.replace(year=day.year - 1)
+    except ValueError:  # 29 February
+        return day.replace(year=day.year - 1, day=28)
+
+
+def derive_trailing_year(
+    facts: list[FactRecord],
+    filing: Filing,
+    metric: Metric,
+    currency: str,
+    company_name: str,
+    ticker: str,
+    cik: str,
+    source_url: str,
+    source_url_for_accession: Callable[[str], str],
+) -> FinancialFact:
+    """The four quarters ending on ``filing``'s report date, as one amount.
+
+    A 10-K reports the fiscal year itself. After a 10-Q, the year is the last
+    fiscal year plus this year to date minus the same months a year earlier;
+    the 10-Q reports both year-to-date amounts and the 10-K the fiscal year.
+    """
+    annual_form = filing.form in _ANNUAL_FORMS
+    for taxonomy, concept in get_concept_candidates(metric):
+        concept_facts = [
+            fact
+            for fact in facts
+            if fact.taxonomy == taxonomy
+            and fact.concept == concept
+            and fact.unit.upper() == currency.upper()
+            and fact.start_date is not None
+        ]
+        in_filing = [
+            fact
+            for fact in concept_facts
+            if fact.accession_number == filing.accession_number
+            and fact.end_date == filing.report_date
+        ]
+        years = [fact for fact in in_filing if _within(_days_between(fact), _ANNUAL_DAYS)]
+        if annual_form:
+            if not years:
+                continue
+            return _build_financial_fact(
+                _resolve_same_concept_candidates(years),
+                metric,
+                currency,
+                company_name,
+                ticker,
+                cik,
+                source_url,
+            )
+        to_date = [
+            fact
+            for fact in in_filing
+            if _within(_days_between(fact), (_MIN_QUARTER_DAYS, _NINE_MONTH_DAYS[1]))
+        ]
+        if not to_date:
+            continue
+        # The longest same-end amount is the year to date (the quarter itself in Q1).
+        longest = max(_days_between(fact) or 0 for fact in to_date)
+        current = _resolve_same_concept_candidates(
+            [fact for fact in to_date if _days_between(fact) == longest]
+        )
+        assert current.start_date is not None
+        earlier_end = _one_year_earlier(current.end_date)
+        earlier = [
+            fact
+            for fact in concept_facts
+            if fact.form in _QUARTERLY_FORMS
+            and _near(fact.end_date, earlier_end)
+            and abs((_days_between(fact) or 0) - longest) <= _ONE_YEAR_TOLERANCE_DAYS
+        ]
+        # Only a 10-K's fiscal year: proxy statements tag net income too.
+        last_year = [
+            fact
+            for fact in concept_facts
+            if fact.form in _ANNUAL_FORMS
+            and _within(_days_between(fact), _ANNUAL_DAYS)
+            and _near(fact.end_date, current.start_date - timedelta(days=1))
+        ]
+        if not earlier or not last_year:
+            continue
+        # Prefer the comparative this 10-Q reports, then the newest filing.
+        same_filing = [
+            fact for fact in earlier if fact.accession_number == filing.accession_number
+        ]
+        prior = _resolve_same_concept_candidates(same_filing or _newest_filed(earlier))
+        year = _resolve_same_concept_candidates(_newest_filed(last_year))
+        return FinancialFact(
+            company_name=company_name,
+            ticker=ticker,
+            cik=cik,
+            metric=metric,
+            value=year.value + current.value - prior.value,
+            currency=currency.upper(),
+            start_date=prior.end_date + timedelta(days=1),
+            end_date=current.end_date,
+            form=current.form,
+            filed_date=current.filed_date,
+            accession_number=current.accession_number,
+            taxonomy=current.taxonomy,
+            concept=current.concept,
+            source_url=source_url,
+            directly_reported=False,
+            derivation=Derivation(
+                method="trailing_twelve_months",
+                label=TRAILING_YEAR_LABEL,
+                parts=[
+                    _part(year, source_url_for_accession(year.accession_number)),
+                    _part(current, source_url),
+                    _part(prior, source_url_for_accession(prior.accession_number)),
+                ],
+            ),
+            source=DataSourceKind.SEC_XBRL,
+        )
+    raise UnsupportedQuarterlyFactError(
+        "No fiscal year and year-to-date amounts give the trailing year",
+        details={
+            "metric": metric.value,
+            "filing_accession": filing.accession_number,
+            "report_date": filing.report_date.isoformat(),
+        },
+    )

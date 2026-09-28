@@ -60,7 +60,11 @@ class DerivationPart(BaseModel):
 
 
 class Derivation(BaseModel):
-    """How a derived quarter was computed: ``parts[0]`` minus ``parts[1]`` (ADR 0007)."""
+    """How a derived amount was computed (ADR 0007, 0008).
+
+    A derived quarter is ``parts[0]`` minus ``parts[1]``; a trailing year
+    (``method == "trailing_twelve_months"``) is ``parts[0] + parts[1] - parts[2]``.
+    """
 
     method: str
     label: str

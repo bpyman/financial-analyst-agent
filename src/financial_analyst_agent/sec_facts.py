@@ -25,6 +25,8 @@ from financial_analyst_agent.providers.sec.tickers import parse_cik
 from financial_analyst_agent.providers.sec.urls import build_filing_source_url
 from financial_analyst_agent.services.fact_selector import (
     derive_quarter,
+    derive_trailing_year,
+    select_instant_fact,
     select_quarterly_fact_with_filing_fallback,
 )
 from financial_analyst_agent.services.filing_selector import (
@@ -40,9 +42,12 @@ from financial_analyst_agent.services.fiscal_periods import (
     fiscal_labels,
     gross_profit_from_components,
     periods_from_filings,
+    sum_of_components,
 )
 from financial_analyst_agent.services.metric_catalog import (
     GROSS_PROFIT_EXCLUDING_CONCEPTS,
+    INSTANT_METRICS,
+    TRAILING_YEAR_METRICS,
     metric_unit,
     parse_metric,
 )
@@ -169,6 +174,35 @@ def _select_or_derive_in_unit(
             details={"report_date": report_date.isoformat()},
         )
     last: UnsupportedQuarterlyFactError | None = None
+    if metric in INSTANT_METRICS or metric in TRAILING_YEAR_METRICS:
+        for filing in candidates:
+            try:
+                if metric in INSTANT_METRICS:
+                    return select_instant_fact(
+                        records,
+                        filing,
+                        metric,
+                        unit,
+                        company_name,
+                        ticker,
+                        cik,
+                        source_url_for_filing(filing),
+                    )
+                return derive_trailing_year(
+                    records,
+                    filing,
+                    metric,
+                    unit,
+                    company_name,
+                    ticker,
+                    cik,
+                    source_url_for_filing(filing),
+                    source_url_for_accession,
+                )
+            except UnsupportedQuarterlyFactError as exc:
+                last = last or exc
+        assert last is not None
+        raise last
     if quarterly:
         try:
             return select_quarterly_fact_with_filing_fallback(
@@ -448,6 +482,17 @@ class SecFactLookup:
                 filer_ciks=filer_ciks,
             )
         except UnsupportedQuarterlyFactError:
+            if metric is Metric.DEPRECIATION_AMORTIZATION:
+                return self._depreciation_plus_amortization(
+                    payload,
+                    filings,
+                    unit,
+                    company_name,
+                    ticker,
+                    cik,
+                    report_date=report_date,
+                    filer_ciks=filer_ciks,
+                )
             if metric is not Metric.GROSS_PROFIT:
                 raise
             # Retailers (Costco, Walmart) tag no gross profit line; revenue
@@ -474,6 +519,40 @@ class SecFactLookup:
             if _reports_excluding_costs(payload, revenue.end_date):
                 raise
             return gross_profit_from_components(revenue, cost)
+
+    def _depreciation_plus_amortization(
+        self,
+        payload: dict[str, Any],
+        filings: list[Filing],
+        unit: str,
+        company_name: str,
+        ticker: str,
+        cik: str,
+        *,
+        report_date: date | None,
+        filer_ciks: Mapping[str, str] | None,
+    ) -> FinancialFact:
+        """D&A as depreciation plus amortization of intangibles (Microsoft, Alphabet).
+
+        Both must cover the same period; depreciation alone would understate it.
+        """
+        parts = []
+        for component in (Metric.DEPRECIATION, Metric.AMORTIZATION_OF_INTANGIBLES):
+            component_records, _ = parse_company_facts(payload, component, unit)
+            parts.append(
+                _select_or_derive(
+                    component_records,
+                    filings,
+                    component,
+                    unit,
+                    company_name,
+                    ticker,
+                    cik,
+                    report_date=report_date,
+                    filer_ciks=filer_ciks,
+                )
+            )
+        return sum_of_components(Metric.DEPRECIATION_AMORTIZATION, parts)
 
     def _fiscal_labels(self, cik: str) -> dict[str, FiscalLabel]:
         labels = self._fiscal_labels_by_cik.get(cik)

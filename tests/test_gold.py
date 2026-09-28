@@ -14,7 +14,7 @@ pytestmark = pytest.mark.gold
 MICROSOFT_PRETAX_QUERY = "Microsoft pre-tax income"
 TSLA_GM_REVENUE_QUERY = "TSLA vs GM revenue"
 TECH_RD_QUERY = "Top 10 tech companies R&D spend"
-SNAPSHOT_AS_OF = "2026-09-27T10:54:00.695314+00:00"
+SNAPSHOT_AS_OF = "2026-09-27T22:43:45.015184+00:00"
 TECHNOLOGY_TOP_10 = (
     ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
     ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),

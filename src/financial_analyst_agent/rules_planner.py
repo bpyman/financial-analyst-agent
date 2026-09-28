@@ -61,6 +61,18 @@ _FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
     ("interest coverage", "interest_coverage"),
     ("market cap", "market_cap"),
 )
+# Metrics added after the phrase tables above; the catalog reads their phrases.
+_ADDED_METRICS: tuple[str, ...] = (
+    "depreciation_amortization",
+    "dividends_paid",
+    "dividends_per_share",
+    "cash",
+    "shareholders_equity",
+    "ebitda",
+    "return_on_equity",
+    "pe_ratio",
+    "price",
+)
 _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("microsoft", "Microsoft"),
     ("msft", "Microsoft"),
@@ -199,17 +211,19 @@ def _metric_from_query(normalized: str) -> str:
         "operating_cash_flow",
         "capital_expenditure",
         "free_cash_flow",
+        *_ADDED_METRICS,
     ):
         # Catalog phrases the older tables below predate ("EPS", "free cash flow").
         return resolved.metric
+    if resolved.kind == "unique" and set(resolved.metrics) & set(_ADDED_METRICS):
+        # "Apple cash and EBITDA": the spec binds every metric named.
+        return resolved.metrics[0]
     for phrase, metric in _REPORTED_PHRASES:
         if phrase in normalized:
             return metric
     for phrase, metric in _FORMULA_PHRASES:
         if phrase in normalized:
             return metric
-    if re.search(r"\broe\b", normalized):
-        return "roe"
     if "cost of revenue" not in normalized and re.search(r"\bcosts?\b", normalized):
         return "costs"
     return "unknown"

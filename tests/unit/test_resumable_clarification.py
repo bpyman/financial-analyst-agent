@@ -79,7 +79,7 @@ class _UnknownMetricCompleter:
         return SimpleNamespace(
             intent=Intent.LOOKUP,
             company="Google",
-            metric="ebitda",
+            metric="debt",
             issuers=None,
             industry=None,
             limit=None,
@@ -189,7 +189,7 @@ def test_unknown_metric_still_refuses_without_pending(tmp_path: Path) -> None:
     store = LocalThreadStore(tmp_path)
     turn = run_conversation_turn(
         "t1",
-        "What was Google's EBITDA?",
+        "What was Google's total debt?",
         _runtime(completer=_UnknownMetricCompleter(), facts=_SilentFacts()),
         store=store,
     )
@@ -197,7 +197,7 @@ def test_unknown_metric_still_refuses_without_pending(tmp_path: Path) -> None:
     assert turn.result.renderer is RendererKind.REFUSE
     assert turn.result.candidates == ()
     assert turn.result.message is not None
-    assert turn.result.message.startswith("I can't look up EBITDA yet.")
+    assert turn.result.message.startswith("I can't look up debt yet.")
     state = store.load("t1")
     assert state is not None
     assert state.pending_clarification is None

@@ -17,7 +17,7 @@ from financial_analyst_agent.turn import (
 )
 
 MSFT_GOOG_OPERATING_MARGINS_QUERY = "compare Microsoft and Google operating margins"
-UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROE"
+UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROA"
 
 # Fixture-runtime gold literals (recorded facts, not live SEC).
 ALPHABET_CIK = "0001652044"
@@ -427,7 +427,7 @@ def test_run_turn_refuses_unknown_compare_ratio_with_allowed_list() -> None:
     assert result.table_rows == []
     assert result.tool_traces == []
     assert result.message is not None
-    assert result.message.startswith("I can't look up return on equity yet.")
+    assert result.message.startswith("I can't look up return on assets yet.")
 
 
 MSFT_GOOG_MARKET_CAP_QUERY = "compare Microsoft and Google market cap"

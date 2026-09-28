@@ -10,7 +10,7 @@ New multi-turn behaviour is asserted at ``run_conversation_turn``.
 
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,8 +21,12 @@ from financial_analyst_agent.contracts import (
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
     FORMULA_METRICS,
+    INSTANT_METRICS,
+    LATEST_PERIOD_ONLY,
+    MARKET_FORMULAS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NOT_MEANINGFUL,
     NOT_REPORTED_FOR_QUARTER,
     PERCENT_FORMULAS,
     PERIOD_MISMATCH,
@@ -31,6 +35,7 @@ from financial_analyst_agent.contracts import (
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
     SNAPSHOT_METRICS,
+    SUM_FORMULAS,
     ZERO_DENOMINATOR,
     Completer,
     ComponentProvenance,
@@ -79,6 +84,7 @@ __all__ = [
     "EXPLORATORY_RESEARCH_BANNER",
     "FORMULA_COMPONENTS",
     "FORMULA_METRICS",
+    "MARKET_FORMULAS",
     "MISSING_FACT",
     "MODEL_ANALYSIS_BANNER",
     "PERCENT_FORMULAS",
@@ -106,6 +112,7 @@ __all__ = [
     "TurnResult",
     "compare_metrics",
     "execute_turn",
+    "market_formula_rows",
     "run_turn",
     "snapshot_compare_rows",
 ]
@@ -452,14 +459,30 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
     first, second = facts
     if metric in DIFFERENCE_FORMULAS:
         return first.value - second.value
+    if metric in SUM_FORMULAS:
+        return first.value + second.value
     return first.value / second.value
 
 
+def _metric_name(fact: FinancialFact) -> str:
+    metric = fact.metric
+    return metric.value if hasattr(metric, "value") else str(metric)
+
+
 def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
-    periods = {(fact.start_date, fact.end_date) for fact in facts}
+    """The period every component covers; a balance-sheet amount needs only its date.
+
+    Return on equity divides a trailing year by the equity on its last day, so
+    the row keeps the year and the equity must be at that year's end.
+    """
+    durations = [fact for fact in facts if _metric_name(fact) not in INSTANT_METRICS]
+    periods = {(fact.start_date, fact.end_date) for fact in durations or facts}
     if len(periods) != 1:
         return None
-    return next(iter(periods))
+    period = next(iter(periods))
+    if any(fact.end_date != period[1] for fact in facts):
+        return None
+    return period
 
 
 PERIODS_DIFFER_BANNER = (
@@ -564,7 +587,11 @@ def compare_metrics(
             )
             continue
         period_start, period_end = period
-        if metric in FORMULA_COMPONENTS and metric not in DIFFERENCE_FORMULAS:
+        if (
+            metric in FORMULA_COMPONENTS
+            and metric not in DIFFERENCE_FORMULAS
+            and metric not in SUM_FORMULAS
+        ):
             _numerator, denominator = fetched
             if denominator.value == 0:
                 rows.append(
@@ -600,6 +627,89 @@ def compare_metrics(
     # different dates the values stay visible, each with its own dates, and the
     # turn says the periods differ (see ``periods_differ``); no value is ever
     # computed across issuers.
+    return rows
+
+
+def _snapshot_date(as_of: str) -> date:
+    return datetime.fromisoformat(as_of).date()
+
+
+def market_formula_rows(
+    facts: FactsPort,
+    ranking: RankingPort,
+    issuers: list[str],
+    metric: str,
+    *,
+    report_date: date | None = None,
+) -> list[TableRow]:
+    """P/E: the snapshot's market cap over the trailing year's net income (ADR 0008).
+
+    The snapshot holds one market cap, taken at its as_of date, so the ratio is
+    given only for each company's latest trailing year; a past period gets
+    ``LATEST_PERIOD_ONLY`` rather than today's price over old earnings.
+    """
+    snapshot_day = _snapshot_date(ranking.snapshot_as_of())
+    source = ranking.snapshot_source()
+    earnings_metric = FORMULA_COMPONENTS[metric][1]
+    rows: list[TableRow] = []
+    seen_ciks: set[str] = set()
+    for issuer in issuers:
+        try:
+            member = ranking.lookup_member(issuer)
+            latest = facts.get_financials(issuer, earnings_metric)
+            earnings = (
+                latest
+                if report_date is None
+                else facts.get_financials(issuer, earnings_metric, report_date=report_date)
+            )
+        except (*_LOOKUP_FAILURES, PerShareNotDerivableError) as exc:
+            rows.append(
+                _compare_unresolved_row(
+                    issuer, metric, _partial_lookup_reason(exc), report_date=report_date
+                )
+            )
+            continue
+        if member.cik in seen_ciks:
+            continue
+        seen_ciks.add(member.cik)
+        market_cap = ComponentProvenance(
+            metric="market_cap",
+            value=member.market_cap,
+            start_date=snapshot_day,
+            end_date=snapshot_day,
+            form="",
+            accession_number="",
+            taxonomy="",
+            concept="",
+            source_url="",
+            source=source,
+        )
+        components = [market_cap, _provenance_from_fact(earnings, earnings_metric)]
+        period = {"start_date": earnings.start_date, "end_date": earnings.end_date}
+        if earnings.end_date != latest.end_date:
+            rows.append(
+                _compare_row(
+                    earnings, metric, components=components, reason=LATEST_PERIOD_ONLY, **period
+                )
+            )
+            continue
+        if earnings.value <= 0:
+            rows.append(
+                _compare_row(
+                    earnings, metric, components=components, reason=NOT_MEANINGFUL, **period
+                )
+            )
+            continue
+        rows.append(
+            _compare_row(
+                earnings,
+                metric,
+                value=member.market_cap / earnings.value,
+                components=components,
+                newer_filing_end=getattr(earnings, "newer_filing_end", None),
+                **period,
+            )
+        )
     return rows
 
 
@@ -710,7 +820,14 @@ def _metrics_turn(
 ) -> TurnResult:
     if metric in SNAPSHOT_METRICS:
         return _snapshot_metrics_turn(intent, issuers, metric, runtime)
-    rows = compare_metrics(runtime.facts, issuers, metric, report_date=report_date)
+    if metric in MARKET_FORMULAS:
+        if runtime.ranking is None:
+            raise RuntimeError(f"{metric} requires a ranking adapter for market cap")
+        rows = market_formula_rows(
+            runtime.facts, runtime.ranking, issuers, metric, report_date=report_date
+        )
+    else:
+        rows = compare_metrics(runtime.facts, issuers, metric, report_date=report_date)
     args: dict[str, Any] = {"issuers": issuers, "metric": metric}
     if report_date is not None:
         args["report_date"] = report_date.isoformat()
@@ -730,13 +847,15 @@ def _metrics_turn(
 
 
 def _snapshot_row(member: Any, metric: str, **kwargs: Any) -> TableRow:
+    value = getattr(member, metric, None)
     return TableRow(
         company_name=member.name,
         ticker=member.ticker,
         cik=member.cik,
         metric=metric,
-        value=getattr(member, metric),
+        value=value,
         currency="USD",
+        reason=None if value is not None else MISSING_FACT,
         **kwargs,
     )
 

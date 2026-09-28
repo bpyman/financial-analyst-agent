@@ -128,12 +128,10 @@ def test_the_order_chip_reads_as_words(runtime) -> None:  # type: ignore[no-unty
 @pytest.mark.parametrize(
     ("question", "named"),
     [
-        ("Apple P/E ratio", "P/E ratio"),
-        ("Apple ROE", "return on equity"),
-        ("Apple stock price", "stock price"),
+        ("Apple ROA", "return on assets"),
         ("Apple total assets", "total assets"),
-        ("Apple dividends", "dividends"),
-        ("Apple cash and debt", "cash"),
+        ("Apple total debt", "debt"),
+        ("Apple headcount", "headcount"),
     ],
 )
 def test_an_unsupported_metric_is_named_not_swapped(runtime, question: str, named: str) -> None:  # type: ignore[no-untyped-def]

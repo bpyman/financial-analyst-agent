@@ -113,6 +113,7 @@ def vendor_company_from_mapping(payload: dict[str, Any]) -> UniverseCompany | No
         sector=sector,
         exchange=_canonical_exchange(payload),
         market_cap=Decimal(market_cap),
+        price=_price_to_decimal(payload.get("price")),
         is_etf=bool(payload.get("is_etf", payload.get("isEtf", payload.get("isETF", False)))),
         is_fund=bool(payload.get("is_fund", payload.get("isFund", False))),
         industry=str(payload.get("industry") or "").strip(),
@@ -325,6 +326,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         snapshot = _annotate_with_sec(snapshot, settings)
     written = write_universe_snapshot(snapshot, args.output)
     print(f"Wrote {len(snapshot.companies)} companies to {written}")
+
+
+def _price_to_decimal(value: Any) -> Decimal | None:
+    """A positive share price from a vendor row, kept to the cent as quoted."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        price = Decimal(str(value))
+    except InvalidOperation:
+        return None
+    return price if price.is_finite() and price > 0 else None
 
 
 def _market_cap_to_decimal_str(value: Any) -> str | None:

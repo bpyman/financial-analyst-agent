@@ -1,33 +1,33 @@
 {
-  "generated_at": "2026-09-26T22:01:48.522876+00:00",
+  "generated_at": "2026-09-27T23:05:55.787493+00:00",
   "model": "recorded DemoCompleter",
   "live_cost_usd": null,
   "pass_count": 9,
   "case_count": 9,
   "pass_rate": 1.0,
-  "p50_ms": 3,
-  "p95_ms": 7,
-  "mean_ms": 3.7777777777777777,
+  "p50_ms": 5,
+  "p95_ms": 10,
+  "mean_ms": 17.333333333333332,
   "cases": [
     {
       "id": "lookup_msft_pretax",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 11,
+      "elapsed_ms": 120,
       "detail": ""
     },
     {
       "id": "compare_tsla_gm",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 3,
+      "elapsed_ms": 5,
       "detail": ""
     },
     {
       "id": "rank_tech_rd",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 4,
+      "elapsed_ms": 7,
       "detail": ""
     },
     {
@@ -41,14 +41,14 @@
       "id": "clarify_profit",
       "category": "ambiguity_refusal",
       "passed": true,
-      "elapsed_ms": 0,
+      "elapsed_ms": 2,
       "detail": ""
     },
     {
       "id": "follow_up_add_apple",
       "category": "stateful_follow_up",
       "passed": true,
-      "elapsed_ms": 6,
+      "elapsed_ms": 8,
       "detail": ""
     },
     {
@@ -62,14 +62,14 @@
       "id": "numeral_lock_invented_number",
       "category": "numeral_lock",
       "passed": true,
-      "elapsed_ms": 1,
+      "elapsed_ms": 2,
       "detail": ""
     },
     {
       "id": "filing_change_mda",
       "category": "filing_change",
       "passed": true,
-      "elapsed_ms": 7,
+      "elapsed_ms": 10,
       "detail": ""
     }
   ]

@@ -293,9 +293,9 @@ def test_compare_without_a_metric_is_an_overview() -> None:
         )
         assert refusal is None, question
         assert patch.add_metrics == OVERVIEW_METRICS, question
-    ebitda = planner.complete("compare apple and microsoft ebitda")
+    unknown = planner.complete("compare apple and microsoft roa")
     _patch, refusal = bind_metrics_from_message(
-        plan_to_spec_patch(ebitda), "compare apple and microsoft ebitda", intent=ebitda.intent
+        plan_to_spec_patch(unknown), "compare apple and microsoft roa", intent=unknown.intent
     )
     assert refusal is not None and refusal.renderer is RendererKind.REFUSE
 
