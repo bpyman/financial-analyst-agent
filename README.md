@@ -5,29 +5,65 @@
 [![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
 [![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)
 
-**An evidence-first financial research agent that answers from SEC filings without letting the model touch the numbers.**
+**Ask about a company. Get the number and the filing behind it.**
 
-A language model interprets the question. Deterministic code owns quarterly facts, identity, arithmetic, ranking membership, and the rendered values.
+An evidence-first financial research agent over SEC filings. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
+
+<p align="center">
+  <a href="https://financial-analyst-agent-ten.vercel.app"><strong>Try the live demo</strong></a> ·
+  <a href="#run-it-locally">Run it locally</a> ·
+  <a href="docs/design.md">Design</a> ·
+  <a href="docs/adr/">ADRs</a>
+</p>
+
+![Eli Lilly's quarterly revenue overtakes Pfizer's in mid-2025, drawn from each company's 10-Q and 10-K filings, with the table and the derived-quarter note](docs/portfolio/images/compare-lilly-pfizer.png)
+
+<sub>"Compare Eli Lilly and Pfizer revenue over the last eight quarters", on the public demo. Fiscal fourth quarters are derived from the 10-K and marked †.</sub>
 
 ## Why this is different
 
-1. **SEC quarterly facts** — standalone 10-Q amounts from companyfacts XBRL, with accession, period, concept, and an EDGAR filing link.
-2. **Constrained planning** — the model proposes a typed analysis-spec patch; code resolves CIKs, catalog metrics, and period windows. It does not chain tools or invent constituents.
-3. **Answers the model cannot rewrite** — tables render from tool output. Essays pass a numeral lock. Ambiguous metrics clarify; unknown scope refuses.
+1. **SEC quarterly facts, with provenance.** Standalone 10-Q amounts from companyfacts XBRL, each with its accession, period, concept, and an EDGAR filing link.
+2. **Constrained planning.** The model proposes a typed analysis-spec patch; code resolves CIKs, catalog metrics, and period windows. It does not chain tools or invent constituents.
+3. **Answers the model cannot rewrite.** Tables and charts render from tool output. Essays pass a numeral lock. Ambiguous metrics get a clarifying question; unknown scope is refused.
+4. **Follow-ups edit the analysis.** `add Apple` or `make that the last four quarters` patches the spec on screen instead of starting over.
+
+## What it can answer
+
+| Ask about | For example |
+|---|---|
+| Quarterly figures | revenue, net income, operating and gross margin, EPS, R&D, cash flow, cash, equity, dividends |
+| Derived figures | EBITDA, return on equity, P/E, share price ([ADR 0008](docs/adr/0008-balance-sheet-trailing-year-and-market-figures.md)) |
+| Comparisons and trends | `Compare Eli Lilly and Pfizer revenue over the last eight quarters` |
+| Rankings | `Top 10 technology companies by net margin`, over a dated snapshot of about 5,200 US operating companies |
+| Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors |
+| Context | recent news and a short explanation, kept apart from the numbers |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/portfolio/images/filing-changes.png" alt="What changed in Microsoft's latest 10-Q: the MD&amp;A highlights side by side, with Microsoft Cloud growth up from 20% to 29%"></td>
+    <td width="50%"><img src="docs/portfolio/images/inspect-exact-source.png" alt="Evidence inspector with the exact amount, CIK, accession, concept, selection rule, and Open filing"></td>
+  </tr>
+  <tr>
+    <td><sub>What changed in the latest 10-Q: a deterministic paragraph diff, not a model summary.</sub></td>
+    <td><sub>Every value opens to its exact source: amount, CIK, accession, concept, and filing.</sub></td>
+  </tr>
+</table>
 
 ## Try it
 
-Hosted demo (recorded runtime, no keys): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. Or [run it locally](#run-it-locally) in two commands.
+Hosted demo (recorded runtime, no keys): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The API sleeps when idle, so the first question after a quiet spell can take about a minute. The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
 
 ![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
-[Walkthrough video](docs/portfolio/images/demo-walkthrough.mp4) — one-click four-quarter compare, `add Apple`, the two-company chart, then the exact 10-Q source behind an Apple value.
+[Walkthrough video](docs/portfolio/images/demo-walkthrough.mp4): one-click four-quarter compare, `add Apple`, the two-company chart, then the exact 10-Q source behind an Apple value.
 
 ![Microsoft quarterly revenue trend and its table, with the filing link on every row](docs/portfolio/images/compare-four-quarters.png)
 
-![Evidence inspector with the exact amount, CIK, accession, concept, selection rule, and Open filing](docs/portfolio/images/inspect-exact-source.png)
-
 The images are captured from the window by a Playwright script against the recorded runtime, so they can be regenerated whenever the window changes (see [Portfolio images](#portfolio-images)).
+
+## Built with
+
+Python 3.12 (FastAPI, Pydantic, LangGraph, Decimal arithmetic) managed by uv, with the same tools served over MCP · Next.js and React with Recharts · SEC EDGAR companyfacts XBRL and filing text · Financial Modeling Prep for the ranking snapshot · OpenAI for planning and essays in live mode, with a rules planner when no key is set · pytest gold suite and Playwright browser checks in GitHub Actions · Vercel and Render.
 
 ## Run it locally
 
@@ -154,7 +190,7 @@ uv run python -m financial_analyst_agent.mcp_server
 
 ## Portfolio images
 
-`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source, and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the window's fact card, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
+`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source. It also asks the two showcase questions (Eli Lilly vs Pfizer revenue, and what changed in Microsoft's latest 10-Q) and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the Lilly vs Pfizer chart, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
 
 ```text
 cd web

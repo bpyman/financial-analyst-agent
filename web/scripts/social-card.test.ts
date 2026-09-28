@@ -22,7 +22,7 @@ describe("socialCardHtml", () => {
     expect(html).toContain("<h1>Ask about a company.<br><span>Get the number and the filing behind it.</span></h1>");
   });
 
-  it("shows the captured fact card, the chips, and the repo", () => {
+  it("shows the captured chart, the chips, and the repo", () => {
     const html = socialCardHtml(card);
     expect(html).toContain('src="data:image/png;base64,AAAA"');
     expect(html).toContain("SEC 10-Q facts</span>");

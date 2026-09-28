@@ -2,12 +2,22 @@
 
 ## LinkedIn post (draft)
 
-An evidence-first financial research agent: it answers from SEC filings, and the language model never touches the numbers.
+I built a financial research agent that answers questions about public companies from their SEC filings, where the AI model is never allowed to touch the numbers.
 
-A planner proposes a typed analysis spec. Deterministic code resolves identity, picks the standalone 10-Q fact, does the arithmetic, and renders the table. Follow-ups patch the spec instead of restarting. Click any value to inspect the exact Decimal, CIK, concept, accession, and filing URL. Compare MD&A and Risk Factors between two accessions and you get a paragraph diff the model did not write.
+Ask "Compare Eli Lilly and Pfizer revenue over the last eight quarters" and you get a chart where Lilly overtakes Pfizer in mid-2025. Every point on it comes from a 10-Q or 10-K, and one click shows the exact amount, the accession number, the XBRL concept, and a link to the filing.
 
-Try the guided stories (recorded runtime, no keys): https://financial-analyst-agent-ten.vercel.app
-Repo: https://github.com/bpyman/financial-analyst-agent
+A language model turns the question into a typed analysis plan. Deterministic Python fetches the quarterly facts from SEC EDGAR, derives fiscal Q4 from the 10-K when needed (and marks it), and computes margins, EBITDA, ROE and P/E in Decimal. Follow-ups like "add Apple" edit the analysis instead of starting over. "What changed in Microsoft's latest 10-Q?" returns a paragraph diff of MD&A and Risk Factors, not a model summary.
+
+Try the demo (no sign-up): https://financial-analyst-agent-ten.vercel.app
+Code: https://github.com/bpyman/financial-analyst-agent
+
+Image: `images/social-preview.png`.
+
+## Repository About
+
+- Description: Ask about a public company, get the number and the SEC filing behind it. An evidence-first research agent: the LLM plans, deterministic code owns every figure.
+- Website: https://financial-analyst-agent-ten.vercel.app
+- Topics: sec, xbrl, edgar, financial-analysis, llm, ai-agent, langgraph, fastapi, nextjs, react, python, typescript, mcp, portfolio
 
 ## Visuals
 
@@ -18,8 +28,8 @@ Captured from the Next.js window on the recorded runtime, default dark theme, by
 3. Screenshot: [`docs/portfolio/images/guided-first-run.png`](images/guided-first-run.png) — the landing page with the guided stories.
 4. Screenshot: [`docs/portfolio/images/compare-four-quarters.png`](images/compare-four-quarters.png).
 5. Screenshot: [`docs/portfolio/images/inspect-exact-source.png`](images/inspect-exact-source.png).
-6. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640). Re-upload it in GitHub Settings → Social preview after a recapture.
-
-Repository homepage: https://financial-analyst-agent-ten.vercel.app
+6. Screenshot: [`docs/portfolio/images/compare-lilly-pfizer.png`](images/compare-lilly-pfizer.png): "Compare Eli Lilly and Pfizer revenue over the last eight quarters", the README's hero.
+7. Screenshot: [`docs/portfolio/images/filing-changes.png`](images/filing-changes.png): "What changed in Microsoft's latest 10-Q?", framed on the MD&A highlights.
+8. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640), the landing headline beside the Lilly vs Pfizer chart. Re-upload it in GitHub Settings → Social preview after a recapture.
 
 The recorded runtime includes Apple quarterly revenue for its 10-Q periods. After a Microsoft four-quarter compare, `add Apple` still has no 10-Q on 2024-09-30 (Apple's fiscal year-end is a 10-K), so that cell stays `missing_fact` and the chart bridges the gap with a dotted line.

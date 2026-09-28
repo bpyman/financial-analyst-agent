@@ -8,7 +8,9 @@ import { SOCIAL_SIZE, socialCardHtml } from "./social-card";
 
 /**
  * Re-captures the README's portfolio media from the window (ADR 0006 cutover
- * criteria): compare four quarters, `add Apple`, then inspect the exact 10-Q source.
+ * criteria): compare four quarters, `add Apple`, then inspect the exact 10-Q source;
+ * plus the showcase answers (Eli Lilly overtaking Pfizer, what changed in Microsoft's
+ * latest 10-Q) and the social preview built from the first of them.
  *
  *   npm run build && npm run capture
  *
@@ -20,13 +22,19 @@ import { SOCIAL_SIZE, socialCardHtml } from "./social-card";
 const OUT = process.env.PORTFOLIO_DIR ?? path.resolve(__dirname, "../../docs/portfolio/images");
 const VIEWPORT = { width: 1280, height: 800 };
 const STILL = { width: 1280, height: 1000 };
+const SOCIAL_WINDOW = { width: 840, height: 1000 };
 const REPO = "github.com/bpyman/financial-analyst-agent";
 const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastAPI"];
+/** The showcase questions, both answerable on the recorded runtime. */
+const LILLY_VS_PFIZER = "Compare Eli Lilly and Pfizer revenue over the last eight quarters";
+const MSFT_10Q_CHANGES = "What changed in Microsoft's latest 10-Q?";
 
 const FILES = {
   landing: "guided-first-run.png",
   compare: "compare-four-quarters.png",
   inspect: "inspect-exact-source.png",
+  lilly: "compare-lilly-pfizer.png",
+  changes: "filing-changes.png",
   social: "social-preview.png",
   mp4: "demo-walkthrough.mp4",
   gif: "demo-walkthrough.gif",
@@ -40,6 +48,7 @@ test("capture the portfolio stills and walkthrough", async ({ browser }) => {
   mkdirSync(OUT, { recursive: true });
 
   await captureStills(browser);
+  await captureShowcase(browser);
   await captureSocial(browser);
   await captureWalkthrough(browser, ffmpeg);
 });
@@ -68,12 +77,38 @@ async function captureStills(browser: Browser) {
   await context.close();
 }
 
+/** The showcase answers: a two-company trend with its table, and a 10-Q section diff. */
+async function captureShowcase(browser: Browser) {
+  const context = await browser.newContext({ ...DARK, viewport: STILL, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  const analyst = new Analyst(page);
+
+  await analyst.open();
+  await analyst.ask(LILLY_VS_PFIZER);
+  await expect(analyst.charts()).toHaveCount(1);
+  await frame(page, lastTurn(page));
+  await shoot(page, FILES.lilly);
+
+  await analyst.startOver();
+  await analyst.ask(MSFT_10Q_CHANGES);
+  // The MD&A highlights, where Microsoft Cloud growth goes from 20% to 29%.
+  const mdna = lastTurn(page)
+    .getByRole("article", { name: /^Management's Discussion and Analysis/ })
+    .filter({ hasText: "Microsoft Cloud revenue increased" });
+  await expect(mdna).toBeVisible();
+  await frame(page, mdna);
+  await shoot(page, FILES.changes);
+
+  await context.close();
+}
+
 /**
- * The social preview: the landing headline beside the fact card from "Verify a
- * quarterly fact", both taken from the window, composed by `social-card.ts`.
+ * The social preview: the landing headline beside the Eli Lilly and Pfizer revenue
+ * trend, where the lines cross, both taken from the window and composed by `social-card.ts`.
  */
 async function captureSocial(browser: Browser) {
-  const context = await browser.newContext({ ...DARK, viewport: STILL, deviceScaleFactor: 2 });
+  // A narrower window, so the chart's labels stay legible at the card's size.
+  const context = await browser.newContext({ ...DARK, viewport: SOCIAL_WINDOW, deviceScaleFactor: 2 });
   const page = await context.newPage();
   const analyst = new Analyst(page);
 
@@ -82,12 +117,12 @@ async function captureSocial(browser: Browser) {
   const muted = (await headline.locator("span").textContent())?.trim() ?? "";
   const lead = ((await headline.textContent()) ?? "").replace(muted, "").trim();
 
-  await analyst.tell("Verify a quarterly fact");
-  const factCard = analyst.factCards(/, Microsoft Corporation$/);
-  await expect(factCard).toBeVisible();
+  await analyst.ask(LILLY_VS_PFIZER);
+  const chart = analyst.charts().last();
+  await expect(chart).toBeVisible();
   await settle(page);
   await page.mouse.move(0, 0);
-  const card = await factCard.screenshot({ animations: "disabled" });
+  const card = await chart.screenshot({ animations: "disabled" });
   await context.close();
 
   const composer = await browser.newContext({ viewport: SOCIAL_SIZE, deviceScaleFactor: 1 });
@@ -183,6 +218,8 @@ async function chooseAppleEvidence(page: Page): Promise<Locator> {
   for (const [index, label] of labels.entries()) {
     if (!label.includes("Apple")) continue;
     await select.selectOption({ index });
+    // Wait for the inspector to show this item before reading its selection rule.
+    await expect(inspector.getByText(label.split(" · ").at(-1) ?? label, { exact: true })).toBeVisible();
     if ((await inspector.textContent())?.includes("Standalone 10-Q")) return inspector;
   }
   throw new Error(`no standalone 10-Q Apple fact among: ${labels.join(" | ")}`);
