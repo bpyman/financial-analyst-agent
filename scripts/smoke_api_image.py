@@ -118,7 +118,7 @@ def check_api(
     *,
     timeout: float = 120,
     proxy_token: str | None = None,
-    expected_runtime: str = "recorded",
+    expected_runtime: str | None = None,
 ) -> SmokeReport:
     """Health, a new thread on the deployment's default runtime, and one guided turn."""
     wait_for_health(base_url, timeout=timeout)
@@ -134,6 +134,7 @@ def check_api(
         raise SmokeFailure(f"/api/meta has no guided story {STORY!r}: {sorted(stories)}")
     question = stories[STORY]
 
+    expected_runtime = expected_runtime or meta["runtime"]["default"]
     thread = json.loads(call("POST", "/api/threads"))
     runtime = thread.get("runtime")
     if runtime != expected_runtime:

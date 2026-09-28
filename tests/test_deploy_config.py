@@ -68,7 +68,7 @@ def test_render_blueprint_is_one_free_docker_web_service_in_virginia() -> None:
     assert not set(service) & RENDER_DEPRECATED_FIELDS
     assert service["type"] == "web"
     assert service["runtime"] == "docker"
-    assert service["plan"] == "free"
+    assert service["plan"] == "starter"
     assert service["region"] in RENDER_REGIONS
     assert service["region"] == "virginia"
     assert service["repo"] == "https://github.com/bpyman/financial-analyst-agent"
@@ -104,7 +104,7 @@ def test_render_env_is_the_public_demo_with_unsynced_secrets() -> None:
         assert set(entry) in ({"key", "value"}, {"key", "sync"}), key
         if "value" in entry:
             assert isinstance(entry["value"], str), f"quote {key} so YAML keeps it a string"
-    assert env["APP_MODE"]["value"] == "recorded"
+    assert env["APP_MODE"]["value"] == "live"
     assert env["PUBLIC_DEMO"]["value"] == "true"
     assert env["DEMO_LIVE_SEC"]["value"] == "true"
     for secret in ("API_PROXY_TOKEN", "SEC_USER_AGENT", "OPENAI_API_KEY", "TAVILY_API_KEY"):
@@ -118,12 +118,14 @@ def render_api(tmp_path: Path) -> Iterator[str]:
     values = {
         key.lower(): entry["value"] for key, entry in _render_env().items() if "value" in entry
     }
+    # The deployment lands on the live runtime; CI has no SEC access, so this
+    # serves the same public demo on the recorded one.
+    values["app_mode"] = AppMode.RECORDED.value
     settings = Settings(
         **values,
         api_proxy_token="dashboard-secret",
         _env_file=None,  # type: ignore[call-arg]
     )
-    assert settings.app_mode is AppMode.RECORDED
     assert settings.public_demo
     yield from serve(create_app(settings, store_root=tmp_path / "threads"))
 

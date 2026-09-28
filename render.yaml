@@ -1,13 +1,13 @@
 # Render Blueprint for the analysis API (ADR 0006 "Hosting", docs/deploy.md).
 # Schema: https://render.com/schema/render.yaml.json
 #
-# One free Docker web service in Virginia, next to Vercel's iad1 functions. The
+# One Starter ($7/month, always on) Docker web service in Virginia, next to Vercel's iad1 functions. The
 # browser never calls it directly: the Vercel proxy does, with X-Proxy-Token.
 services:
   - type: web
     name: financial-analyst-api
     runtime: docker
-    plan: free
+    plan: starter
     region: virginia
     repo: https://github.com/bpyman/financial-analyst-agent
     branch: master
@@ -30,11 +30,11 @@ services:
         - uv.lock
         - src/**
     envVars:
-      # The public demo: lands on the recorded runtime, and visitors can switch
-      # to the live one (SEC EDGAR, plus OpenAI and Tavily when their keys are
-      # set). Without OPENAI_API_KEY the live runtime plans with the rules planner.
+      # The public demo: lands on the live runtime (SEC EDGAR, plus OpenAI and
+      # Tavily when their keys are set), and visitors can switch to the recorded
+      # one. Without OPENAI_API_KEY the live runtime plans with the rules planner.
       - key: APP_MODE
-        value: "recorded"
+        value: "live"
       - key: PUBLIC_DEMO
         value: "true"
       - key: DEMO_LIVE_SEC
