@@ -96,7 +96,7 @@ def test_render_rebuilds_only_for_files_the_image_is_built_from() -> None:
     assert not any(path.startswith("web") for path in paths)
 
 
-def test_render_env_is_the_public_demo_with_an_unsynced_proxy_token() -> None:
+def test_render_env_is_the_public_demo_with_unsynced_secrets() -> None:
     env = _render_env()
 
     for key, entry in env.items():
@@ -106,8 +106,9 @@ def test_render_env_is_the_public_demo_with_an_unsynced_proxy_token() -> None:
             assert isinstance(entry["value"], str), f"quote {key} so YAML keeps it a string"
     assert env["APP_MODE"]["value"] == "recorded"
     assert env["PUBLIC_DEMO"]["value"] == "true"
-    assert env["DEMO_LIVE_SEC"]["value"] == "false"
-    assert env["API_PROXY_TOKEN"] == {"key": "API_PROXY_TOKEN", "sync": False}
+    assert env["DEMO_LIVE_SEC"]["value"] == "true"
+    for secret in ("API_PROXY_TOKEN", "SEC_USER_AGENT", "OPENAI_API_KEY", "TAVILY_API_KEY"):
+        assert env[secret] == {"key": secret, "sync": False}
     # Render sets PORT itself; the image already listens on it.
     assert "PORT" not in env
 

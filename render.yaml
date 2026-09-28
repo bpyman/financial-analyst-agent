@@ -30,17 +30,28 @@ services:
         - uv.lock
         - src/**
     envVars:
-      # The public demo: recorded runtime, live runtime locked off.
+      # The public demo: lands on the recorded runtime, and visitors can switch
+      # to the live one (SEC EDGAR, plus OpenAI and Tavily when their keys are
+      # set). Without OPENAI_API_KEY the live runtime plans with the rules planner.
       - key: APP_MODE
         value: "recorded"
       - key: PUBLIC_DEMO
         value: "true"
       - key: DEMO_LIVE_SEC
-        value: "false"
+        value: "true"
       - key: ALLOW_PUBLIC_OPENAI
-        value: "false"
+        value: "true"
       - key: ALLOW_PUBLIC_TAVILY
-        value: "false"
+        value: "true"
+      # Set in the Render dashboard, never committed. SEC_USER_AGENT names the
+      # app and a contact email, e.g. "FinancialAnalystAgent (you@example.com)";
+      # live SEC requests fail without it.
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
       # Shared secret with the Vercel proxy. Set in the Render dashboard (the
       # Blueprint prompts for it on first sync) and never committed.
       - key: API_PROXY_TOKEN

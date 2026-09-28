@@ -3,9 +3,8 @@ import { Analyst } from "./analyst";
 
 // Each test gets a fresh browser context, so a fresh thread (ADR 0006 cutover criteria).
 
-// The hosted demo is a public demo without live SEC, so it serves only the recorded
-// runtime; the local run starts the API with PUBLIC_DEMO off.
-const deployed = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+// The hosted demo lands on the recorded runtime with the live one unlocked; the local
+// run starts the API with PUBLIC_DEMO off. Neither is locked.
 
 test.describe("guided stories", () => {
   test("Verify a quarterly fact shows the fact card and its evidence", async ({ page }) => {
@@ -157,7 +156,7 @@ test("the storefront reports the deployment's runtime and asks for that runtime'
   const response = await asked;
 
   expect(new URL(response.url()).searchParams.get("runtime")).toBe("recorded");
-  expect((await response.json()).runtime).toEqual({ default: "recorded", locked: deployed });
+  expect((await response.json()).runtime).toEqual({ default: "recorded", locked: false });
 });
 
 test("the composer takes its message limit from the server", async ({ page }) => {
