@@ -76,7 +76,7 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 
 | Service | Variable | Value | Where it is set |
 | --- | --- | --- | --- |
-| Render (API) | `APP_MODE` | `recorded` | `render.yaml` |
+| Render (API) | `APP_MODE` | `live` | `render.yaml` |
 | Render (API) | `PUBLIC_DEMO` | `true` | `render.yaml` |
 | Render (API) | `DEMO_LIVE_SEC` | `true` | `render.yaml` |
 | Render (API) | `ALLOW_PUBLIC_OPENAI` | `true` | `render.yaml` |
@@ -94,8 +94,8 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 
 Neither Vercel variable is `NEXT_PUBLIC_`, so neither reaches the browser bundle.
 Every other API setting keeps the default in `config.py` (thread TTL 7200 s, 25 turns
-per thread, 25 live SEC requests per thread). The public demo lands on the recorded
-runtime, which needs no keys, and visitors can switch to the live runtime. Nothing caps
+per thread, 25 live SEC requests per thread). The public demo lands on the live
+runtime, and visitors can switch to the recorded runtime, which needs no keys. Nothing caps
 total OpenAI spend across threads, so set a monthly budget in the OpenAI dashboard.
 
 Render prompts for `sync: false` values only when a Blueprint is first created. On an
@@ -110,7 +110,7 @@ does not fail for want of it.
 | Field | Value | Why |
 | --- | --- | --- |
 | `type` / `runtime` | `web` / `docker` | Builds the repo's `Dockerfile` (context `.`). Both are fixed once the service exists. |
-| `plan` | `free` | No card on file. 512 MB of RAM and a fraction of a CPU. It sleeps after 15 idle minutes and takes about a minute to wake. |
+| `plan` | `starter` | $7/month (upgraded from `free` on 28 September 2026). 512 MB of RAM and half a CPU. Always on: no idle sleep, so no minute-long wake. Keep this in step with the dashboard, because a Blueprint sync applies it. |
 | `region` | `virginia` | Next to Vercel's `iad1` functions. Fixed once the service exists. |
 | `branch` | `master` | Deploys only `master`, the default branch. |
 | `healthCheckPath` | `/api/health` | Open without the proxy token. |
