@@ -5,7 +5,7 @@ const card: SocialCard = {
   lead: "Ask about a company.",
   muted: "Get the number and the filing behind it.",
   chips: ["SEC 10-Q facts", "Provenance on every number"],
-  repo: "github.com/bpyman/financial-analyst-agent",
+  repo: "github.com/bpyman/onfile",
   card: "data:image/png;base64,AAAA",
   fonts: { sans: "data:font/woff2;base64,SANS", mono: "data:font/woff2;base64,MONO" },
 };
@@ -27,7 +27,7 @@ describe("socialCardHtml", () => {
     expect(html).toContain('src="data:image/png;base64,AAAA"');
     expect(html).toContain("SEC 10-Q facts</span>");
     expect(html).toContain("Provenance on every number</span>");
-    expect(html).toContain("github.com/bpyman/financial-analyst-agent");
+    expect(html).toContain("github.com/bpyman/onfile");
   });
 
   it("embeds its fonts so the page needs no network", () => {

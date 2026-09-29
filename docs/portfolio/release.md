@@ -9,7 +9,7 @@ Ask "Compare Eli Lilly and Pfizer revenue over the last eight quarters" and you 
 A language model turns the question into a typed analysis plan. Deterministic Python fetches the quarterly facts from SEC EDGAR, derives fiscal Q4 from the 10-K when needed (and marks it), and computes margins, EBITDA, ROE and P/E in Decimal. Follow-ups like "add Apple" edit the analysis instead of starting over. "What changed in Microsoft's latest 10-Q?" returns a paragraph diff of MD&A and Risk Factors, not a model summary.
 
 Try the demo (no sign-up): https://financial-analyst-agent-ten.vercel.app
-Code: https://github.com/bpyman/financial-analyst-agent
+Code: https://github.com/bpyman/onfile
 
 Image: `images/social-preview.png`.
 

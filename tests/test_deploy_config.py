@@ -71,7 +71,7 @@ def test_render_blueprint_is_one_free_docker_web_service_in_virginia() -> None:
     assert service["plan"] == "starter"
     assert service["region"] in RENDER_REGIONS
     assert service["region"] == "virginia"
-    assert service["repo"] == "https://github.com/bpyman/financial-analyst-agent"
+    assert service["repo"] == "https://github.com/bpyman/onfile"
     assert service["branch"] == "master"
     assert (ROOT / service["dockerfilePath"]).is_file()
     assert (ROOT / service["dockerContext"]).resolve() == ROOT
