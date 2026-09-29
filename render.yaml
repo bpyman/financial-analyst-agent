@@ -9,7 +9,7 @@ services:
     runtime: docker
     plan: starter
     region: virginia
-    repo: https://github.com/bpyman/financial-analyst-agent
+    repo: https://github.com/bpyman/onfile
     branch: master
     dockerfilePath: ./Dockerfile
     dockerContext: .

@@ -23,7 +23,7 @@ const OUT = process.env.PORTFOLIO_DIR ?? path.resolve(__dirname, "../../docs/por
 const VIEWPORT = { width: 1280, height: 800 };
 const STILL = { width: 1280, height: 1000 };
 const SOCIAL_WINDOW = { width: 840, height: 1000 };
-const REPO = "github.com/bpyman/financial-analyst-agent";
+const REPO = "github.com/bpyman/onfile";
 const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastAPI"];
 /** The showcase questions, both answerable on the recorded runtime. */
 const LILLY_VS_PFIZER = "Compare Eli Lilly and Pfizer revenue over the last eight quarters";

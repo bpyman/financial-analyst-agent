@@ -1,6 +1,6 @@
 # Onfile
 
-[![CI](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/bpyman/onfile/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/onfile/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
 [![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)

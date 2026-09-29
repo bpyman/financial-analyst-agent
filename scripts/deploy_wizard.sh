@@ -519,7 +519,7 @@ fi
 REPO_SLUG=$(git remote get-url origin 2>/dev/null || true)
 REPO_SLUG="${REPO_SLUG%.git}"
 REPO_SLUG="${REPO_SLUG#*github.com[:/]}"
-REPO_SLUG="${REPO_SLUG:-bpyman/financial-analyst-agent}"
+REPO_SLUG="${REPO_SLUG:-bpyman/onfile}"
 
 # ── The stages ────────────────────────────────────────────────────────────
 
