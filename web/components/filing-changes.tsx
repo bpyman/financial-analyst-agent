@@ -1,4 +1,5 @@
-import { ArrowRight, FileDiff } from "lucide-react";
+import { ArrowRight, ChevronDown, FileDiff } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/format";
 import type { DisplayDisclosure } from "@/lib/types";
 import { SafeMarkdown } from "./markdown";
@@ -10,17 +11,20 @@ const KIND_TONE: Record<string, Tone> = {
   changed: "warning",
 };
 
+// Changes shown per section before "Show more": a 10-Q pair can differ in a hundred paragraphs.
+const FIRST_CHANGES = 3;
+
 /** Each changed 10-Q section, previous and current text side by side (stacked on phones). */
 export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
   const { older_accession: older, newer_accession: newer } = items[0];
   // Each item is one changed paragraph; several can sit in one section.
-  const sections = new Set(items.map((item) => item.section_label)).size;
+  const sections = groupBySection(items);
   return (
     <section aria-label="Filing changes" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <SectionLabel>
-          {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections} ${
-            sections === 1 ? "section" : "sections"
+          {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections.length} ${
+            sections.length === 1 ? "section" : "sections"
           }`}
         </SectionLabel>
         {older && newer && (
@@ -31,14 +35,51 @@ export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
           </div>
         )}
       </div>
-      {items.map((item, index) => (
-        <FilingChange key={`${item.section_label}-${index}`} item={item} />
+      {sections.map(([label, changes]) => (
+        <FilingSection key={label} label={label} changes={changes} />
       ))}
     </section>
   );
 }
 
+function groupBySection(items: DisplayDisclosure[]): [string, DisplayDisclosure[]][] {
+  const sections = new Map<string, DisplayDisclosure[]>();
+  for (const item of items) {
+    sections.set(item.section_label, [...(sections.get(item.section_label) ?? []), item]);
+  }
+  return [...sections];
+}
+
+function FilingSection({ label, changes }: { label: string; changes: DisplayDisclosure[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? changes : changes.slice(0, FIRST_CHANGES);
+  const hidden = changes.length - shown.length;
+  return (
+    <div className="space-y-3">
+      {shown.map((item, index) => (
+        <FilingChange key={index} item={item} />
+      ))}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border-strong px-4 py-2.5 text-xs font-medium text-muted transition-colors hover:border-primary/50 hover:bg-primary-soft hover:text-fg"
+        >
+          <ChevronDown className="size-3.5" aria-hidden />
+          {`Show ${hidden} more ${hidden === 1 ? "change" : "changes"} in ${label}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Characters either side may run to before the pair is clamped with "Show full text".
+const LONG_CHANGE = 1200;
+
 function FilingChange({ item }: { item: DisplayDisclosure }) {
+  const long = Math.max(item.before_text.length, item.after_text.length) > LONG_CHANGE;
+  const [expanded, setExpanded] = useState(false);
+  const clamped = long && !expanded;
   return (
     <article
       aria-label={`${item.section_label}, ${item.change_kind}`}
@@ -59,6 +100,7 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
           text={item.before_text}
           href={item.older_url}
           link="Open previous filing"
+          clamped={clamped}
         />
         <FilingSide
           current
@@ -66,8 +108,20 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
           text={item.after_text}
           href={item.newer_url}
           link="Open current filing"
+          clamped={clamped}
         />
       </div>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+          className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+        >
+          <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")} aria-hidden />
+          {expanded ? "Show less" : "Show full text"}
+        </button>
+      )}
     </article>
   );
 }
@@ -78,12 +132,15 @@ function FilingSide({
   href,
   link,
   current = false,
+  clamped = false,
 }: {
   label: string;
   text: string;
   href: string;
   link: string;
   current?: boolean;
+  /** Long text is cut to a fixed height, fading out, until the reader expands it. */
+  clamped?: boolean;
 }) {
   return (
     <div
@@ -104,7 +161,13 @@ function FilingSide({
           {label}
         </div>
       </div>
-      <div className="flex-1 px-4 py-3 sm:px-5">
+      <div
+        className={cn(
+          "flex-1 px-4 py-3 sm:px-5",
+          clamped &&
+            "max-h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]",
+        )}
+      >
         {text ? (
           <SafeMarkdown text={text} className={cn("text-[14px]", !current && "text-muted")} />
         ) : (

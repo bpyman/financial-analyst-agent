@@ -585,7 +585,7 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
             chips.append(label)
     constituents = getattr(spec, "constituents", None)
     if constituents is not None:
-        chips.append(f"{constituents.industry} top {constituents.limit}")
+        chips.append(f"Top {constituents.limit} {constituents.industry}")
     for metric in getattr(spec, "metrics", ()):
         chips.append(_humanize_field(str(metric)))
     periods = getattr(spec, "periods", None)
@@ -603,14 +603,16 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
         else:
             chips.append("Latest quarter")
     for operation in getattr(spec, "operations", ()):
-        if operation in _SILENT_OPERATIONS:
-            continue
-        chips.append(_humanize_field(str(operation)))
+        label = _OPERATION_CHIPS.get(str(operation))
+        if label:
+            chips.append(label)
     return tuple(chips)
 
 
-# The ranking's banner already says what it is ordered by.
-_SILENT_OPERATIONS = frozenset({"order_by_metric"})
+# Only operations the other chips do not already show: several companies are
+# "across companies", a window is "across periods", and a ranking's banner
+# says what it is ordered by.
+_OPERATION_CHIPS = {"year_over_year": "Year over year"}
 
 
 def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:

@@ -1396,3 +1396,30 @@ def test_a_quarter_sec_has_not_added_yet_is_named() -> None:
     )
     assert "Citigroup (quarter ended Jun 30, 2026) and Abbott Laboratories" in two
     assert newer_filing_banner([row("Apple Inc.", None)]) == ""
+
+
+def test_spec_chips_read_as_plain_labels() -> None:
+    from types import SimpleNamespace
+
+    from financial_analyst_agent.presentation import spec_chips
+
+    ranking = SimpleNamespace(
+        companies=(),
+        constituents=SimpleNamespace(industry="banks", limit=5),
+        metrics=("net_income",),
+        periods=None,
+        operations=("rank", "order_by_metric"),
+    )
+    compare = SimpleNamespace(
+        companies=(
+            SimpleNamespace(ticker="NVDA", name="NVIDIA"),
+            SimpleNamespace(ticker="AMD", name="AMD"),
+        ),
+        constituents=None,
+        metrics=("revenue",),
+        periods=SimpleNamespace(kind="last_n_quarters", count=4),
+        operations=("across_companies", "across_periods", "year_over_year"),
+    )
+
+    assert spec_chips(ranking) == ("Top 5 banks", "Net income", "Latest quarter")
+    assert spec_chips(compare) == ("NVDA", "AMD", "Revenue", "Last 4 quarters", "Year over year")

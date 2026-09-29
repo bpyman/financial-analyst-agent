@@ -12,6 +12,23 @@ import { DataTable } from "./data-table";
 import { FilingChanges } from "./filing-changes";
 import { SafeMarkdown } from "./markdown";
 import { Badge, Callout, ExternalLink, FilingButton, SectionLabel } from "./ui";
+
+/** An answer's notes: one callout, a line each, rather than a stack of boxes. */
+function Notes({ banners }: { banners: string[] }) {
+  if (banners.length === 0) return null;
+  if (banners.length === 1) return <Callout kind="info">{banners[0]}</Callout>;
+  return (
+    <Callout kind="info">
+      <ul className="divide-y divide-primary/15">
+        {banners.map((banner) => (
+          <li key={banner} className="py-1.5 first:pt-0 last:pb-0">
+            {banner}
+          </li>
+        ))}
+      </ul>
+    </Callout>
+  );
+}
 import { WrittenAnswer } from "./written-answer";
 
 /** A clarification's buttons, as the thread wires them. */
@@ -45,11 +62,7 @@ export function Answer({
       {presentation.headline && (
         <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
       )}
-      {banners.map((banner) => (
-        <Callout key={banner} kind="info">
-          {banner}
-        </Callout>
-      ))}
+      <Notes banners={banners} />
       {fact_card && <FactCard card={fact_card} />}
       {chart && <AnswerChart chart={chart} />}
       {table && table.rows.length > 0 && <DataTable table={table} />}

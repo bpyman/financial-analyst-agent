@@ -65,7 +65,7 @@ export function DataTable({ table }: { table: DisplayTable }) {
                   key={column.key}
                   scope="col"
                   className={cn(
-                    "whitespace-nowrap px-4 py-2 text-[10.5px] font-medium uppercase tracking-[0.08em] text-subtle first:pl-4 sm:first:pl-5",
+                    "whitespace-nowrap px-3 py-2 align-bottom text-[10.5px] font-medium uppercase tracking-[0.08em] text-subtle first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
                     column.numeric ? "text-right" : "text-left",
                     column.kind === "rank" && "w-px pr-1",
                     column.kind === "filing" && "w-px text-right",
@@ -74,8 +74,8 @@ export function DataTable({ table }: { table: DisplayTable }) {
                   {column.kind === "filing" ? (
                     <span className="sr-only">{column.header}</span>
                   ) : column.kind === "value" ? (
-                    // A long metric name wraps rather than pushing amounts off a phone screen.
-                    <span className="inline-block max-w-[7.5rem] whitespace-normal leading-snug sm:max-w-none sm:whitespace-nowrap">
+                    // A long metric name wraps rather than pushing amounts out of view.
+                    <span className="inline-block max-w-[6.5rem] whitespace-normal leading-snug">
                       {column.header}
                     </span>
                   ) : (
@@ -95,7 +95,7 @@ export function DataTable({ table }: { table: DisplayTable }) {
                   <td
                     key={column.key}
                     className={cn(
-                      "whitespace-nowrap px-4 py-2.5 align-middle first:pl-4 sm:first:pl-5",
+                      "whitespace-nowrap px-3 py-2.5 align-middle first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
                       column.numeric && "text-right",
                       column.kind === "rank" && "pr-1",
                       column.kind === "filing" && "text-right",
@@ -130,7 +130,7 @@ function Cell({ column, row }: { column: TableColumn; row: string[] }) {
             // Keeps names aligned when a row has no ticker.
             column.tickerIndex !== undefined && <span aria-hidden className="w-11 shrink-0" />
           )}
-          <span className="max-w-[6.5rem] truncate text-fg sm:max-w-[14rem]" title={value}>
+          <span className="max-w-[6.5rem] truncate text-fg sm:max-w-[12rem]" title={value}>
             {value}
           </span>
         </span>
