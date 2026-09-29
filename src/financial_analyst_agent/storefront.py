@@ -5,8 +5,6 @@ No UI framework imports here. The HTTP seam serves this text to the window as is
 
 from __future__ import annotations
 
-from financial_analyst_agent.runtime import RECORDED_FILING_NEWER, RECORDED_FILING_OLDER
-
 EXAMPLE_QUERY = "What was Google's net income based on their latest quarterly report?"
 GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     (
@@ -23,8 +21,8 @@ GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     ),
     (
         "What changed in the 10-Q",
-        "What changed in Microsoft's MD&A and Risk Factors between "
-        f"{RECORDED_FILING_OLDER} and {RECORDED_FILING_NEWER}?",
+        # The year-apart pair is the recorded one; accession numbers are no question to read.
+        "What changed in Microsoft's latest 10-Q?",
     ),
 )
 CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -64,10 +62,11 @@ CAPABILITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
 )
+# The status bar under the header: the runtime's name, then one plain line.
 RECORDED_BANNER = (
     "Recorded runtime — captured SEC filings, not a live EDGAR pull. "
-    "Numbers are still produced by the same deterministic renderer."
+    "Numbers go through the same code as live."
 )
-LIVE_RUNTIME_CAPTION = "Live runtime — SEC XBRL, optional planner, cached EDGAR."
+LIVE_RUNTIME_CAPTION = "Live runtime — figures pulled from SEC EDGAR as you ask."
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
 

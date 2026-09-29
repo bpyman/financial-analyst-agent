@@ -50,9 +50,9 @@ describe("hardBreaks", () => {
 
 describe("splitBanner", () => {
   it("leads with the runtime's name and keeps the detail apart", () => {
-    expect(splitBanner("Live runtime — SEC XBRL, optional planner, cached EDGAR.")).toEqual([
+    expect(splitBanner("Live runtime — figures pulled from SEC EDGAR as you ask.")).toEqual([
       "Live runtime",
-      "SEC XBRL, optional planner, cached EDGAR.",
+      "figures pulled from SEC EDGAR as you ask.",
     ]);
   });
 

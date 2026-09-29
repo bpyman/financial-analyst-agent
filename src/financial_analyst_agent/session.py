@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Lock
 
 from financial_analyst_agent.domain.errors import SessionQuotaError
-from financial_analyst_agent.presentation import format_datetime_utc, try_parse_datetime
+from financial_analyst_agent.presentation import format_date, try_parse_datetime
 from financial_analyst_agent.thread_store import ThreadState, ThreadStore
 
 
@@ -76,7 +76,8 @@ def snapshot_status(
         return (f"{prefix} {as_of}", False)
     aware = parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
     stale = not recorded and clock - aware >= timedelta(days=stale_after_days)
-    banner = f"{prefix} {format_datetime_utc(aware)}"
+    # A freeze is refreshed at most daily, so the status bar gives the day only.
+    banner = f"{prefix} {format_date(aware.astimezone(UTC).date())}"
     if stale:
         banner = f"{banner} — freeze is older than {stale_after_days} days"
     return banner, stale
