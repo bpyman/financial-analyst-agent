@@ -41,7 +41,7 @@ export function Header({
           {/* One line beside the name, not a caption under it: a short name reads as the lead. */}
           <span aria-hidden className="ml-1 hidden h-4 w-px shrink-0 bg-border-strong lg:block" />
           <span className="hidden truncate text-[13px] text-subtle lg:block">
-            SEC 10-Q evidence, traced to the filing
+            Financial research from SEC filings
           </span>
         </Link>
         <div className="ml-auto flex items-center gap-1 sm:gap-1.5">

@@ -11,7 +11,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Onfile",
     short_name: "Onfile",
     description:
-      "Evidence-first financial research: SEC 10-Q facts, constrained planning, numbers the model cannot rewrite.",
+      "Explore company financials, straight from SEC filings. Every number links to the filing it came from.",
     start_url: "/",
     scope: "/",
     display: "standalone",

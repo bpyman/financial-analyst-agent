@@ -2,7 +2,7 @@
 
 ## LinkedIn post (draft)
 
-I built a financial research agent that answers questions about public companies from their SEC filings, where the AI model is never allowed to touch the numbers.
+I built Onfile: explore company financials, straight from SEC filings. It answers questions about public companies from their filings, and the AI model is never allowed to touch the numbers.
 
 Ask "Compare Eli Lilly and Pfizer revenue over the last eight quarters" and you get a chart where Lilly overtakes Pfizer in mid-2025. Every point on it comes from a 10-Q or 10-K, and one click shows the exact amount, the accession number, the XBRL concept, and a link to the filing.
 
@@ -15,7 +15,7 @@ Image: `images/social-preview.png`.
 
 ## Repository About
 
-- Description: Ask about a public company, get the number and the SEC filing behind it. An evidence-first research agent: the LLM plans, deterministic code owns every figure.
+- Description: Financial research from SEC filings. Ask about a public company, get the number and the filing behind it; the LLM plans, deterministic code owns every figure.
 - Website: https://financial-analyst-agent-ten.vercel.app
 - Topics: sec, xbrl, edgar, financial-analysis, llm, ai-agent, langgraph, fastapi, nextjs, react, python, typescript, mcp, portfolio
 

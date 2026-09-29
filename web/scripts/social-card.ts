@@ -45,6 +45,8 @@ body{position:relative;font-family:Geist,sans-serif;color:#e8eaed;background:#07
   background-size:32px 32px}
 .glow{position:absolute;width:520px;height:420px;right:40px;top:120px;border-radius:50%;filter:blur(90px);background:rgb(59 130 246/.28)}
 .brand{position:absolute;left:72px;top:64px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:20px}
+.rule{width:1px;height:20px;margin-left:4px;background:#2d323b}
+.tagline{font-weight:400;font-size:17px;color:#8a93a0}
 .logo{width:40px;height:40px;border-radius:10px;border:1px solid #2d323b;background:#14171c;display:grid;place-items:center}
 h1{position:absolute;left:72px;top:170px;width:520px;font-size:56px;font-weight:650;letter-spacing:-.035em;line-height:1.02}
 h1 span{color:#8a93a0}
@@ -56,7 +58,7 @@ h1 span{color:#8a93a0}
 .repo{position:absolute;left:72px;bottom:48px;font-family:GeistMono,monospace;font-size:15px;color:#69717e}
 </style></head><body>
 <div class="glow"></div>
-<div class="brand"><div class="logo">${TREND_ICON}</div>Onfile</div>
+<div class="brand"><div class="logo">${TREND_ICON}</div>Onfile<span class="rule"></span><span class="tagline">Financial research from SEC filings</span></div>
 <h1>${escape(card.lead)}<br><span>${escape(card.muted)}</span></h1>
 <div class="chips">${chips}</div>
 <img class="card" src="${card.card}" alt="">
