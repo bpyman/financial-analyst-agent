@@ -40,6 +40,8 @@ _SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
     "risk_factors": re.compile(r"item\s+1a\s*[.:]?\s*risk\s+factors", re.IGNORECASE),
 }
 _NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
+# What may precede a heading on its line: "PART II — OTHER INFORMATION Item 1A. …".
+_PART_LABEL = re.compile(r"part\s+i{1,2}\b.{0,60}", re.IGNORECASE)
 _ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
 _SECTION_ALIASES: dict[str, SectionId] = {
     "md&a": "mda",
@@ -95,11 +97,24 @@ def html_to_text(html: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _starts_line(text: str, start: int) -> bool:
+    """Whether a heading match opens its line, as a heading does.
+
+    A cross-reference ("see the Item 1A. Risk Factors section of our 2025 Form
+    10-K") sits mid-sentence; taken as a heading, it ran to the next Item and
+    filed pages of MD&A under Risk Factors.
+    """
+    before = text[text.rfind("\n", 0, start) + 1 : start].strip()
+    return not before or _PART_LABEL.fullmatch(before) is not None
+
+
 def extract_section(html: str, section: SectionId) -> str:
     text = html_to_text(html)
     heading = _SECTION_HEADINGS[section]
     candidates: list[str] = []
     for match in heading.finditer(text):
+        if not _starts_line(text, match.start()):
+            continue
         end = len(text)
         for next_item in _NEXT_ITEM.finditer(text, match.end()):
             if heading.match(text, next_item.start()) is None:
