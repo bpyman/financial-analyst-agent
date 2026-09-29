@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axisTick, hardBreaks, parseLink } from "./format";
+import { axisTick, hardBreaks, parseLink, splitBanner } from "./format";
 
 describe("axisTick", () => {
   it("compacts dollars by scale", () => {
@@ -45,5 +45,18 @@ describe("parseLink", () => {
 describe("hardBreaks", () => {
   it("keeps single line breaks and leaves paragraphs alone", () => {
     expect(hardBreaks("Revenue\nNet income\n\nNext")).toBe("Revenue  \nNet income\n\nNext");
+  });
+});
+
+describe("splitBanner", () => {
+  it("leads with the runtime's name and keeps the detail apart", () => {
+    expect(splitBanner("Live runtime — SEC XBRL, optional planner, cached EDGAR.")).toEqual([
+      "Live runtime",
+      "SEC XBRL, optional planner, cached EDGAR.",
+    ]);
+  });
+
+  it("keeps a banner without a dash whole", () => {
+    expect(splitBanner("Recorded runtime")).toEqual(["Recorded runtime", ""]);
   });
 });

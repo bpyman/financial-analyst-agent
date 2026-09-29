@@ -55,3 +55,10 @@ export function safeHref(href: string): boolean {
     return false;
   }
 }
+
+/** "Live runtime — detail" → ["Live runtime", "detail"]; a banner without a dash stays whole. */
+export function splitBanner(banner: string): [string, string] {
+  const at = banner.indexOf(" — ");
+  if (at < 0) return [banner, ""];
+  return [banner.slice(0, at), banner.slice(at + 3)];
+}
