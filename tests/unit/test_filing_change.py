@@ -119,6 +119,40 @@ def test_extracts_reviewed_sections() -> None:
     assert "Cloud demand" not in risk
 
 
+def test_a_cross_reference_is_not_the_section_it_names() -> None:
+    # Pfizer's 10-Q: MD&A cites "the Item 1A. Risk Factors section" mid-sentence
+    # many times before Part II's own short Item 1A.
+    html = """
+    <h2>ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS</h2>
+    <p>For manufacturing risks, see the Item 1A. Risk Factors section of our 2025 Form 10-K.</p>
+    <p>Revenue grew on strong demand for our medicines across every region.</p>
+    <h2>ITEM 3. QUANTITATIVE AND QUALITATIVE DISCLOSURES ABOUT MARKET RISK</h2>
+    <p>Market risk paragraph.</p>
+    <p>PART II. OTHER INFORMATION Item 1A. Risk Factors</p>
+    <p>We refer to the Item 1A. Risk Factors section of our 2025 Form 10-K.</p>
+    <h2>ITEM 2. UNREGISTERED SALES OF EQUITY SECURITIES</h2>
+    """
+
+    risk = extract_section(html, "risk_factors")
+    mda = extract_section(html, "mda")
+
+    # A "PART II" label before the heading on its line still makes it a heading.
+    assert risk.startswith("Item 1A. Risk Factors\nWe refer to")
+    assert "Revenue grew" not in risk
+    assert "Market risk" not in risk
+    assert "Revenue grew" in mda
+
+
+def test_a_filing_that_only_cites_risk_factors_has_no_section() -> None:
+    html = """
+    <h2>ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS</h2>
+    <p>Other factors are discussed under "Item 1A. Risk Factors" of our 2025 Form 10-K.</p>
+    <h2>ITEM 3. QUANTITATIVE AND QUALITATIVE DISCLOSURES ABOUT MARKET RISK</h2>
+    """
+
+    assert extract_section(html, "risk_factors") == ""
+
+
 @pytest.mark.parametrize("punctuation", [".", ":", ""])
 @pytest.mark.parametrize(
     ("section", "heading", "next_heading"),
