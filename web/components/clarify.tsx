@@ -86,7 +86,7 @@ export function Clarify({
                 {choice.label}
               </span>
               {/* The slug is what the button sends; shown when it reads differently from the label. */}
-              {choice.slug.toLowerCase() !== choice.label.toLowerCase() && (
+              {choice.slug.replaceAll("_", " ").toLowerCase() !== choice.label.toLowerCase() && (
                 <span className="num mt-0.5 block text-[10.5px] text-subtle">{choice.slug}</span>
               )}
             </span>

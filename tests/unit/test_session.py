@@ -87,5 +87,5 @@ def test_recorded_snapshot_is_labelled_and_never_stale() -> None:
         stale_after_days=30,
         recorded=True,
     )
-    assert banner == "Recorded universe snapshot as of Aug 17, 2026, 4:00 PM UTC"
+    assert banner == "Recorded universe snapshot as of Aug 17, 2026"
     assert stale is False

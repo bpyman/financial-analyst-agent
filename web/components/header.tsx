@@ -168,7 +168,9 @@ function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   // next-themes only knows the stored theme after hydration.
   const mounted = useSyncExternalStore(subscribeNothing, () => true, () => false);
-  const index = Math.max(0, THEMES.findIndex(({ value }) => value === (theme ?? "dark")));
+  // The server cannot know the stored theme; render its default until hydrated.
+  const shown = mounted ? (theme ?? "dark") : "dark";
+  const index = Math.max(0, THEMES.findIndex(({ value }) => value === shown));
   const current = THEMES[index];
   const next = THEMES[(index + 1) % THEMES.length];
   const label = `Theme: ${current.label}. Switch to ${next.label.toLowerCase()}`;

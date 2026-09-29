@@ -19,7 +19,7 @@ export function StatusLine({
   turns: { count: number; max: number } | null;
 }) {
   const RuntimeIcon = runtime === "live" ? Radio : Database;
-  // "Live runtime — SEC XBRL, …": the name leads, the detail recedes.
+  // "Live runtime — figures pulled …": the name leads, the detail recedes.
   const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
     <div className="border-b border-border bg-surface sm:sticky sm:top-14 sm:z-20">
@@ -43,7 +43,7 @@ export function StatusLine({
         )}
         {snapshot && (
           <span
-            title={snapshot.banner}
+            title="Rankings read this dated list of US-listed operating companies; lookups do not need it."
             className={cn(
               "flex w-fit min-w-0 shrink-0 items-start gap-1.5 rounded-md sm:max-w-[45%] sm:items-center",
               snapshot.stale
