@@ -1,5 +1,5 @@
 import { CalendarClock, Database, Radio } from "lucide-react";
-import { cn } from "@/lib/format";
+import { cn, splitBanner } from "@/lib/format";
 import { turnCounterLabel } from "@/lib/turn-state";
 import type { RuntimeKind } from "@/lib/types";
 
@@ -19,24 +19,26 @@ export function StatusLine({
   turns: { count: number; max: number } | null;
 }) {
   const RuntimeIcon = runtime === "live" ? Radio : Database;
+  // "Live runtime — SEC XBRL, …": the name leads, the detail recedes.
+  const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
     <div className="border-b border-border bg-surface sm:sticky sm:top-14 sm:z-20">
-      <div className="mx-auto flex max-w-6xl flex-col gap-1.5 px-4 py-2 text-xs sm:flex-row sm:items-center sm:gap-4 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
         ) : runtimeBanner === "" ? null : (
-          <span
-            className="flex min-w-0 items-start gap-1.5 text-muted sm:items-center"
-            title={runtimeBanner}
-          >
+          <span className="flex min-w-0 items-start gap-1.5 sm:items-center" title={runtimeBanner}>
             <RuntimeIcon
               className={cn(
-                "mt-px size-3.5 shrink-0 sm:mt-0",
+                "mt-[3px] size-3.5 shrink-0 sm:mt-0",
                 runtime === "live" ? "text-positive" : "text-primary",
               )}
               aria-hidden
             />
-            <span className="sm:truncate">{runtimeBanner}</span>
+            <span className="sm:truncate">
+              <span className="font-medium text-muted">{runtimeName}</span>
+              {runtimeDetail && <span> · {runtimeDetail}</span>}
+            </span>
           </span>
         )}
         {snapshot && (
@@ -46,10 +48,10 @@ export function StatusLine({
               "flex w-fit min-w-0 shrink-0 items-start gap-1.5 rounded-md sm:max-w-[45%] sm:items-center",
               snapshot.stale
                 ? "border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-warning"
-                : "text-muted",
+                : "text-subtle",
             )}
           >
-            <CalendarClock className="mt-px size-3.5 shrink-0 sm:mt-0" aria-hidden />
+            <CalendarClock className="mt-[3px] size-3.5 shrink-0 sm:mt-0" aria-hidden />
             <span className="sm:truncate">{snapshot.banner}</span>
           </span>
         )}
