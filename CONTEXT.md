@@ -1,4 +1,4 @@
-# Financial analyst agent
+# Onfile
 
 A demo agent that looks up reported quarterly facts for operating companies, ranks snapshot members from a dated freeze, and answers qualitative questions without inventing numbers.
 

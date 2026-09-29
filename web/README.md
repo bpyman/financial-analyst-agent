@@ -1,6 +1,6 @@
 # Audience window
 
-The Next.js window for the financial analyst agent (ADR 0006,
+The Next.js window for Onfile (ADR 0006,
 `docs/adr/0006-react-audience-window.md`). The browser only ever calls this
 app's `/api/*`; the route handler in `app/api/[...path]/route.ts` proxies each
 call to the Python API.

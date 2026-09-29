@@ -1,4 +1,4 @@
-# Financial analyst agent
+# Onfile
 
 > **System design:** constrained model planning, deterministic financial tools, and
 > provenance-first answers.

@@ -56,7 +56,7 @@ h1 span{color:#8a93a0}
 .repo{position:absolute;left:72px;bottom:48px;font-family:GeistMono,monospace;font-size:15px;color:#69717e}
 </style></head><body>
 <div class="glow"></div>
-<div class="brand"><div class="logo">${TREND_ICON}</div>Financial analyst agent</div>
+<div class="brand"><div class="logo">${TREND_ICON}</div>Onfile</div>
 <h1>${escape(card.lead)}<br><span>${escape(card.muted)}</span></h1>
 <div class="chips">${chips}</div>
 <img class="card" src="${card.card}" alt="">

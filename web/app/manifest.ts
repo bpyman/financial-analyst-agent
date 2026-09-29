@@ -8,8 +8,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Financial analyst agent",
-    short_name: "Analyst",
+    name: "Onfile",
+    short_name: "Onfile",
     description:
       "Evidence-first financial research: SEC 10-Q facts, constrained planning, numbers the model cannot rewrite.",
     start_url: "/",

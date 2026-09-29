@@ -1,4 +1,4 @@
-# Financial analyst agent
+# Onfile
 
 [![CI](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/financial-analyst-agent/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
@@ -7,7 +7,7 @@
 
 **Ask about a company. Get the number and the filing behind it.**
 
-An evidence-first financial research agent over SEC filings. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
+Onfile is an evidence-first financial research agent over SEC filings. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
 
 <p align="center">
   <a href="https://financial-analyst-agent-ten.vercel.app"><strong>Try the live demo</strong></a> ·

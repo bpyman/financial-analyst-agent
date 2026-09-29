@@ -220,7 +220,7 @@ test("the window installs as an app with the project's icons", async ({ page, re
   expect(href).toBeTruthy();
 
   const manifest = await (await request.get(href!)).json();
-  expect(manifest).toMatchObject({ name: "Financial analyst agent", display: "standalone", start_url: "/" });
+  expect(manifest).toMatchObject({ name: "Onfile", display: "standalone", start_url: "/" });
   const sizes = manifest.icons.map((icon: { sizes: string }) => icon.sizes);
   expect(sizes).toEqual(expect.arrayContaining(["192x192", "512x512"]));
   for (const icon of manifest.icons) {

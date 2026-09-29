@@ -31,10 +31,10 @@ export function Header({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Financial analyst agent">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Onfile">
           <LogoMark className="size-7 shrink-0" />
           <span className="hidden min-w-0 flex-col leading-tight sm:flex">
-            <span className="truncate text-sm font-semibold tracking-tight">Financial analyst agent</span>
+            <span className="truncate text-sm font-semibold tracking-tight">Onfile</span>
             <span className="truncate text-[11px] text-subtle">SEC 10-Q evidence, traced to the filing</span>
           </span>
         </Link>
