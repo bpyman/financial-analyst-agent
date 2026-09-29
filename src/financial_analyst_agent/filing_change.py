@@ -34,10 +34,10 @@ SECTION_LABELS: dict[SectionId, str] = {
 }
 _SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
     "mda": re.compile(
-        r"item\s+(?:2|7)\s*[.:]?\s*management['’]?s?\s+discussion",
+        r"item\s+(?:2|7)\s*[.:—–-]?\s*management['’]?s?\s+discussion",
         re.IGNORECASE,
     ),
-    "risk_factors": re.compile(r"item\s+1a\s*[.:]?\s*risk\s+factors", re.IGNORECASE),
+    "risk_factors": re.compile(r"item\s+1a\s*[.:—–-]?\s*risk\s+factors", re.IGNORECASE),
 }
 _NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
 # What may precede a heading on its line: "PART II — OTHER INFORMATION Item 1A. …".
@@ -108,8 +108,23 @@ def _starts_line(text: str, start: int) -> bool:
     return not before or _PART_LABEL.fullmatch(before) is not None
 
 
+# An MD&A shorter than this under its Item heading is a contents entry, not the section.
+_SHORT_MDA = 2000
+
+
 def extract_section(html: str, section: SectionId) -> str:
     text = html_to_text(html)
+    found = _section_under_item(text, section)
+    if section == "mda" and len(found) < _SHORT_MDA:
+        # Banks and some others (JPMorgan, Wells Fargo, Intel) file MD&A under
+        # their own headings and list it only in the table of contents.
+        from_contents = _mda_from_contents(text)
+        if len(from_contents) > len(found):
+            return from_contents
+    return found
+
+
+def _section_under_item(text: str, section: SectionId) -> str:
     heading = _SECTION_HEADINGS[section]
     candidates: list[str] = []
     for match in heading.finditer(text):
@@ -122,6 +137,131 @@ def extract_section(html: str, section: SectionId) -> str:
                 break
         candidates.append(text[match.start() : end].strip())
     return max(candidates, key=len, default="")
+
+
+_MDA_TITLE = re.compile(
+    r"^(?:item\s*[27]\s*[.:—–-]?\s*)?management['’]?s\s+discussion\s+and\s+analysis\b",
+    re.IGNORECASE,
+)
+_SPLIT_ITEM = re.compile(r"item\s*[27]\s*[.:]?", re.IGNORECASE)
+_LINE_ITEM = re.compile(r"^item\s*\d+[a-z]?\b", re.IGNORECASE)
+_PAGE = re.compile(r"^(?:pages?\s+)?(\d{1,3})(?:\s*[-–]\s*\d{1,3})?$", re.IGNORECASE)
+# Contents entries: a title of at most this many characters, then its page on the next line.
+_MAX_TITLE = 120
+# A listed MD&A part this many pages past the one before it (a glossary at the
+# back of the report) is not where MD&A ends.
+_OUTLYING_PAGES = 40
+# Unpaired lines ("Part II", "Page") a contents page may have between entries.
+_CONTENTS_GAP = 4
+
+
+def _norm_title(line: str) -> str:
+    return " ".join(line.strip(" .:").casefold().replace("’", "'").split())
+
+
+class _Contents:
+    """The table of contents in a filing's text lines: titles followed by page numbers."""
+
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+
+    def page(self, k: int) -> int | None:
+        if not 0 <= k < len(self.lines):
+            return None
+        match = _PAGE.match(self.lines[k].strip())
+        return int(match.group(1)) if match else None
+
+    def is_entry(self, k: int) -> bool:
+        title = self.lines[k].strip()
+        return (
+            self.page(k + 1) is not None
+            and 2 < len(title) <= _MAX_TITLE
+            and self.page(k) is None
+            and not title.startswith(("(", "•"))
+        )
+
+    def entries(self, k: int, step: int, stop: int) -> list[int]:
+        found: list[int] = []
+        gap = 0
+        while 0 <= k < stop and gap <= _CONTENTS_GAP:
+            if self.is_entry(k):
+                gap = 0
+                found.append(k)
+            else:
+                gap += 1
+            k += step
+        return found
+
+
+def _mda_from_contents(text: str) -> str:
+    """MD&A found through the table of contents, for filings with no Item 2 heading over it.
+
+    The contents list MD&A's parts with their pages ("Executive Overview 5");
+    the body uses those parts as headings. MD&A runs from its first heading
+    to the heading of the next contents entry by page.
+    """
+    lines = text.split("\n")
+    contents = _Contents(lines)
+    for i, line in enumerate(lines):
+        split = _SPLIT_ITEM.fullmatch(line.strip()) is not None and i + 1 < len(lines)
+        title = f"{line} {lines[i + 1]}" if split else line
+        if not _MDA_TITLE.match(title.strip()):
+            continue
+        j = i + 1 + int(split)
+        parts: list[tuple[str, int]] = []
+        while j < len(lines) and contents.is_entry(j) and not _LINE_ITEM.match(lines[j].strip()):
+            page = contents.page(j + 1)
+            assert page is not None
+            parts.append((_norm_title(lines[j]), page))
+            j += 2
+        if len(parts) < 2:
+            continue
+        part_titles = {part for part, _ in parts}
+        start = next(
+            (
+                k
+                for k in range(j, len(lines))
+                if not contents.is_entry(k)
+                and not _LINE_ITEM.match(lines[k].strip())
+                and (_MDA_TITLE.match(lines[k].strip()) or _norm_title(lines[k]) in part_titles)
+            ),
+            None,
+        )
+        if start is None:
+            return ""
+        # Other entries of the same contents page, before MD&A's entry and after
+        # it up to where the body starts.
+        indexes = contents.entries(i - 1, -1, len(lines)) + contents.entries(j, 1, start)
+        pages = sorted(page for _, page in parts)
+        while len(pages) > 1 and pages[-1] - pages[-2] > _OUTLYING_PAGES:
+            pages.pop()
+        after: dict[str, int] = {}
+        for k in indexes:
+            title_k, page_k = _norm_title(lines[k]), contents.page(k + 1)
+            if page_k is not None and page_k > pages[-1] and title_k not in part_titles:
+                after.setdefault(title_k, page_k)
+        return "\n".join(lines[start : _mda_end(lines, contents, start, after)]).strip()
+    return ""
+
+
+def _mda_end(lines: list[str], contents: _Contents, start: int, after: dict[str, int]) -> int:
+    """The line where the next contents entry's heading, or an Item heading, begins."""
+    titles = [title for title in after if len(title) >= 8]
+    for k in range(start + 3, len(lines)):
+        line = _norm_title(lines[k])
+        heading = len(line) >= 8 and any(
+            (line.startswith(title) and len(line) <= len(title) + 25) or title.startswith(line)
+            for title in titles
+        )
+        if heading or (_LINE_ITEM.match(lines[k].strip()) and not contents.is_entry(k)):
+            return k
+    # No heading found: stop after the footer of the page before the next entry.
+    if after:
+        last_page = min(after.values()) - 1
+        for k in range(start + 3, len(lines)):
+            if contents.page(k) == last_page:
+                return k + 1
+    return len(lines)
 
 
 def _paragraphs(section_text: str) -> list[str]:

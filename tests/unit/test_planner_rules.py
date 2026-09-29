@@ -372,6 +372,7 @@ def test_short_names_drop_legal_suffixes() -> None:
     assert short_name("Eli Lilly and Company") == "Eli Lilly"
     assert short_name("JPMorgan Chase & Co.") == "JPMorgan Chase"
     assert short_name("The Goldman Sachs Group, Inc.") == "Goldman Sachs"
+    assert short_name("Wells Fargo & Company") == "Wells Fargo"
 
 
 def test_several_metrics_for_one_quarter_read_across_one_row() -> None:

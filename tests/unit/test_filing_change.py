@@ -143,6 +143,83 @@ def test_a_cross_reference_is_not_the_section_it_names() -> None:
     assert "Revenue grew" in mda
 
 
+_LONG = " ".join(["Net interest income rose on higher deposit balances and loan growth."] * 40)
+
+
+def test_mda_listed_only_in_the_contents_is_found_by_its_parts() -> None:
+    # JPMorgan's 10-Q: "Item 2" appears only in the contents, above MD&A's parts
+    # and their pages; the body uses the parts as headings, in capitals.
+    html = f"""
+    <p>TABLE OF CONTENTS</p>
+    <p>Item 1.</p><p>Financial Statements</p>
+    <p>Consolidated statements of income (unaudited) for the three months ended June 30</p><p>93</p>
+    <p>Notes to Consolidated Financial Statements</p><p>98</p>
+    <p>Item 2.</p>
+    <p>Management’s Discussion and Analysis of Financial Condition and Results of Operations.</p>
+    <p>Introduction</p><p>4</p>
+    <p>Executive Overview</p><p>5</p>
+    <p>Forward-Looking Statements</p><p>92</p>
+    <p>Item 3.</p><p>Quantitative and Qualitative Disclosures About Market Risk.</p><p>201</p>
+    <p>INTRODUCTION</p>
+    <p>{_LONG}</p>
+    <p>EXECUTIVE OVERVIEW</p>
+    <p>Firmwide results were strong across every line of business this quarter.</p>
+    <p>FORWARD-LOOKING STATEMENTS</p>
+    <p>Statements here are forward-looking and subject to risks.</p>
+    <p>92</p>
+    <p>Consolidated statements of income (unaudited)</p>
+    <p>Revenue table that is not MD&amp;A.</p>
+    """
+
+    mda = extract_section(html, "mda")
+
+    assert mda.startswith("INTRODUCTION")
+    assert "Firmwide results were strong" in mda
+    assert "forward-looking and subject to risks" in mda
+    assert "Revenue table" not in mda
+
+
+def test_a_bare_mda_heading_after_its_contents_entry_starts_the_section() -> None:
+    # Intel's 10-Q orders content its own way; "Item 2" is only in a closing index.
+    html = f"""
+    <p>Table of Contents</p>
+    <p>Consolidated Condensed Statements of Operations</p><p>3</p>
+    <p>Management's Discussion and Analysis (MD&amp;A)</p>
+    <p>Operating Segments Trends and Results</p><p>30</p>
+    <p>Liquidity and Capital Resources</p><p>39</p>
+    <p>Risk Factors and Other Key Information</p>
+    <p>Risk Factors</p><p>41</p>
+    <p>Management's Discussion and Analysis</p>
+    <p>Overview</p>
+    <p>{_LONG}</p>
+    <p>Liquidity and Capital Resources</p>
+    <p>Cash from operations funded capital spending in the quarter.</p>
+    <p>Risk Factors and Other Key Information</p>
+    <p>Risk Factors</p>
+    <p>The risks described in our Form 10-K could hurt our business.</p>
+    """
+
+    mda = extract_section(html, "mda")
+
+    assert mda.startswith("Management's Discussion and Analysis\nOverview")
+    assert "Cash from operations" in mda
+    assert "could hurt our business" not in mda
+
+
+def test_an_item_heading_may_use_a_dash() -> None:
+    html = """
+    <p>Item 2 — Management’s discussion and analysis of financial condition</p>
+    <p>Sales grew in every segment during the quarter.</p>
+    <p>Item 3 — Quantitative and qualitative disclosures about market risk</p>
+    <p>Market risk text.</p>
+    """
+
+    mda = extract_section(html, "mda")
+
+    assert "Sales grew" in mda
+    assert "Market risk text" not in mda
+
+
 def test_a_filing_that_only_cites_risk_factors_has_no_section() -> None:
     html = """
     <h2>ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS</h2>
