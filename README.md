@@ -5,9 +5,9 @@
 [![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
 [![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)
 
-**Ask about a company. Get the number and the filing behind it.**
+**Explore company financials, straight from SEC filings.**
 
-Onfile is an evidence-first financial research agent over SEC filings. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
+Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
 
 <p align="center">
   <a href="https://financial-analyst-agent-ten.vercel.app"><strong>Try the live demo</strong></a> ·

@@ -1,7 +1,7 @@
 [project]
 name = "financial-analyst-agent"
 version = "0.1.0"
-description = "Evidence-first financial research agent: SEC XBRL facts, constrained planning, numeral-locked answers"
+description = "Onfile: financial research from SEC filings. SEC XBRL facts, constrained planning, numeral-locked answers"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.120",

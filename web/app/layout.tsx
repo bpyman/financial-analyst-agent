@@ -5,9 +5,9 @@ import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Onfile",
+  title: "Onfile — Financial research from SEC filings",
   description:
-    "Evidence-first financial research: SEC 10-Q facts, constrained planning, numbers the model cannot rewrite.",
+    "Explore company financials, straight from SEC filings. Every number links to the filing it came from.",
 };
 
 export const viewport: Viewport = {

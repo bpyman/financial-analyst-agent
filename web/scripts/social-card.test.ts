@@ -30,6 +30,11 @@ describe("socialCardHtml", () => {
     expect(html).toContain("github.com/bpyman/onfile");
   });
 
+  it("pairs the name with its short tagline", () => {
+    const html = socialCardHtml(card);
+    expect(html).toContain('Onfile<span class="rule"></span><span class="tagline">Financial research from SEC filings</span>');
+  });
+
   it("embeds its fonts so the page needs no network", () => {
     const html = socialCardHtml(card);
     expect(html).toContain('url(data:font/woff2;base64,SANS) format("woff2")');
