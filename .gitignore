@@ -38,6 +38,9 @@ htmlcov/
 *.swp
 *.swo
 
+# Cloud Agent skills synced at boot from bpyman/agent-skills (not committed)
+.cursor/skills/
+
 # OS
 .DS_Store
 Thumbs.db
