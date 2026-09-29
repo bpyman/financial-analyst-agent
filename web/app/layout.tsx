@@ -5,7 +5,7 @@ import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Financial analyst agent",
+  title: "Onfile",
   description:
     "Evidence-first financial research: SEC 10-Q facts, constrained planning, numbers the model cannot rewrite.",
 };
