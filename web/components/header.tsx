@@ -39,8 +39,8 @@ export function Header({
           <LogoMark className="size-8 shrink-0" />
           <span className="text-[17px] font-semibold leading-none tracking-[-0.02em] text-fg">Onfile</span>
           {/* One line beside the name, not a caption under it: a short name reads as the lead. */}
-          <span aria-hidden className="ml-1 hidden h-4 w-px shrink-0 bg-border-strong lg:block" />
-          <span className="hidden truncate text-[13px] text-subtle lg:block">
+          <span aria-hidden className="ml-1 hidden h-4 w-px shrink-0 bg-border-strong md:block" />
+          <span className="hidden truncate text-[13px] text-subtle md:block">
             Financial research from SEC filings
           </span>
         </Link>
