@@ -232,3 +232,75 @@ def test_missing_company_facts_are_remembered(tmp_path: Path) -> None:
         assert caught.value.details["status_code"] == 404
 
     assert inner.calls == ["facts:0000000001"]
+
+
+class _PagedSource(_CountingSource):
+    """A source whose submissions keep older 10-Qs in numbered pages."""
+
+    def __init__(self, pages: dict[str, Any]) -> None:
+        recent = {
+            "form": ["10-Q"],
+            "accessionNumber": ["0000019617-26-000800"],
+            "reportDate": ["2026-06-30"],
+        }
+        files = [{"name": name} for name in pages]
+        super().__init__({}, {"filings": {"recent": recent, "files": files}}, {})
+        self.pages = pages
+
+    def get_submissions(self, cik: str, *, with_history: bool = True) -> dict[str, Any]:
+        assert with_history is False
+        return json.loads(json.dumps(super().get_submissions(cik)))
+
+    def get_submissions_page(self, name: str) -> dict[str, Any]:
+        self.calls.append(f"page:{name}")
+        page = self.pages[name]
+        if isinstance(page, Exception):
+            raise page
+        return page
+
+
+def _page(report_date: str) -> dict[str, Any]:
+    return {
+        "form": ["10-Q"],
+        "accessionNumber": [f"0000019617-{report_date[2:4]}-000100"],
+        "reportDate": [report_date],
+    }
+
+
+def test_each_older_submissions_page_is_cached_and_charged(tmp_path: Path) -> None:
+    inner = _PagedSource(
+        {
+            "CIK0000019617-submissions-001.json": _page("2025-06-30"),
+            "CIK0000019617-submissions-002.json": _page("2023-06-30"),
+        }
+    )
+    budget = SessionBudget(max_turns=10, max_live_sec_requests=5)
+    cached = CachingSECDataSource(inner, tmp_path, budget=budget)
+
+    recent = cached.get_submissions("0000019617")["filings"]["recent"]
+    again = cached.get_submissions("0000019617")["filings"]["recent"]
+
+    assert recent["reportDate"] == ["2026-06-30", "2025-06-30", "2023-06-30"]
+    assert again == recent
+    assert budget.live_sec_requests == 3
+    assert len(inner.calls) == 3
+
+
+def test_older_pages_that_fail_or_exceed_the_budget_leave_recent_filings(
+    tmp_path: Path,
+) -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+
+    failing = _PagedSource(
+        {"CIK0000019617-submissions-001.json": ProviderError("timeout", details={})}
+    )
+    recent = CachingSECDataSource(failing, tmp_path / "a").get_submissions("0000019617")
+    assert recent["filings"]["recent"]["reportDate"] == ["2026-06-30"]
+
+    spent = _PagedSource({"CIK0000019617-submissions-001.json": _page("2025-06-30")})
+    budget = SessionBudget(max_turns=10, max_live_sec_requests=1)
+    cached = CachingSECDataSource(spent, tmp_path / "b", budget=budget)
+    assert cached.get_submissions("0000019617")["filings"]["recent"]["reportDate"] == [
+        "2026-06-30"
+    ]
+    assert spent.calls == ["submissions:0000019617"]

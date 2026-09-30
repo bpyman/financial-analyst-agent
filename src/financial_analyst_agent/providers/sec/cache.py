@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Any
 
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.providers.sec.client import with_older_pages
 from financial_analyst_agent.session import SessionBudget
 
 _FILL_LOCKS: dict[str, Lock] = {}
@@ -58,10 +59,20 @@ class CachingSECDataSource:
         return payload
 
     def get_submissions(self, cik: str) -> dict[str, Any]:
-        payload = self._json(f"submissions-{cik}.json", lambda: self._inner.get_submissions(cik))
+        page = getattr(self._inner, "get_submissions_page", None)
+        if not callable(page):
+            fetch = lambda: self._inner.get_submissions(cik)  # noqa: E731
+        else:
+            # Older pages are read here, one cached and charged request each.
+            fetch = lambda: self._inner.get_submissions(cik, with_history=False)  # noqa: E731
+        payload = self._json(f"submissions-{cik}.json", fetch)
         if not isinstance(payload, dict):
             raise TypeError("cached submissions must be an object")
-        return payload
+        if not callable(page):
+            return payload
+        return with_older_pages(
+            payload, lambda name: self._json(f"submissions-{name}", lambda: page(name))
+        )
 
     def get_company_facts(self, cik: str) -> dict[str, Any]:
         # Many filers (funds, trusts, predecessor CIKs) have no companyfacts at
