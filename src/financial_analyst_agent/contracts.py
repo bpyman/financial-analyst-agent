@@ -267,6 +267,8 @@ class DisclosureChange(BaseModel):
     newer_accession: str
     older_url: str
     newer_url: str
+    # The heading the paragraph sits under ("Liquidity and Capital Resources"), or "".
+    subsection: str = ""
     selection_rule: str = (
         "Reviewed section extracted by Item heading; paragraph diff is deterministic."
     )

@@ -838,3 +838,19 @@ def test_an_annual_report_or_accession_question_is_a_filing_change() -> None:
         "What changed between 0000950170-25-061046 and 0001193125-26-191507?",
     ):
         assert DemoCompleter().complete(question).intent is Intent.FILING_CHANGE
+
+
+def test_a_change_names_the_heading_it_sits_under() -> None:
+    older = "\n".join(
+        [
+            "LIQUIDITY AND CAPITAL RESOURCES",
+            "We expect existing cash to be sufficient for the next twelve months of needs.",
+            "Percentage",
+            "Revenue 10 % 12 %",
+        ]
+    )
+    newer = older.replace("for the next twelve", "for at least the next twelve")
+
+    (change,) = _diff(older, newer)
+
+    assert change.subsection == "Liquidity and Capital Resources"

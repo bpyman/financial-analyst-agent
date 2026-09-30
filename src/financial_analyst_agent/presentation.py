@@ -589,6 +589,7 @@ class DisplayDisclosure:
     newer_accession: str
     older_url: str
     newer_url: str
+    subsection: str = ""
 
 
 def intent_label(intent: str) -> str:
@@ -966,6 +967,7 @@ def present_turn(result: TurnResult) -> Presentation:
             newer_accession=item.newer_accession,
             older_url=item.older_url,
             newer_url=item.newer_url,
+            subsection=item.subsection,
         )
         for item in result.disclosure_changes
     )

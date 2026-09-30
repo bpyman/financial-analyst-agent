@@ -100,6 +100,8 @@ export interface DisplayDisclosure {
   newer_accession: string;
   older_url: string;
   newer_url: string;
+  /** The heading the change sits under; absent in older answers. */
+  subsection?: string;
 }
 
 export interface Presentation {
