@@ -138,6 +138,7 @@ _NICKNAMES: tuple[tuple[str, str], ...] = (
     ("us bancorp", "USB"),
     ("bank of new york", "BNY"),
     ("oreilly", "ORLY"),
+    ("tsmc", "TSM"),
     ("tmobile", "TMUS"),
 )
 # Two-word starts of a longer name that are places or words, not that company:
@@ -188,9 +189,9 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-def _core_name(name: str) -> str:
+def _core_name(name: str, suffixes: frozenset[str] = _NAME_SUFFIXES) -> str:
     words = normalize(name).split()
-    while words and words[-1] in _NAME_SUFFIXES:
+    while words and words[-1] in suffixes:
         words.pop()
     while words and words[0] == "the":
         words.pop(0)
@@ -238,8 +239,15 @@ class IssuerIndex:
             index.ciks.setdefault(company.cik, ticker)
             index.display_names.setdefault(ticker, company.name)
             core = _core_name(company.name)
+            # "Power REIT" is named in full too, where "power" alone is not it.
+            spoken = _core_name(company.name, _NAME_SUFFIXES - {"reit"})
+            if spoken != core and " " in spoken:
+                index.phrases.setdefault(spoken, ticker)
             if not core or (" " not in core and (core in _GENERIC_WORDS or len(core) < 3)):
                 # "Southern Company" is not "southern"; "Target" still is "target".
+                continue
+            if " " not in core and rank >= _FIRST_WORD_ALIAS_RANK and core in _common_words():
+                # A small listing does not own an everyday word: "power" is not Power REIT.
                 continue
             index.phrases.setdefault(core, ticker)
             # "Lowe's" is also typed "Lowes".

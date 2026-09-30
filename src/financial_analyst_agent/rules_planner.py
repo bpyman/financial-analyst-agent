@@ -30,7 +30,11 @@ from financial_analyst_agent.issuer_index import (
 )
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
-from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
+from financial_analyst_agent.universe import (
+    DEFAULT_SNAPSHOT_PATH,
+    ineligible_issuer_tickers,
+    load_universe_snapshot,
+)
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
@@ -351,7 +355,12 @@ _METRIC_WORDS = frozenset(
 @lru_cache(maxsize=4)
 def _index_for(path: Path, _mtime_ns: int) -> IssuerIndex:
     snapshot = load_universe_snapshot(path)
-    return IssuerIndex.build(snapshot.companies, _ISSUER_PHRASES)
+    index = IssuerIndex.build(snapshot.companies, _ISSUER_PHRASES)
+    # Funds are left out of the snapshot, yet "SPY revenue" names one: the
+    # lookup then says it is not an operating company (ADR 0001).
+    for ticker in ineligible_issuer_tickers():
+        index.tickers.setdefault(ticker.upper(), ticker.upper())
+    return index
 
 
 def issuer_index(path: Path | None = None) -> IssuerIndex:
