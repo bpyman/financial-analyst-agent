@@ -60,6 +60,26 @@ def test_misspelt_company_is_corrected_and_said() -> None:
     assert plan.notes == ("Showing Microsoft for “microsft”.",)
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "how does inflation affect revenue",
+        "every company's margins",
+        "being profitable",
+        "what do the figures say",
+        "trade policy risk",
+    ],
+)
+def test_ordinary_english_is_not_a_misspelt_company(question: str) -> None:
+    assert issuer_index().correct(question) == []
+
+
+def test_misspelt_names_still_correct_beside_common_words() -> None:
+    corrected = issuer_index().correct("how does inflation affect nvida revenue")
+
+    assert [mention.query for mention in corrected] == ["NVDA"]
+
+
 def test_a_ticker_that_is_also_an_alias_is_one_company() -> None:
     plan = DemoCompleter().complete("AAPL")
 

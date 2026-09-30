@@ -12,6 +12,8 @@ import difflib
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 from financial_analyst_agent.universe import UniverseCompany
 
@@ -57,7 +59,7 @@ _GENERIC_WORDS = frozenset(
     much my national net new north northern of on one or our pacific people profit public
     quarter quarters real restaurant restaurants revenue royal sales service services show
     so south southern stock stocks telecom than that the their them then there these they
-    this to top total trust
+    this to top total trade trust
     united universal us value vs was were west western what when which who why will with
     world would year you your
     """.split()  # noqa: SIM905
@@ -300,6 +302,7 @@ class IssuerIndex:
                 or word in _GENERIC_WORDS
                 or word in ignore
                 or word in self.phrases
+                or word in _common_words()
             ):
                 continue
             close = difflib.get_close_matches(word, candidates, n=1, cutoff=_TYPO_CUTOFF)
@@ -328,6 +331,19 @@ def _one_letter_missing(word: str, candidates: list[str]) -> str | None:
         and any(phrase[:cut] + phrase[cut + 1 :] == word for cut in range(1, len(phrase) - 1))
     ]
     return found[0] if len(found) == 1 else None
+
+
+@lru_cache(maxsize=1)
+def _common_words() -> frozenset[str]:
+    """Words most 10-Qs use ("being", "inflation"): English, not a misspelt name.
+
+    Built by scripts/build_common_words.py.
+    """
+    path = Path(__file__).parent / "data" / "common_words.txt"
+    try:
+        return frozenset(path.read_text(encoding="utf-8").split())
+    except OSError:
+        return frozenset()
 
 
 def _char_to_word_offset(question: str, match: re.Match[str]) -> int:
