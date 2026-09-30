@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from financial_analyst_agent.filing_change import requested_sections
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_PLAN,
@@ -271,16 +272,8 @@ def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
     accessions = _ACCESSION_PATTERN.findall(query)
     older = accessions[0] if len(accessions) >= 2 else ""
     newer = accessions[1] if len(accessions) >= 2 else ""
-    section = "mda"
-    if not any(token in normalized for token in ("md&a", "mda", "management", "risk")):
-        # "What changed in Apple's 10-Q?" asks about the filing: both sections.
-        section = "mda and risk_factors"
-    if "risk" in normalized and (
-        "md&a" in normalized or "mda" in normalized or "both" in normalized
-    ):
-        section = "mda and risk_factors"
-    elif "risk" in normalized:
-        section = "risk_factors"
+    # "What changed in Apple's 10-Q?" names no section: it asks about the filing.
+    section = requested_sections(normalized) or "mda and risk_factors"
     return SimpleNamespace(
         intent=Intent.FILING_CHANGE,
         company=_company_from_query(normalized),

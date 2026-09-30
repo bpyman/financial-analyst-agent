@@ -598,3 +598,98 @@ def test_a_listing_on_the_ineligible_list_is_not_looked_up() -> None:
         lookup.get_financials("ARCC", "eps_diluted")
     assert "not an operating company" in str(exc_info.value)
     assert not any("submissions" in path or "companyfacts" in path for path in requested)
+
+
+def test_submissions_read_older_pages_until_three_years_are_covered() -> None:
+    newest = {
+        "cik": 19617,
+        "name": "JPMorgan Chase & Co.",
+        "tickers": ["JPM"],
+        "filings": {
+            "recent": {
+                "form": ["424B2", "10-Q"],
+                "accessionNumber": ["0000019617-26-000900", "0000019617-26-000800"],
+                "filingDate": ["2026-09-01", "2026-08-03"],
+                "reportDate": ["", "2026-06-30"],
+                "primaryDocument": ["a.htm", "jpm-20260630.htm"],
+            },
+            "files": [
+                {"name": "CIK0000019617-submissions-001.json"},
+                {"name": "CIK0000019617-submissions-002.json"},
+                {"name": "../../etc/passwd"},
+            ],
+        },
+    }
+    pages = {
+        "CIK0000019617-submissions-001.json": {
+            "form": ["10-Q"],
+            "accessionNumber": ["0000019617-25-000615"],
+            "filingDate": ["2025-08-05"],
+            "reportDate": ["2025-06-30"],
+            "primaryDocument": ["jpm-20250630.htm"],
+        },
+        "CIK0000019617-submissions-002.json": {
+            "form": ["10-K"],
+            "accessionNumber": ["0000019617-23-000100"],
+            "filingDate": ["2023-02-21"],
+            "reportDate": ["2022-12-31"],
+        },
+    }
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        name = request.url.path.rsplit("/", 1)[-1]
+        requested.append(name)
+        if name == "CIK0000019617.json":
+            return httpx.Response(200, json=newest)
+        return httpx.Response(200, json=pages[name])
+
+    settings = Settings(sec_user_agent="FinancialAnalystAgent (dev@example.com)")
+    client = SECClient(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    recent = client.get_submissions("0000019617")["filings"]["recent"]
+
+    assert recent["accessionNumber"][-2:] == ["0000019617-25-000615", "0000019617-23-000100"]
+    # Every column stays the same length, filling a column a page lacks.
+    assert {len(column) for column in recent.values()} == {4}
+    assert recent["primaryDocument"][-1] == ""
+    assert "passwd" not in " ".join(requested)
+
+
+def test_periodic_filings_are_rebuilt_from_company_facts() -> None:
+    from financial_analyst_agent.sec_facts import filings_from_company_facts
+
+    def fact(
+        end: str, accn: str, form: str = "10-Q", filed: str = "2025-08-05"
+    ) -> dict[str, object]:
+        return {"end": end, "val": 1, "accn": accn, "form": form, "filed": filed}
+
+    payload = {
+        "facts": {
+            "dei": {
+                "EntityCommonStockSharesOutstanding": {
+                    "units": {"shares": [fact("2025-07-31", "0000019617-25-000615")]}
+                }
+            },
+            "us-gaap": {
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            fact("2025-06-30", "0000019617-25-000615"),
+                            fact("2024-06-30", "0000019617-25-000615"),
+                            fact("2025-06-30", "0000019617-25-000615"),
+                            fact("2024-12-31", "0000019617-25-000100", "10-K", "2025-02-14"),
+                            fact("2024-12-31", "0000019617-25-000200", "8-K", "2025-01-15"),
+                        ]
+                    }
+                }
+            },
+        }
+    }
+
+    filings = {filing.accession_number: filing for filing in filings_from_company_facts(payload)}
+
+    assert set(filings) == {"0000019617-25-000615", "0000019617-25-000100"}
+    # The cover page's later shares date is not the report's period.
+    assert filings["0000019617-25-000615"].report_date == date(2025, 6, 30)
+    assert filings["0000019617-25-000100"].form == "10-K"
