@@ -26,6 +26,17 @@ def _lock_for(path: Path) -> Lock:
         return lock
 
 
+_UNREADABLE = object()
+
+
+def _read_json(path: Path) -> object:
+    """A cached document, or ``_UNREADABLE`` when the file is damaged and must be refetched."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return _UNREADABLE
+
+
 def _write_text_atomic(path: Path, text: str) -> None:
     tmp = path.with_name(f"{path.name}.tmp")
     tmp.write_text(text, encoding="utf-8")
@@ -114,11 +125,11 @@ class CachingSECDataSource:
 
     def _json(self, name: str, fetch: Any) -> object:
         path = self._dir / name
-        if self._json_is_fresh(path):
-            return json.loads(path.read_text(encoding="utf-8"))
+        if self._json_is_fresh(path) and (cached := _read_json(path)) is not _UNREADABLE:
+            return cached
         with _lock_for(path):
-            if self._json_is_fresh(path):
-                return json.loads(path.read_text(encoding="utf-8"))
+            if self._json_is_fresh(path) and (cached := _read_json(path)) is not _UNREADABLE:
+                return cached
             if self._budget is not None:
                 self._budget.consume_live_sec()
             payload = fetch()

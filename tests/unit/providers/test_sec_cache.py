@@ -304,3 +304,16 @@ def test_older_pages_that_fail_or_exceed_the_budget_leave_recent_filings(
         "2026-06-30"
     ]
     assert spent.calls == ["submissions:0000019617"]
+
+
+@pytest.mark.parametrize("damage", ['{"cik": 7', "", "\udcff"])
+def test_a_damaged_cache_file_is_refetched(tmp_path: Path, damage: str) -> None:
+    path = tmp_path / "submissions-0000789019.json"
+    path.write_bytes(damage.encode("utf-8", "surrogateescape"))
+    inner = _CountingSource({}, {"cik": 789019}, {})
+
+    payload = CachingSECDataSource(inner, tmp_path).get_submissions("0000789019")
+
+    assert payload == {"cik": 789019}
+    assert inner.calls == ["submissions:0000789019"]
+    assert json.loads(path.read_text(encoding="utf-8")) == {"cik": 789019}
