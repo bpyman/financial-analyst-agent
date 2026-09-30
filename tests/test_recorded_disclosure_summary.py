@@ -105,3 +105,22 @@ def test_the_summary_is_keyed_by_the_evidence_not_the_prompt() -> None:
     ):
         with pytest.raises(ProviderError):
             completer.complete_essay(topic, json.dumps(evidence))
+
+
+def test_recorded_explain_essay_answers_after_a_lookup_and_names_its_runtime() -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+    from financial_analyst_agent.runtime import (
+        FIXTURE_EXPLAIN_ESSAY,
+        FIXTURE_EXPLAIN_QUERY,
+        RecordedEssayCompleter,
+    )
+
+    grounding = json.dumps([{"ticker": "AAPL", "value": "109420000000"}])
+    assert RecordedEssayCompleter().complete_essay(FIXTURE_EXPLAIN_QUERY, grounding) == (
+        FIXTURE_EXPLAIN_ESSAY
+    )
+    with pytest.raises(ProviderError, match="Switch to Live"):
+        RecordedEssayCompleter().complete_essay("Why is the sky blue?")
+    with pytest.raises(ProviderError, match="OpenAI key") as refused:
+        RecordedEssayCompleter(live=True).complete_essay("Why is the sky blue?", grounding)
+    assert "live runtime" not in str(refused.value)

@@ -136,6 +136,13 @@ def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> l
     )
 
 
+def _numeral_lock_message(invented: str) -> str:
+    return (
+        "The written answer was withheld because it quoted numbers its sources "
+        f"do not contain: {invented}."
+    )
+
+
 def _explain_turn(
     plan: Any, runtime: Runtime, *, grounding_json: str = ""
 ) -> TurnResult:
@@ -169,7 +176,7 @@ def _explain_turn(
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
             numeral_lock_extras=extras,
-            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+            message=_numeral_lock_message(invented),
         )
     return TurnResult(
         intent=Intent.EXPLAIN,
@@ -272,7 +279,7 @@ def _news_grounded_essay_turn(
             renderer=RendererKind.REFUSE,
             citations=hits,
             numeral_lock_extras=extras,
-            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+            message=_numeral_lock_message(invented),
         )
     return TurnResult(
         intent=intent,

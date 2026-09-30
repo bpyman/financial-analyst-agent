@@ -55,7 +55,9 @@ from financial_analyst_agent.thread_store import (
     ThreadStore,
 )
 
-DISCARDED_CLARIFICATION_BANNER = "Discarded pending clarification"
+DISCARDED_CLARIFICATION_BANNER = (
+    "Answered your new question; the earlier one that needed a choice was set aside."
+)
 _REMOVE_METRIC_EDIT = re.compile(
     r"^\s*(?:drop|remove|without)\s+",
     re.IGNORECASE,
