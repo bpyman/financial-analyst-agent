@@ -478,3 +478,28 @@ def test_llm_quarter_window_is_clamped(asked: int, count: int) -> None:
     periods = action.to_spec_patch().set_periods
     assert periods is not None
     assert (periods.kind, periods.count) == ("last_n_quarters", count)
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("BRK.B revenue", ["BRK-B"]),
+        ("BRK-B revenue", ["BRK-B"]),
+        ("BF.B net income", ["BF-B"]),
+        ("T-Mobile revenue", ["TMUS"]),
+        ("U.S. Bancorp net income", ["USB"]),
+        ("us bancorp net income", ["USB"]),
+        ("O'Reilly revenue", ["ORLY"]),
+        ("johnson controls revenue", ["JCI"]),
+        ("general electric revenue", ["GE"]),
+        ("southern company revenue", ["SO"]),
+        ("Bank of New York revenue", ["BNY"]),
+        ("Apple NET income", ["Apple"]),
+        ("MSFT NET MARGIN", ["Microsoft"]),
+        ("IT spending at Apple", ["Apple"]),
+        ("Cloudflare vs NET", ["NET"]),
+        ("P/E of S&P companies", []),
+    ],
+)
+def test_share_classes_short_names_and_metric_words(question: str, companies: list[str]) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies
