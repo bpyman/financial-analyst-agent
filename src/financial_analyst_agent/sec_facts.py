@@ -657,10 +657,12 @@ def _periodic_history_days(filings: list[Filing]) -> int:
 def filings_from_company_facts(payload: dict[str, Any]) -> list[Filing]:
     """The 10-Qs and 10-Ks company facts cites: accession, form, filing date and period.
 
-    A report's period is the end date most of its financial facts share (the
-    quarter's statements and balance sheet); cover-page (dei) facts such as
-    shares outstanding are dated later and are left out. Its primary document
-    is not in company facts, so its source link is the filing's index page.
+    A report's period is the latest end date that many of its financial facts
+    share: a 10-K can carry as many prior-year comparatives as current facts,
+    and a few subsequent-event facts are dated after the period. Cover-page
+    (dei) facts such as shares outstanding are dated later and are left out.
+    Its primary document is not in company facts, so its source link is the
+    filing's index page.
     """
     seen: dict[str, tuple[str, date, Counter[date]]] = {}
     facts = payload.get("facts")
@@ -681,10 +683,16 @@ def filings_from_company_facts(payload: dict[str, Any]) -> list[Filing]:
             form=form,
             accession_number=accession,
             filed_date=filed,
-            report_date=max(ends.items(), key=lambda item: (item[1], item[0]))[0],
+            report_date=_report_period(ends),
         )
         for accession, (form, filed, ends) in seen.items()
     ]
+
+
+def _report_period(ends: Counter[date]) -> date:
+    """The latest end date with at least half as many facts as the commonest one."""
+    most = max(ends.values())
+    return max(end for end, count in ends.items() if count * 2 >= most)
 
 
 def _note_filing(seen: dict[str, tuple[str, date, Counter[date]]], entry: Any) -> None:

@@ -680,6 +680,11 @@ def test_periodic_filings_are_rebuilt_from_company_facts() -> None:
                             fact("2025-06-30", "0000019617-25-000615"),
                             fact("2024-12-31", "0000019617-25-000100", "10-K", "2025-02-14"),
                             fact("2024-12-31", "0000019617-25-000200", "8-K", "2025-01-15"),
+                            # A 10-K with more comparative facts than current ones.
+                            *[fact("2024-12-31", "0000019617-25-000300", "10-K", "2025-02-20")] * 3,
+                            *[fact("2023-12-31", "0000019617-25-000300", "10-K", "2025-02-20")] * 4,
+                            # And one subsequent event, dated after the period.
+                            fact("2025-02-10", "0000019617-25-000300", "10-K", "2025-02-20"),
                         ]
                     }
                 }
@@ -689,7 +694,12 @@ def test_periodic_filings_are_rebuilt_from_company_facts() -> None:
 
     filings = {filing.accession_number: filing for filing in filings_from_company_facts(payload)}
 
-    assert set(filings) == {"0000019617-25-000615", "0000019617-25-000100"}
+    assert set(filings) == {
+        "0000019617-25-000615",
+        "0000019617-25-000100",
+        "0000019617-25-000300",
+    }
     # The cover page's later shares date is not the report's period.
     assert filings["0000019617-25-000615"].report_date == date(2025, 6, 30)
     assert filings["0000019617-25-000100"].form == "10-K"
+    assert filings["0000019617-25-000300"].report_date == date(2024, 12, 31)
