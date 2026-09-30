@@ -113,6 +113,34 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
   await expect(analyst.conversation()).toBeHidden();
 });
 
+test("Start over asks first, and keeps the conversation when declined", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Verify a quarterly fact");
+
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await page.getByRole("button", { name: "Start over" }).click();
+
+  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
+});
+
+test("a second tab follows the first when it starts over", async ({ page, context }) => {
+  const first = new Analyst(page);
+  await first.open();
+  await first.tell("Verify a quarterly fact");
+  const other = await context.newPage();
+  const second = new Analyst(other);
+  // The second tab resumes the same thread rather than landing.
+  await other.goto("/");
+  await expect(second.factCards(/, Microsoft Corporation$/)).toBeVisible();
+
+  await first.startOver();
+
+  await expect(other.getByText("This conversation changed in another tab")).toBeVisible();
+  await expect(second.conversation()).toBeHidden();
+});
+
 test("a reload keeps the window from starting another thread until the saved one is back", async ({ page }) => {
   const analyst = new Analyst(page);
   await analyst.open();
