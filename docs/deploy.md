@@ -258,8 +258,9 @@ Going live settled several of the open points below against the real services:
   repository secret for CI's `deploy` job.
 - **Deployment Protection.** The project's default protection
   (`all_except_custom_domains`) protects preview and per-deployment URLs. The
-  production domain, `financial-analyst-agent-ten.vercel.app`, is public (200 without
-  a login). The unsuffixed `financial-analyst-agent.vercel.app` belongs to another
+  production domains, `onfile-analyst.vercel.app` (added 30 September 2026 with the
+  Onfile rename) and the original `financial-analyst-agent-ten.vercel.app`, are public
+  (200 without a login). The unsuffixed `financial-analyst-agent.vercel.app` belongs to another
   project.
 - **End to end.** The API refuses calls without the proxy token (401). A guided story
   runs through the Vercel proxy, and the Playwright suite can run against the hosted URL

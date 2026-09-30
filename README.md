@@ -3,14 +3,14 @@
 [![CI](https://github.com/bpyman/onfile/actions/workflows/ci.yml/badge.svg)](https://github.com/bpyman/onfile/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Next.js window](https://img.shields.io/badge/UI-Next.js-000000.svg)](web/README.md)
-[![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://financial-analyst-agent-ten.vercel.app)
+[![Hosted demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://onfile-analyst.vercel.app)
 
 **Explore company financials, straight from SEC filings.**
 
 Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
 
 <p align="center">
-  <a href="https://financial-analyst-agent-ten.vercel.app"><strong>Try the live demo</strong></a> ·
+  <a href="https://onfile-analyst.vercel.app"><strong>Try the live demo</strong></a> ·
   <a href="#run-it-locally">Run it locally</a> ·
   <a href="docs/design.md">Design</a> ·
   <a href="docs/adr/">ADRs</a>
@@ -51,7 +51,7 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
 
 ## Try it
 
-Hosted demo (opens on the live runtime, straight from SEC EDGAR; switch to Recorded for the captured filings): [financial-analyst-agent-ten.vercel.app](https://financial-analyst-agent-ten.vercel.app). The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
+Hosted demo (opens on the live runtime, straight from SEC EDGAR; switch to Recorded for the captured filings): [onfile-analyst.vercel.app](https://onfile-analyst.vercel.app). The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
 
 ![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
