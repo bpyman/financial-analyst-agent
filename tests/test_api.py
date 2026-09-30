@@ -114,6 +114,11 @@ def test_meta_serves_storefront_copy_and_snapshot_banner(client: TestClient) -> 
     assert "Net income" in meta["metric_groups"][0]["names"]
     assert meta["runtime_copy"]["recorded"].startswith("Recorded runtime — ")
     assert meta["runtime_copy"]["locked"] == "Live runtime is off on the public demo"
+    guide = meta["runtime_guide"]
+    assert [runtime["kind"] for runtime in guide["runtimes"]] == ["recorded", "live"]
+    # Without keys, the panel does not promise news or written analysis on live.
+    assert guide["runtimes"][1]["points"][-1] == "News search and written analysis are off here."
+    assert guide["footer"].startswith("A conversation stays on the runtime")
 
 
 def test_public_demo_locks_the_runtime_to_recorded(tmp_path: Path) -> None:

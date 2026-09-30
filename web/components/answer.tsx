@@ -3,9 +3,10 @@
 import { ArrowRight, ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
-import { sortDescription, sortedRowKeys, type TableSort } from "@/lib/table-sort";
+import { sortDescription, sortedRowIndices, sortedRowKeys, type TableSort } from "@/lib/table-sort";
 import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
+import { AnswerActions, hasTakeaway } from "./answer-actions";
 import { AnswerChart } from "./answer-chart";
 import { Clarify } from "./clarify";
 import { CopyButton } from "./copy-button";
@@ -44,10 +45,13 @@ export interface ClarifyControls {
  * presentation mapping (ADR 0006); nothing is formatted in the browser.
  */
 export function Answer({
+  question = "",
   presentation,
   clarify,
   onSuggest,
 }: {
+  /** The question as the thread shows it, heading a copied answer. */
+  question?: string;
   presentation: Presentation;
   clarify?: ClarifyControls;
   /** Set on the latest answer only: sends a suggested question. */
@@ -61,8 +65,15 @@ export function Answer({
   const sortNote = table && sort ? sortDescription(table, sort) : null;
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <Badge tone="primary">{presentation.intent_label || presentation.intent}</Badge>
+        {hasTakeaway(presentation) && (
+          <AnswerActions
+            question={question}
+            presentation={presentation}
+            rowOrder={table && sort ? sortedRowIndices(table, sort) : null}
+          />
+        )}
       </div>
       {presentation.headline && (
         <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>

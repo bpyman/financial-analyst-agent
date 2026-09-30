@@ -159,11 +159,19 @@ export interface ThreadView {
   turn_in_flight: boolean;
 }
 
+/** What each runtime answers from, for the status line's "How runtimes differ". */
+export interface RuntimeGuide {
+  runtimes: { kind: RuntimeKind; name: string; points: string[] }[];
+  footer: string;
+}
+
 export interface Meta {
   /** The runtime a new thread gets, and whether the deployment serves only the recorded one. */
   runtime: { default: RuntimeKind; locked: boolean };
   /** Status-line copy per runtime, and the tooltip for a locked runtime switch. */
   runtime_copy: { recorded: string; live: string; locked: string };
+  /** Absent from an older API. */
+  runtime_guide?: RuntimeGuide;
   snapshot: { banner: string; stale: boolean };
   example_query: string;
   guided_stories: { label: string; question: string }[];

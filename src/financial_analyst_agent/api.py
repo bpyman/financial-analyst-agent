@@ -65,7 +65,9 @@ from financial_analyst_agent.storefront import (
     LIVE_RUNTIME_CAPTION,
     LIVE_RUNTIME_LOCKED_NOTICE,
     RECORDED_BANNER,
+    RUNTIME_GUIDE_FOOTER,
     capabilities_for,
+    runtime_guide,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
 from financial_analyst_agent.turn import RuntimeKind, TurnResult
@@ -517,6 +519,12 @@ def create_app(
                 "recorded": RECORDED_BANNER,
                 "live": LIVE_RUNTIME_CAPTION,
                 "locked": LIVE_RUNTIME_LOCKED_NOTICE,
+            },
+            "runtime_guide": {
+                "runtimes": runtime_guide(
+                    live_news=tavily_enabled(resolved), live_essays=openai_enabled(resolved)
+                ),
+                "footer": RUNTIME_GUIDE_FOOTER,
             },
             "snapshot": {"banner": banner, "stale": stale},
             "example_query": EXAMPLE_QUERY,

@@ -33,6 +33,7 @@ export function Thread({
         >
           <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message}>
             <Answer
+              question={shownMessage(item, turns[index - 1])}
               presentation={item.presentation}
               onSuggest={index === turns.length - 1 && turn.status === "idle" ? onAsk : undefined}
               clarify={{

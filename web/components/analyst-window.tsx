@@ -343,6 +343,7 @@ export function AnalystWindow() {
       <StatusLine
         runtime={runtime}
         runtimeBanner={meta && runtime ? meta.runtime_copy[runtime] : metaError || resumeFailed ? "" : null}
+        guide={meta?.runtime_guide ?? null}
         snapshot={meta?.snapshot ?? null}
         chips={view?.spec_chips ?? []}
         turns={view ? { count: view.turn_count, max: view.max_turns } : null}

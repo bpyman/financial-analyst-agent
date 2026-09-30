@@ -1,12 +1,14 @@
 import { CalendarClock, Database, Radio } from "lucide-react";
 import { cn, splitBanner } from "@/lib/format";
 import { turnCounterLabel } from "@/lib/turn-state";
-import type { RuntimeKind } from "@/lib/types";
+import type { RuntimeGuide as Guide, RuntimeKind } from "@/lib/types";
+import { RuntimeGuide } from "./runtime-guide";
 
 /** Snapshot banner, runtime banner, active-analysis chips, and the turn counter. */
 export function StatusLine({
   runtime,
   runtimeBanner,
+  guide = null,
   snapshot,
   chips,
   turns,
@@ -14,6 +16,8 @@ export function StatusLine({
   runtime: RuntimeKind | null;
   /** null while loading; empty when the storefront copy could not be loaded. */
   runtimeBanner: string | null;
+  /** What each runtime answers from; null hides the explainer. */
+  guide?: Guide | null;
   snapshot: { banner: string; stale: boolean } | null;
   chips: string[];
   turns: { count: number; max: number } | null;
@@ -22,7 +26,7 @@ export function StatusLine({
   // "Live runtime — figures pulled …": the name leads, the detail recedes.
   const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
-    <div className="border-b border-border bg-surface sm:sticky sm:top-14 sm:z-20">
+    <div className="border-b border-border bg-surface sm:[@media(min-height:36rem)]:sticky sm:top-14 sm:z-20">
       <div className="mx-auto flex max-w-4xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
@@ -39,6 +43,7 @@ export function StatusLine({
               <span className="font-medium text-muted">{runtimeName}</span>
               {runtimeDetail && <span> · {runtimeDetail}</span>}
             </span>
+            {guide && <RuntimeGuide guide={guide} runtime={runtime} />}
           </span>
         )}
         {snapshot && (
@@ -56,7 +61,11 @@ export function StatusLine({
           </span>
         )}
         {turns && (
-          <span className="num shrink-0 text-subtle sm:ml-auto" aria-label="Turns used">
+          <span
+            className="num shrink-0 text-subtle sm:ml-auto"
+            aria-label="Turns used"
+            title={`A conversation holds up to ${turns.max} questions and follow-ups. Start over for a fresh one.`}
+          >
             {turnCounterLabel(turns.count, turns.max)}
           </span>
         )}
