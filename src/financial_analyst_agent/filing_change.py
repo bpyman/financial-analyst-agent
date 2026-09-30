@@ -25,6 +25,7 @@ from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
+from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
 
 SectionId = Literal["mda", "risk_factors"]
 
@@ -624,6 +625,18 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
+    if cik in INELIGIBLE_ISSUER_CIKS:
+        # The same membership rule lookups and rankings apply (ADR 0001).
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=(
+                f"{resolved.name} is not an operating company (it is a fund, business "
+                "development company or similar listing), so its filings are outside "
+                "what this analyst covers."
+            ),
+        )
     # SEC titles companies "PFIZER INC"; the snapshot knows them as "Pfizer Inc.".
     display = getattr(runtime.facts, "display_name", None)
     name = display(cik, resolved.name) if callable(display) else resolved.name

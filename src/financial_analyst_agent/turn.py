@@ -77,6 +77,8 @@ _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
+# Grounding keys whose digits identify a document rather than state a figure.
+_IDENTIFIER_KEYS = frozenset({"url", "cik", "document", "primary_document", "anchor"})
 
 __all__ = [
     "ALLOWED_METRICS",
@@ -128,9 +130,41 @@ def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     return _CITE_MARKER.sub(replace, essay)
 
 
+def _is_identifier_key(key: str) -> bool:
+    key = key.casefold()
+    return key in _IDENTIFIER_KEYS or key.endswith("_url") or "accession" in key
+
+
+def _grounding_text(tool_json: str) -> str:
+    """The grounding's readable values, without the digits of links and identifiers.
+
+    "0000950170-25-061046" and an article's URL are not figures an essay can
+    quote: "25%" must not pass because an accession number holds "-25-".
+    """
+    try:
+        payload = json.loads(tool_json)
+    except ValueError:
+        return tool_json
+    parts: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if not _is_identifier_key(str(key)):
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif value is not None:
+            parts.append(str(value))
+
+    walk(payload)
+    return "\n".join(parts)
+
+
 def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
     scanned = _strip_valid_citation_markers(essay, hit_count)
-    allowed = set(_NUMERIC_TOKEN.findall(tool_json))
+    allowed = set(_NUMERIC_TOKEN.findall(_grounding_text(tool_json)))
     return list(
         dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(scanned) if token not in allowed)
     )
