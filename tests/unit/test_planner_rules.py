@@ -12,6 +12,7 @@ from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.filing_change import _year_apart_quarterlies
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
+    PeriodSelection,
     RankedSet,
     ResolvedCompany,
     SpecPatch,
@@ -449,3 +450,31 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
     assert table is not None
     assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
     assert table.rows[2][3:5] == ("+$10", "+2.0 pts")
+
+
+@pytest.mark.parametrize(
+    ("wording", "count"),
+    [
+        ("last 0 quarters", 1),
+        ("last 000 quarters", 1),
+        ("last 12 quarters", 12),
+        ("last 99999999999999999999 quarters", 40),
+    ],
+)
+def test_quarter_window_is_kept_between_one_and_ten_years(wording: str, count: int) -> None:
+    patch = bind_periods_from_message(SpecPatch(mode="replace"), f"Apple revenue {wording}")
+
+    assert patch.set_periods == PeriodSelection(kind="last_n_quarters", count=count)
+
+
+@pytest.mark.parametrize(("asked", "count"), [(0, 1), (-3, 1), (4, 4), (10_000, 40)])
+def test_llm_quarter_window_is_clamped(asked: int, count: int) -> None:
+    from financial_analyst_agent.planner import _SpecPatchAction
+
+    action = _SpecPatchAction(
+        intent="spec_patch", period_kind="last_n_quarters", period_count=asked
+    )
+
+    periods = action.to_spec_patch().set_periods
+    assert periods is not None
+    assert (periods.kind, periods.count) == ("last_n_quarters", count)

@@ -7,7 +7,12 @@ from pydantic import AfterValidator, BaseModel, model_validator
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.errors import PlannerError
-from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, PeriodSelection, SpecPatch
+from financial_analyst_agent.graph.analysis_spec import (
+    MAX_QUARTERS_ASKED,
+    AnalysisSpec,
+    PeriodSelection,
+    SpecPatch,
+)
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 
 _PLANNER_FAILED_MESSAGE = "LLM planner failed"
@@ -207,7 +212,10 @@ class _SpecPatchAction(BaseModel):
         if self.period_kind == "last_n_quarters":
             periods = PeriodSelection(
                 kind="last_n_quarters",
-                count=self.period_count if self.period_count is not None else 4,
+                count=min(
+                    max(4 if self.period_count is None else self.period_count, 1),
+                    MAX_QUARTERS_ASKED,
+                ),
             )
         elif self.period_kind == "latest_quarter":
             periods = PeriodSelection()
@@ -248,9 +256,9 @@ class FollowUpPlan(BaseModel):
 
 
 def format_spec_for_planner(spec: AnalysisSpec) -> str:
-    companies = ", ".join(
-        f"{company.name} ({company.ticker})" for company in spec.companies
-    ) or "(none)"
+    companies = (
+        ", ".join(f"{company.name} ({company.ticker})" for company in spec.companies) or "(none)"
+    )
     constituents = "(none)"
     if spec.constituents is not None:
         constituents = f"{spec.constituents.industry} top {spec.constituents.limit}"
