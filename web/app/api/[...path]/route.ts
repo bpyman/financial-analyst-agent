@@ -3,9 +3,9 @@
 // move freely, and the hosted API answers only calls that came through here.
 
 import {
-  MAX_BODY_BYTES,
   clientResponseHeaders,
   passesThrough,
+  readLimitedBody,
   refusal,
   upstreamRequestHeaders,
 } from "@/lib/proxy";
@@ -29,8 +29,8 @@ async function forward(
   const search = new URL(request.url).search;
   const target = `${API_ORIGIN}/api/${path.map(encodeURIComponent).join("/")}${search}`;
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  const body = hasBody ? await request.text() : undefined;
-  if (body !== undefined && new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
+  const body = hasBody ? await readLimitedBody(request) : undefined;
+  if (body === null) {
     return Response.json(
       { detail: "That request is too large for the analysis service." },
       { status: 413 },

@@ -6,6 +6,7 @@ import {
   clientAddress,
   clientResponseHeaders,
   passesThrough,
+  readLimitedBody,
   refusal,
   upstreamRequestHeaders,
 } from "./proxy";
@@ -118,5 +119,31 @@ describe("passesThrough", () => {
     expect(passesThrough(answer(204))).toBe(true);
     expect(passesThrough(answer(500, "text/html"))).toBe(false);
     expect(passesThrough(answer(502, "text/plain"))).toBe(false);
+  });
+});
+
+describe("readLimitedBody", () => {
+  function chunked(parts: string[]): Request {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const part of parts) controller.enqueue(encoder.encode(part));
+        controller.close();
+      },
+    });
+    return new Request("https://onfile.example/api/threads", {
+      method: "POST",
+      body: stream,
+      // @ts-expect-error Node's fetch needs this for a streamed body.
+      duplex: "half",
+    });
+  }
+
+  it("reads a body under the limit, however it is chunked", async () => {
+    expect(await readLimitedBody(chunked(['{"message":', '"hi"}']), 64)).toBe('{"message":"hi"}');
+  });
+
+  it("stops at the limit when no length was declared", async () => {
+    expect(await readLimitedBody(chunked(["x".repeat(40), "x".repeat(40)]), 64)).toBeNull();
   });
 });
