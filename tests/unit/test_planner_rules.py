@@ -503,3 +503,50 @@ def test_llm_quarter_window_is_clamped(asked: int, count: int) -> None:
 )
 def test_share_classes_short_names_and_metric_words(question: str, companies: list[str]) -> None:
     assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+def test_follow_ups_that_set_a_company_beside_the_current_one() -> None:
+    planner = DemoCompleter()
+    spec = _spec("AAPL")
+
+    assert planner.complete("and msft revenue", current_spec=spec) == SpecPatch(
+        mode="extend", add_companies=("Microsoft",)
+    )
+    assert planner.complete("and msft net income", current_spec=spec) == SpecPatch(
+        mode="extend", add_companies=("Microsoft",), add_metrics=("net_income",)
+    )
+    for question in ("compare it to Google", "vs Google", "how does it compare to Google?"):
+        assert planner.complete(question, current_spec=spec) == SpecPatch(
+            mode="extend", add_companies=("Google",)
+        )
+    # A fresh comparison is still a new question.
+    assert not isinstance(planner.complete("Nvidia vs AMD", current_spec=spec), SpecPatch)
+
+
+def test_compare_them_uses_the_companies_already_named() -> None:
+    swapped = resolve_spec(
+        apply_patch(
+            _spec("NVDA"),
+            SpecPatch(mode="extend", remove_companies=("NVDA",), add_companies=("AMD",)),
+        )
+    )
+    planner = DemoCompleter()
+
+    assert planner.complete("compare them", current_spec=swapped) == SpecPatch(
+        mode="extend", add_companies=("NVDA",)
+    )
+    assert planner.complete("Compare the two.", current_spec=_spec("NVDA", "AMD")) == SpecPatch(
+        mode="extend"
+    )
+
+
+def test_count_words_and_rev_are_read() -> None:
+    planner = _live()
+
+    five = planner.complete("top five banks by revenue")
+    three = planner.complete("the three biggest semiconductor companies")
+
+    assert (five.industry, five.limit, five.metric) == ("banks", 5, "revenue")
+    assert (three.industry, three.limit) == ("semiconductor", 3)
+    assert planner.complete("Five Below revenue").company == "FIVE"
+    assert planner.complete("Apple rev").metric == "revenue"

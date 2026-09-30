@@ -259,6 +259,8 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("net sales", "revenue"),
     ("sales", "revenue"),
     ("revenue", "revenue"),
+    ("rev", "revenue"),
+    ("revs", "revenue"),
     ("depreciation and amortization", "depreciation_amortization"),
     ("depreciation & amortization", "depreciation_amortization"),
     ("depreciation_amortization", "depreciation_amortization"),
