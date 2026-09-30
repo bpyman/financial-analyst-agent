@@ -43,6 +43,7 @@ from financial_analyst_agent.services.fiscal_periods import (
     fiscal_labels,
     gross_profit_from_components,
     periods_from_filings,
+    revenue_from_components,
     sum_of_components,
 )
 from financial_analyst_agent.services.metric_catalog import (
@@ -79,25 +80,20 @@ _FULL_HISTORY_DAYS = 3 * 365
 _THIN_HISTORY = 4
 
 
-def _related_lookup_ciks(
-    resolved_cik: str,
-    filings: list[Filing],
-    *,
-    report_date: date | None = None,
-) -> tuple[str, ...]:
-    """Ticker-map CIK first, then a distinct accession-prefix filer if present."""
-    ordered = [resolved_cik]
-    try:
-        candidates = get_candidate_filings(filings, report_date=report_date)
-    except FilingNotFoundError:
-        candidates = []
-    if report_date is not None:
-        candidates = [*candidates, *get_annual_filings(filings, report_date=report_date)]
-    for filing in candidates:
-        related = parse_cik(filing.accession_number.split("-", 1)[0])
-        if related is not None and related not in ordered:
-            ordered.append(related)
-    return tuple(ordered)
+# A quarter whose filing SEC lists but whose facts its structured data lacks yet.
+PENDING_IN_XBRL_MESSAGE = "SEC's structured data does not yet include this quarter's filing"
+
+
+def _related_lookup_ciks(resolved_cik: str, predecessor: str | None) -> tuple[str, ...]:
+    """The listed company's CIK, then its verified predecessor's (ExxonMobil's old CIK).
+
+    An accession number's prefix alone is not enough: a subsidiary co-registrant
+    (Georgia Power) files under its parent's prefix, and a filing agent
+    (Workiva, Donnelley) under its own, so neither names the company asked for.
+    """
+    if predecessor is None or predecessor == resolved_cik:
+        return (resolved_cik,)
+    return (resolved_cik, predecessor)
 
 
 def _select_or_derive(
@@ -250,10 +246,14 @@ class SecFactLookup:
         settings: Settings | None = None,
         client: SECDataSource | None = None,
         display_names: Mapping[str, str] | None = None,
+        listed_tickers: Mapping[str, str] | None = None,
     ) -> None:
         # SEC's ticker file titles companies "AMAZON COM INC"; the snapshot
         # knows them as "Amazon.com, Inc.". Keyed by 10-digit CIK.
         self._display_names: Mapping[str, str] = display_names or {}
+        # The snapshot's listing for a company with several (GOOG of GOOGL and
+        # GOOG), so a table row and the ranking name it alike. Keyed by CIK.
+        self._listed_tickers: Mapping[str, str] = listed_tickers or {}
         self._tickers: dict[str, Any] | None = None
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
@@ -415,13 +415,21 @@ class SecFactLookup:
                 "outside what this analyst covers.",
                 details={"cik": resolved.cik},
             )
-        ticker = resolved.tickers[0] if resolved.tickers else company.upper()
+        listed = self._listed_tickers.get(resolved.cik)
+        ticker = (
+            listed
+            if listed in resolved.tickers
+            else resolved.tickers[0]
+            if resolved.tickers
+            else company.upper()
+        )
         filings = self._filings(resolved.cik)
         # "Latest" is the newest period any 10-Q or 10-K covers (ADR 0007).
         target = report_date if report_date is not None else latest_period_end(filings)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
-        for cik in _related_lookup_ciks(resolved.cik, filings, report_date=target):
+        related = _related_lookup_ciks(resolved.cik, self._predecessor_ciks.get(resolved.cik))
+        for cik in related:
             try:
                 company_facts_payload = self._cached_company_facts(cik)
             except ProviderError as exc:
@@ -456,6 +464,19 @@ class SecFactLookup:
                     )
                 except (UnsupportedQuarterlyFactError, FilingNotFoundError) as exc:
                     last_unsupported = exc
+                    if (
+                        report_date is not None
+                        and period is not None
+                        and not self._period_in_xbrl(cik, filings, period)
+                        and any(
+                            abs(filing.report_date - period) <= FISCAL_WEEK_TOLERANCE
+                            for filing in filings
+                        )
+                    ):
+                        # Filed, but SEC's company facts have not caught up with it.
+                        last_unsupported = UnsupportedQuarterlyFactError(
+                            PENDING_IN_XBRL_MESSAGE, details={"metric": parsed_metric.value}
+                        )
                     if period is None or report_date is not None:
                         break
                     if self._period_in_xbrl(cik, filings, period):
@@ -497,6 +518,21 @@ class SecFactLookup:
         report_date: date | None,
         filer_ciks: Mapping[str, str] | None = None,
     ) -> FinancialFact:
+        if metric is Metric.REVENUE:
+            fact = _select_or_derive(
+                records,
+                filings,
+                metric,
+                unit,
+                company_name,
+                ticker,
+                cik,
+                report_date=report_date,
+                filer_ciks=filer_ciks,
+            )
+            return self._plausible_revenue(
+                fact, payload, filings, unit, company_name, ticker, cik, filer_ciks=filer_ciks
+            )
         try:
             return _select_or_derive(
                 records,
@@ -547,6 +583,63 @@ class SecFactLookup:
             if _reports_excluding_costs(payload, revenue.end_date):
                 raise
             return gross_profit_from_components(revenue, cost)
+
+    def _plausible_revenue(
+        self,
+        revenue: FinancialFact,
+        payload: dict[str, Any],
+        filings: list[Filing],
+        unit: str,
+        company_name: str,
+        ticker: str,
+        cik: str,
+        *,
+        filer_ciks: Mapping[str, str] | None,
+    ) -> FinancialFact:
+        """Revenue, unless the filing's own gross profit or cost of revenue exceeds it.
+
+        Plexus tagged a quarter's revenue as $1,304,778, its thousands without
+        their scale, beside $131 million of gross profit. Revenue is then gross
+        profit plus cost of revenue, both as filed, when the two cover the
+        quarter; otherwise the mis-scaled figure is refused, never shown.
+        """
+        parts: list[FinancialFact] = []
+        for component in (Metric.GROSS_PROFIT, Metric.COST_OF_REVENUE):
+            component_records, _ = parse_company_facts(payload, component, unit)
+            try:
+                parts.append(
+                    _select_or_derive(
+                        component_records,
+                        filings,
+                        component,
+                        unit,
+                        company_name,
+                        ticker,
+                        cik,
+                        report_date=revenue.end_date,
+                        filer_ciks=filer_ciks,
+                    )
+                )
+            except (UnsupportedQuarterlyFactError, FilingNotFoundError):
+                continue
+        period = (revenue.start_date, revenue.end_date)
+        same = {part.metric: part for part in parts if (part.start_date, part.end_date) == period}
+        gross, cost = same.get(Metric.GROSS_PROFIT), same.get(Metric.COST_OF_REVENUE)
+        if gross is not None and cost is not None:
+            total = gross.value + cost.value
+            # Cost above revenue is a negative gross margin, not an error, when
+            # the three agree; only a revenue the parts do not add up to is.
+            agrees = abs(total - revenue.value) <= abs(total) / 100
+            if agrees or revenue.value >= max(gross.value, cost.value):
+                return revenue
+            return revenue_from_components(revenue, gross, cost)
+        if gross is None or not gross.value > revenue.value > 0:
+            return revenue
+        raise UnsupportedQuarterlyFactError(
+            "The filing's revenue is smaller than its own gross profit or cost of "
+            "revenue, so the filed figure is mis-scaled",
+            details={"metric": Metric.REVENUE.value, "concept": revenue.concept},
+        )
 
     def _depreciation_plus_amortization(
         self,

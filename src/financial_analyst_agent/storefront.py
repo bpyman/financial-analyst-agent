@@ -68,5 +68,24 @@ RECORDED_BANNER = (
     "Numbers go through the same code as live."
 )
 LIVE_RUNTIME_CAPTION = "Live runtime — figures pulled from SEC EDGAR as you ask."
+
+
+def capabilities_for(
+    *, live_news: bool, live_essays: bool, recorded_news: str, recorded_essay: str
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """The capability list with examples this runtime can answer.
+
+    Without live news search or a model, the news and qualitative examples are
+    the questions the recorded replay holds, so every example answers.
+    """
+    swaps = {}
+    if not live_news:
+        swaps["What's going on with Eli Lilly's obesity drugs?"] = recorded_news
+    if not live_essays:
+        swaps["How could AI change bank underwriting?"] = recorded_essay
+    return tuple(
+        (description, tuple(swaps.get(example, example) for example in examples))
+        for description, examples in CAPABILITIES
+    )
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
 

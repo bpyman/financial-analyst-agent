@@ -33,6 +33,9 @@ import { Callout } from "./ui";
 
 const threadApi: ThreadApi = { createThread, getThread, deleteThread };
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
+const OTHER_TAB_NOTICE = "This conversation changed in another tab, so this one follows it.";
+const START_OVER_CONFIRM = "Start over? This clears the current conversation.";
+const SWITCH_CONFIRM = "Switch runtime? This starts a new conversation and clears the current one.";
 const FALLBACK_PLACEHOLDER = "Ask about a company's latest quarterly results…";
 const UNFINISHED = "Your last question could not be completed. Please ask it again.";
 /** The composer's limit until meta brings the server's `max_message_chars`. */
@@ -192,6 +195,32 @@ export function AnalystWindow() {
     });
   }, [turn.status, turnCount]);
 
+  // Another tab started over or switched runtime: follow it rather than keep
+  // showing a thread this browser no longer holds.
+  useEffect(() => {
+    const follow = (event: StorageEvent) => {
+      if (event.key !== THREAD_STORAGE_KEY || inFlight.current) return;
+      if (event.newValue === (view?.thread_id ?? null)) return;
+      shownTurns.current = 0;
+      dispatch({ type: "reset" });
+      if (!event.newValue) {
+        setView(null);
+        setNotice({ kind: "info", text: OTHER_TAB_NOTICE });
+        return;
+      }
+      getThread(event.newValue)
+        .then((latest) => {
+          if (isCurrentThread(store, latest.thread_id)) {
+            setView(latest);
+            setNotice({ kind: "info", text: OTHER_TAB_NOTICE });
+          }
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener("storage", follow);
+    return () => window.removeEventListener("storage", follow);
+  }, [store, view?.thread_id]);
+
   // Escape dismisses a notice, as its × does; a failed resume keeps its Try again.
   useEffect(() => {
     if (!notice || resumeFailed) return;
@@ -263,6 +292,14 @@ export function AnalystWindow() {
   /** Start over on `next`: the same runtime, or the other one when the switch flips. */
   async function restart(next: RuntimeKind | null) {
     if (inFlight.current || resuming) return;
+    const changesRuntime = next !== null && next !== runtime;
+    // Asked only when there is a conversation to lose.
+    if (
+      (view?.turns.length ?? 0) > 0 &&
+      !window.confirm(changesRuntime ? SWITCH_CONFIRM : START_OVER_CONFIRM)
+    ) {
+      return;
+    }
     inFlight.current = true;
     setSwitching(true);
     setResumeFailed(false);

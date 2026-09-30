@@ -237,8 +237,9 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
         "Compare Eli Lilly and Merck net margins",
         "What are the top 10 tech companies and R&D spend for each?",
         "Top 5 semiconductor companies by revenue",
-        "What's going on with Eli Lilly's obesity drugs?",
-        "How could AI change bank underwriting?",
+        # The recorded runtime has no live news or model: these it can replay.
+        "Effects of recent Strait of Hormuz closures on Exxon",
+        "How can AI disrupt healthcare?",
         "add Apple",
         "now add operating margin",
         "make that the last four quarters",

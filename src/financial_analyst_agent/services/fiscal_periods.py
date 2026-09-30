@@ -8,7 +8,7 @@ quarters (ADR 0007).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -101,7 +101,82 @@ def periods_from_filings(
             quarter=quarter,
             form=filing.form,
         )
-    return tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True))
+    return _sequenced(tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True)))
+
+
+def _sequenced(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
+    """Newest-first periods, with quarters that repeat the year just closed renumbered.
+
+    A filing's own ``fy`` is sometimes wrong: Oracle's 10-Q for the quarter ended
+    August 31, 2026 (Q1 of fiscal 2027) declares 2026, the year its 10-K just
+    closed, and NetApp's first two quarters of fiscal 2026 declare 2025. A Q1
+    that follows a Q4 of the same fiscal year belongs to the next year, with
+    the quarters after it that keep that label. When the Q4's own label is not
+    confirmed by the 10-K a year before it, a later report keeping the year
+    means the Q4 is the wrong one, and nothing is renumbered; so too when the
+    next 10-K closes that same year. Only filed labels
+    are compared, so one bad label never shifts the rest.
+    """
+    ordered = list(reversed(periods))
+    repaired = list(ordered)
+    for index in range(1, len(ordered)):
+        closed, period = ordered[index - 1], ordered[index]
+        if not (
+            closed.quarter == 4
+            and period.quarter == 1
+            and period.fiscal_year is not None
+            and period.fiscal_year == closed.fiscal_year
+        ):
+            continue
+        year = period.fiscal_year
+        earlier = [item for item in ordered[: index - 1] if item.quarter == 4]
+        confirmed = not earlier or earlier[-1].fiscal_year == year - 1
+        run = index
+        while (
+            run < len(ordered)
+            and ordered[run].quarter in (1, 2, 3)
+            and ordered[run].fiscal_year == year
+        ):
+            run += 1
+        if not confirmed and run < len(ordered) and ordered[run].fiscal_year == year:
+            continue
+        if not confirmed and run - index > 1:
+            continue
+        following = next((item for item in ordered[run:] if item.quarter == 4), None)
+        if following is not None and following.fiscal_year == year:
+            # The next 10-K closes this year: the Q4 before was the mislabelled one
+            # (Domino's 53-week year ending January 1, 2023 declares 2023).
+            continue
+        for fixed in range(index, run):
+            repaired[fixed] = replace(ordered[fixed], fiscal_year=year + 1)
+    return tuple(reversed(_labelled_forward(repaired)))
+
+
+# A quarter's end is 12 to 14 weeks after the one before it.
+_NEXT_QUARTER_DAYS = (80, 100)
+
+
+def _labelled_forward(ordered: list[FiscalPeriod]) -> list[FiscalPeriod]:
+    """Oldest-first periods, the newest unlabelled ones numbered from the one before.
+
+    SEC's company facts can lag a filing by weeks: Coca-Cola's 10-Q for the
+    quarter ended June 27, 2026 is listed but carries no fiscal year yet, so
+    "Q2 2026" found nothing. The quarter after Q1 of 2026 is Q2 of 2026.
+    """
+    labelled = list(ordered)
+    low, high = _NEXT_QUARTER_DAYS
+    for index in range(1, len(labelled)):
+        before, period = labelled[index - 1], labelled[index]
+        if period.fiscal_year is not None or before.fiscal_year is None:
+            continue
+        if before.quarter is None or not low <= (period.end - before.end).days <= high:
+            continue
+        quarter = before.quarter % 4 + 1
+        if (period.quarter or quarter) != quarter:
+            continue
+        year = before.fiscal_year + (1 if before.quarter == 4 else 0)
+        labelled[index] = replace(period, fiscal_year=year, quarter=quarter)
+    return labelled
 
 
 def calendar_quarter(end: date) -> tuple[int, int]:
@@ -155,6 +230,36 @@ def gross_profit_from_components(revenue: FinancialFact, cost: FinancialFact) ->
                 method="revenue_minus_cost_of_revenue",
                 label=GROSS_PROFIT_LABEL,
                 parts=[part(revenue), part(cost)],
+            ),
+        }
+    )
+
+
+REVENUE_FROM_COMPONENTS_LABEL = (
+    "Gross profit plus cost of revenue, because the filing's own revenue figure "
+    "is smaller than either and so mis-scaled"
+)
+
+
+def revenue_from_components(
+    filed: FinancialFact, gross: FinancialFact, cost: FinancialFact
+) -> FinancialFact:
+    """Revenue as gross profit plus cost of revenue, when the filed revenue is mis-scaled."""
+    return filed.model_copy(
+        update={
+            "value": gross.value + cost.value,
+            "concept": f"{gross.concept} + {cost.concept}",
+            "accession_number": gross.accession_number,
+            "form": gross.form,
+            "source_url": gross.source_url,
+            "directly_reported": False,
+            "derivation": Derivation(
+                method="sum",
+                label=REVENUE_FROM_COMPONENTS_LABEL,
+                parts=[
+                    _derivation_part(gross).model_copy(update={"metric": gross.metric.value}),
+                    _derivation_part(cost).model_copy(update={"metric": cost.metric.value}),
+                ],
             ),
         }
     )

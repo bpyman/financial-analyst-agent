@@ -591,3 +591,17 @@ def test_a_list_of_companies_is_bounded_like_a_ranking() -> None:
 
 def test_a_reit_is_named_without_its_reit() -> None:
     assert [m.query for m in issuer_index().find("Apple Hospitality revenue")] == ["APLE"]
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("Georgia Power revenue", []),
+        ("Power REIT revenue", ["PW"]),
+        ("Target revenue", ["TGT"]),
+        ("TSMC revenue", ["TSM"]),
+        ("SPY revenue", ["SPY"]),
+    ],
+)
+def test_everyday_words_funds_and_nicknames(question: str, companies: list[str]) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies

@@ -30,7 +30,11 @@ from financial_analyst_agent.issuer_index import (
 )
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
-from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH, load_universe_snapshot
+from financial_analyst_agent.universe import (
+    DEFAULT_SNAPSHOT_PATH,
+    ineligible_issuer_tickers,
+    load_universe_snapshot,
+)
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
@@ -255,6 +259,9 @@ _FILING_WORDS = (
     "management's discussion",
     "10-q",
     "10q",
+    "10-k",
+    "10k",
+    "annual report",
     "filing",
     "disclosure",
     "quarterly report",
@@ -267,7 +274,10 @@ def _is_filing_change_query(normalized: str) -> bool:
         r"|\bdiff(?:erence)?s? (?:in|between)\b|\bsummar(?:y|ise|ize)\b",
         normalized,
     )
-    return asks_change is not None and any(token in normalized for token in _FILING_WORDS)
+    return asks_change is not None and (
+        any(token in normalized for token in _FILING_WORDS)
+        or _ACCESSION_PATTERN.search(normalized) is not None
+    )
 
 
 def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
@@ -351,7 +361,12 @@ _METRIC_WORDS = frozenset(
 @lru_cache(maxsize=4)
 def _index_for(path: Path, _mtime_ns: int) -> IssuerIndex:
     snapshot = load_universe_snapshot(path)
-    return IssuerIndex.build(snapshot.companies, _ISSUER_PHRASES)
+    index = IssuerIndex.build(snapshot.companies, _ISSUER_PHRASES)
+    # Funds are left out of the snapshot, yet "SPY revenue" names one: the
+    # lookup then says it is not an operating company (ADR 0001).
+    for ticker in ineligible_issuer_tickers():
+        index.tickers.setdefault(ticker.upper(), ticker.upper())
+    return index
 
 
 def issuer_index(path: Path | None = None) -> IssuerIndex:
@@ -457,6 +472,8 @@ class DemoCompleter:
             plan = _filing_change_plan(query, normalized)
             if companies:
                 plan.company = companies[0]
+                # One company's filings are compared at a time; the turn says so.
+                plan.other_companies = tuple(companies[1:])
             plan.notes = notes
             return plan
         if "disrupt" in normalized or re.search(

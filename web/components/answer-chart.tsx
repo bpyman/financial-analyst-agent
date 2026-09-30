@@ -151,7 +151,7 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
       />
       <Tooltip
         cursor={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
-        position={{ y: 0 }}
+        // Beside the pointer, not pinned to the top where the peaks are drawn.
         offset={16}
         content={(props) => (
           <TrendTooltip

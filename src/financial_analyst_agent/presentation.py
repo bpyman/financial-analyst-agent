@@ -23,6 +23,7 @@ from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERAN
 from financial_analyst_agent.services.fiscal_periods import (
     DEPRECIATION_AMORTIZATION_LABEL,
     GROSS_PROFIT_LABEL,
+    REVENUE_FROM_COMPONENTS_LABEL,
 )
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
@@ -120,7 +121,15 @@ _DERIVED_NOTES = {
     YEAR_TO_DATE_LABEL: (
         "a cash-flow quarter is the 10-Q's year to date minus the previous quarter's"
     ),
-    GROSS_PROFIT_LABEL: "gross profit is revenue minus cost of revenue",
+    GROSS_PROFIT_LABEL: (
+        "gross profit is revenue minus cost of revenue as the filing tags them; "
+        "companies draw that cost line differently (an oil company's may hold only "
+        "purchased crude), so derived margins compare poorly across companies"
+    ),
+    REVENUE_FROM_COMPONENTS_LABEL: (
+        "revenue is gross profit plus cost of revenue, because the filing's own "
+        "revenue figure is smaller than either, so its scale was mis-tagged"
+    ),
     TRAILING_YEAR_LABEL: (
         "trailing-12-month net income is the last 10-K's year plus this year to date "
         "minus the same months a year earlier"
@@ -1044,6 +1053,11 @@ _FRIENDLY_MESSAGES = {
         "This company's filings do not report that metric for this quarter. Not every "
         "company reports every line item: banks, for example, report neither revenue "
         "nor capital spending the way operating companies do."
+    ),
+    "SEC's structured data does not yet include this quarter's filing": (
+        "This quarter's report is filed, but SEC's structured data, which the figures "
+        "here are read from, does not include it yet. It usually appears within a "
+        "few weeks of the filing."
     ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "

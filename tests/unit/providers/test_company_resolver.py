@@ -79,3 +79,12 @@ def test_resolve_falls_through_when_alias_target_title_differs() -> None:
     company = resolve_company("Microsoft", payload)
     assert company.cik == "0000789019"
     assert company.tickers == ["MSFT"]
+
+
+def test_a_name_keeps_secs_main_listing_first() -> None:
+    payload = {
+        "0": {"cik_str": 1067983, "ticker": "BRK-B", "title": "BERKSHIRE HATHAWAY INC"},
+        "1": {"cik_str": 1067983, "ticker": "BRK-A", "title": "BERKSHIRE HATHAWAY INC"},
+    }
+
+    assert resolve_company("Berkshire Hathaway", payload).tickers == ["BRK-B", "BRK-A"]

@@ -109,8 +109,19 @@ function RuntimeSwitch({
             type="button"
             role="radio"
             aria-checked={active}
-            disabled={locked || disabled || active}
-            onClick={() => onChange(kind)}
+            // The chosen runtime stays focusable, so the group can be reached and read.
+            disabled={!active && (locked || disabled)}
+            tabIndex={active ? 0 : -1}
+            onClick={() => {
+              if (!active) onChange(kind);
+            }}
+            onKeyDown={(event) => {
+              // Arrow keys move between the two runtimes, as in any radio group.
+              if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+              event.preventDefault();
+              const other = RUNTIMES.find((item) => item.kind !== kind);
+              if (other && !locked && !disabled) onChange(other.kind);
+            }}
             className={cn(
               "inline-flex h-full items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
               active

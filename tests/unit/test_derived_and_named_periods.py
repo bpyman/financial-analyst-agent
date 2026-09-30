@@ -381,3 +381,67 @@ def test_revenue_reads_net_revenue_before_contract_revenue() -> None:
         "RevenueFromContractWithCustomerExcludingAssessedTax"
     )
     assert "RegulatedAndUnregulatedOperatingRevenue" in concepts
+
+
+def _periods(*rows: tuple[str, str, int, int]) -> tuple[object, ...]:
+    from financial_analyst_agent.services.fiscal_periods import FiscalPeriod
+
+    return tuple(
+        FiscalPeriod(end=date.fromisoformat(end), fiscal_year=year, quarter=quarter, form=form)
+        for end, form, quarter, year in rows
+    )
+
+
+def _years(periods: tuple[object, ...]) -> list[int | None]:
+    from financial_analyst_agent.services.fiscal_periods import _sequenced
+
+    return [period.fiscal_year for period in _sequenced(periods)]  # type: ignore[arg-type,attr-defined]
+
+
+def test_a_first_quarter_repeating_the_closed_year_is_the_next_year() -> None:
+    # Oracle: the 10-Q for the quarter ended August 31, 2026 declares fy 2026.
+    oracle = _periods(
+        ("2026-08-31", "10-Q", 1, 2026),
+        ("2026-05-31", "10-K", 4, 2026),
+        ("2026-02-28", "10-Q", 3, 2026),
+        ("2025-05-31", "10-K", 4, 2025),
+    )
+    # NetApp: its first two quarters of fiscal 2026 both declare 2025.
+    netapp = _periods(
+        ("2026-01-23", "10-Q", 3, 2026),
+        ("2025-10-24", "10-Q", 2, 2025),
+        ("2025-07-25", "10-Q", 1, 2025),
+        ("2025-04-25", "10-K", 4, 2025),
+        ("2024-04-26", "10-K", 4, 2024),
+    )
+
+    assert _years(oracle) == [2027, 2026, 2026, 2025]
+    assert _years(netapp) == [2026, 2026, 2026, 2025, 2024]
+
+
+def test_a_mislabelled_year_end_is_not_carried_into_the_next_year() -> None:
+    # Domino's 53-week year ended January 1, 2023 declares 2023; the next 10-K closes 2023.
+    dominos = _periods(
+        ("2023-12-31", "10-K", 4, 2023),
+        ("2023-09-10", "10-Q", 3, 2023),
+        ("2023-03-26", "10-Q", 1, 2023),
+        ("2023-01-01", "10-K", 4, 2023),
+        ("2022-01-02", "10-K", 4, 2022),
+    )
+
+    assert _years(dominos) == [2023, 2023, 2023, 2023, 2022]
+
+
+def test_a_quarter_sec_has_not_labelled_yet_follows_the_one_before() -> None:
+    from financial_analyst_agent.services.fiscal_periods import FiscalPeriod, _sequenced
+
+    # Coca-Cola: the 10-Q for the quarter ended July 3, 2026 is listed, unlabelled.
+    periods = (
+        FiscalPeriod(end=date(2026, 7, 3), fiscal_year=None, quarter=None, form="10-Q"),
+        FiscalPeriod(end=date(2026, 4, 3), fiscal_year=2026, quarter=1, form="10-Q"),
+        FiscalPeriod(end=date(2025, 12, 31), fiscal_year=2025, quarter=4, form="10-K"),
+    )
+
+    newest = _sequenced(periods)[0]
+
+    assert (newest.fiscal_year, newest.quarter) == (2026, 2)

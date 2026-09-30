@@ -138,3 +138,44 @@ def test_load_spares_an_expired_thread_the_caller_keeps(tmp_path: Path) -> None:
     assert evidence.is_file()
     assert store.load("t", now=LATER, ttl_seconds=60) is None
     assert not evidence.exists()
+
+
+@pytest.mark.parametrize("thread_id", ["..", "../x", "", "a" * 129, "a/b"])
+def test_a_thread_id_that_is_not_a_plain_name_is_refused(tmp_path: Path, thread_id: str) -> None:
+    store = LocalThreadStore(tmp_path)
+    store.save(ThreadState(thread_id="kept"))
+
+    with pytest.raises(ValueError):
+        store.clear(thread_id)
+
+    assert store.load("kept") is not None
+
+
+def test_a_damaged_answer_is_left_out_of_its_thread(tmp_path: Path) -> None:
+    from financial_analyst_agent.contracts import Intent, RendererKind, TurnResult
+
+    store = LocalThreadStore(tmp_path)
+    evidence = store.evidence_for("t")
+    kept = evidence.put_result(
+        TurnResult(
+            intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.REFUSE, message="kept"
+        )
+    )
+    damaged = evidence.put_result(
+        TurnResult(
+            intent=Intent.LOOKUP, tool_traces=[], renderer=RendererKind.REFUSE, message="lost"
+        )
+    )
+    (tmp_path / "evidence" / "t" / f"{damaged}.json").write_text("{", encoding="utf-8")
+    state = ThreadState(thread_id="t", evidence_refs=(kept, damaged), last_result_ref=damaged)
+
+    assert [result.message for result in store.resolve_results(state)] == ["kept"]
+    assert store.resolve_last_result(state) is None
+
+
+def test_a_thread_dated_in_the_future_expires(tmp_path: Path) -> None:
+    store = LocalThreadStore(tmp_path)
+    now = datetime(2026, 9, 30, tzinfo=UTC)
+    store.save(ThreadState(thread_id="t", updated_at=now + timedelta(days=365)))
+
+    assert store.load("t", now=now, ttl_seconds=7200) is None
