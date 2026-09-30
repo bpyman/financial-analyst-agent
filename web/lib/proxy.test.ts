@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { PROXY_TOKEN_HEADER, clientResponseHeaders, upstreamRequestHeaders } from "./proxy";
+import {
+  CLIENT_IP_HEADER,
+  MAX_BODY_BYTES,
+  PROXY_TOKEN_HEADER,
+  clientAddress,
+  clientResponseHeaders,
+  passesThrough,
+  refusal,
+  upstreamRequestHeaders,
+} from "./proxy";
 
 function browserRequest(init: RequestInit = {}): Request {
   return new Request("http://localhost:3000/api/threads", init);
@@ -56,5 +65,58 @@ describe("clientResponseHeaders", () => {
   it("passes on how long a busy API asks the caller to wait", () => {
     const upstream = new Headers({ "content-type": "application/json", "retry-after": "5" });
     expect(clientResponseHeaders(upstream).get("retry-after")).toBe("5");
+  });
+});
+
+describe("clientAddress", () => {
+  it("prefers the platform's x-real-ip, then the first x-forwarded-for hop", () => {
+    expect(clientAddress(browserRequest({ headers: { "x-real-ip": "203.0.113.9" } }))).toBe("203.0.113.9");
+    expect(
+      clientAddress(browserRequest({ headers: { "x-forwarded-for": "198.51.100.4, 10.0.0.1" } })),
+    ).toBe("198.51.100.4");
+    expect(clientAddress(browserRequest())).toBeNull();
+  });
+
+  it("is forwarded to the API as its own header", () => {
+    const headers = upstreamRequestHeaders(browserRequest({ headers: { "x-real-ip": "203.0.113.9" } }), "t");
+    expect(headers.get(CLIENT_IP_HEADER)).toBe("203.0.113.9");
+  });
+});
+
+describe("refusal", () => {
+  const post = (headers: Record<string, string>) =>
+    browserRequest({ method: "POST", body: "{}", headers: { "content-type": "application/json", ...headers } });
+
+  it("refuses dot segments", () => {
+    expect(refusal(browserRequest(), ["threads", ".."])?.status).toBe(404);
+    expect(refusal(browserRequest(), ["threads", "."])?.status).toBe(404);
+  });
+
+  it("refuses changes sent from another site", () => {
+    expect(refusal(post({ "sec-fetch-site": "cross-site" }), ["threads"])?.status).toBe(403);
+    expect(refusal(post({ "sec-fetch-site": "same-site" }), ["threads"])?.status).toBe(403);
+    expect(refusal(post({ "sec-fetch-site": "same-origin" }), ["threads"])).toBeNull();
+    expect(refusal(post({}), ["threads"])).toBeNull();
+  });
+
+  it("lets reads through from anywhere", () => {
+    const read = browserRequest({ headers: { "sec-fetch-site": "cross-site" } });
+    expect(refusal(read, ["health"])).toBeNull();
+  });
+
+  it("refuses a declared body over the limit", () => {
+    expect(refusal(post({ "content-length": String(MAX_BODY_BYTES + 1) }), ["threads"])?.status).toBe(413);
+  });
+});
+
+describe("passesThrough", () => {
+  it("passes JSON, event streams and empty answers, and nothing else", () => {
+    const answer = (status: number, type?: string) =>
+      new Response(status === 204 ? null : "x", { status, headers: type ? { "content-type": type } : {} });
+    expect(passesThrough(answer(200, "application/json; charset=utf-8"))).toBe(true);
+    expect(passesThrough(answer(200, "text/event-stream"))).toBe(true);
+    expect(passesThrough(answer(204))).toBe(true);
+    expect(passesThrough(answer(500, "text/html"))).toBe(false);
+    expect(passesThrough(answer(502, "text/plain"))).toBe(false);
   });
 });

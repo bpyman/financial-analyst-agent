@@ -2,34 +2,64 @@
 // API_ORIGIN or API_PROXY_TOKEN, so there is no CORS surface, the backend can
 // move freely, and the hosted API answers only calls that came through here.
 
-import { clientResponseHeaders, upstreamRequestHeaders } from "@/lib/proxy";
+import {
+  MAX_BODY_BYTES,
+  clientResponseHeaders,
+  passesThrough,
+  refusal,
+  upstreamRequestHeaders,
+} from "@/lib/proxy";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+// How long the API may take to start answering; a turn's stream then runs on.
+const UPSTREAM_HEADERS_TIMEOUT_MS = 60_000;
+const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
+const UPSTREAM_FAILED = "The analysis service had a problem. Please try again.";
 
 async function forward(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
   const { path } = await params;
+  const refused = refusal(request, path);
+  if (refused) return Response.json({ detail: refused.detail }, { status: refused.status });
   const search = new URL(request.url).search;
   const target = `${API_ORIGIN}/api/${path.map(encodeURIComponent).join("/")}${search}`;
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const body = hasBody ? await request.text() : undefined;
+  if (body !== undefined && new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
+    return Response.json(
+      { detail: "That request is too large for the analysis service." },
+      { status: 413 },
+    );
+  }
+  // Aborts if the visitor leaves, or if the API has not begun answering in time.
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  request.signal.addEventListener("abort", onAbort);
+  const timer = setTimeout(onAbort, UPSTREAM_HEADERS_TIMEOUT_MS);
   let upstream: Response;
   try {
     upstream = await fetch(target, {
       method: request.method,
       headers: upstreamRequestHeaders(request, process.env.API_PROXY_TOKEN),
-      body: hasBody ? await request.text() : undefined,
+      body,
       cache: "no-store",
-      signal: request.signal,
+      signal: controller.signal,
     });
   } catch {
+    return Response.json({ detail: UNREACHABLE }, { status: 502 });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!passesThrough(upstream)) {
+    await upstream.body?.cancel();
     return Response.json(
-      { detail: "The analysis service is unreachable. Please try again shortly." },
-      { status: 502 },
+      { detail: UPSTREAM_FAILED },
+      { status: upstream.status >= 400 ? upstream.status : 502 },
     );
   }
   return new Response(upstream.body, {

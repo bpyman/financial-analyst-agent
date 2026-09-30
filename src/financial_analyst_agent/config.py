@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     max_turns_per_thread: int = 25
     max_live_sec_requests_per_thread: int = 25
     max_concurrent_turns: int = 4
+    # Per visitor (client IP), per rolling hour: threads cost nothing to open,
+    # so the per-thread budgets alone do not bound what one visitor can spend.
+    client_threads_per_hour: int = 30
+    client_turns_per_hour: int = 120
     snapshot_stale_after_days: int = 30
 
     model_config = SettingsConfigDict(
