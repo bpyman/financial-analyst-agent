@@ -430,3 +430,18 @@ def test_a_mislabelled_year_end_is_not_carried_into_the_next_year() -> None:
     )
 
     assert _years(dominos) == [2023, 2023, 2023, 2023, 2022]
+
+
+def test_a_quarter_sec_has_not_labelled_yet_follows_the_one_before() -> None:
+    from financial_analyst_agent.services.fiscal_periods import FiscalPeriod, _sequenced
+
+    # Coca-Cola: the 10-Q for the quarter ended July 3, 2026 is listed, unlabelled.
+    periods = (
+        FiscalPeriod(end=date(2026, 7, 3), fiscal_year=None, quarter=None, form="10-Q"),
+        FiscalPeriod(end=date(2026, 4, 3), fiscal_year=2026, quarter=1, form="10-Q"),
+        FiscalPeriod(end=date(2025, 12, 31), fiscal_year=2025, quarter=4, form="10-K"),
+    )
+
+    newest = _sequenced(periods)[0]
+
+    assert (newest.fiscal_year, newest.quarter) == (2026, 2)

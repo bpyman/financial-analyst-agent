@@ -80,6 +80,10 @@ _FULL_HISTORY_DAYS = 3 * 365
 _THIN_HISTORY = 4
 
 
+# A quarter whose filing SEC lists but whose facts its structured data lacks yet.
+PENDING_IN_XBRL_MESSAGE = "SEC's structured data does not yet include this quarter's filing"
+
+
 def _related_lookup_ciks(resolved_cik: str, predecessor: str | None) -> tuple[str, ...]:
     """The listed company's CIK, then its verified predecessor's (ExxonMobil's old CIK).
 
@@ -460,6 +464,19 @@ class SecFactLookup:
                     )
                 except (UnsupportedQuarterlyFactError, FilingNotFoundError) as exc:
                     last_unsupported = exc
+                    if (
+                        report_date is not None
+                        and period is not None
+                        and not self._period_in_xbrl(cik, filings, period)
+                        and any(
+                            abs(filing.report_date - period) <= FISCAL_WEEK_TOLERANCE
+                            for filing in filings
+                        )
+                    ):
+                        # Filed, but SEC's company facts have not caught up with it.
+                        last_unsupported = UnsupportedQuarterlyFactError(
+                            PENDING_IN_XBRL_MESSAGE, details={"metric": parsed_metric.value}
+                        )
                     if period is None or report_date is not None:
                         break
                     if self._period_in_xbrl(cik, filings, period):

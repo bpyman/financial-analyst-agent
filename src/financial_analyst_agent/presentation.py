@@ -1045,6 +1045,11 @@ _FRIENDLY_MESSAGES = {
         "company reports every line item: banks, for example, report neither revenue "
         "nor capital spending the way operating companies do."
     ),
+    "SEC's structured data does not yet include this quarter's filing": (
+        "This quarter's report is filed, but SEC's structured data, which the figures "
+        "here are read from, does not include it yet. It usually appears within a "
+        "few weeks of the filing."
+    ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
         "metric. Not every company reports every line item: banks, for example, "

@@ -149,7 +149,34 @@ def _sequenced(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
             continue
         for fixed in range(index, run):
             repaired[fixed] = replace(ordered[fixed], fiscal_year=year + 1)
-    return tuple(reversed(repaired))
+    return tuple(reversed(_labelled_forward(repaired)))
+
+
+# A quarter's end is 12 to 14 weeks after the one before it.
+_NEXT_QUARTER_DAYS = (80, 100)
+
+
+def _labelled_forward(ordered: list[FiscalPeriod]) -> list[FiscalPeriod]:
+    """Oldest-first periods, the newest unlabelled ones numbered from the one before.
+
+    SEC's company facts can lag a filing by weeks: Coca-Cola's 10-Q for the
+    quarter ended June 27, 2026 is listed but carries no fiscal year yet, so
+    "Q2 2026" found nothing. The quarter after Q1 of 2026 is Q2 of 2026.
+    """
+    labelled = list(ordered)
+    low, high = _NEXT_QUARTER_DAYS
+    for index in range(1, len(labelled)):
+        before, period = labelled[index - 1], labelled[index]
+        if period.fiscal_year is not None or before.fiscal_year is None:
+            continue
+        if before.quarter is None or not low <= (period.end - before.end).days <= high:
+            continue
+        quarter = before.quarter % 4 + 1
+        if (period.quarter or quarter) != quarter:
+            continue
+        year = before.fiscal_year + (1 if before.quarter == 4 else 0)
+        labelled[index] = replace(period, fiscal_year=year, quarter=quarter)
+    return labelled
 
 
 def calendar_quarter(end: date) -> tuple[int, int]:
