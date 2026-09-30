@@ -402,6 +402,7 @@ _RANK_TABLE_KEYS = (
     "company_name",
     "ticker",
     "value",
+    "market_cap",
     "start_date",
     "end_date",
     "form",
@@ -654,6 +655,9 @@ def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:
 
 
 def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
+    growth = _growth_chart(result)
+    if growth is not None:
+        return growth
     comparison_free = [
         row for row in result.table_rows if row.comparison is None
     ]
@@ -739,6 +743,54 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             metric_label=_humanize_field(metric),
         )
     return None
+
+
+def _growth_chart(result: TurnResult) -> ChartSpec | None:
+    """One company's growth, quarter by quarter: what a year-over-year question asks.
+
+    The levels stay in the table; a margin changes in points, not percent, so it
+    keeps its trend line.
+    """
+    changes = [
+        row for row in result.table_rows if row.comparison is not None and row.value is not None
+    ]
+    kinds = {(row.company_name, row.metric, row.comparison) for row in changes}
+    if len(changes) < 2 or len(kinds) != 1:
+        return None
+    percents = [change_percent(row) for row in changes]
+    if any(percent is None for percent in percents):
+        return None
+    metric = changes[0].metric
+    label = _CHANGE_COLUMN_LABELS.get(changes[0].comparison or "", "")
+    records = []
+    for row, percent in sorted(
+        zip(changes, percents, strict=True), key=lambda pair: pair[0].end_date or date.min
+    ):
+        assert percent is not None
+        amount = f"{'+' if percent > 0 else ''}{percent:.1f}%"
+        end = row.end_date
+        records.append(
+            {
+                "Key": _dated_key(row),
+                "Company": f"{end:%b} {end.year}" if end else "",
+                "Value": float(percent) / 100,
+                "Amount": amount,
+                "Label": amount,
+                "Missing": False,
+                "Period": _period_label(row.start_date, row.end_date),
+            }
+        )
+    return ChartSpec(
+        kind="bar",
+        title="Growth",
+        records=tuple(records),
+        metric=metric,
+        caption=f"{label} growth in {_humanize_field(metric).lower()}, quarter by quarter; "
+        "the table lists the amounts.",
+        horizontal=False,
+        value_kind="percent",
+        metric_label=f"{_humanize_field(metric)} growth, {label}",
+    )
 
 
 def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
@@ -1030,7 +1082,7 @@ def present_turn(result: TurnResult) -> Presentation:
         clarify_prompt=_clarify_prompt(result),
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
-        headline=growth_headline(result.table_rows),
+        headline=growth_headline(result.table_rows) or overview_headline(result.table_rows),
     )
 
 
@@ -1175,6 +1227,8 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
     if key in ("start_date", "end_date"):
         day = getattr(row, key)
         return day.toordinal() if day is not None else None
+    if key == "market_cap" and row.market_cap is not None:
+        return float(row.market_cap)
     return None
 
 
@@ -1182,7 +1236,21 @@ def _row_key(row: TableRow) -> str:
     return row.ticker or row.company_name
 
 
+def _row_keys(rows: list[TableRow]) -> tuple[str, ...]:
+    """Each row's company key; with several rows a company, its quarter as well."""
+    plain = [_row_key(row) for row in rows]
+    if len(set(plain)) == len(plain):
+        return tuple(plain)
+    return tuple(_dated_key(row) for row in rows)
+
+
+def _dated_key(row: TableRow) -> str:
+    return f"{_row_key(row)}@{row.end_date.isoformat() if row.end_date else ''}"
+
+
 WIDE_VALUE_PREFIX = "value:"
+WIDE_CHANGE_PREFIX = "change:"
+_CHANGE_COLUMN_LABELS = {"yoy": "YoY", "sequential": "QoQ"}
 
 
 _COMPARISON_ORDER = {None: 0, "sequential": 1, "yoy": 2}
@@ -1214,6 +1282,15 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         dated = [other for other in cells if other[0] == undated[0] and other != undated]
         if len(dated) == 1 and not set(cells[undated]) & set(cells[dated[0]]):
             cells[dated[0]].update(cells.pop(undated))
+    # One kind of change (all year over year, say) reads best beside its level:
+    # a row per quarter, the change in its own column, not rows of each mixed.
+    kinds = {slot[2] for slot in cells if slot[2] is not None}
+    change_label = _CHANGE_COLUMN_LABELS.get(next(iter(kinds))) if len(kinds) == 1 else None
+    if change_label is not None:
+        for slot in [slot for slot in cells if slot[2] is not None]:
+            level = cells.setdefault((slot[0], slot[1], None), {})
+            for metric, row in cells.pop(slot).items():
+                level[f"{WIDE_CHANGE_PREFIX}{metric}"] = row
     entities = list(dict.fromkeys(slot[0] for slot in cells))
     ordered = sorted(
         cells,
@@ -1234,10 +1311,21 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         "ticker",
         *(["comparison"] if changes else []),
         *(f"{WIDE_VALUE_PREFIX}{metric}" for metric in metrics),
+        *(
+            f"{WIDE_CHANGE_PREFIX}{metric}"
+            for metric in metrics
+            if any(f"{WIDE_CHANGE_PREFIX}{metric}" in group for group in cells.values())
+        ),
         "end_date",
     ]
     headers = tuple(
-        _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
+        (
+            f"{change_label} change"
+            if len(metrics) == 1
+            else f"{_humanize_field(key[len(WIDE_CHANGE_PREFIX) :])}, {change_label}"
+        )
+        if key.startswith(WIDE_CHANGE_PREFIX)
+        else _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
         if key.startswith(WIDE_VALUE_PREFIX)
         else "Quarter ended"
         if key == "end_date"
@@ -1246,7 +1334,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     )
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
-    row_keys: list[str] = []
+    identities: list[TableRow] = []
     for group in ordered:
         by_metric = cells[group]
         first = next(iter(by_metric.values()))
@@ -1267,6 +1355,16 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                 else:
                     text.append(_format_cell(cell, "value"))
                     values.append(float(cell.value))
+            elif key.startswith(WIDE_CHANGE_PREFIX):
+                change = by_metric.get(key)
+                if change is None or change.value is None:
+                    text.append("")
+                    values.append(None)
+                else:
+                    text.append(_format_cell(change, "value"))
+                    # Sorts by the percent change where it has one, else the amount.
+                    percent = change_percent(change)
+                    values.append(float(percent if percent is not None else change.value))
             elif key == "end_date":
                 text.append(format_date(max(ends)) if ends else "")
                 values.append(max(ends).toordinal() if ends else None)
@@ -1282,7 +1380,8 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                 values.append(None)
         rendered.append(tuple(text))
         numbers.append(tuple(values))
-        row_keys.append(_row_key(identity))
+        latest_end = max(ends) if ends else None
+        identities.append(identity.model_copy(update={"end_date": latest_end}))
     amounts = [index for index, key in enumerate(keys) if key.startswith(WIDE_VALUE_PREFIX)]
     if not any(row[index] is not None for row in numbers for index in amounts):
         return None
@@ -1291,7 +1390,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         keys=tuple(keys),
         rows=tuple(rendered),
         numbers=tuple(numbers),
-        row_keys=tuple(row_keys),
+        row_keys=_row_keys(identities),
     )
 
 
@@ -1328,7 +1427,7 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
         keys=tuple(keys),
         rows=rendered,
         numbers=numbers,
-        row_keys=tuple(_row_key(row) for row in rows),
+        row_keys=_row_keys(rows),
     )
 
 
@@ -1359,7 +1458,36 @@ def _format_cell(row: TableRow, key: str) -> str:
         return format_reason(value)
     if key == "rank":
         return str(value)
+    if key == "market_cap":
+        return format_usd(value)
     return str(value)
+
+
+def overview_headline(rows: list[TableRow]) -> str | None:
+    """ "NVIDIA's revenue was $96.22 B in the quarter ended Jul 26, 2026, with a 62.0% net margin."
+
+    For a one-company, one-quarter overview ("How is Nvidia doing?"): the sentence
+    the table's first row says, in the table's own formatted amounts.
+    """
+    levels = [row for row in rows if row.comparison is None and row.value is not None]
+    if len({row.cik or row.company_name for row in levels}) != 1:
+        return None
+    by_metric = {row.metric: row for row in levels}
+    revenue = by_metric.get("revenue")
+    if revenue is None or len({row.end_date for row in levels}) != 1 or len(by_metric) < 2:
+        return None
+    name = short_name(revenue.company_name) or revenue.company_name
+    owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+    sentence = f"{owner} revenue was {_format_cell(revenue, 'value')}"
+    if revenue.end_date is not None:
+        sentence += f" in the quarter ended {format_date(revenue.end_date)}"
+    margin = by_metric.get("net_margin")
+    income = by_metric.get("net_income")
+    if margin is not None:
+        sentence += f", with a {_format_cell(margin, 'value')} net margin"
+    elif income is not None:
+        sentence += f", with net income of {_format_cell(income, 'value')}"
+    return sentence + "."
 
 
 def growth_headline(rows: list[TableRow]) -> str | None:

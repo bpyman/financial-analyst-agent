@@ -452,8 +452,11 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
     table = present_turn(result).table
 
     assert table is not None
-    assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
-    assert table.rows[2][3:5] == ("+$10", "+2.0 pts")
+    # One row per quarter, each change in a column beside its level.
+    assert len(table.rows) == 2
+    assert table.headers[4:6] == ("Revenue, YoY", "Net margin, YoY")
+    assert table.rows[0][4:6] == ("+$10", "+2.0 pts")
+    assert table.rows[1][4:6] == ("", "")
 
 
 @pytest.mark.parametrize(

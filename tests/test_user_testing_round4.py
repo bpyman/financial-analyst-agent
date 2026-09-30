@@ -164,7 +164,7 @@ def test_a_year_shows_the_last_four_quarters(runtime, question: str) -> None:  #
 
 def test_a_half_year_shows_its_two_quarters(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _conversation(runtime, "Microsoft revenue H1 FY2026")
-    assert _column(answer, "Change").count("Reported") == 2
+    assert len(_column(answer, "Revenue")) == 2
 
 
 def test_since_a_year_shows_every_quarter_available(runtime) -> None:  # type: ignore[no-untyped-def]
@@ -226,9 +226,7 @@ def test_a_change_shows_its_percentage(runtime) -> None:  # type: ignore[no-unty
     (answer,) = _conversation(runtime, "Apple revenue year over year")
     table = answer.table
     assert table is not None
-    kinds = _column(answer, "Change")
-    values = _column(answer, "Revenue")
-    yoy = [value for kind, value in zip(kinds, values, strict=True) if kind == "Year over year"]
+    yoy = [value for value in _column(answer, "YoY change") if value]
     assert yoy and all("%" in value for value in yoy)
 
 

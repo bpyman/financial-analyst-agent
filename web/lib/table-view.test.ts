@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tableColumns, hasProvenance } from "./table-view";
+import { hasProvenance, soleCompany, tableColumns } from "./table-view";
 import type { DisplayTable } from "./types";
 
 // Shapes captured from /api/threads/{id}/turns on the recorded runtime.
@@ -165,5 +165,29 @@ describe("hasProvenance", () => {
     expect(
       hasProvenance({ headers: ["Company", "Revenue"], keys: ["company_name", "value"], rows: [], numbers: [] }),
     ).toBe(false);
+  });
+});
+
+describe("soleCompany", () => {
+  it("names the one company a multi-row table is about, and drops its columns", () => {
+    const table = {
+      headers: ["Company", "Ticker", "Revenue"],
+      keys: ["company_name", "ticker", "value"],
+      rows: [
+        ["Microsoft Corporation", "MSFT", "$90.01 B"],
+        ["Microsoft Corporation", "MSFT", "$82.89 B"],
+      ],
+      numbers: [],
+    };
+    expect(soleCompany(table)).toBe("Microsoft Corporation");
+    expect(tableColumns(table, "compact").map((column) => column.key)).toEqual(["value"]);
+    const dated = {
+      ...table,
+      headers: [...table.headers, "Quarter ended"],
+      keys: [...table.keys, "end_date"],
+      rows: table.rows.map((row) => [...row, "Jun 30, 2026"]),
+    };
+    expect(tableColumns(dated, "compact").map((column) => column.key)).toEqual(["end_date", "value"]);
+    expect(soleCompany({ ...table, rows: [table.rows[0], ["Apple Inc.", "AAPL", "$1"]] })).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -1509,3 +1510,38 @@ def test_a_table_carries_row_keys_and_day_numbers_for_sorting() -> None:
     ]
     assert presented.chart is not None
     assert [record["Key"] for record in presented.chart.records] == ["AAA", "BBB"]
+
+
+def _answer(question: str) -> Any:
+    from financial_analyst_agent.conversation import run_conversation_turn, start_thread
+    from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
+    from financial_analyst_agent.thread_store import EphemeralThreadStore
+
+    store = EphemeralThreadStore()
+    start_thread("t", RuntimeKind.RECORDED, store=store)
+    turn = run_conversation_turn("t", question, recorded_runtime(), store=store)
+    return present_turn(turn.result)
+
+
+def test_a_year_over_year_answer_charts_its_growth_and_lists_it_beside_each_quarter() -> None:
+    answer = _answer("Microsoft revenue year over year")
+
+    assert answer.chart.title == "Growth"
+    assert answer.chart.value_kind == "percent"
+    assert all(record["Amount"].endswith("%") for record in answer.chart.records)
+    assert "YoY change" in answer.table.headers
+    assert "Change" not in answer.table.headers
+
+
+def test_an_overview_leads_with_a_sentence() -> None:
+    answer = _answer("How is Nvidia doing?")
+
+    assert answer.headline.startswith("NVIDIA's revenue was $")
+    assert "net margin" in answer.headline
+
+
+def test_a_ranking_shows_the_market_cap_it_is_ordered_by() -> None:
+    answer = _answer("Top 5 semiconductor companies by revenue")
+
+    column = answer.table.headers.index("Market cap")
+    assert all(row[column].startswith("$") for row in answer.table.rows)

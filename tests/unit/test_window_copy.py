@@ -83,15 +83,10 @@ def test_change_rows_say_what_they_are_and_carry_a_sign() -> None:
     presented = present_turn(result)
 
     assert presented.table is not None
-    column = presented.table.keys.index("comparison")
-    assert presented.table.headers[column] == "Change"
-    assert [row[column] for row in presented.table.rows] == [
-        "Reported",
-        "Reported",
-        "Quarter over quarter",
-    ]
-    value = presented.table.keys.index("value:revenue")
-    assert presented.table.rows[2][value].startswith("+$")
+    column = presented.table.keys.index("change:revenue")
+    assert presented.table.headers[column] == "QoQ change"
+    changes = [row[column] for row in presented.table.rows]
+    assert changes[0].startswith("+$") and changes[1] == ""
     # The change's two components are the levels already listed: one entry each.
     labels = [item.label for item in presented.evidence]
     assert len(labels) == len(set(labels)) == 3

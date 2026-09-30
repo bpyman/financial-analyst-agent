@@ -253,6 +253,8 @@ class TableRow(BaseModel):
     derived_from: list[ComponentProvenance] = Field(default_factory=list)
     # A newer quarter is filed but not yet in SEC's structured data (see FinancialFact).
     newer_filing_end: date | None = None
+    # A ranked company's snapshot market cap: the order a ranking is drawn in.
+    market_cap: DecimalStr | None = None
 
 
 class DisclosureChange(BaseModel):

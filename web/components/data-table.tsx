@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, RotateCcw, Table2 } from
 import { useState } from "react";
 import { cn, safeHref } from "@/lib/format";
 import { nextSort, sortedRowIndices, type TableSort } from "@/lib/table-sort";
-import { hasProvenance, tableColumns, type TableColumn, type TableMode } from "@/lib/table-view";
+import { hasProvenance, soleCompany, tableColumns, type TableColumn, type TableMode } from "@/lib/table-view";
 import type { DisplayTable } from "@/lib/types";
 import { CopyButton } from "./copy-button";
 import { Badge } from "./ui";
@@ -40,6 +40,7 @@ export function DataTable({
         <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
           <Table2 className="size-4 text-primary" aria-hidden />
           Table
+          {soleCompany(table) && <span className="font-normal text-muted">{soleCompany(table)}</span>}
           <span className="text-[11px] font-normal tabular-nums text-subtle">
             {count === 1 ? "1 row" : `${count} rows`}
           </span>

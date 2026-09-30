@@ -44,6 +44,7 @@ const KIND: Record<string, ColumnKind> = {
   rank: "rank",
   company_name: "company",
   value: "value",
+  market_cap: "value",
   start_date: "date",
   end_date: "date",
   cik: "identifier",
@@ -55,16 +56,29 @@ const KIND: Record<string, ColumnKind> = {
   source_url: "filing",
 };
 
+/**
+ * The one company every row is about ("Microsoft Corporation"), when there is
+ * one and more than one row: the table names it once instead of on each row.
+ */
+export function soleCompany(table: DisplayTable): string | null {
+  const index = table.keys.indexOf("company_name");
+  if (index < 0 || table.rows.length < 2) return null;
+  const names = new Set(table.rows.map((row) => row[index]));
+  return names.size === 1 ? (table.rows[0][index] ?? null) : null;
+}
+
 export function tableColumns(table: DisplayTable, mode: TableMode): TableColumn[] {
   const { keys, headers } = table;
   const tickerIndex = keys.indexOf("ticker");
   const merged = tickerIndex >= 0 && keys.includes("company_name");
+  const sole = soleCompany(table) !== null;
   const columns: TableColumn[] = [];
   keys.forEach((key, index) => {
     if (merged && key === "ticker") return;
+    if (sole && (key === "company_name" || key === "ticker")) return;
     if (mode === "compact" && PROVENANCE.has(key)) return;
     // A wide table has a value column per metric ("value:revenue").
-    const kind = KIND[key] ?? (key.startsWith("value:") ? "value" : "text");
+    const kind = KIND[key] ?? (key.startsWith("value:") || key.startsWith("change:") ? "value" : "text");
     columns.push({
       key,
       header: headers[index] ?? key,
@@ -74,6 +88,9 @@ export function tableColumns(table: DisplayTable, mode: TableMode): TableColumn[
       ...(kind === "company" && merged ? { tickerIndex } : {}),
     });
   });
+  // One company's quarters read down their dates first, then the amounts.
+  const date = sole ? columns.findIndex((column) => column.key === "end_date") : -1;
+  if (date > 0) columns.unshift(...columns.splice(date, 1));
   // The filing link closes each row, where the eye lands after the numbers.
   const filing = columns.findIndex((column) => column.kind === "filing");
   if (filing >= 0) columns.push(...columns.splice(filing, 1));
