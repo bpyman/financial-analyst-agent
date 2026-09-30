@@ -79,25 +79,16 @@ _FULL_HISTORY_DAYS = 3 * 365
 _THIN_HISTORY = 4
 
 
-def _related_lookup_ciks(
-    resolved_cik: str,
-    filings: list[Filing],
-    *,
-    report_date: date | None = None,
-) -> tuple[str, ...]:
-    """Ticker-map CIK first, then a distinct accession-prefix filer if present."""
-    ordered = [resolved_cik]
-    try:
-        candidates = get_candidate_filings(filings, report_date=report_date)
-    except FilingNotFoundError:
-        candidates = []
-    if report_date is not None:
-        candidates = [*candidates, *get_annual_filings(filings, report_date=report_date)]
-    for filing in candidates:
-        related = parse_cik(filing.accession_number.split("-", 1)[0])
-        if related is not None and related not in ordered:
-            ordered.append(related)
-    return tuple(ordered)
+def _related_lookup_ciks(resolved_cik: str, predecessor: str | None) -> tuple[str, ...]:
+    """The listed company's CIK, then its verified predecessor's (ExxonMobil's old CIK).
+
+    An accession number's prefix alone is not enough: a subsidiary co-registrant
+    (Georgia Power) files under its parent's prefix, and a filing agent
+    (Workiva, Donnelley) under its own, so neither names the company asked for.
+    """
+    if predecessor is None or predecessor == resolved_cik:
+        return (resolved_cik,)
+    return (resolved_cik, predecessor)
 
 
 def _select_or_derive(
@@ -432,7 +423,8 @@ class SecFactLookup:
         target = report_date if report_date is not None else latest_period_end(filings)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
-        for cik in _related_lookup_ciks(resolved.cik, filings, report_date=target):
+        related = _related_lookup_ciks(resolved.cik, self._predecessor_ciks.get(resolved.cik))
+        for cik in related:
             try:
                 company_facts_payload = self._cached_company_facts(cik)
             except ProviderError as exc:

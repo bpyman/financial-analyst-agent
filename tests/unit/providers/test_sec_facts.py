@@ -15,34 +15,17 @@ from financial_analyst_agent.domain.errors import (
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.sec_facts import SecFactLookup, _related_lookup_ciks
-from helpers import make_filing
 
 SUCCESSOR_CIK = "0002115436"
 PREDECESSOR_CIK = "0000034088"
 ACCESSION = "0000034088-26-000093"
 
 
-def test_related_lookup_ciks_includes_accession_filer() -> None:
-    filings = [
-        make_filing(
-            accession_number=ACCESSION,
-            filed_date=date(2026, 8, 3),
-            report_date=date(2026, 6, 30),
-            primary_document="xom-20260630.htm",
-        )
-    ]
-    assert _related_lookup_ciks(SUCCESSOR_CIK, filings) == (SUCCESSOR_CIK, PREDECESSOR_CIK)
-
-
-def test_related_lookup_ciks_skips_matching_accession_prefix() -> None:
-    filings = [
-        make_filing(
-            accession_number="0002115436-26-000001",
-            filed_date=date(2026, 8, 3),
-            report_date=date(2026, 6, 30),
-        )
-    ]
-    assert _related_lookup_ciks(SUCCESSOR_CIK, filings) == (SUCCESSOR_CIK,)
+def test_related_lookup_ciks_adds_only_a_verified_predecessor() -> None:
+    assert _related_lookup_ciks(SUCCESSOR_CIK, PREDECESSOR_CIK) == (SUCCESSOR_CIK, PREDECESSOR_CIK)
+    # An accession prefix that is a parent or a filing agent was never verified.
+    assert _related_lookup_ciks(SUCCESSOR_CIK, None) == (SUCCESSOR_CIK,)
+    assert _related_lookup_ciks(SUCCESSOR_CIK, SUCCESSOR_CIK) == (SUCCESSOR_CIK,)
 
 
 def _submissions(cik: str, accession: str) -> dict[str, object]:
@@ -302,6 +285,9 @@ def test_sec_fact_lookup_uses_accession_filer_when_successor_has_no_quarter() ->
             return httpx.Response(200, json=_empty_facts(SUCCESSOR_CIK))
         if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
             return httpx.Response(200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION))
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            # The old registrant's own list holds the joint report: verified.
+            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})
 
     settings = Settings(
@@ -315,7 +301,9 @@ def test_sec_fact_lookup_uses_accession_filer_when_successor_has_no_quarter() ->
     lookup = SecFactLookup(settings, client=client)
     fact = lookup.get_financials("ExxonMobil", "net_income")
     assert isinstance(fact, FinancialFact)
-    assert fact.cik == PREDECESSOR_CIK
+    # The listed company, with the quarter read from its predecessor's filing.
+    assert fact.cik == SUCCESSOR_CIK
+    assert f"/data/{int(PREDECESSOR_CIK)}/" in fact.source_url
     assert fact.ticker == "XOM"
     assert fact.value == Decimal("14525000000")
     assert fact.concept == "NetIncomeLoss"
@@ -342,6 +330,9 @@ def test_sec_fact_lookup_uses_accession_filer_when_successor_companyfacts_are_mi
             return httpx.Response(404, json={"error": "not found"})
         if path.endswith(f"/companyfacts/CIK{PREDECESSOR_CIK}.json"):
             return httpx.Response(200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION))
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            # The old registrant's own list holds the joint report: verified.
+            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})
 
     settings = Settings(
@@ -506,6 +497,9 @@ def test_sec_fact_lookup_reuses_sec_payloads_across_get_financials_calls() -> No
             return httpx.Response(
                 200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION)
             )
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            # The old registrant's own list holds the joint report: verified.
+            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})
 
     settings = Settings(
@@ -553,6 +547,9 @@ def test_sec_fact_lookup_reuses_companyfacts_404_across_get_financials_calls() -
             return httpx.Response(
                 200, json=_quarterly_net_income_facts(PREDECESSOR_CIK, ACCESSION)
             )
+        if path.endswith(f"/submissions/CIK{PREDECESSOR_CIK}.json"):
+            # The old registrant's own list holds the joint report: verified.
+            return httpx.Response(200, json=_submissions(PREDECESSOR_CIK, ACCESSION))
         return httpx.Response(404, json={"error": path})
 
     settings = Settings(
