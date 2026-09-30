@@ -267,6 +267,10 @@ test("a company on its own gets an overview, and a suggestion extends it", async
   const table = analyst.tables();
   await expect(table.getByRole("columnheader", { name: "Net margin" })).toBeVisible();
   await expect(table.getByRole("row")).toHaveCount(2);
+  // Small trends of the last few quarters, one chart per measure.
+  const trends = page.getByRole("region", { name: "Recent quarters" });
+  await expect(trends.getByRole("figure")).toHaveCount(2);
+  await expect(trends.getByRole("figure", { name: /Net margin/ })).toBeVisible();
 
   const next = page.getByRole("navigation", { name: "Suggested next questions" });
   await next.getByRole("button", { name: "show year-over-year" }).click();

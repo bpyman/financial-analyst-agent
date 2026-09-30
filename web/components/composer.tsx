@@ -32,7 +32,8 @@ export function Composer({
     const box = inputRef.current;
     if (!box) return;
     box.style.height = "auto";
-    box.style.height = `${Math.min(box.scrollHeight, 180)}px`;
+    // The CSS max-height (smaller on a short window) caps it and scrolls the rest.
+    box.style.height = `${box.scrollHeight}px`;
   }, [value, inputRef]);
 
   function submit(event?: FormEvent) {
@@ -48,7 +49,7 @@ export function Composer({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg from-55% to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-10">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg from-55% to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-10 short:pb-2 short:pt-3">
       <form onSubmit={submit} className="pointer-events-auto mx-auto max-w-4xl px-4 sm:px-6">
         <div
           className={cn(
@@ -68,7 +69,7 @@ export function Composer({
             maxLength={maxChars}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={onKeyDown}
-            className="max-h-[180px] min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-6 text-fg outline-none placeholder:text-subtle focus-visible:outline-none"
+            className="max-h-[180px] min-h-9 flex-1 short:max-h-24 resize-none bg-transparent py-1.5 text-[15px] leading-6 text-fg outline-none placeholder:text-subtle focus-visible:outline-none"
           />
           <button
             type="submit"
@@ -83,7 +84,13 @@ export function Composer({
             )}
           </button>
         </div>
-        <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-[11px] text-subtle">
+        <div
+          className={cn(
+            "mt-1.5 flex items-center justify-between gap-3 px-1 text-[11px] text-subtle",
+            // A short window keeps the hint row only to warn about the length limit.
+            !nearLimit && "short:hidden",
+          )}
+        >
           <span className="hidden sm:inline">
             <Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd> for a new line
           </span>

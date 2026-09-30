@@ -244,13 +244,10 @@ def test_quarter_lengths_are_not_misreported(runtime) -> None:  # type: ignore[n
 
 def test_a_change_from_a_derived_quarter_is_marked(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _conversation(runtime, "Apple revenue growth")
-    kinds = _column(answer, "Change")
-    values = _column(answer, "Revenue")
+    changes = _column(answer, "QoQ change")
     ends = _column(answer, "Quarter ended")
-    for kind, value, end in zip(kinds, values, ends, strict=True):
-        # Dec 2025 against Apple's derived fiscal Q4 to Sep 2025.
-        if kind == "Quarter over quarter" and end == "Dec 27, 2025":
-            assert "†" in value
+    # Dec 2025 against Apple's derived fiscal Q4 to Sep 2025.
+    assert "†" in changes[ends.index("Dec 27, 2025")]
 
 
 # Follow-up words
@@ -293,7 +290,7 @@ def test_is_it_a_buy_gets_the_advice_reply(runtime) -> None:  # type: ignore[no-
 def test_why_did_it_drop_shows_the_change(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _conversation(runtime, "Why did Apple's revenue drop last quarter?")
     assert answer.table is not None
-    assert "Quarter over quarter" in _column(answer, "Change")
+    assert any(change.startswith("-") for change in _column(answer, "QoQ change"))
 
 
 def test_summarize_risk_factors_compares_the_filings(runtime) -> None:  # type: ignore[no-untyped-def]

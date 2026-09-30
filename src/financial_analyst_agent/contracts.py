@@ -294,3 +294,5 @@ class TurnResult(BaseModel):
     guide: bool = False
     # A ranking whose market-cap members are ordered by this metric instead.
     ordered_by: str | None = None
+    # A few quarters of revenue and net margin beside one company's overview.
+    trend_rows: list[TableRow] = Field(default_factory=list)

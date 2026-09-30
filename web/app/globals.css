@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* A short window (a laptop at 200% zoom, a phone on its side): pinned chrome
+   would cover most of the answer, so only the question box stays pinned. */
+@custom-variant short (@media (max-height: 35.999rem));
+@custom-variant tall (@media (min-height: 36rem));
 
 :root {
   --bg: #f6f6f4;

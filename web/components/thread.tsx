@@ -29,7 +29,7 @@ export function Thread({
         <li
           key={item.index}
           data-turn={index}
-          className="scroll-mt-20 sm:scroll-mt-40"
+          className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40"
         >
           <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message}>
             <Answer
@@ -46,14 +46,14 @@ export function Thread({
         </li>
       ))}
       {turn.status === "running" && (
-        <li data-turn="pending" className="scroll-mt-20 sm:scroll-mt-40">
+        <li data-turn="pending" className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40">
           <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message} working>
             <Working state={turn} />
           </Exchange>
         </li>
       )}
       {turn.status === "failed" && (
-        <li data-turn="pending" className="scroll-mt-20 sm:scroll-mt-40">
+        <li data-turn="pending" className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40">
           <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message}>
             <Callout kind="error">
               <div className="flex flex-wrap items-center justify-between gap-3">

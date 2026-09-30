@@ -26,7 +26,7 @@ export function StatusLine({
   // "Live runtime — figures pulled …": the name leads, the detail recedes.
   const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
-    <div className="border-b border-border bg-surface sm:[@media(min-height:36rem)]:sticky sm:top-14 sm:z-20">
+    <div className="border-b border-border bg-surface sm:tall:sticky sm:top-14 sm:z-20">
       <div className="mx-auto flex max-w-4xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
