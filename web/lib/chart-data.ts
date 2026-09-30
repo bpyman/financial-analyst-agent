@@ -145,6 +145,8 @@ export function endLabelSides(rows: LineRow[], series: LineSeries[]): Record<str
 }
 
 export interface BarRow {
+  /** The company key the answer table's row shares. */
+  key: string;
   name: string;
   value: number;
   amount: string;
@@ -156,6 +158,7 @@ export interface BarRow {
 
 export function barRows(spec: BarChartSpec): BarRow[] {
   return spec.records.map((record) => ({
+    key: record.Key ?? record.Company,
     name: record.Company,
     value: record.Missing ? 0 : record.Value,
     amount: record.Amount,
@@ -163,6 +166,20 @@ export function barRows(spec: BarChartSpec): BarRow[] {
     missing: record.Missing,
     period: record.Period ?? "",
   }));
+}
+
+/**
+ * Bars in the order of ``keys`` (the answer table's sorted rows); bars the
+ * table does not name keep their place after them. No keys: the server's order.
+ */
+export function orderedBars(rows: BarRow[], keys: string[] | null): BarRow[] {
+  if (!keys) return rows;
+  const position = new Map<string, number>();
+  keys.forEach((key, index) => {
+    if (!position.has(key)) position.set(key, index);
+  });
+  const place = (row: BarRow) => position.get(row.key) ?? keys.length;
+  return [...rows].sort((a, b) => place(a) - place(b));
 }
 
 /**

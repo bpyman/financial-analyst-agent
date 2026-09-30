@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowUpRight, Table2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, RotateCcw, Table2 } from "lucide-react";
 import { useState } from "react";
 import { cn, safeHref } from "@/lib/format";
+import { nextSort, sortedRowIndices, type TableSort } from "@/lib/table-sort";
 import { hasProvenance, tableColumns, type TableColumn, type TableMode } from "@/lib/table-view";
 import type { DisplayTable } from "@/lib/types";
 import { CopyButton } from "./copy-button";
@@ -13,11 +14,26 @@ const MODES: { mode: TableMode; label: string }[] = [
   { mode: "full", label: "Full" },
 ];
 
-/** The answer's rows as the server wrote them; the full view adds provenance. */
-export function DataTable({ table }: { table: DisplayTable }) {
+/**
+ * The answer's rows as the server wrote them; the full view adds provenance.
+ * A column header sorts the rows; the answer holds the sort so its chart can
+ * follow it.
+ */
+export function DataTable({
+  table,
+  sort = null,
+  onSort,
+}: {
+  table: DisplayTable;
+  sort?: TableSort | null;
+  onSort?: (sort: TableSort | null) => void;
+}) {
   const [mode, setMode] = useState<TableMode>("compact");
   const columns = tableColumns(table, mode);
   const count = table.rows.length;
+  const sortable = Boolean(onSort) && count > 1;
+  const order = sortedRowIndices(table, sort);
+  const sortedBy = sort ? columns.find((column) => column.key === sort.key)?.header : undefined;
   return (
     <section aria-label="Answer table" className="overflow-hidden rounded-xl border border-border bg-surface">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
@@ -28,6 +44,18 @@ export function DataTable({ table }: { table: DisplayTable }) {
             {count === 1 ? "1 row" : `${count} rows`}
           </span>
         </div>
+        <div className="flex items-center gap-2">
+        {sortable && sort && (
+          <button
+            type="button"
+            onClick={() => onSort?.(null)}
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            title={sortedBy ? `Sorted by ${sortedBy}` : undefined}
+          >
+            <RotateCcw className="size-3" aria-hidden />
+            Original order
+          </button>
+        )}
         {hasProvenance(table) && (
           <div
             role="radiogroup"
@@ -54,6 +82,7 @@ export function DataTable({ table }: { table: DisplayTable }) {
             })}
           </div>
         )}
+        </div>
       </header>
       {/* relative: keeps sr-only text inside the scroller instead of widening the page. */}
       <div className="relative overflow-x-auto overscroll-x-contain">
@@ -64,6 +93,13 @@ export function DataTable({ table }: { table: DisplayTable }) {
                 <th
                   key={column.key}
                   scope="col"
+                  aria-sort={
+                    sortable && column.kind !== "filing"
+                      ? sort?.key === column.key
+                        ? sort.direction
+                        : "none"
+                      : undefined
+                  }
                   className={cn(
                     "whitespace-nowrap px-3 py-2 align-bottom text-[10.5px] font-medium uppercase tracking-[0.08em] text-subtle first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
                     column.numeric ? "text-right" : "text-left",
@@ -73,22 +109,23 @@ export function DataTable({ table }: { table: DisplayTable }) {
                 >
                   {column.kind === "filing" ? (
                     <span className="sr-only">{column.header}</span>
-                  ) : column.kind === "value" ? (
-                    // A long metric name wraps rather than pushing amounts out of view.
-                    <span className="inline-block max-w-[6.5rem] whitespace-normal leading-snug">
-                      {column.header}
-                    </span>
+                  ) : sortable ? (
+                    <SortButton
+                      column={column}
+                      sort={sort}
+                      onClick={() => onSort?.(nextSort(table, sort, column.key))}
+                    />
                   ) : (
-                    column.header
+                    <Header column={column} />
                   )}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((row, rowIndex) => (
+            {order.map((rowIndex) => table.rows[rowIndex]).map((row, position) => (
               <tr
-                key={rowIndex}
+                key={order[position]}
                 className="border-t border-border transition-colors hover:bg-surface-2/50"
               >
                 {columns.map((column) => (
@@ -110,6 +147,45 @@ export function DataTable({ table }: { table: DisplayTable }) {
         </table>
       </div>
     </section>
+  );
+}
+
+function Header({ column }: { column: TableColumn }) {
+  return column.kind === "value" ? (
+    // A long metric name wraps rather than pushing amounts out of view.
+    <span className="inline-block max-w-[6.5rem] whitespace-normal leading-snug">{column.header}</span>
+  ) : (
+    <>{column.header}</>
+  );
+}
+
+function SortButton({
+  column,
+  sort,
+  onClick,
+}: {
+  column: TableColumn;
+  sort: TableSort | null;
+  onClick: () => void;
+}) {
+  const active = sort?.key === column.key;
+  const Icon = !active ? ArrowUpDown : sort.direction === "ascending" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group -mx-1 inline-flex items-center gap-1 rounded px-1 uppercase tracking-[0.08em] transition-colors hover:text-fg",
+        column.numeric && "flex-row-reverse",
+        active && "text-fg",
+      )}
+    >
+      <Header column={column} />
+      <Icon
+        className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60")}
+        aria-hidden
+      />
+    </button>
   );
 }
 

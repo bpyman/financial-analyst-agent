@@ -19,6 +19,7 @@ import type { DotItemDotProps } from "recharts/types/util/types";
 import {
   barDomain,
   barRows,
+  orderedBars,
   calendarsDiffer,
   endLabelSides,
   lineRows,
@@ -38,7 +39,17 @@ import { SectionLabel } from "./ui";
  * A trend line or comparison bars. Marks are placed from the server's numbers;
  * every amount written on or beside a mark is the server's string (ADR 0006).
  */
-export function AnswerChart({ chart }: { chart: ChartSpec }) {
+/** ``order``: the answer table's sorted company keys; bars follow it, a trend keeps time order. */
+export function AnswerChart({
+  chart,
+  order = null,
+  sortNote = null,
+}: {
+  chart: ChartSpec;
+  order?: string[] | null;
+  /** What the table is sorted by, when it is: bars follow it, a trend keeps time. */
+  sortNote?: string | null;
+}) {
   const single = chart.kind === "line" && chart.series.length === 1 ? chart.series[0] : null;
   return (
     <figure
@@ -54,9 +65,22 @@ export function AnswerChart({ chart }: { chart: ChartSpec }) {
           </div>
         </div>
         {chart.kind === "line" && chart.series.length > 1 && <Legend series={lineSeries(chart)} />}
+        {sortNote && (
+          <p className="w-full text-[11.5px] text-muted">
+            {chart.kind === "line"
+              ? `In time order; the table below is sorted by ${sortNote}.`
+              : `Ordered as the table: ${sortNote}.`}
+          </p>
+        )}
       </header>
       <div className="px-1 pb-3 pt-4 sm:px-3">
-        {chart.kind === "line" ? <TrendChart chart={chart} /> : <ComparisonChart chart={chart} />}
+        {chart.kind === "line" ? (
+          <TrendChart chart={chart} />
+        ) : (
+          // A new order draws the bars afresh: animating heights between orders
+          // would pair each label with another company's bar for a moment.
+          <ComparisonChart key={order?.join("|") ?? "server"} chart={chart} order={order} />
+        )}
       </div>
       {chart.caption && (
         <figcaption className="border-t border-border bg-surface-2/40 px-4 py-2.5 text-xs leading-relaxed text-muted sm:px-5">
@@ -344,8 +368,8 @@ function TooltipBox({ title, children }: { title: string; children: ReactNode })
 
 const BAR_FILL = "var(--chart-1)";
 
-function ComparisonChart({ chart }: { chart: BarChartSpec }) {
-  const rows = barRows(chart);
+function ComparisonChart({ chart, order }: { chart: BarChartSpec; order: string[] | null }) {
+  const rows = orderedBars(barRows(chart), order);
   const ticks = niceTicks(
     barDomain(rows.map((row) => (row.missing ? null : row.value))),
   );

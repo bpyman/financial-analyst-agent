@@ -3,6 +3,7 @@
 import { ArrowRight, ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
+import { sortDescription, sortedRowKeys, type TableSort } from "@/lib/table-sort";
 import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerChart } from "./answer-chart";
@@ -54,6 +55,10 @@ export function Answer({
 }) {
   const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
   const { essay, citations, disclosures } = presentation;
+  // Sorting the table re-orders the comparison chart's bars to match.
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const order = table ? sortedRowKeys(table, sort) : null;
+  const sortNote = table && sort ? sortDescription(table, sort) : null;
   return (
     <div className="min-w-0 space-y-4">
       <div className="flex items-center gap-2">
@@ -64,8 +69,8 @@ export function Answer({
       )}
       <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
-      {chart && <AnswerChart chart={chart} />}
-      {table && table.rows.length > 0 && <DataTable table={table} />}
+      {chart && <AnswerChart chart={chart} order={order} sortNote={sortNote} />}
+      {table && table.rows.length > 0 && <DataTable table={table} sort={sort} onSort={setSort} />}
       {message &&
         (presentation.message_tone === "info" ? (
           <p className="text-[15px] leading-relaxed text-fg">{message}</p>

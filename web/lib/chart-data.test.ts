@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   barDomain,
+  orderedBars,
   barRows,
   calendarsDiffer,
   endLabelSides,
@@ -144,6 +145,7 @@ describe("barRows", () => {
   it("keeps rank order and the server's strings, with a missing value as no bar", () => {
     expect(barRows(RANKED)).toEqual([
       {
+        key: "#1 AAPL",
         name: "#1 AAPL",
         value: 8042000000,
         amount: "$8.04 B",
@@ -151,7 +153,7 @@ describe("barRows", () => {
         missing: false,
         period: "Jan 1, 2026 – Mar 31, 2026",
       },
-      { name: "#2 GOOG", value: 0, amount: "", label: "Missing fact", missing: true, period: "" },
+      { key: "#2 GOOG", name: "#2 GOOG", value: 0, amount: "", label: "Missing fact", missing: true, period: "" },
     ]);
   });
 });
@@ -218,5 +220,15 @@ describe("barDomain", () => {
       expect(low).toBe(0);
       expect(high).toBeGreaterThan(low);
     }
+  });
+});
+
+describe("orderedBars", () => {
+  const bar = (key: string) => ({ key, name: key, value: 1, amount: "", label: "", missing: false, period: "" });
+
+  it("puts bars in the table's sorted order, keeping unnamed bars after", () => {
+    const rows = [bar("MSFT"), bar("AAPL"), bar("NVDA")];
+    expect(orderedBars(rows, ["NVDA", "MSFT"]).map((row) => row.key)).toEqual(["NVDA", "MSFT", "AAPL"]);
+    expect(orderedBars(rows, null)).toBe(rows);
   });
 });

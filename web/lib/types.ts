@@ -20,6 +20,8 @@ export interface DisplayTable {
   keys: string[];
   rows: string[][];
   numbers: (number | null)[][];
+  /** Each row's company key; bar records carry the same key. Absent in older answers. */
+  row_keys?: string[];
 }
 
 export interface DisplayTrace {
@@ -47,6 +49,8 @@ interface ChartBase {
 }
 
 export interface BarRecord {
+  /** The table row's company key; absent in older answers. */
+  Key?: string;
   Company: string;
   Value: number;
   Amount: string;

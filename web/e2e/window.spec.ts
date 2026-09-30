@@ -275,3 +275,22 @@ test("a company on its own gets an overview, and a suggestion extends it", async
   // Only the latest answer offers next questions.
   await expect(next).toHaveCount(1);
 });
+
+test("sorting the table re-orders the chart's bars with it", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.ask("Compare Eli Lilly and Merck net margins");
+  const table = page.getByRole("region", { name: "Answer table" });
+  const header = table.getByRole("columnheader", { name: /Net margin/ });
+
+  await header.getByRole("button").click();
+
+  await expect(header).toHaveAttribute("aria-sort", "descending");
+  await expect(page.getByText("Ordered as the table: Net margin, largest first.")).toBeVisible();
+  const margins = await table.locator("tbody tr td:nth-child(2)").allInnerTexts();
+  const values = margins.map((text) => Number.parseFloat(text));
+  expect(values).toEqual([...values].sort((a, b) => b - a));
+
+  await table.getByRole("button", { name: "Original order" }).click();
+  await expect(header).toHaveAttribute("aria-sort", "none");
+});

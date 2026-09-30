@@ -456,7 +456,11 @@ class DisplayTable:
     headers: tuple[str, ...]
     keys: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
+    # Each cell's value for sorting: amounts, ranks, and dates as day numbers.
     numbers: tuple[tuple[int | float | None, ...], ...] = ()
+    # Each row's company key (ticker, else name): a bar chart's records carry the
+    # same key, so the window can order bars as the table is sorted.
+    row_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -744,6 +748,7 @@ def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
     reason = str(row.reason or "")
     label = amount if not missing else _REASON_LABELS.get(reason, reason or "Missing")
     record: dict[str, object] = {
+        "Key": _row_key(row),
         "Company": name,
         "Value": float(row.value) if row.value is not None else 0.0,
         "Amount": amount,
@@ -1165,7 +1170,14 @@ def _numeric_cell(row: TableRow, key: str) -> int | float | None:
         return row.rank
     if key == "value" and row.value is not None:
         return float(row.value)
+    if key in ("start_date", "end_date"):
+        day = getattr(row, key)
+        return day.toordinal() if day is not None else None
     return None
+
+
+def _row_key(row: TableRow) -> str:
+    return row.ticker or row.company_name
 
 
 WIDE_VALUE_PREFIX = "value:"
@@ -1232,6 +1244,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     )
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
+    row_keys: list[str] = []
     for group in ordered:
         by_metric = cells[group]
         first = next(iter(by_metric.values()))
@@ -1254,7 +1267,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                     values.append(float(cell.value))
             elif key == "end_date":
                 text.append(format_date(max(ends)) if ends else "")
-                values.append(None)
+                values.append(max(ends).toordinal() if ends else None)
             elif key == "rank":
                 rank = identity.rank if identity.rank is not None else first.rank
                 text.append(str(rank) if rank is not None else "")
@@ -1267,10 +1280,16 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                 values.append(None)
         rendered.append(tuple(text))
         numbers.append(tuple(values))
-    if not any(value is not None for row in numbers for value in row):
+        row_keys.append(_row_key(identity))
+    amounts = [index for index, key in enumerate(keys) if key.startswith(WIDE_VALUE_PREFIX)]
+    if not any(row[index] is not None for row in numbers for index in amounts):
         return None
     return DisplayTable(
-        headers=headers, keys=tuple(keys), rows=tuple(rendered), numbers=tuple(numbers)
+        headers=headers,
+        keys=tuple(keys),
+        rows=tuple(rendered),
+        numbers=tuple(numbers),
+        row_keys=tuple(row_keys),
     )
 
 
@@ -1302,7 +1321,13 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
     )
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
     numbers = tuple(tuple(_numeric_cell(row, key) for key in keys) for row in rows)
-    return DisplayTable(headers=headers, keys=tuple(keys), rows=rendered, numbers=numbers)
+    return DisplayTable(
+        headers=headers,
+        keys=tuple(keys),
+        rows=rendered,
+        numbers=numbers,
+        row_keys=tuple(_row_key(row) for row in rows),
+    )
 
 
 def _format_cell(row: TableRow, key: str) -> str:

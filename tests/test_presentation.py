@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -1472,3 +1472,40 @@ def test_exact_amounts_read_grouped_and_rounded(value: str, shown: str) -> None:
     from financial_analyst_agent.presentation import _exact_amount
 
     assert _exact_amount(Decimal(value)) == shown
+
+
+def test_a_table_carries_row_keys_and_day_numbers_for_sorting() -> None:
+    from financial_analyst_agent.contracts import TableRow
+
+    def row(ticker: str, value: str, end: date) -> TableRow:
+        return TableRow(
+            company_name=f"{ticker} Inc.",
+            ticker=ticker,
+            cik="0000000001",
+            metric="revenue",
+            value=Decimal(value),
+            start_date=end - timedelta(days=90),
+            end_date=end,
+        )
+
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            row("AAA", "10", date(2026, 6, 30)),
+            row("BBB", "20", date(2026, 3, 31)),
+        ],
+    )
+
+    presented = present_turn(result)
+    table = presented.table
+    assert table is not None
+    assert table.row_keys == ("AAA", "BBB")
+    end = table.keys.index("end_date")
+    assert [numbers[end] for numbers in table.numbers] == [
+        date(2026, 6, 30).toordinal(),
+        date(2026, 3, 31).toordinal(),
+    ]
+    assert presented.chart is not None
+    assert [record["Key"] for record in presented.chart.records] == ["AAA", "BBB"]
