@@ -1423,12 +1423,16 @@ def run_spec_turn_context(
             patch,
         )
     if spec.periods.kind == "named" and spec.companies and not spec.periods.report_dates:
+        future = all(period.year > date.today().year for period in spec.periods.named)
         return (
             _rejection_result(
                 SpecRejection(
                     code="empty_spec",
                     message=(
-                        f"No filings found for {spec.periods.label}. Periods are fiscal "
+                        f"No filings found for {spec.periods.label}: it has not been "
+                        "reported yet."
+                        if future
+                        else f"No filings found for {spec.periods.label}. Periods are fiscal "
                         "years as each company names them; filings older than about "
                         "ten years may not be available."
                     ),
@@ -1533,6 +1537,13 @@ def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:
     return spec.model_copy(update={"companies": tuple(companies)})
 
 
+# Periods shorter than a quarter, which no 10-Q reports on its own.
+_SUB_QUARTER = re.compile(
+    r"\b(?:last|this|past|previous)\s+(?:month|week)\b|\byesterday\b"
+    r"|\b(?:in|for|during)\s+(?:january|february|march|april|june|july|august|september"
+    r"|october|november|december)\b(?!\s+(?:19|20)\d{2})",
+    re.IGNORECASE,
+)
 _SPECIFIC_PERIOD = re.compile(
     r"\b(?:"
     r"q[1-4]\s*(?:fy\s*)?'?\d{2,4}"
@@ -1657,6 +1668,8 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         and not _YOY.search(message)
     ):
         notes.append(YEAR_OF_QUARTERS_BANNER)
+    if spec.periods.kind != "named" and _SUB_QUARTER.search(message):
+        notes.append(f"Filings report quarters, not months or weeks, so this shows {window}.")
     if _WHY_CHANGE.search(message):
         notes.append(WHY_CHANGE_BANNER)
     if _YEAR_TO_DATE.search(message):

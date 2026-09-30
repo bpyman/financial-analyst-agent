@@ -16,20 +16,32 @@ def test_contracts_import_without_loading_turn_workflows() -> None:
         "financial_analyst_agent.graph",
         "financial_analyst_agent.planner",
     )
-    for name in list(sys.modules):
-        if name in dependents or any(name.startswith(f"{dep}.") for dep in dependents):
+
+    def loaded() -> list[str]:
+        return [
+            name
+            for name in sys.modules
+            if name in dependents or any(name.startswith(f"{dep}.") for dep in dependents)
+        ]
+
+    # Put the original modules back afterwards: later tests hold their classes,
+    # and a second copy of Intent would never compare equal to the first.
+    removed = {name: sys.modules.pop(name) for name in loaded()}
+    try:
+        import financial_analyst_agent.contracts as contracts
+
+        assert "financial_analyst_agent.turn" not in sys.modules
+        assert contracts.Intent.LOOKUP == "lookup"
+        assert contracts.RendererKind.TABLE == "table"
+        assert "revenue" in contracts.ALLOWED_METRICS
+        assert contracts.Runtime is not None
+        assert contracts.TurnResult is not None
+        assert contracts.NewsHit is not None
+        assert contracts.FactsPort is not None
+    finally:
+        for name in loaded():
             del sys.modules[name]
-
-    import financial_analyst_agent.contracts as contracts
-
-    assert "financial_analyst_agent.turn" not in sys.modules
-    assert contracts.Intent.LOOKUP == "lookup"
-    assert contracts.RendererKind.TABLE == "table"
-    assert "revenue" in contracts.ALLOWED_METRICS
-    assert contracts.Runtime is not None
-    assert contracts.TurnResult is not None
-    assert contracts.NewsHit is not None
-    assert contracts.FactsPort is not None
+        sys.modules.update(removed)
 
 
 def test_turn_reexports_contract_names() -> None:

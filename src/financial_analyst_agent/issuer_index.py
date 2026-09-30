@@ -83,6 +83,7 @@ _NOT_TICKERS = frozenset(
         "US",
         "USA",
         "SEC",
+        "CIK",
         "FY",
         "YOY",
         "QOQ",
@@ -151,6 +152,7 @@ _METRIC_STARTS = {
     "NET": frozenset({"income", "margin", "loss", "losses", "sales", "profit", "debt", "interest"}),
     "CASH": frozenset({"flow", "flows"}),
 }
+_CIK = re.compile(r"\bcik\s*#?:?\s*(\d{1,10})\b|\b(0\d{9})\b", re.IGNORECASE)
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
 _TYPO_CUTOFF = 0.84
@@ -211,6 +213,7 @@ class IssuerIndex:
     phrases: dict[str, str] = field(default_factory=dict)
     tickers: dict[str, str] = field(default_factory=dict)
     display_names: dict[str, str] = field(default_factory=dict)
+    ciks: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -231,6 +234,7 @@ class IssuerIndex:
         for rank, company in enumerate(ranked):
             ticker = company.ticker.upper()
             index.tickers.setdefault(ticker, ticker)
+            index.ciks.setdefault(company.cik, ticker)
             index.display_names.setdefault(ticker, company.name)
             core = _core_name(company.name)
             if not core or (" " not in core and (core in _GENERIC_WORDS or len(core) < 3)):
@@ -291,6 +295,11 @@ class IssuerIndex:
                     taken[slot] = True
                 if query not in found:
                     found[query] = CompanyMention(query, offsets[start], phrase)
+        for match in _CIK.finditer(question):
+            # "CIK 320193" or SEC's ten-digit "0000320193".
+            query = self.ciks.get((match.group(1) or match.group(2)).zfill(10))
+            if query is not None and query not in found:
+                found[query] = CompanyMention(query, _char_to_word_offset(question, match), query)
         for match in _TICKER.finditer(question):
             raw, share_class = match.group(1), match.group(2)
             dollar = match.group(0).startswith("$")

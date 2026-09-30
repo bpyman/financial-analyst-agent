@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
+from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.filing_change import _year_apart_quarterlies
 from financial_analyst_agent.graph.analysis_spec import (
@@ -32,6 +34,8 @@ from financial_analyst_agent.issuer_index import IssuerIndex
 from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
+from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
+from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.universe import load_universe_snapshot, resolve_industry_group
 
 
@@ -550,3 +554,25 @@ def test_count_words_and_rev_are_read() -> None:
     assert (three.industry, three.limit) == ("semiconductor", 3)
     assert planner.complete("Five Below revenue").company == "FIVE"
     assert planner.complete("Apple rev").metric == "revenue"
+
+
+def test_a_cik_names_its_company() -> None:
+    index = issuer_index()
+
+    assert [m.query for m in index.find("CIK 320193 revenue")] == ["AAPL"]
+    assert [m.query for m in index.find("0000789019 net income")] == ["MSFT"]
+    assert index.find("revenue of 12345 companies") == []
+
+
+def test_periods_filings_cannot_answer_are_said() -> None:
+    def ask(question: str) -> Any:
+        store = EphemeralThreadStore()
+        start_thread("t", RuntimeKind.RECORDED, store=store)
+        turn = run_conversation_turn("t", question, recorded_runtime(), store=store)
+        return present_turn(turn.result)
+
+    month = ask("Apple revenue last month")
+    future = ask("Apple revenue for fiscal 2031")
+
+    assert any("not months or weeks" in banner for banner in month.banners)
+    assert "not been reported yet" in (future.message or "")
