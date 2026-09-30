@@ -40,6 +40,7 @@ _NAME_SUFFIXES = frozenset(
         "holdings",
         "holding",
         "group",
+        "reit",
         "the",
         "class",
         "com",

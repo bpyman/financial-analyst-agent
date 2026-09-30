@@ -322,6 +322,16 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
             )
     has_companies = bool(spec.companies)
     has_constituents = spec.constituents is not None
+    if len(spec.companies) > MAX_RANKED_COMPANIES:
+        # Each company is its own SEC lookup; a list is bounded as a ranking is.
+        return SpecRejection(
+            code="unsupported_combination",
+            message=(
+                f"That names {len(spec.companies)} companies; I compare at most "
+                f"{MAX_RANKED_COMPANIES} at once. Try fewer, or ask for a ranking "
+                "such as “top 10 banks by revenue”."
+            ),
+        )
     if not has_companies and not has_constituents:
         return SpecRejection(
             code="empty_spec",

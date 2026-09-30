@@ -576,3 +576,18 @@ def test_periods_filings_cannot_answer_are_said() -> None:
 
     assert any("not months or weeks" in banner for banner in month.banners)
     assert "not been reported yet" in (future.message or "")
+
+
+def test_a_list_of_companies_is_bounded_like_a_ranking() -> None:
+    from financial_analyst_agent.graph.analysis_spec import validate_spec
+
+    tickers = [f"T{index}" for index in range(26)]
+
+    rejection = validate_spec(_spec(*tickers))
+
+    assert rejection is not None and "at most 25" in rejection.message
+    assert validate_spec(_spec(*tickers[:25])) is None
+
+
+def test_a_reit_is_named_without_its_reit() -> None:
+    assert [m.query for m in issuer_index().find("Apple Hospitality revenue")] == ["APLE"]
