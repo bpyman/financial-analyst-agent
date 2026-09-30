@@ -74,6 +74,8 @@ export interface EvidenceItem {
   label: string;
   amount: string;
   raw_amount: string;
+  /** raw_amount grouped for reading; absent from older stored answers. */
+  exact_amount?: string;
   company_name: string;
   ticker: string;
   cik: string;

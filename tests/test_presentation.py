@@ -1457,3 +1457,18 @@ def test_a_news_summary_says_it_is_not_from_filings() -> None:
     result = run_turn("Effects of recent Strait of Hormuz closures on Exxon", recorded_runtime())
 
     assert any("not from SEC filings" in banner for banner in present_turn(result).banners)
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        ("44047000000", "44,047,000,000"),
+        ("0.30882737007051449", "0.308827"),
+        ("-1234.5", "-1,234.5"),
+        ("12.000", "12"),
+    ],
+)
+def test_exact_amounts_read_grouped_and_rounded(value: str, shown: str) -> None:
+    from financial_analyst_agent.presentation import _exact_amount
+
+    assert _exact_amount(Decimal(value)) == shown

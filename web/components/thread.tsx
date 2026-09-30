@@ -1,11 +1,12 @@
 "use client";
 
 import { Loader2, RotateCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { clarifyChoices, shownMessage } from "@/lib/clarify";
 import { progressLabel, type TurnState } from "@/lib/turn-state";
 import type { Turn } from "@/lib/types";
 import { Answer } from "./answer";
+import { cn } from "@/lib/format";
 import { Button, Callout, LogoMark } from "./ui";
 
 /** The conversation: finished turns, then the running or failed one. */
@@ -86,11 +87,7 @@ function Exchange({
       {/* No bubble for a turn reattached after a reload: its message is not known yet. */}
       {message && (
         <div className="flex justify-end">
-          <p
-            title={sent && sent !== message ? `Sent as ${sent}` : undefined}
-            className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg sm:max-w-[75%]">
-            {message}
-          </p>
+          <Question message={message} sent={sent} />
         </div>
       )}
       <div className={message ? "mt-5 flex gap-3" : "flex gap-3"}>
@@ -141,6 +138,40 @@ function Working({ state }: { state: Extract<TurnState, { status: "running" }> }
         <div className="shimmer animate-shimmer h-9 w-48 rounded-md" />
         <div className="shimmer animate-shimmer h-3 w-64 max-w-full rounded" />
       </div>
+    </div>
+  );
+}
+
+// A question longer than this, or with more lines, starts folded to eight lines.
+const LONG_QUESTION_CHARS = 400;
+const LONG_QUESTION_LINES = 8;
+
+/** The analyst's question; a pasted wall of text folds, with a button to unfold it. */
+function Question({ message, sent }: { message: string; sent?: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const long = message.length > LONG_QUESTION_CHARS || message.split("\n").length > LONG_QUESTION_LINES;
+  return (
+    <div className="flex max-w-[88%] flex-col items-end gap-1 sm:max-w-[75%]">
+      <p
+        id={id}
+        title={sent && sent !== message ? `Sent as ${sent}` : undefined}
+        className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg"
+      >
+        {/* Clamped inside the padding, so no part of a ninth line shows below it. */}
+        <span className={cn("block", long && !open && "line-clamp-8")}>{message}</span>
+      </p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => setOpen((shown) => !shown)}
+          className="rounded px-1 text-[12px] font-medium text-muted underline-offset-4 hover:text-fg hover:underline"
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
     </div>
   );
 }

@@ -562,6 +562,8 @@ class EvidenceItem:
     form: str
     source_url: str
     selection_rule: str
+    # raw_amount for reading: "44,047,000,000", a ratio to six decimals.
+    exact_amount: str = ""
 
 
 @dataclass(frozen=True)
@@ -798,6 +800,14 @@ def _selection_rule(row: TableRow) -> str:
     return _LATEST_QUARTER_RULE
 
 
+def _exact_amount(value: Decimal | None) -> str:
+    if value is None:
+        return ""
+    if value == value.to_integral_value():
+        return f"{int(value):,}"
+    return f"{value:,.6f}".rstrip("0").rstrip(".")
+
+
 def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
@@ -826,6 +836,7 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
         raw_amount=raw,
+        exact_amount=_exact_amount(row.value),
         company_name=row.company_name,
         ticker=row.ticker,
         cik=row.cik,
@@ -863,6 +874,7 @@ def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
         ),
         amount=format_metric_value(component.metric, component.value),
         raw_amount=str(component.value),
+        exact_amount=_exact_amount(component.value),
         company_name=row.company_name,
         ticker=row.ticker,
         cik=row.cik,

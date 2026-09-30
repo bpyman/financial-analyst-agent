@@ -62,8 +62,8 @@ export function Answer({
       {presentation.headline && (
         <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
       )}
-      <Notes banners={banners} />
-      {fact_card && <FactCard card={fact_card} />}
+      <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
+      {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
       {chart && <AnswerChart chart={chart} />}
       {table && table.rows.length > 0 && <DataTable table={table} />}
       {message &&
@@ -122,7 +122,15 @@ function Suggestions({
   );
 }
 
-export function FactCard({ card }: { card: QuarterlyFactCard }) {
+/** "† Derived from…": a note on the figure itself, shown under it rather than above. */
+function isFootnote(banner: string): boolean {
+  return banner.startsWith("†");
+}
+
+export function FactCard({ card, footnotes = [] }: { card: QuarterlyFactCard; footnotes?: string[] }) {
+  // A derived quarter's form is the filings it came from (a 10-K less a 10-Q),
+  // not the quarter's own report; say "Derived" and keep the forms in the title.
+  const derived = card.period_label.startsWith("Derived");
   return (
     <section
       aria-label={`${card.metric_header}, ${card.company_name}`}
@@ -147,7 +155,13 @@ export function FactCard({ card }: { card: QuarterlyFactCard }) {
               <div className="text-xs text-subtle">Quarterly fact</div>
             </div>
           </div>
-          {card.form && <Badge className="num">{card.form}</Badge>}
+          {derived ? (
+            <span title={card.form ? `From ${card.form} filings` : undefined}>
+              <Badge>Derived</Badge>
+            </span>
+          ) : (
+            card.form && <Badge className="num">{card.form}</Badge>
+          )}
         </div>
         <div className="mt-7">
           <SectionLabel>{card.metric_header}</SectionLabel>
@@ -155,6 +169,11 @@ export function FactCard({ card }: { card: QuarterlyFactCard }) {
             {card.amount}
           </div>
           <div className="mt-3 text-[13px] text-muted">{card.period_label}</div>
+          {footnotes.map((note) => (
+            <p key={note} className="mt-2 max-w-prose text-[12px] leading-relaxed text-subtle">
+              {note}
+            </p>
+          ))}
         </div>
       </div>
       <div className="relative grid border-t border-border bg-surface-2/50 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]">
@@ -237,9 +256,13 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
           <span className="figure text-xl font-semibold text-fg">{item.amount}</span>
         </EvidenceField>
         <EvidenceField pair label="Exact amount" hidden={!item.raw_amount}>
-          <code className="num rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12.5px] text-fg">
-            {item.raw_amount}
+          <code
+            className="num rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[12.5px] text-fg"
+            title={item.raw_amount}
+          >
+            {item.exact_amount || item.raw_amount}
           </code>
+          <CopyButton value={item.raw_amount} label="exact amount" />
         </EvidenceField>
         <EvidenceField label="Company" hidden={!company}>
           {company}

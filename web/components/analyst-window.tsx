@@ -192,6 +192,16 @@ export function AnalystWindow() {
     });
   }, [turn.status, turnCount]);
 
+  // Escape dismisses a notice, as its × does; a failed resume keeps its Try again.
+  useEffect(() => {
+    if (!notice || resumeFailed) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNotice(null);
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [notice, resumeFailed]);
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || inFlight.current || resuming || resumeFailed) return;
@@ -352,7 +362,8 @@ export function AnalystWindow() {
         onSend={send}
         busy={busy || resumeFailed}
         busyLabel={resuming ? "Loading your thread" : resumeFailed ? "Resume your thread to continue" : "Analysis running"}
-        placeholder={meta?.example_query ?? FALLBACK_PLACEHOLDER}
+        // A real example question, marked as one so it does not read as typed text.
+        placeholder={meta?.example_query ? `e.g. ${meta.example_query}` : FALLBACK_PLACEHOLDER}
         maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
         inputRef={inputRef}
       />

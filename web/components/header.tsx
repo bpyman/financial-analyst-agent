@@ -30,7 +30,7 @@ export function Header({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
         <Link
           href="/"
           className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary"

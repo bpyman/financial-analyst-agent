@@ -23,7 +23,7 @@ export function StatusLine({
   const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
     <div className="border-b border-border bg-surface sm:sticky sm:top-14 sm:z-20">
-      <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
+      <div className="mx-auto flex max-w-4xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
         ) : runtimeBanner === "" ? null : (
@@ -63,7 +63,7 @@ export function StatusLine({
       </div>
       {chips.length > 0 && (
         <div className="border-t border-border/60">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] sm:px-6">
+        <div className="mx-auto flex max-w-4xl items-center gap-2 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] sm:px-6">
           <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-subtle">
             Active analysis
           </span>
