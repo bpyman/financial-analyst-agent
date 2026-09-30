@@ -744,3 +744,55 @@ def test_numeral_lock_does_not_ground_figures_on_links_or_accessions() -> None:
     assert _numeral_lock_extras("Revenue grew 12%.", grounding) == []
     assert _numeral_lock_extras("Revenue grew 25%.", grounding) == ["25"]
     assert _numeral_lock_extras("Margins hit 789019.", grounding) == ["789019"]
+
+
+def test_table_cells_are_separated_in_filing_text() -> None:
+    html = "<table><tr><td>Noninterest revenue</td><td>$24,470</td></tr></table>"
+
+    assert html_to_text(html) == "Noninterest revenue $24,470"
+
+
+def _diff(older: str, newer: str) -> list[Any]:
+    return diff_paragraphs(
+        older,
+        newer,
+        section="mda",
+        older_accession="a",
+        newer_accession="b",
+        older_url="",
+        newer_url="",
+    )
+
+
+def test_footers_figure_rows_and_short_dates_are_not_changes() -> None:
+    prose = "Demand for cloud services grew across every region we serve this quarter."
+    footer = "Apple Inc. | Q3 2026 Form 10-Q | {page}"
+    older = "\n\n".join(
+        [
+            prose,
+            footer.format(page=12),
+            "Revenue in the quarter ended Jul 26, 2025 rose as shown on pages 22-26.",
+            footer.format(page=13),
+            "Noninterest revenue $24,470 $22,037 11 %",
+            footer.format(page=14),
+        ]
+    )
+    newer = "\n\n".join(
+        [
+            prose,
+            footer.format(page=15),
+            "Revenue in the quarter ended Jul 25, 2026 rose as shown on pages 27-34.",
+            footer.format(page=16),
+            "Noninterest revenue $25,100 $24,470 3 %",
+            footer.format(page=17),
+        ]
+    )
+
+    assert _diff(older, newer) == []
+
+
+def test_templated_sentences_that_repeat_are_still_compared() -> None:
+    older = "\n\n".join(f"Revenue increased ${n}.1 billion or {n}0%." for n in (1, 2, 3))
+    newer = "\n\n".join(f"Revenue increased ${n}.2 billion or {n}1%." for n in (1, 2, 3))
+
+    assert len(_diff(older, newer)) == 1

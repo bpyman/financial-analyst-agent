@@ -76,6 +76,9 @@ class _TextExtractor(HTMLParser):
             self._skip = True
         if tag in {"p", "div", "br", "tr", "h1", "h2", "h3", "h4"}:
             self._chunks.append("\n")
+        elif tag in {"td", "th"}:
+            # "Noninterest revenue" and "$24,470" are two cells, not one word.
+            self._chunks.append(" ")
 
     def handle_endtag(self, tag: str) -> None:
         if tag in {"script", "style"}:
@@ -286,17 +289,67 @@ def _mda_end(lines: list[str], contents: _Contents, start: int, after: dict[str,
     return len(lines)
 
 
-def _paragraphs(section_text: str) -> list[str]:
+# A filing pair can differ in hundreds of paragraphs (JPMorgan: 367, 524 KB).
+MAX_CHANGES_SHOWN = 60
+_SUMMARIZED_CHANGES = 30
+_SUMMARY_TEXT_CHARS = 1500
+
+
+def _blocks(section_text: str) -> list[str]:
     blocks = [part.strip() for part in re.split(r"\n{2,}", section_text) if part.strip()]
     if len(blocks) <= 1:
         blocks = [line.strip() for line in section_text.splitlines() if line.strip()]
     return [block for block in blocks if len(block) > 20 or block.lower().startswith("item")]
 
 
+def _paragraphs(section_text: str) -> list[str]:
+    """The section's prose: no running footers, and no rows that are mostly figures."""
+    blocks = _blocks(section_text)
+    # A running footer repeats word for word but for its page number ("Apple Inc. |
+    # Q3 2026 Form 10-Q | 18"); a segment's "Revenue increased $7.9 billion"
+    # repeats only its wording, and each is a disclosure.
+    repeats = Counter(_PAGE_NUMBER.sub("", block) for block in blocks)
+    return [
+        block
+        for block in blocks
+        if repeats[_PAGE_NUMBER.sub("", block)] < _RUNNING_HEADER_REPEATS
+        and not _is_figures(block)
+    ]
+
+
+def _is_figures(block: str) -> bool:
+    """A table row of amounts ("Noninterest revenue $24,470 $22,037 11 %"), not prose.
+
+    It holds as many numbers as words; "Revenue increased $7.9 billion or 30%." is
+    a sentence.
+    """
+    tokens = block.split()
+    numbers = sum(any(char.isdigit() for char in token) for token in tokens)
+    words = sum(token.isalpha() for token in tokens)
+    return numbers >= 2 and numbers >= words
+
+
+def _figure_rows(section_text: str) -> set[str]:
+    return {
+        _undated(block)
+        for block in _blocks(section_text)
+        if _is_figures(block)
+    }
+
+
+_PAGE_NUMBER = re.compile(r"[\s|•·–-]*\d{1,3}\s*$")
 _MONTH = (
-    r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
+    r"(?:January|February|March|April|May|June|July|August|September|October|November|December"
+    r"|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?"
 )
-_DATES = re.compile(rf"\b{_MONTH}\s+\d{{1,2}},?\s+(?:19|20)\d{{2}}\b|\b(?:19|20)\d{{2}}\b")
+# Dates, years (also one run into the next word, "2024Drivers") and page
+# references move from one filing to the next without the disclosure changing.
+_DATES = re.compile(
+    rf"\b{_MONTH}\s+\d{{1,2}},?\s+(?:19|20)\d{{2}}(?!\d)"
+    r"|(?<!\d)(?:19|20)\d{2}(?!\d)"
+    r"|\bpages?\s+\d{1,3}(?:\s*[-–]\s*\d{1,3})?\b",
+    re.IGNORECASE,
+)
 
 
 def _undated(paragraph: str) -> str:
@@ -642,6 +695,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     name = display(cik, resolved.name) if callable(display) else resolved.name
     chosen_banner = ""
     changes: list[DisclosureChange] = []
+    figure_rows = 0
     section_errors: list[str] = []
     compared: list[SectionId] = []
     unreadable: list[SectionId] = []
@@ -681,6 +735,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                 unreadable.append(section)
                 continue
             compared.append(section)
+            figure_rows += len(_figure_rows(newer_section) - _figure_rows(older_section))
             changes.extend(
                 diff_paragraphs(
                     older_section,
@@ -725,8 +780,29 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             _unreadable_sentence(unreadable)
             + f", so only {_labels(compared)} was compared."
         )
+    if figure_rows:
+        rows = "row" if figure_rows == 1 else "rows"
+        banners.append(
+            f"{figure_rows} table {rows} of figures changed too and are left out here; "
+            "ask for a metric to see the figures with their sources."
+        )
+    if len(changes) > MAX_CHANGES_SHOWN:
+        banners.append(
+            f"Showing the first {MAX_CHANGES_SHOWN} of {len(changes)} changes, in the "
+            "order they appear in the filing."
+        )
+        changes = changes[:MAX_CHANGES_SHOWN]
+    # The model reads the first changes, each cut to a length it can weigh.
     grounding = json.dumps(
-        [item.model_dump(mode="json") for item in changes],
+        [
+            item.model_copy(
+                update={
+                    "before_text": item.before_text[:_SUMMARY_TEXT_CHARS],
+                    "after_text": item.after_text[:_SUMMARY_TEXT_CHARS],
+                }
+            ).model_dump(mode="json")
+            for item in changes[:_SUMMARIZED_CHANGES]
+        ],
         default=str,
     )
     essay = None
