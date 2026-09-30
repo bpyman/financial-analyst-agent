@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from financial_analyst_agent.filing_change import requested_sections
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_PLAN,
@@ -224,6 +225,8 @@ def _metric_from_query(normalized: str) -> str:
     for phrase, metric in _FORMULA_PHRASES:
         if phrase in normalized:
             return metric
+    if re.search(r"\brevs?\b", normalized):
+        return "revenue"
     if "cost of revenue" not in normalized and re.search(r"\bcosts?\b", normalized):
         return "costs"
     return "unknown"
@@ -271,16 +274,8 @@ def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
     accessions = _ACCESSION_PATTERN.findall(query)
     older = accessions[0] if len(accessions) >= 2 else ""
     newer = accessions[1] if len(accessions) >= 2 else ""
-    section = "mda"
-    if not any(token in normalized for token in ("md&a", "mda", "management", "risk")):
-        # "What changed in Apple's 10-Q?" asks about the filing: both sections.
-        section = "mda and risk_factors"
-    if "risk" in normalized and (
-        "md&a" in normalized or "mda" in normalized or "both" in normalized
-    ):
-        section = "mda and risk_factors"
-    elif "risk" in normalized:
-        section = "risk_factors"
+    # "What changed in Apple's 10-Q?" names no section: it asks about the filing.
+    section = requested_sections(normalized) or "mda and risk_factors"
     return SimpleNamespace(
         intent=Intent.FILING_CHANGE,
         company=_company_from_query(normalized),
@@ -313,6 +308,18 @@ _ORDER_WORDING = re.compile(
     r"\b(?:by|in terms of|ranked by|sorted by|with the (?:most|highest|biggest|largest))\b"
 )
 _ADD_WORDING = re.compile(r"^\s*(?:and|also|plus|with|include|now add|add)\b|\b(?:their|its)\b")
+# "compare it to Google", "vs AMD": set a named company beside the current analysis.
+_COMPARE_TO_WORDING = re.compile(
+    r"^\s*(?:now\s+)?compare[ds]?\s+(?:it|them|this|that|these|those)\s+(?:to|with|against)\b"
+    r"|^\s*(?:vs\.?|versus|against)\s"
+    r"|^\s*(?:and\s+)?how\s+(?:does\s+it|do\s+they)\s+compare\s+(?:to|with)\b"
+)
+# "compare them": the companies already on screen (or the last two named), side by side.
+_COMPARE_THEM = re.compile(
+    r"(?:now\s+|ok\s+|okay\s+)?compare\s+(?:them|the\s+two|both|these|those)"
+    r"(?:\s+side\s+by\s+side)?"
+)
+_LEADING_AND = re.compile(r"^\s*(?:and|also|plus|add)\b")
 _SWAP_WORDING = re.compile(
     r"^\s*(?:what about|how about|and what about|same for|now|ok|okay)\b"
     r"|\binstead\b|^\s*(?:just|only)\b|^\s*by\b"
@@ -320,6 +327,18 @@ _SWAP_WORDING = re.compile(
 _TOP_N = re.compile(r"\b(?:only |just )?(?:the )?top\s+(\d+)\b")
 _LIMIT_WORDS = re.compile(
     r"\b(?:top|biggest|largest|leading)\s+(\d+)\b|\b(\d+)\s+(?:biggest|largest)\b"
+)
+_COUNT_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15,
+    "twenty": 20, "twenty five": 25, "twenty-five": 25, "a dozen": 12, "dozen": 12,
+}  # fmt: skip
+_COUNT_WORD = "|".join(sorted(map(re.escape, _COUNT_WORDS), key=len, reverse=True))
+# "top five banks" is five banks, not Five Below.
+_RANK_COUNT_WORD = re.compile(
+    rf"\b(top|biggest|largest|leading)\s+({_COUNT_WORD})\b"
+    rf"|\b({_COUNT_WORD})\s+(biggest|largest)\b",
+    re.IGNORECASE,
 )
 _FOLLOW_UP_MAX_WORDS = 7
 _METRIC_WORDS = frozenset(
@@ -343,6 +362,17 @@ def issuer_index(path: Path | None = None) -> IssuerIndex:
 
 def recorded_issuer_index() -> IssuerIndex:
     return issuer_index(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
+
+
+def _count_words_as_digits(query: str) -> str:
+    """ "Top five banks" → "top 5 banks", so the count is read and Five Below is not."""
+
+    def digits(match: re.Match[str]) -> str:
+        if match.group(1):
+            return f"{match.group(1)} {_COUNT_WORDS[match.group(2).casefold()]}"
+        return f"{_COUNT_WORDS[match.group(3).casefold()]} {match.group(4)}"
+
+    return _RANK_COUNT_WORD.sub(digits, query)
 
 
 def _limit(normalized: str) -> int:
@@ -399,7 +429,7 @@ class DemoCompleter:
         return issuer_index() if self._recorded else None
 
     def complete(self, query: str, current_spec: object = None) -> Any:
-        query = expand_groups(query)
+        query = _count_words_as_digits(expand_groups(query))
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
         mentions = self.index.find(query)
@@ -536,8 +566,25 @@ def _follow_up(
     if _RANK_WORDS.search(normalized) or _WHICH_HIGHEST.search(normalized):
         # "largest pharma companies by net income" is a new ranking, not an edit.
         return None
+    if (
+        not companies
+        and metric == "unknown"
+        and spec.companies
+        and _COMPARE_THEM.fullmatch(normalized.strip(" .?!"))
+    ):
+        earlier = spec.earlier_companies if len(spec.companies) == 1 else ()
+        return SpecPatch(mode="extend", add_companies=earlier)
+    if companies and metric in ALLOWED_METRICS and spec.companies and _LEADING_AND.search(
+        normalized
+    ):
+        # "and msft revenue" after Apple's revenue: Microsoft joins the table.
+        return SpecPatch(
+            mode="extend",
+            add_companies=tuple(companies),
+            add_metrics=(metric,) if metric not in spec.metrics else (),
+        )
     if companies and metric == "unknown" and spec.companies:
-        if _ADD_WORDING.search(normalized):
+        if _ADD_WORDING.search(normalized) or _COMPARE_TO_WORDING.search(normalized):
             return SpecPatch(mode="extend", add_companies=tuple(companies))
         if _SWAP_WORDING.search(normalized) or len(normalized.split()) <= 2:
             return SpecPatch(

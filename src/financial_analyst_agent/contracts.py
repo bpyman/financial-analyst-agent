@@ -139,6 +139,7 @@ NOT_MEANINGFUL = "not_meaningful"
 LATEST_PERIOD_ONLY = "latest_period_only"
 MODEL_ANALYSIS_BANNER = "model-analysis"
 EXPLORATORY_RESEARCH_BANNER = "exploratory-research"
+NEWS_SUMMARY_BANNER = "news-summary"
 SEARCH_NEWS_TOPIC = "news"
 SEARCH_NEWS_MAX_RESULTS = 5
 SEARCH_NEWS_TIME_RANGE = "week"

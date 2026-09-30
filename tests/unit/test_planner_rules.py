@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
+from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.filing_change import _year_apart_quarterlies
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
+    PeriodSelection,
     RankedSet,
     ResolvedCompany,
     SpecPatch,
@@ -31,6 +34,8 @@ from financial_analyst_agent.issuer_index import IssuerIndex
 from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
+from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
+from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.universe import load_universe_snapshot, resolve_industry_group
 
 
@@ -58,6 +63,26 @@ def test_misspelt_company_is_corrected_and_said() -> None:
 
     assert plan.company == "Microsoft"
     assert plan.notes == ("Showing Microsoft for “microsft”.",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "how does inflation affect revenue",
+        "every company's margins",
+        "being profitable",
+        "what do the figures say",
+        "trade policy risk",
+    ],
+)
+def test_ordinary_english_is_not_a_misspelt_company(question: str) -> None:
+    assert issuer_index().correct(question) == []
+
+
+def test_misspelt_names_still_correct_beside_common_words() -> None:
+    corrected = issuer_index().correct("how does inflation affect nvida revenue")
+
+    assert [mention.query for mention in corrected] == ["NVDA"]
 
 
 def test_a_ticker_that_is_also_an_alias_is_one_company() -> None:
@@ -429,3 +454,140 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
     assert table is not None
     assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
     assert table.rows[2][3:5] == ("+$10", "+2.0 pts")
+
+
+@pytest.mark.parametrize(
+    ("wording", "count"),
+    [
+        ("last 0 quarters", 1),
+        ("last 000 quarters", 1),
+        ("last 12 quarters", 12),
+        ("last 99999999999999999999 quarters", 40),
+    ],
+)
+def test_quarter_window_is_kept_between_one_and_ten_years(wording: str, count: int) -> None:
+    patch = bind_periods_from_message(SpecPatch(mode="replace"), f"Apple revenue {wording}")
+
+    assert patch.set_periods == PeriodSelection(kind="last_n_quarters", count=count)
+
+
+@pytest.mark.parametrize(("asked", "count"), [(0, 1), (-3, 1), (4, 4), (10_000, 40)])
+def test_llm_quarter_window_is_clamped(asked: int, count: int) -> None:
+    from financial_analyst_agent.planner import _SpecPatchAction
+
+    action = _SpecPatchAction(
+        intent="spec_patch", period_kind="last_n_quarters", period_count=asked
+    )
+
+    periods = action.to_spec_patch().set_periods
+    assert periods is not None
+    assert (periods.kind, periods.count) == ("last_n_quarters", count)
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("BRK.B revenue", ["BRK-B"]),
+        ("BRK-B revenue", ["BRK-B"]),
+        ("BF.B net income", ["BF-B"]),
+        ("T-Mobile revenue", ["TMUS"]),
+        ("U.S. Bancorp net income", ["USB"]),
+        ("us bancorp net income", ["USB"]),
+        ("O'Reilly revenue", ["ORLY"]),
+        ("johnson controls revenue", ["JCI"]),
+        ("general electric revenue", ["GE"]),
+        ("southern company revenue", ["SO"]),
+        ("Bank of New York revenue", ["BNY"]),
+        ("Apple NET income", ["Apple"]),
+        ("MSFT NET MARGIN", ["Microsoft"]),
+        ("IT spending at Apple", ["Apple"]),
+        ("Cloudflare vs NET", ["NET"]),
+        ("P/E of S&P companies", []),
+    ],
+)
+def test_share_classes_short_names_and_metric_words(question: str, companies: list[str]) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+def test_follow_ups_that_set_a_company_beside_the_current_one() -> None:
+    planner = DemoCompleter()
+    spec = _spec("AAPL")
+
+    assert planner.complete("and msft revenue", current_spec=spec) == SpecPatch(
+        mode="extend", add_companies=("Microsoft",)
+    )
+    assert planner.complete("and msft net income", current_spec=spec) == SpecPatch(
+        mode="extend", add_companies=("Microsoft",), add_metrics=("net_income",)
+    )
+    for question in ("compare it to Google", "vs Google", "how does it compare to Google?"):
+        assert planner.complete(question, current_spec=spec) == SpecPatch(
+            mode="extend", add_companies=("Google",)
+        )
+    # A fresh comparison is still a new question.
+    assert not isinstance(planner.complete("Nvidia vs AMD", current_spec=spec), SpecPatch)
+
+
+def test_compare_them_uses_the_companies_already_named() -> None:
+    swapped = resolve_spec(
+        apply_patch(
+            _spec("NVDA"),
+            SpecPatch(mode="extend", remove_companies=("NVDA",), add_companies=("AMD",)),
+        )
+    )
+    planner = DemoCompleter()
+
+    assert planner.complete("compare them", current_spec=swapped) == SpecPatch(
+        mode="extend", add_companies=("NVDA",)
+    )
+    assert planner.complete("Compare the two.", current_spec=_spec("NVDA", "AMD")) == SpecPatch(
+        mode="extend"
+    )
+
+
+def test_count_words_and_rev_are_read() -> None:
+    planner = _live()
+
+    five = planner.complete("top five banks by revenue")
+    three = planner.complete("the three biggest semiconductor companies")
+
+    assert (five.industry, five.limit, five.metric) == ("banks", 5, "revenue")
+    assert (three.industry, three.limit) == ("semiconductor", 3)
+    assert planner.complete("Five Below revenue").company == "FIVE"
+    assert planner.complete("Apple rev").metric == "revenue"
+
+
+def test_a_cik_names_its_company() -> None:
+    index = issuer_index()
+
+    assert [m.query for m in index.find("CIK 320193 revenue")] == ["AAPL"]
+    assert [m.query for m in index.find("0000789019 net income")] == ["MSFT"]
+    assert index.find("revenue of 12345 companies") == []
+
+
+def test_periods_filings_cannot_answer_are_said() -> None:
+    def ask(question: str) -> Any:
+        store = EphemeralThreadStore()
+        start_thread("t", RuntimeKind.RECORDED, store=store)
+        turn = run_conversation_turn("t", question, recorded_runtime(), store=store)
+        return present_turn(turn.result)
+
+    month = ask("Apple revenue last month")
+    future = ask("Apple revenue for fiscal 2031")
+
+    assert any("not months or weeks" in banner for banner in month.banners)
+    assert "not been reported yet" in (future.message or "")
+
+
+def test_a_list_of_companies_is_bounded_like_a_ranking() -> None:
+    from financial_analyst_agent.graph.analysis_spec import validate_spec
+
+    tickers = [f"T{index}" for index in range(26)]
+
+    rejection = validate_spec(_spec(*tickers))
+
+    assert rejection is not None and "at most 25" in rejection.message
+    assert validate_spec(_spec(*tickers[:25])) is None
+
+
+def test_a_reit_is_named_without_its_reit() -> None:
+    assert [m.query for m in issuer_index().find("Apple Hospitality revenue")] == ["APLE"]

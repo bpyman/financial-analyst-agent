@@ -15,7 +15,10 @@ import json
 import logging
 import os
 import threading
+import time
+import unicodedata
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -25,7 +28,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -75,12 +78,23 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 PROXY_TOKEN_HEADER = "x-proxy-token"
+# The visitor's address, set by the web proxy from the platform's own header.
+CLIENT_IP_HEADER = "x-client-ip"
 HEALTH_PATH = "/api/health"
+# A turn is one question of at most MAX_MESSAGE_CHARS; nothing needs more.
+MAX_BODY_BYTES = 16 * 1024
+RATE_LIMITED_MESSAGE = (
+    "You've asked a lot of questions in the last hour. Please wait a little and try again."
+)
 
 
 def public_error_message(exc: BaseException) -> str:
-    """What a visitor may read about a failed turn: our own errors verbatim, nothing else."""
-    if isinstance(exc, (ConfigurationError, SessionQuotaError, RuntimeMismatchError)):
+    """What a visitor may read about a failed turn: our own errors verbatim, nothing else.
+
+    A ConfigurationError is the operator's to fix ("Set SEC_USER_AGENT…"), so a
+    visitor gets the generic message and the log keeps the detail.
+    """
+    if isinstance(exc, (SessionQuotaError, RuntimeMismatchError)):
         return str(exc)
     return PUBLIC_FAILURE_MESSAGE
 
@@ -114,6 +128,95 @@ class ProxyTokenGuard:
                 await refused(scope, receive, send)
                 return
         await self._app(scope, receive, send)
+
+
+class BodySizeLimit:
+    """Refuse a request body larger than ``limit`` bytes with 413, declared or streamed."""
+
+    def __init__(self, app: ASGIApp, *, limit: int) -> None:
+        self._app = app
+        self._limit = limit
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        for name, value in scope["headers"]:
+            if name == b"content-length" and value.isdigit() and int(value) > self._limit:
+                await _too_large(scope, receive, send)
+                return
+        received = 0
+
+        async def limited() -> Any:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._limit:
+                    raise _BodyTooLarge
+            return message
+
+        try:
+            await self._app(scope, limited, send)
+        except _BodyTooLarge:
+            await _too_large(scope, receive, send)
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+async def _too_large(scope: Scope, receive: Receive, send: Send) -> None:
+    refused = JSONResponse(
+        {"detail": "That request is too large for the analysis service."}, status_code=413
+    )
+    await refused(scope, receive, send)
+
+
+class ClientRateLimit:
+    """At most ``limit`` events per client in any rolling hour, across request threads.
+
+    Keeps timestamps per client only while they fall inside the window, and
+    forgets idle clients, so memory follows recent visitors, not all of them.
+    """
+
+    def __init__(self, limit: int, *, window_seconds: float = 3600.0) -> None:
+        self._limit = limit
+        self._window = window_seconds
+        self._events: dict[str, deque[float]] = {}
+        self._guard = threading.Lock()
+
+    def try_acquire(self, client: str, now: float | None = None) -> float | None:
+        """Record an event; ``None`` if allowed, else seconds until one is."""
+        moment = time.monotonic() if now is None else now
+        cutoff = moment - self._window
+        with self._guard:
+            idle = [key for key, times in self._events.items() if times[-1] <= cutoff]
+            for key in idle:
+                del self._events[key]
+            times = self._events.setdefault(client, deque())
+            while times and times[0] <= cutoff:
+                times.popleft()
+            if len(times) >= self._limit:
+                return times[0] + self._window - moment
+            times.append(moment)
+            return None
+
+
+def _normalized_message(value: object) -> object:
+    """Drop invisible format and control characters (keeping line breaks), then trim.
+
+    A question made only of zero-width spaces is empty, and trailing spaces do
+    not count against the length limit.
+    """
+    if not isinstance(value, str):
+        return value
+    kept = "".join(
+        char
+        for char in unicodedata.normalize("NFKC", value)
+        if char in "\n\t" or unicodedata.category(char) not in ("Cf", "Cc", "Cs")
+    )
+    return kept.strip()
 
 
 class TurnLocks:
@@ -192,6 +295,11 @@ class TurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def _clean(cls, value: object) -> object:
+        return _normalized_message(value)
 
 
 def _valid_thread_id(thread_id: str) -> str:
@@ -284,6 +392,15 @@ def thread_view(
     }
 
 
+def _purge_quietly(
+    store: LocalThreadStore, now: datetime, ttl_seconds: int, keep: Callable[[str], bool]
+) -> None:
+    try:
+        store.purge_expired(now=now, ttl_seconds=ttl_seconds, keep=keep)
+    except Exception:
+        _LOGGER.exception("thread_purge_failed")
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
@@ -300,27 +417,67 @@ def create_app(
     turn_slots = TurnSlots(resolved.max_concurrent_turns)
     purge = _Throttle(PURGE_INTERVAL_SECONDS)
 
+    # The public demo does not publish its API: the docs page loads third-party
+    # scripts, and its "Try it out" calls would carry the proxy's token.
+    private = not resolved.public_demo
     app = FastAPI(
-        title="Financial analyst agent",
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        title="Onfile API",
+        docs_url="/api/docs" if private else None,
+        openapi_url="/api/openapi.json" if private else None,
+        redoc_url=None,
     )
     app.state.turn_locks = turn_locks
     app.state.turn_slots = turn_slots
+    thread_limit = ClientRateLimit(resolved.client_threads_per_hour)
+    turn_limit = ClientRateLimit(resolved.client_turns_per_hour)
+    trust_client_header = bool(resolved.api_proxy_token.get_secret_value())
+
+    def client_key(request: Request) -> str:
+        # Behind the token-checked proxy every call comes from the proxy, which
+        # names the visitor; without a token, the socket's peer is the client.
+        if trust_client_header:
+            named = request.headers.get(CLIENT_IP_HEADER, "").strip()
+            if named:
+                return named[:64]
+        return request.client.host if request.client else "unknown"
+
+    def admit(limit: ClientRateLimit, request: Request) -> None:
+        wait = limit.try_acquire(client_key(request))
+        if wait is not None:
+            raise HTTPException(
+                status_code=429,
+                detail=RATE_LIMITED_MESSAGE,
+                headers={"Retry-After": str(max(1, int(wait) + 1))},
+            )
+
+    def require_json(request: Request) -> None:
+        # A cross-site form can POST text/plain or form data without a CORS
+        # preflight; only this app's own fetches send JSON. An empty body needs
+        # no type. (The web proxy also refuses cross-site requests outright.)
+        kind = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        empty = request.headers.get("content-length", "0") == "0" and (
+            "transfer-encoding" not in request.headers
+        )
+        if kind != "application/json" and not (empty and not kind):
+            raise HTTPException(status_code=415, detail="Send the request as JSON.")
 
     @app.exception_handler(RequestValidationError)
     async def plain_validation_error(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         # FastAPI's default echoes the rejected input back; say what to fix instead.
-        too_long = any(error.get("type") == "string_too_long" for error in exc.errors())
-        detail = (
-            f"That message is longer than {MAX_MESSAGE_CHARS:,} characters. "
-            "Shorten it and send it again."
-            if too_long
-            else "The request was not in the form the analysis service expects."
-        )
+        kinds = {error.get("type") for error in exc.errors()}
+        if "string_too_long" in kinds:
+            detail = (
+                f"That message is longer than {MAX_MESSAGE_CHARS:,} characters. "
+                "Shorten it and send it again."
+            )
+        elif "string_too_short" in kinds:
+            detail = "Ask a question."
+        else:
+            detail = "The request was not in the form the analysis service expects."
         return JSONResponse(status_code=422, content={"detail": detail})
+    app.add_middleware(BodySizeLimit, limit=MAX_BODY_BYTES)
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
         app.add_middleware(ProxyTokenGuard, token=proxy_token)
@@ -333,6 +490,11 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.head("/api/health", include_in_schema=False)
+    def health_head() -> Response:
+        # Uptime monitors often probe with HEAD.
+        return Response(status_code=200)
 
     @app.get("/api/meta")
     def meta(runtime: RuntimeKind | None = None) -> dict[str, Any]:
@@ -368,8 +530,11 @@ def create_app(
 
     @app.post("/api/threads", status_code=201)
     def create_thread(
+        request: Request,
         body: CreateThreadRequest | None = None,
     ) -> dict[str, str | None]:
+        require_json(request)
+        admit(thread_limit, request)
         requested = (body.runtime if body else None) or default_runtime_kind(resolved)
         kind = resolve_runtime_kind(requested, resolved)
         state = start_thread(new_thread_id(), kind, store=store)
@@ -384,13 +549,14 @@ def create_app(
         valid = _valid_thread_id(thread_id)
         now = datetime.now(UTC)
         if purge.due(now):
-            # Every open window polls this route; a full store scan per poll
-            # would grow with the number of threads.
-            store.purge_expired(
-                now=now,
-                ttl_seconds=resolved.thread_ttl_seconds,
-                keep=turn_locks.held,
-            )
+            # Every open window polls this route; the scan grows with the number
+            # of threads, so it runs beside the request, never in it.
+            threading.Thread(
+                target=_purge_quietly,
+                args=(store, now, resolved.thread_ttl_seconds, turn_locks.held),
+                name="thread-purge",
+                daemon=True,
+            ).start()
         return thread_view(
             store,
             valid,
@@ -411,11 +577,11 @@ def create_app(
         return Response(status_code=204)
 
     @app.post("/api/threads/{thread_id}/turns")
-    async def post_turn(thread_id: str, body: TurnRequest) -> StreamingResponse:
+    async def post_turn(thread_id: str, body: TurnRequest, request: Request) -> StreamingResponse:
         valid = _valid_thread_id(thread_id)
-        message = body.message.strip()
-        if not message:
-            raise HTTPException(status_code=422, detail="Ask a question.")
+        require_json(request)
+        message = body.message
+        admit(turn_limit, request)
         if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
         try:
@@ -473,6 +639,10 @@ def create_app(
                 # Refused before anything ran: the turn does not count against the quota.
                 _LOGGER.warning("api_turn_runtime_mismatch", extra={"details": exc.details})
                 return "error", {"message": public_error_message(exc)}
+            except ConfigurationError:
+                # The deployment's fault, not the visitor's: not charged as a turn.
+                _LOGGER.exception("api_turn_misconfigured")
+                return "error", {"message": PUBLIC_FAILURE_MESSAGE}
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
                 failed = {"message": public_error_message(exc)}

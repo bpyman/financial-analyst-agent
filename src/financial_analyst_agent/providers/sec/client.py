@@ -1,20 +1,30 @@
 """Synchronous SEC EDGAR HTTP client."""
 
 import json
+import re
 import threading
 import time
+from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 import httpx
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import ProviderError, SessionQuotaError
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_facts import validate_companyfacts_response
 from financial_analyst_agent.providers.sec.submissions import validate_submissions_response
 from financial_analyst_agent.providers.sec.tickers import require_usable_company_tickers
 
 _COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+# SEC's "recent" filings hold the last year or 1,000 filings, whichever is more.
+# A bank filing thousands of prospectuses a year has only a year of 10-Qs there;
+# older ones sit in numbered pages. Read pages until this much history is in hand.
+_HISTORY_DAYS = 3 * 365 + 30
+_MAX_OLDER_PAGES = 4
+_PAGE_NAME = re.compile(r"CIK\d{10}-submissions-\d{3}\.json")
+_PERIODIC_FORMS = frozenset({"10-Q", "10-K", "10-Q/A", "10-K/A"})
 _MAX_RETRIES = 3
 _DEFAULT_RETRY_DELAY_SECONDS = 1.0
 _MAX_RETRY_DELAY_SECONDS = 5.0
@@ -219,7 +229,8 @@ class SECClient:
     def get_company_tickers(self) -> dict[str, Any]:
         return require_usable_company_tickers(self._fetch_json(_COMPANY_TICKERS_URL))
 
-    def get_submissions(self, cik: str) -> dict[str, Any]:
+    def get_submissions(self, cik: str, *, with_history: bool = True) -> dict[str, Any]:
+        """A filer's submissions; ``with_history`` also reads older pages (see below)."""
         url = f"{self._settings.sec_base_url}/submissions/CIK{cik}.json"
         payload = self._fetch_json(url)
         if not isinstance(payload, dict):
@@ -227,10 +238,78 @@ class SECClient:
                 "SEC response JSON must be an object",
                 details={"url": url, "retryable": False},
             )
-        return validate_submissions_response(payload, cik, details={"url": url, "cik": cik})
+        valid = validate_submissions_response(payload, cik, details={"url": url, "cik": cik})
+        return with_older_pages(valid, self.get_submissions_page) if with_history else valid
+
+    def get_submissions_page(self, name: str) -> dict[str, Any]:
+        """One older submissions page, named by the filer's ``filings.files``."""
+        if not _PAGE_NAME.fullmatch(name):
+            raise ProviderError(
+                "Not an SEC submissions page name", details={"page": name, "retryable": False}
+            )
+        url = f"{self._settings.sec_base_url}/submissions/{name}"
+        older = self._fetch_json(url)
+        if not isinstance(older, dict) or not isinstance(older.get("form"), list):
+            raise ProviderError(
+                "SEC submissions page must list forms", details={"url": url, "retryable": False}
+            )
+        return older
 
     def get_company_facts(self, cik: str) -> dict[str, Any]:
         url = f"{self._settings.sec_base_url}/api/xbrl/companyfacts/CIK{cik}.json"
         return validate_companyfacts_response(
             self._fetch_json(url), cik, details={"url": url, "cik": cik}
         )
+
+
+def with_older_pages(
+    payload: dict[str, Any], fetch_page: Callable[[str], object]
+) -> dict[str, Any]:
+    """Append older submission pages until ~3 years of 10-Qs and 10-Ks are covered.
+
+    History is optional: a page that fails or is refused (the thread's SEC
+    budget is spent) ends the reading, and the recent filings still answer.
+    """
+    filings = payload.get("filings")
+    recent = filings.get("recent") if isinstance(filings, dict) else None
+    pages = filings.get("files") if isinstance(filings, dict) else None
+    if not isinstance(recent, dict) or not isinstance(pages, list):
+        return payload
+    for page in pages[:_MAX_OLDER_PAGES]:
+        if _periodic_span_days(recent) >= _HISTORY_DAYS:
+            break
+        name = page.get("name") if isinstance(page, dict) else None
+        if not isinstance(name, str) or not _PAGE_NAME.fullmatch(name):
+            break
+        try:
+            older = fetch_page(name)
+        except (ProviderError, SessionQuotaError):
+            break
+        if not isinstance(older, dict) or not isinstance(older.get("form"), list):
+            break
+        _append_page(recent, older)
+    return payload
+
+def _periodic_span_days(recent: dict[str, Any]) -> int:
+    """Days between the newest and oldest 10-Q/10-K report dates in ``recent``."""
+    dates: list[date] = []
+    for form, raw in zip(recent.get("form", []), recent.get("reportDate", []), strict=False):
+        if form in _PERIODIC_FORMS and isinstance(raw, str):
+            try:
+                dates.append(date.fromisoformat(raw))
+            except ValueError:
+                continue
+    return (max(dates) - min(dates)).days if dates else 0
+
+
+def _append_page(recent: dict[str, Any], older: dict[str, Any]) -> None:
+    """Extend every column of ``recent`` by an older page, keeping the columns equal."""
+    count = len(older["form"])
+    for key, values in recent.items():
+        if not isinstance(values, list):
+            continue
+        extra = older.get(key)
+        if isinstance(extra, list) and len(extra) == count:
+            values.extend(extra)
+        else:
+            values.extend([""] * count)

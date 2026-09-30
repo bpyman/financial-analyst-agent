@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import date
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
@@ -24,6 +25,7 @@ from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
+from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
 
 SectionId = Literal["mda", "risk_factors"]
 
@@ -39,7 +41,16 @@ _SECTION_HEADINGS: dict[SectionId, re.Pattern[str]] = {
     ),
     "risk_factors": re.compile(r"item\s+1a\s*[.:—–-]?\s*risk\s+factors", re.IGNORECASE),
 }
-_NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:])", re.IGNORECASE | re.MULTILINE)
+_NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:—–-]|$)", re.IGNORECASE | re.MULTILINE)
+# A bare "Item 2" line, no punctuation or title, repeated down the pages is a
+# running header (Microsoft prints one on every page), not the next section.
+_BARE_ITEM = re.compile(r"^item\s+\d+[a-z]?$", re.IGNORECASE | re.MULTILINE)
+_RUNNING_HEADER_REPEATS = 3
+# Disclosure on the heading's own line ("Item 1A. Risk Factors. There have been
+# no material changes..."): a full stop, then a sentence ending in one.
+_SENTENCE = re.compile(r"\.\s+[A-Za-z].*\w\.\s*$")
+# A contents entry taken for a section: nothing under its heading but a page.
+_STUB_BODY = re.compile(r"^\W*(?:pages?\s*)?\d{0,3}(?:\s*[-–]\s*\d{1,3})?\W*$", re.IGNORECASE)
 # What may precede a heading on its line: "PART II — OTHER INFORMATION Item 1A. …".
 _PART_LABEL = re.compile(r"part\s+i{1,2}\b.{0,60}", re.IGNORECASE)
 _ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
@@ -126,16 +137,27 @@ def extract_section(html: str, section: SectionId) -> str:
 
 def _section_under_item(text: str, section: SectionId) -> str:
     heading = _SECTION_HEADINGS[section]
+    bare = Counter(line.casefold() for line in _BARE_ITEM.findall(text))
+    running = {line for line, count in bare.items() if count >= _RUNNING_HEADER_REPEATS}
     candidates: list[str] = []
     for match in heading.finditer(text):
         if not _starts_line(text, match.start()):
             continue
         end = len(text)
         for next_item in _NEXT_ITEM.finditer(text, match.end()):
+            line_end = text.find("\n", next_item.start())
+            line = text[next_item.start() : len(text) if line_end < 0 else line_end]
+            if line.strip().casefold() in running:
+                continue
             if heading.match(text, next_item.start()) is None:
                 end = next_item.start()
                 break
-        candidates.append(text[match.start() : end].strip())
+        found = text[match.start() : end].strip()
+        body = found.split("\n", 1)[1] if "\n" in found else ""
+        same_line = found.split("\n", 1)[0][match.end() - match.start() :]
+        if _STUB_BODY.fullmatch(body.strip()) and not _SENTENCE.search(same_line):
+            continue
+        candidates.append(found)
     return max(candidates, key=len, default="")
 
 
@@ -504,19 +526,42 @@ def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tupl
     return plan_older, plan_newer
 
 
-def _section_choice(query: str, fallback: str) -> str:
-    normalized = query.strip().casefold()
-    if not normalized:
-        return fallback
-    if "risk" in normalized and (
-        "md&a" in normalized or "mda" in normalized or "both" in normalized
-    ):
+# Whole words only: "Verisk", "Riskified" and "Waste Management" name companies,
+# not sections.
+_RISK_WORDS = r"risk\s+factors?|risks?"
+_MDA_WORDS = r"md&a|mda|management['’]?s?\s+discussion(?:\s+and\s+analysis)?"
+_NEGATION = (
+    r"(?:not|no|excluding|exclude|except|without|other\s+than|but\s+not)\s+(?:the\s+|its\s+)?"
+)
+_RISK = re.compile(rf"\b(?:{_RISK_WORDS})\b", re.IGNORECASE)
+_MDA = re.compile(rf"(?<![\w&])(?:{_MDA_WORDS})\b", re.IGNORECASE)
+_NOT_RISK = re.compile(rf"\b{_NEGATION}(?:{_RISK_WORDS})\b", re.IGNORECASE)
+_NOT_MDA = re.compile(rf"\b{_NEGATION}(?:{_MDA_WORDS})\b", re.IGNORECASE)
+
+
+def requested_sections(text: str) -> str | None:
+    """The reviewed sections a question names: "mda", "risk_factors", both, or None.
+
+    "MD&A, not the risk factors" and "excluding risk factors" leave a section
+    out; a question naming neither asks about the whole filing.
+    """
+    risk = _RISK.search(text) is not None and _NOT_RISK.search(text) is None
+    mda = _MDA.search(text) is not None and _NOT_MDA.search(text) is None
+    excluded_risk = _NOT_RISK.search(text) is not None
+    excluded_mda = _NOT_MDA.search(text) is not None
+    if risk and mda:
         return "mda and risk_factors"
-    if "risk" in normalized:
+    if risk or (excluded_mda and not mda):
         return "risk_factors"
-    if "md&a" in normalized or "mda" in normalized or "management discussion" in normalized:
+    if mda or excluded_risk:
         return "mda"
-    return fallback
+    if re.search(r"\bboth\b", text, re.IGNORECASE):
+        return "mda and risk_factors"
+    return None
+
+
+def _section_choice(query: str, fallback: str) -> str:
+    return requested_sections(query) or fallback
 
 
 def _labels(sections: list[SectionId]) -> str:
@@ -580,6 +625,18 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
+    if cik in INELIGIBLE_ISSUER_CIKS:
+        # The same membership rule lookups and rankings apply (ADR 0001).
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message=(
+                f"{resolved.name} is not an operating company (it is a fund, business "
+                "development company or similar listing), so its filings are outside "
+                "what this analyst covers."
+            ),
+        )
     # SEC titles companies "PFIZER INC"; the snapshot knows them as "Pfizer Inc.".
     display = getattr(runtime.facts, "display_name", None)
     name = display(cik, resolved.name) if callable(display) else resolved.name

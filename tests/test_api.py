@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from api_server import smoke
 from financial_analyst_agent import api
@@ -255,7 +256,8 @@ def test_meta_serves_the_capability_catalog_and_example_query(client: TestClient
     ("failure", "shown"),
     [
         (RuntimeError("provider failed"), PUBLIC_FAILURE_MESSAGE),
-        (ConfigurationError("SEC_USER_AGENT is not set"), "SEC_USER_AGENT is not set"),
+        # Operator configuration is not the visitor's to read or fix.
+        (ConfigurationError("SEC_USER_AGENT is not set"), PUBLIC_FAILURE_MESSAGE),
     ],
 )
 def test_failed_turn_streams_a_public_error_and_keeps_prior_turns(
@@ -838,3 +840,115 @@ def test_an_overlong_message_is_refused_without_echoing_it(client: TestClient) -
         "detail": "That message is longer than 2,000 characters. Shorten it and send it again."
     }
     assert message not in response.text
+
+
+def test_a_visitor_is_limited_to_a_number_of_new_threads_an_hour(tmp_path: Path) -> None:
+    app = create_app(
+        _settings(client_threads_per_hour=2, api_proxy_token=SecretStr("t")),
+        store_root=tmp_path / "threads",
+    )
+    client = TestClient(app, headers={"x-proxy-token": "t"})
+
+    def create(ip: str) -> Any:
+        return client.post("/api/threads", json={}, headers={"x-client-ip": ip})
+
+    assert [create("1.1.1.1").status_code for _ in range(2)] == [201, 201]
+    refused = create("1.1.1.1")
+    assert refused.status_code == 429
+    assert int(refused.headers["retry-after"]) > 0
+    # Another visitor behind the same proxy is counted separately.
+    assert create("2.2.2.2").status_code == 201
+
+
+def test_a_visitor_is_limited_to_a_number_of_turns_an_hour(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(_settings(client_turns_per_hour=1), store_root=tmp_path / "threads")
+    )
+    first, second = _new_thread(client), _new_thread(client)
+
+    assert _post_turn(client, first, GUIDED_STORIES[0][1]).status_code == 200
+    assert _post_turn(client, second, GUIDED_STORIES[0][1]).status_code == 429
+
+
+def test_the_rate_limit_forgets_events_older_than_its_window() -> None:
+    limit = api.ClientRateLimit(1, window_seconds=10)
+
+    assert limit.try_acquire("a", now=0) is None
+    assert limit.try_acquire("a", now=5) == pytest.approx(5)
+    assert limit.try_acquire("a", now=10.5) is None
+
+
+def test_an_oversized_body_is_refused(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+    padded = '{"message": "Apple revenue"' + " " * 20_000 + "}"
+
+    response = client.post(
+        f"/api/threads/{thread_id}/turns",
+        content=padded,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 413
+
+
+def test_a_turn_must_be_sent_as_json(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+
+    as_form = client.post(
+        f"/api/threads/{thread_id}/turns",
+        content='{"message": "Apple revenue"}',
+        headers={"content-type": "text/plain"},
+    )
+    create_as_form = client.post(
+        "/api/threads", content="a=1", headers={"content-type": "application/x-www-form-urlencoded"}
+    )
+
+    # FastAPI refuses a non-JSON body before the handler's own check can.
+    assert as_form.status_code in (415, 422)
+    assert create_as_form.status_code in (415, 422)
+
+
+@pytest.mark.parametrize("message", ["   ", "​​", "‮⁦ ‍"])
+def test_an_invisible_message_asks_for_a_question(client: TestClient, message: str) -> None:
+    thread_id = _new_thread(client)
+
+    response = _post_turn(client, thread_id, message)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Ask a question."
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 0
+
+
+def test_trailing_spaces_do_not_count_against_the_length_limit(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+    message = GUIDED_STORIES[0][1] + " " * 2000
+
+    assert _post_turn(client, thread_id, message).status_code == 200
+
+
+def test_the_public_demo_does_not_publish_its_api_docs(tmp_path: Path) -> None:
+    public = TestClient(create_app(_settings(public_demo=True), store_root=tmp_path / "a"))
+    private = TestClient(create_app(_settings(), store_root=tmp_path / "b"))
+
+    assert public.get("/api/docs").status_code == 404
+    assert public.get("/api/openapi.json").status_code == 404
+    assert private.get("/api/openapi.json").status_code == 200
+
+
+def test_health_answers_head_requests(client: TestClient) -> None:
+    assert client.head("/api/health").status_code == 200
+
+
+def test_a_misconfigured_deployment_does_not_charge_the_turn(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    thread_id = _new_thread(client)
+
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        raise ConfigurationError("SEC_USER_AGENT is not set")
+
+    monkeypatch.setattr(api, "run_conversation_turn", fail)
+    kind, data = _events(_post_turn(client, thread_id, "Apple revenue"))[-1]
+
+    assert (kind, data) == ("error", {"message": PUBLIC_FAILURE_MESSAGE})
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 0

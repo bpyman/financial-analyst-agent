@@ -1,5 +1,6 @@
 """Deterministic MD&A / Risk Factors diff between two accessions."""
 
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -228,6 +229,19 @@ def test_a_filing_that_only_cites_risk_factors_has_no_section() -> None:
     """
 
     assert extract_section(html, "risk_factors") == ""
+
+
+def test_a_disclosure_on_its_heading_line_is_the_section() -> None:
+    html = (
+        "<p>Item 1A. Risk Factors 42</p>"
+        "<p>Item 2. Unregistered Sales of Equity Securities 43</p>"
+        "<p>Item 1A. Risk Factors. There have been no material changes to our risk factors.</p>"
+        "<p>Item 2. Unregistered Sales of Equity Securities</p>"
+    )
+
+    assert extract_section(html, "risk_factors") == (
+        "Item 1A. Risk Factors. There have been no material changes to our risk factors."
+    )
 
 
 @pytest.mark.parametrize("punctuation", [".", ":", ""])
@@ -692,3 +706,41 @@ def test_a_summary_the_model_cannot_write_is_explained() -> None:
     assert result.essay is None
     assert MODEL_ANALYSIS_BANNER not in result.banners
     assert "No summary is shown for these filings." in result.banners
+
+
+def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> None:
+    import financial_analyst_agent.filing_change as filing_change
+
+    monkeypatch.setattr(filing_change, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
+
+    result = run_filing_change(
+        SimpleNamespace(
+            intent=Intent.FILING_CHANGE,
+            company="MSFT",
+            older_accession="",
+            newer_accession="",
+            section="mda",
+        ),
+        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert "not an operating company" in (result.message or "")
+
+
+def test_numeral_lock_does_not_ground_figures_on_links_or_accessions() -> None:
+    from financial_analyst_agent.turn import _numeral_lock_extras
+
+    grounding = json.dumps(
+        [
+            {
+                "older_accession": "0000950170-25-061046",
+                "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017026000123/x.htm",
+                "after": "Revenue grew 12% in the quarter.",
+            }
+        ]
+    )
+
+    assert _numeral_lock_extras("Revenue grew 12%.", grounding) == []
+    assert _numeral_lock_extras("Revenue grew 25%.", grounding) == ["25"]
+    assert _numeral_lock_extras("Margins hit 789019.", grounding) == ["789019"]

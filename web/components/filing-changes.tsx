@@ -2,7 +2,6 @@ import { ArrowRight, ChevronDown, FileDiff } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/format";
 import type { DisplayDisclosure } from "@/lib/types";
-import { SafeMarkdown } from "./markdown";
 import { Badge, FilingButton, SectionLabel, type Tone } from "./ui";
 
 const KIND_TONE: Record<string, Tone> = {
@@ -169,7 +168,10 @@ function FilingSide({
         )}
       >
         {text ? (
-          <SafeMarkdown text={text} className={cn("text-[14px]", !current && "text-muted")} />
+          // Filing prose, as filed: "1." or "*" in a 10-Q is not markup.
+          <p className={cn("whitespace-pre-wrap break-words text-[14px] leading-[1.7] text-fg", !current && "text-muted")}>
+            {text}
+          </p>
         ) : (
           <p className="text-[13px] italic text-subtle">Not in this filing.</p>
         )}

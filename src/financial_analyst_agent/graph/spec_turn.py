@@ -34,6 +34,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
 )
 from financial_analyst_agent.graph.analysis_spec import (
+    MAX_QUARTERS_ASKED,
     MAX_RANKED_COMPANIES,
     AnalysisSpec,
     CompiledTask,
@@ -393,12 +394,21 @@ def _company_tokens(text: str) -> tuple[str, ...]:
     return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
 
 
+def _quarters_asked(raw: str) -> int:
+    """The window "last N quarters" names, kept between one and ``MAX_QUARTERS_ASKED``."""
+    raw = raw.casefold()
+    if raw in _NUMBER_WORDS:
+        return _NUMBER_WORDS[raw]
+    digits = raw.lstrip("0")
+    if not digits.isdigit():
+        return 1 if raw.isdigit() else 4
+    if len(digits) > len(str(MAX_QUARTERS_ASKED)):
+        return MAX_QUARTERS_ASKED
+    return min(int(digits), MAX_QUARTERS_ASKED)
+
+
 def _period_count_from_match(match: re.Match[str] | None, *, yoy: bool) -> int:
-    if match is not None:
-        raw = match.group(1).casefold()
-        count = _NUMBER_WORDS.get(raw, int(raw) if raw.isdigit() else 4)
-    else:
-        count = 5
+    count = _quarters_asked(match.group(1)) if match is not None else 5
     if yoy and count < 5:
         return 5
     return count
@@ -1413,12 +1423,16 @@ def run_spec_turn_context(
             patch,
         )
     if spec.periods.kind == "named" and spec.companies and not spec.periods.report_dates:
+        future = all(period.year > date.today().year for period in spec.periods.named)
         return (
             _rejection_result(
                 SpecRejection(
                     code="empty_spec",
                     message=(
-                        f"No filings found for {spec.periods.label}. Periods are fiscal "
+                        f"No filings found for {spec.periods.label}: it has not been "
+                        "reported yet."
+                        if future
+                        else f"No filings found for {spec.periods.label}. Periods are fiscal "
                         "years as each company names them; filings older than about "
                         "ten years may not be available."
                     ),
@@ -1523,6 +1537,13 @@ def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:
     return spec.model_copy(update={"companies": tuple(companies)})
 
 
+# Periods shorter than a quarter, which no 10-Q reports on its own.
+_SUB_QUARTER = re.compile(
+    r"\b(?:last|this|past|previous)\s+(?:month|week)\b|\byesterday\b"
+    r"|\b(?:in|for|during)\s+(?:january|february|march|april|june|july|august|september"
+    r"|october|november|december)\b(?!\s+(?:19|20)\d{2})",
+    re.IGNORECASE,
+)
 _SPECIFIC_PERIOD = re.compile(
     r"\b(?:"
     r"q[1-4]\s*(?:fy\s*)?'?\d{2,4}"
@@ -1647,6 +1668,8 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         and not _YOY.search(message)
     ):
         notes.append(YEAR_OF_QUARTERS_BANNER)
+    if spec.periods.kind != "named" and _SUB_QUARTER.search(message):
+        notes.append(f"Filings report quarters, not months or weeks, so this shows {window}.")
     if _WHY_CHANGE.search(message):
         notes.append(WHY_CHANGE_BANNER)
     if _YEAR_TO_DATE.search(message):
@@ -1677,8 +1700,7 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         notes.append(FISCAL_Q4_GAP_BANNER)
     asked = _LAST_N_QUARTERS.search(message)
     if spec.periods.kind == "last_n_quarters" and asked is not None:
-        raw = asked.group(1).casefold()
-        wanted = _NUMBER_WORDS.get(raw, int(raw) if raw.isdigit() else 0)
+        wanted = _quarters_asked(asked.group(1))
         shown = max((len(dates) for dates in windows), default=0)
         if 0 < shown < wanted:
             notes.append(f"The filings here hold only {shown} of the {wanted} quarters asked for.")

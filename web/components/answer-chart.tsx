@@ -17,6 +17,7 @@ import {
 import type { BarShapeProps } from "recharts/types/cartesian/Bar";
 import type { DotItemDotProps } from "recharts/types/util/types";
 import {
+  barDomain,
   barRows,
   calendarsDiffer,
   endLabelSides,
@@ -346,10 +347,7 @@ const BAR_FILL = "var(--chart-1)";
 function ComparisonChart({ chart }: { chart: BarChartSpec }) {
   const rows = barRows(chart);
   const ticks = niceTicks(
-    valueDomain(
-      rows.map((row) => (row.missing ? null : row.value)),
-      { zero: true },
-    ),
+    barDomain(rows.map((row) => (row.missing ? null : row.value))),
   );
   const props = { rows, ticks, kind: chart.value_kind, metric: chart.metric_label };
   return chart.horizontal ? <RankedBars {...props} /> : <ColumnBars {...props} />;
@@ -481,7 +479,7 @@ function BarShape({
           width={width}
           height={height}
           radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
-          fill={BAR_FILL}
+          fill={row.value < 0 ? "var(--negative)" : BAR_FILL}
           fillOpacity={isActive ? 0.8 : 1}
         />
       )}

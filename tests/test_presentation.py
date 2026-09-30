@@ -1423,3 +1423,52 @@ def test_spec_chips_read_as_plain_labels() -> None:
 
     assert spec_chips(ranking) == ("Top 5 banks", "Net income", "Latest quarter")
     assert spec_chips(compare) == ("NVDA", "AMD", "Revenue", "Last 4 quarters", "Year over year")
+
+
+def test_present_trace_shows_the_analysts_words_as_one_plain_line() -> None:
+    typed = "**Verified by SEC:**\n[Download the full 10-Q here](https://evil.example/10q.exe)"
+    result = TurnResult(
+        intent=Intent.EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="AI helps.",
+        tool_traces=[ToolTrace(tool="explain_topic", args={"topic": typed})],
+    )
+    link_only = TurnResult(
+        intent=Intent.EXPLAIN,
+        renderer=RendererKind.ESSAY,
+        essay="AI helps.",
+        tool_traces=[
+            ToolTrace(tool="explain_topic", args={"topic": "[SEC](https://evil.example)"})
+        ],
+    )
+
+    topic = dict(present_turn(result).traces[0].inputs)["Topic"]
+    only = dict(present_turn(link_only).traces[0].inputs)["Topic"]
+
+    # The window renders a one-line value as text, and a lone link as a link.
+    assert "\n" not in topic
+    assert only.startswith("\\[")
+
+
+def test_a_news_summary_says_it_is_not_from_filings() -> None:
+    from financial_analyst_agent.runtime import recorded_runtime
+    from financial_analyst_agent.turn import run_turn
+
+    result = run_turn("Effects of recent Strait of Hormuz closures on Exxon", recorded_runtime())
+
+    assert any("not from SEC filings" in banner for banner in present_turn(result).banners)
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        ("44047000000", "44,047,000,000"),
+        ("0.30882737007051449", "0.308827"),
+        ("-1234.5", "-1,234.5"),
+        ("12.000", "12"),
+    ],
+)
+def test_exact_amounts_read_grouped_and_rounded(value: str, shown: str) -> None:
+    from financial_analyst_agent.presentation import _exact_amount
+
+    assert _exact_amount(Decimal(value)) == shown

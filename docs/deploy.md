@@ -94,7 +94,8 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 
 Neither Vercel variable is `NEXT_PUBLIC_`, so neither reaches the browser bundle.
 Every other API setting keeps the default in `config.py` (thread TTL 7200 s, 25 turns
-per thread, 25 live SEC requests per thread). The public demo lands on the live
+per thread, 150 live SEC requests per thread, and per visitor 30 new threads and 120
+turns an hour). The public demo lands on the live
 runtime, and visitors can switch to the recorded runtime, which needs no keys. Nothing caps
 total OpenAI spend across threads, so set a monthly budget in the OpenAI dashboard.
 

@@ -95,22 +95,40 @@ def _recorded_disclosure_summary(tool_json: str) -> str:
 
 
 class RecordedEssayCompleter:
-    """Recorded essay so explain and news_and_explain turns stay offline."""
+    """Recorded essay so explain and news_and_explain turns stay offline.
+
+    The live runtime uses it too when it has no OpenAI key (``live=True``);
+    its refusals then say that, rather than pointing at the live runtime.
+    """
+
+    def __init__(self, *, live: bool = False) -> None:
+        self._live = live
+
+    def _refusal(self, captured: str) -> ProviderError:
+        if self._live:
+            return ProviderError(
+                "Written answers need an OpenAI key, which this server does not have. "
+                f"It can replay the one it captured, for {captured}."
+            )
+        return ProviderError(
+            f"The recorded demo replays written answers only for {captured}. "
+            "Switch to Live for other questions."
+        )
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
-        if not tool_json:
-            if query.strip().casefold() != FIXTURE_EXPLAIN_QUERY.casefold():
-                raise ProviderError(
-                    "The recorded demo only replays one captured essay, for "
-                    f"“{FIXTURE_EXPLAIN_QUERY}”. Other qualitative questions need "
-                    "the live runtime."
-                )
+        asked = query.strip().casefold()
+        if asked == FIXTURE_EXPLAIN_QUERY.casefold():
+            # Asked after a lookup, the question arrives with that lookup's facts.
             return FIXTURE_EXPLAIN_ESSAY
-        if query.strip().casefold() not in {
+        if not tool_json:
+            raise self._refusal(f"“{FIXTURE_EXPLAIN_QUERY}”")
+        if asked not in {
             FIXTURE_NEWS_QUERY.casefold(),
             FIXTURE_RESEARCH_QUERY.casefold(),
-        } and "disclosure changes" not in query.casefold():
-            raise ProviderError("No recorded fixture news essay for this prompt")
+        } and "disclosure changes" not in asked:
+            raise self._refusal(
+                f"“{FIXTURE_EXPLAIN_QUERY}” and “{FIXTURE_NEWS_QUERY}”"
+            )
         if "disclosure changes" in query.casefold():
             return _recorded_disclosure_summary(tool_json)
         try:
@@ -213,7 +231,11 @@ def live_runtime(
         if use_openai
         else DemoCompleter(issuer_index())
     )
-    essay = OpenAIEssayCompleter.from_settings(resolved) if use_openai else RecordedEssayCompleter()
+    essay = (
+        OpenAIEssayCompleter.from_settings(resolved)
+        if use_openai
+        else RecordedEssayCompleter(live=True)
+    )
     news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
     client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)

@@ -12,6 +12,8 @@ import difflib
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 from financial_analyst_agent.universe import UniverseCompany
 
@@ -38,6 +40,7 @@ _NAME_SUFFIXES = frozenset(
         "holdings",
         "holding",
         "group",
+        "reit",
         "the",
         "class",
         "com",
@@ -57,7 +60,7 @@ _GENERIC_WORDS = frozenset(
     much my national net new north northern of on one or our pacific people profit public
     quarter quarters real restaurant restaurants revenue royal sales service services show
     so south southern stock stocks telecom than that the their them then there these they
-    this to top total trust
+    this to top total trade trust
     united universal us value vs was were west western what when which who why will with
     world would year you your
     """.split()  # noqa: SIM905
@@ -68,6 +71,7 @@ _NOT_TICKERS = frozenset(
         "A",
         "I",
         "AI",
+        "IT",
         "CEO",
         "CFO",
         "EPS",
@@ -80,6 +84,7 @@ _NOT_TICKERS = frozenset(
         "US",
         "USA",
         "SEC",
+        "CIK",
         "FY",
         "YOY",
         "QOQ",
@@ -128,7 +133,27 @@ _NICKNAMES: tuple[tuple[str, str], ...] = (
     ("hp", "HPQ"),
     ("schwab", "SCHW"),
     ("capital one", "COF"),
+    ("general electric", "GE"),
+    ("southern company", "SO"),
+    ("us bancorp", "USB"),
+    ("bank of new york", "BNY"),
+    ("oreilly", "ORLY"),
+    ("tmobile", "TMUS"),
 )
+# Two-word starts of a longer name that are places or words, not that company:
+# "New York" Times, "Las Vegas" Sands.
+_NOT_SHORT_NAMES = frozenset({"las vegas", "grupo financiero", "super group"})
+# A ticker, with a share class after a dot, dash or slash ("BRK.B"). Letters
+# joined to a word are not tickers: "S&P", "T-Mobile", "O'Reilly".
+_TICKER = re.compile(
+    r"(?<![\w&/.'’-])\$?([A-Za-z]{1,5})(?:[./-]([A-Za-z]))?(?![\w&/'’])(?![./-][A-Za-z])"
+)
+# Tickers that also start a metric's name: "NET income" is not Cloudflare's.
+_METRIC_STARTS = {
+    "NET": frozenset({"income", "margin", "loss", "losses", "sales", "profit", "debt", "interest"}),
+    "CASH": frozenset({"flow", "flows"}),
+}
+_CIK = re.compile(r"\bcik\s*#?:?\s*(\d{1,10})\b|\b(0\d{9})\b", re.IGNORECASE)
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
 _TYPO_CUTOFF = 0.84
@@ -189,6 +214,7 @@ class IssuerIndex:
     phrases: dict[str, str] = field(default_factory=dict)
     tickers: dict[str, str] = field(default_factory=dict)
     display_names: dict[str, str] = field(default_factory=dict)
+    ciks: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -205,9 +231,11 @@ class IssuerIndex:
                 index.phrases.setdefault(phrase, ticker)
         ranked = sorted(companies, key=lambda company: company.market_cap, reverse=True)
         first_words: dict[str, list[str]] = {}
+        short_names: dict[str, list[str]] = {}
         for rank, company in enumerate(ranked):
             ticker = company.ticker.upper()
             index.tickers.setdefault(ticker, ticker)
+            index.ciks.setdefault(company.cik, ticker)
             index.display_names.setdefault(ticker, company.name)
             core = _core_name(company.name)
             if not core or (" " not in core and (core in _GENERIC_WORDS or len(core) < 3)):
@@ -228,10 +256,20 @@ class IssuerIndex:
                 and words[0] not in _GENERIC_WORDS
             ):
                 first_words.setdefault(words[0], []).append(ticker)
-        for word, owners in first_words.items():
-            # "Costco" for Costco Wholesale; a word two large companies share
+            if (
+                rank < _FIRST_WORD_ALIAS_RANK
+                and len(words) > 2
+                and words[0] not in _GENERIC_WORDS
+                and len(words[1]) >= 4
+                and words[1] not in _GENERIC_WORDS
+                and words[1] not in _NAME_SUFFIXES
+            ):
+                short_names.setdefault(" ".join(words[:2]), []).append(ticker)
+        for word, owners in (*first_words.items(), *short_names.items()):
+            # "Costco" for Costco Wholesale, "Johnson Controls" for Johnson
+            # Controls International; a start two large companies share
             # ("Bank" of America and "Bank" of New York) names neither.
-            if len(owners) == 1:
+            if len(owners) == 1 and word not in _NOT_SHORT_NAMES:
                 index.phrases.setdefault(word, owners[0])
         return index
 
@@ -258,16 +296,31 @@ class IssuerIndex:
                     taken[slot] = True
                 if query not in found:
                     found[query] = CompanyMention(query, offsets[start], phrase)
-        # "P/E" and "S&P" are not the tickers P, E and S.
-        for match in re.finditer(r"(?<![\w&/])\$?([A-Za-z]{1,5})(?![\w&/])", question):
-            raw = match.group(1)
+        for match in _CIK.finditer(question):
+            # "CIK 320193" or SEC's ten-digit "0000320193".
+            query = self.ciks.get((match.group(1) or match.group(2)).zfill(10))
+            if query is not None and query not in found:
+                found[query] = CompanyMention(query, _char_to_word_offset(question, match), query)
+        for match in _TICKER.finditer(question):
+            raw, share_class = match.group(1), match.group(2)
             dollar = match.group(0).startswith("$")
             if not dollar and (raw != raw.upper() or raw in _NOT_TICKERS):
                 continue
-            if raw.casefold() in self.phrases:
+            following = question[match.end() :].split(maxsplit=1)
+            if (
+                not dollar
+                and following
+                and following[0].casefold() in _METRIC_STARTS.get(raw, frozenset())
+            ):
+                continue
+            if share_class is not None:
+                # "BRK.B" is Berkshire's B shares; "P/E" and "U.S." name no class.
+                query = self.tickers.get(f"{raw}-{share_class}".upper())
+            elif raw.casefold() in self.phrases:
                 # "AAPL" is also an alias phrase; the phrase pass named it once.
                 continue
-            query = self.tickers.get(raw.upper())
+            else:
+                query = self.tickers.get(raw.upper())
             if query is not None and query not in found:
                 found[query] = CompanyMention(query, _char_to_word_offset(question, match), raw)
         return sorted(found.values(), key=lambda mention: mention.start)
@@ -300,6 +353,7 @@ class IssuerIndex:
                 or word in _GENERIC_WORDS
                 or word in ignore
                 or word in self.phrases
+                or word in _common_words()
             ):
                 continue
             close = difflib.get_close_matches(word, candidates, n=1, cutoff=_TYPO_CUTOFF)
@@ -328,6 +382,19 @@ def _one_letter_missing(word: str, candidates: list[str]) -> str | None:
         and any(phrase[:cut] + phrase[cut + 1 :] == word for cut in range(1, len(phrase) - 1))
     ]
     return found[0] if len(found) == 1 else None
+
+
+@lru_cache(maxsize=1)
+def _common_words() -> frozenset[str]:
+    """Words most 10-Qs use ("being", "inflation"): English, not a misspelt name.
+
+    Built by scripts/build_common_words.py.
+    """
+    path = Path(__file__).parent / "data" / "common_words.txt"
+    try:
+        return frozenset(path.read_text(encoding="utf-8").split())
+    except OSError:
+        return frozenset()
 
 
 def _char_to_word_offset(question: str, match: re.Match[str]) -> int:

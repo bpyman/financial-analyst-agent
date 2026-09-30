@@ -78,7 +78,7 @@ export async function resumeThread(
     view = await api.getThread(threadId);
   } catch (error) {
     if (!isCurrentThread(store, threadId)) return null;
-    if (error instanceof ApiError && error.status === 404) return forget(store);
+    if (error instanceof ApiError && [400, 404, 414, 431].includes(error.status)) return forget(store);
     throw error;
   }
   if (!isCurrentThread(store, threadId)) return null;

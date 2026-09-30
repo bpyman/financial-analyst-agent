@@ -130,6 +130,8 @@ class SpecDraft(BaseModel):
 # A ranking lists at most this many companies: each one with a filed metric
 # is a lookup, and "top 1000" once took eight minutes of SEC requests.
 MAX_RANKED_COMPANIES = 25
+# "Last N quarters" reads at most ten years: more than any filing history here.
+MAX_QUARTERS_ASKED = 40
 
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"}
@@ -320,6 +322,16 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
             )
     has_companies = bool(spec.companies)
     has_constituents = spec.constituents is not None
+    if len(spec.companies) > MAX_RANKED_COMPANIES:
+        # Each company is its own SEC lookup; a list is bounded as a ranking is.
+        return SpecRejection(
+            code="unsupported_combination",
+            message=(
+                f"That names {len(spec.companies)} companies; I compare at most "
+                f"{MAX_RANKED_COMPANIES} at once. Try fewer, or ask for a ranking "
+                "such as “top 10 banks by revenue”."
+            ),
+        )
     if not has_companies and not has_constituents:
         return SpecRejection(
             code="empty_spec",

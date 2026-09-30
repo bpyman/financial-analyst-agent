@@ -85,6 +85,28 @@ describe("resumeThread", () => {
     expect(store.getItem(THREAD_STORAGE_KEY)).toBeNull();
   });
 
+  it.each([400, 414, 431])("forgets an unusable stored id after HTTP %s", async (status) => {
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "invalid" });
+    const api = fakeApi({ invalid: new ApiError("Invalid thread id.", status) });
+    expect(await resumeThread(api, store)).toEqual({ view: null, notice: EXPIRED_NOTICE });
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBeNull();
+    expect(api.createThread).not.toHaveBeenCalled();
+  });
+
+  it.each([new TypeError("Failed to fetch"), new ApiError("Unavailable", 503)])(
+    "resumes the same thread after a transient failure: %s",
+    async (error) => {
+      const saved = view();
+      const api = fakeApi({ "t-1": saved });
+      api.getThread.mockRejectedValueOnce(error);
+      const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
+      await expect(resumeThread(api, store)).rejects.toBe(error);
+      expect(store.getItem(THREAD_STORAGE_KEY)).toBe("t-1");
+      expect(await resumeThread(api, store)).toEqual({ view: saved, notice: null });
+      expect(api.createThread).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps the stored id when the service is down, so a retry can resume it", async () => {
     const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
     const outage = new ApiError("The analysis service is unreachable.", 502);

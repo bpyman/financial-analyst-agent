@@ -187,6 +187,13 @@ export function valueDomain(
   return [low >= 0 && padded < 0 ? 0 : padded, high + pad];
 }
 
+/** Room beyond bar ends for their value labels, keeping zero as the baseline. */
+export function barDomain(values: (number | null | undefined)[]): [number, number] {
+  const [low, high] = valueDomain(values, { zero: true });
+  const pad = (high - low) * 0.2;
+  return [low < 0 ? low - pad : 0, high > 0 ? high + pad : 0];
+}
+
 /** Clean axis ticks (steps of 1, 2 or 5 × 10ⁿ) covering the domain. */
 export function niceTicks([low, high]: [number, number], count = 5): number[] {
   if (!(high > low)) {

@@ -1,5 +1,6 @@
 """SEC fact lookup over an injectable live or recorded data source."""
 
+from collections import Counter
 from collections.abc import Mapping
 from datetime import date
 from typing import Any, Protocol
@@ -72,6 +73,8 @@ class SECDataSource(Protocol):
 
 
 _PERIODIC_FORMS = frozenset({"10-Q", "10-K", "10-Q/A", "10-K/A"})
+# History the submissions list must span before company facts is asked for more.
+_FULL_HISTORY_DAYS = 3 * 365
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
 _THIN_HISTORY = 4
 
@@ -293,7 +296,7 @@ class SecFactLookup:
         reports are filed jointly with the old registrant, so the old CIK is found
         from them, and its filings supply the quarters before.
         """
-        filings = parse_submissions(self._cached_submissions(cik))
+        filings = self._with_facts_filings(cik, parse_submissions(self._cached_submissions(cik)))
         if cik not in self._predecessor_ciks:
             self._predecessor_ciks[cik] = self._find_predecessor(cik, filings)
         predecessor = self._predecessor_ciks[cik]
@@ -306,6 +309,31 @@ class SecFactLookup:
             if filing.accession_number not in known
         ]
         return sorted([*filings, *older], key=lambda filing: filing.filed_date, reverse=True)
+
+    def _with_facts_filings(self, cik: str, filings: list[Filing]) -> list[Filing]:
+        """``filings`` plus the 10-Qs and 10-Ks company facts names, for a short history.
+
+        SEC's submissions list the last year or 1,000 filings; a bank filing
+        thousands of prospectuses a year shows a year of reports there. Company
+        facts carries every periodic report's accession, form, filing date and
+        period, so the quarters before are found without paging through years
+        of prospectuses.
+        """
+        if _periodic_history_days(filings) >= _FULL_HISTORY_DAYS:
+            return filings
+        try:
+            payload = self._cached_company_facts(cik)
+        except ProviderError:
+            return filings
+        known = {filing.accession_number for filing in filings}
+        extra = [
+            filing
+            for filing in filings_from_company_facts(payload)
+            if filing.accession_number not in known
+        ]
+        if not extra:
+            return filings
+        return sorted([*filings, *extra], key=lambda filing: filing.filed_date, reverse=True)
 
     def _with_predecessor_facts(
         self, records: list[FactRecord], predecessor: str, metric: Metric, unit: str
@@ -619,3 +647,64 @@ def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
             if any(record.get("end") == end.isoformat() for record in records):
                 return True
     return False
+
+
+def _periodic_history_days(filings: list[Filing]) -> int:
+    ends = [filing.report_date for filing in filings if filing.form in _PERIODIC_FORMS]
+    return (max(ends) - min(ends)).days if ends else 0
+
+
+def filings_from_company_facts(payload: dict[str, Any]) -> list[Filing]:
+    """The 10-Qs and 10-Ks company facts cites: accession, form, filing date and period.
+
+    A report's period is the latest end date that many of its financial facts
+    share: a 10-K can carry as many prior-year comparatives as current facts,
+    and a few subsequent-event facts are dated after the period. Cover-page
+    (dei) facts such as shares outstanding are dated later and are left out.
+    Its primary document is not in company facts, so its source link is the
+    filing's index page.
+    """
+    seen: dict[str, tuple[str, date, Counter[date]]] = {}
+    facts = payload.get("facts")
+    if not isinstance(facts, dict):
+        return []
+    for taxonomy, concepts in facts.items():
+        if taxonomy == "dei" or not isinstance(concepts, dict):
+            continue
+        for concept in concepts.values():
+            units = concept.get("units") if isinstance(concept, dict) else None
+            if not isinstance(units, dict):
+                continue
+            for entries in units.values():
+                for entry in entries if isinstance(entries, list) else []:
+                    _note_filing(seen, entry)
+    return [
+        Filing(
+            form=form,
+            accession_number=accession,
+            filed_date=filed,
+            report_date=_report_period(ends),
+        )
+        for accession, (form, filed, ends) in seen.items()
+    ]
+
+
+def _report_period(ends: Counter[date]) -> date:
+    """The latest end date with at least half as many facts as the commonest one."""
+    most = max(ends.values())
+    return max(end for end, count in ends.items() if count * 2 >= most)
+
+
+def _note_filing(seen: dict[str, tuple[str, date, Counter[date]]], entry: Any) -> None:
+    if not isinstance(entry, dict) or entry.get("form") not in ("10-Q", "10-K"):
+        return
+    accession, filed, end = entry.get("accn"), entry.get("filed"), entry.get("end")
+    if not (isinstance(accession, str) and isinstance(filed, str) and isinstance(end, str)):
+        return
+    try:
+        filed_date, end_date = date.fromisoformat(filed), date.fromisoformat(end)
+    except ValueError:
+        return
+    if accession not in seen:
+        seen[accession] = (str(entry["form"]), filed_date, Counter())
+    seen[accession][2][end_date] += 1

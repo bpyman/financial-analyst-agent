@@ -55,7 +55,7 @@ class SnapshotRanking:
             by_cik.setdefault(company.cik, []).append(company)
         selected = [preferred_listing(group) for group in by_cik.values()]
         selected.sort(key=lambda company: company.market_cap, reverse=True)
-        selected = selected[:limit]
+        selected = selected[: max(limit, 1)]
         return RankTable(
             as_of=_format_as_of(self._snapshot.as_of),
             source=self._snapshot.source,

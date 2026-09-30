@@ -3,11 +3,14 @@
 from fastmcp import FastMCP
 
 from financial_analyst_agent.domain.errors import UnknownIndustryError
+from financial_analyst_agent.graph.analysis_spec import MAX_RANKED_COMPANIES
 from financial_analyst_agent.runtime import build_runtime
 from financial_analyst_agent.turn import (
     ALLOWED_METRICS,
     MARKET_FORMULAS,
     SNAPSHOT_METRICS,
+    _numeral_lock_extras,
+    _numeral_lock_message,
     market_formula_rows,
     snapshot_compare_rows,
 )
@@ -15,10 +18,21 @@ from financial_analyst_agent.turn import compare_metrics as compare_metric_rows
 
 mcp = FastMCP("financial-analyst")
 
+# The same bounds the window's turns keep: one question's length, one ranking's size.
+MAX_TEXT_CHARS = 2000
+MAX_ISSUERS = MAX_RANKED_COMPANIES
+
+
+def _bounded(name: str, text: str) -> str:
+    if not text.strip() or len(text) > MAX_TEXT_CHARS:
+        raise ValueError(f"{name} must be 1 to {MAX_TEXT_CHARS} characters")
+    return text
+
 
 @mcp.tool()
 def get_financials(company: str, metric: str) -> dict[str, object]:
     """Return the latest standalone quarterly fact for a company and metric."""
+    _bounded("company", company)
     fact = build_runtime().facts.get_financials(company, metric)
     payload = fact.model_dump(mode="json")
     if not isinstance(payload, dict):
@@ -32,6 +46,10 @@ def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
     if metric not in ALLOWED_METRICS:
         allowed = ", ".join(ALLOWED_METRICS)
         raise ValueError(f"Unknown metric {metric!r}. Allowed: {allowed}")
+    if not issuers or len(issuers) > MAX_ISSUERS:
+        raise ValueError(f"issuers must name 1 to {MAX_ISSUERS} companies")
+    for issuer in issuers:
+        _bounded("issuer", issuer)
     runtime = build_runtime()
     if metric in SNAPSHOT_METRICS:
         if runtime.ranking is None:
@@ -49,6 +67,9 @@ def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
 @mcp.tool()
 def rank_companies(industry: str, limit: int = 10) -> dict[str, object]:
     """Rank US operating companies in an industry from the dated universe snapshot."""
+    _bounded("industry", industry)
+    if not 1 <= limit <= MAX_RANKED_COMPANIES:
+        raise ValueError(f"limit must be 1 to {MAX_RANKED_COMPANIES}")
     runtime = build_runtime()
     if runtime.ranking is None:
         raise RuntimeError("ranking adapter is not configured")
@@ -75,16 +96,22 @@ def rank_companies(industry: str, limit: int = 10) -> dict[str, object]:
 
 @mcp.tool()
 def explain_topic(topic: str) -> dict[str, object]:
-    """Write a labeled model-analysis essay. The turn renderer numeral-locks the text."""
+    """Write a labeled model-analysis essay, withheld if it quotes numbers the topic lacks."""
+    _bounded("topic", topic)
     runtime = build_runtime()
     if runtime.essay is None:
         raise RuntimeError("essay completer is not configured")
-    return {"essay": runtime.essay.complete_essay(topic)}
+    essay = runtime.essay.complete_essay(topic)
+    extras = _numeral_lock_extras(essay, topic)
+    if extras:
+        return {"essay": None, "message": _numeral_lock_message(", ".join(extras))}
+    return {"essay": essay}
 
 
 @mcp.tool()
 def search_news(query: str) -> dict[str, object]:
     """Search current-event news for the user query. Title and URL are required."""
+    _bounded("query", query)
     runtime = build_runtime()
     if runtime.news is None:
         raise RuntimeError("news adapter is not configured")

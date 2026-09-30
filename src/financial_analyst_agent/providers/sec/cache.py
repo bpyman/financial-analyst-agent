@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Any
 
 from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.providers.sec.client import with_older_pages
 from financial_analyst_agent.session import SessionBudget
 
 _FILL_LOCKS: dict[str, Lock] = {}
@@ -23,6 +24,17 @@ def _lock_for(path: Path) -> Lock:
             lock = Lock()
             _FILL_LOCKS[key] = lock
         return lock
+
+
+_UNREADABLE = object()
+
+
+def _read_json(path: Path) -> object:
+    """A cached document, or ``_UNREADABLE`` when the file is damaged and must be refetched."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return _UNREADABLE
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -58,10 +70,20 @@ class CachingSECDataSource:
         return payload
 
     def get_submissions(self, cik: str) -> dict[str, Any]:
-        payload = self._json(f"submissions-{cik}.json", lambda: self._inner.get_submissions(cik))
+        page = getattr(self._inner, "get_submissions_page", None)
+        if not callable(page):
+            fetch = lambda: self._inner.get_submissions(cik)  # noqa: E731
+        else:
+            # Older pages are read here, one cached and charged request each.
+            fetch = lambda: self._inner.get_submissions(cik, with_history=False)  # noqa: E731
+        payload = self._json(f"submissions-{cik}.json", fetch)
         if not isinstance(payload, dict):
             raise TypeError("cached submissions must be an object")
-        return payload
+        if not callable(page):
+            return payload
+        return with_older_pages(
+            payload, lambda name: self._json(f"submissions-{name}", lambda: page(name))
+        )
 
     def get_company_facts(self, cik: str) -> dict[str, Any]:
         # Many filers (funds, trusts, predecessor CIKs) have no companyfacts at
@@ -103,11 +125,11 @@ class CachingSECDataSource:
 
     def _json(self, name: str, fetch: Any) -> object:
         path = self._dir / name
-        if self._json_is_fresh(path):
-            return json.loads(path.read_text(encoding="utf-8"))
+        if self._json_is_fresh(path) and (cached := _read_json(path)) is not _UNREADABLE:
+            return cached
         with _lock_for(path):
-            if self._json_is_fresh(path):
-                return json.loads(path.read_text(encoding="utf-8"))
+            if self._json_is_fresh(path) and (cached := _read_json(path)) is not _UNREADABLE:
+                return cached
             if self._budget is not None:
                 self._budget.consume_live_sec()
             payload = fetch()

@@ -29,6 +29,7 @@ from financial_analyst_agent.turn import (
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_METRICS,
     MODEL_ANALYSIS_BANNER,
+    NEWS_SUMMARY_BANNER,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
     SNAPSHOT_METRICS,
@@ -418,6 +419,10 @@ _BANNER_COPY = {
         "Exploratory research — a read-only brief from the cited sources. "
         "It reports no financial facts or computed values."
     ),
+    NEWS_SUMMARY_BANNER: (
+        "News summary — written by the model from the cited articles, not from SEC "
+        "filings. Check a source before relying on it."
+    ),
 }
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
 _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
@@ -557,6 +562,8 @@ class EvidenceItem:
     form: str
     source_url: str
     selection_rule: str
+    # raw_amount for reading: "44,047,000,000", a ratio to six decimals.
+    exact_amount: str = ""
 
 
 @dataclass(frozen=True)
@@ -793,6 +800,14 @@ def _selection_rule(row: TableRow) -> str:
     return _LATEST_QUARTER_RULE
 
 
+def _exact_amount(value: Decimal | None) -> str:
+    if value is None:
+        return ""
+    if value == value.to_integral_value():
+        return f"{int(value):,}"
+    return f"{value:,.6f}".rstrip("0").rstrip(".")
+
+
 def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
@@ -821,6 +836,7 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
         raw_amount=raw,
+        exact_amount=_exact_amount(row.value),
         company_name=row.company_name,
         ticker=row.ticker,
         cik=row.cik,
@@ -858,6 +874,7 @@ def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
         ),
         amount=format_metric_value(component.metric, component.value),
         raw_amount=str(component.value),
+        exact_amount=_exact_amount(component.value),
         company_name=row.company_name,
         ticker=row.ticker,
         cik=row.cik,
@@ -902,6 +919,7 @@ def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
 
 GUIDE_LABEL = "Guide"
 REFUSED_LABEL = "Not answered"
+CLARIFY_LABEL = "Question for you"
 
 
 def present_turn(result: TurnResult) -> Presentation:
@@ -969,6 +987,8 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.guide
             else REFUSED_LABEL
             if result.renderer is RendererKind.REFUSE
+            else CLARIFY_LABEL
+            if result.renderer is RendererKind.CLARIFY
             else intent_label(result.intent.value)
         ),
         banners=tuple(banners),
@@ -1416,6 +1436,12 @@ def _append_trace_field(
     if key == "metric" and isinstance(value, str):
         fields.append((label, _humanize_field(value)))
         return
+    if key in _USER_TEXT_FIELDS and isinstance(value, str):
+        # The analyst's own words: one plain line, so the window never renders
+        # them as markdown ("**Verified by SEC:** [download](...)").
+        text = " ".join(value.split())
+        fields.append((label, "\\" + text if text.startswith("[") else text))
+        return
     if key == "source_url" and value:
         url = str(value)
         fields.append((label, f"[{_truncate_url(url)}]({url})"))
@@ -1425,6 +1451,9 @@ def _append_trace_field(
         fields.append((label, _SOURCE_LABELS.get(raw, raw)))
         return
     fields.append((label, _format_trace_value(value)))
+
+
+_USER_TEXT_FIELDS = frozenset({"topic", "query", "message", "question"})
 
 
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:

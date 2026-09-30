@@ -26,6 +26,7 @@ from financial_analyst_agent.contracts import (
     MARKET_FORMULAS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
     NOT_REPORTED_FOR_QUARTER,
     PERCENT_FORMULAS,
@@ -77,11 +78,14 @@ _NUMERIC_TOKEN = re.compile(
     r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
+# Grounding keys whose digits identify a document rather than state a figure.
+_IDENTIFIER_KEYS = frozenset({"url", "cik", "document", "primary_document", "anchor"})
 
 __all__ = [
     "ALLOWED_METRICS",
     "AMBIGUOUS_CONCEPT",
     "EXPLORATORY_RESEARCH_BANNER",
+    "NEWS_SUMMARY_BANNER",
     "FORMULA_COMPONENTS",
     "FORMULA_METRICS",
     "MARKET_FORMULAS",
@@ -128,11 +132,50 @@ def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     return _CITE_MARKER.sub(replace, essay)
 
 
+def _is_identifier_key(key: str) -> bool:
+    key = key.casefold()
+    return key in _IDENTIFIER_KEYS or key.endswith("_url") or "accession" in key
+
+
+def _grounding_text(tool_json: str) -> str:
+    """The grounding's readable values, without the digits of links and identifiers.
+
+    "0000950170-25-061046" and an article's URL are not figures an essay can
+    quote: "25%" must not pass because an accession number holds "-25-".
+    """
+    try:
+        payload = json.loads(tool_json)
+    except ValueError:
+        return tool_json
+    parts: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if not _is_identifier_key(str(key)):
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif value is not None:
+            parts.append(str(value))
+
+    walk(payload)
+    return "\n".join(parts)
+
+
 def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
     scanned = _strip_valid_citation_markers(essay, hit_count)
-    allowed = set(_NUMERIC_TOKEN.findall(tool_json))
+    allowed = set(_NUMERIC_TOKEN.findall(_grounding_text(tool_json)))
     return list(
         dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(scanned) if token not in allowed)
+    )
+
+
+def _numeral_lock_message(invented: str) -> str:
+    return (
+        "The written answer was withheld because it quoted numbers its sources "
+        f"do not contain: {invented}."
     )
 
 
@@ -169,7 +212,7 @@ def _explain_turn(
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
             numeral_lock_extras=extras,
-            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+            message=_numeral_lock_message(invented),
         )
     return TurnResult(
         intent=Intent.EXPLAIN,
@@ -272,7 +315,7 @@ def _news_grounded_essay_turn(
             renderer=RendererKind.REFUSE,
             citations=hits,
             numeral_lock_extras=extras,
-            message=f"Essay invented numeric tokens that were not in tool JSON: {invented}",
+            message=_numeral_lock_message(invented),
         )
     return TurnResult(
         intent=intent,
@@ -286,7 +329,7 @@ def _news_grounded_essay_turn(
 
 def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     return _news_grounded_essay_turn(
-        query, runtime, intent=Intent.NEWS_AND_EXPLAIN
+        query, runtime, intent=Intent.NEWS_AND_EXPLAIN, banners=[NEWS_SUMMARY_BANNER]
     )
 
 
@@ -308,10 +351,11 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
     source = _fact_source_kind(fact)
 
-    def provenance(part: Any) -> ComponentProvenance:
+    def provenance(part: Any, parent: str = metric) -> ComponentProvenance:
         nested = getattr(part, "derivation", None)
+        own = getattr(part, "metric", None) or parent
         return ComponentProvenance(
-            metric=metric,
+            metric=own,
             value=part.value,
             start_date=part.start_date,
             end_date=part.end_date,
@@ -322,7 +366,7 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
             source_url=part.source_url,
             source=source,
             derivation=nested.label if nested is not None else None,
-            derived_from=[provenance(inner) for inner in nested.parts] if nested else [],
+            derived_from=[provenance(inner, own) for inner in nested.parts] if nested else [],
         )
 
     return {
