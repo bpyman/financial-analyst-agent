@@ -34,6 +34,7 @@ export function WrittenAnswer({
       <SafeMarkdown
         text={essay}
         citations={citations}
+        citedLinksOnly
         className="max-w-[68ch] px-4 py-4 text-[15px] leading-[1.75] sm:px-5 sm:py-5"
       />
       {citations.length > 0 && <Sources citations={citations} />}

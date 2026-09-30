@@ -29,6 +29,7 @@ from financial_analyst_agent.turn import (
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_METRICS,
     MODEL_ANALYSIS_BANNER,
+    NEWS_SUMMARY_BANNER,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
     SNAPSHOT_METRICS,
@@ -417,6 +418,10 @@ _BANNER_COPY = {
     EXPLORATORY_RESEARCH_BANNER: (
         "Exploratory research — a read-only brief from the cited sources. "
         "It reports no financial facts or computed values."
+    ),
+    NEWS_SUMMARY_BANNER: (
+        "News summary — written by the model from the cited articles, not from SEC "
+        "filings. Check a source before relying on it."
     ),
 }
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"

@@ -26,6 +26,7 @@ from financial_analyst_agent.contracts import (
     MARKET_FORMULAS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
     NOT_REPORTED_FOR_QUARTER,
     PERCENT_FORMULAS,
@@ -84,6 +85,7 @@ __all__ = [
     "ALLOWED_METRICS",
     "AMBIGUOUS_CONCEPT",
     "EXPLORATORY_RESEARCH_BANNER",
+    "NEWS_SUMMARY_BANNER",
     "FORMULA_COMPONENTS",
     "FORMULA_METRICS",
     "MARKET_FORMULAS",
@@ -327,7 +329,7 @@ def _news_grounded_essay_turn(
 
 def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
     return _news_grounded_essay_turn(
-        query, runtime, intent=Intent.NEWS_AND_EXPLAIN
+        query, runtime, intent=Intent.NEWS_AND_EXPLAIN, banners=[NEWS_SUMMARY_BANNER]
     )
 
 

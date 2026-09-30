@@ -55,4 +55,18 @@ describe("SafeMarkdown", () => {
     expect(html).not.toContain("javascript:");
     expect(html).toContain("[1]");
   });
+
+  it("keeps an essay's links to its cited sources only", () => {
+    const citations = [{ index: 1, title: "Reuters", url: "https://reuters.test/a" }];
+    const html = renderToStaticMarkup(
+      createElement(SafeMarkdown, {
+        text: "See [Reuters](https://reuters.test/a) and [claim a refund](https://evil.test/r).",
+        citations,
+        citedLinksOnly: true,
+      }),
+    );
+    expect(html).toContain('href="https://reuters.test/a"');
+    expect(html).not.toContain("evil.test");
+    expect(html).toContain("claim a refund");
+  });
 });

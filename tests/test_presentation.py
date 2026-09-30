@@ -1448,3 +1448,12 @@ def test_present_trace_shows_the_analysts_words_as_one_plain_line() -> None:
     # The window renders a one-line value as text, and a lone link as a link.
     assert "\n" not in topic
     assert only.startswith("\\[")
+
+
+def test_a_news_summary_says_it_is_not_from_filings() -> None:
+    from financial_analyst_agent.runtime import recorded_runtime
+    from financial_analyst_agent.turn import run_turn
+
+    result = run_turn("Effects of recent Strait of Hormuz closures on Exxon", recorded_runtime())
+
+    assert any("not from SEC filings" in banner for banner in present_turn(result).banners)

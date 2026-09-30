@@ -13,19 +13,27 @@ export interface MarkdownCitation {
 /**
  * Model- or filing-written markdown. Raw HTML is dropped, images draw as their
  * alt text, and only http(s) links render as links; anything else stays text.
- * [n] markers become chips linking to the matching citation.
+ * [n] markers become chips linking to the matching citation. With
+ * `citedLinksOnly`, a link to anything but a cited source stays text: a model's
+ * essay must not carry a link a news snippet talked it into.
  */
 export function SafeMarkdown({
   text,
   citations = [],
+  citedLinksOnly = false,
   className,
 }: {
   text: string;
   citations?: MarkdownCitation[];
+  citedLinksOnly?: boolean;
   className?: string;
 }) {
   const components: Components = {
-    a: ({ href, children }) => <MarkdownLink href={href} citations={citations}>{children}</MarkdownLink>,
+    a: ({ href, children }) => (
+      <MarkdownLink href={href} citations={citations} citedLinksOnly={citedLinksOnly}>
+        {children}
+      </MarkdownLink>
+    ),
     img: ({ alt }) => (alt ? <span>{alt}</span> : null),
   };
   return (
@@ -40,10 +48,12 @@ export function SafeMarkdown({
 function MarkdownLink({
   href,
   citations,
+  citedLinksOnly,
   children,
 }: {
   href?: string;
   citations: MarkdownCitation[];
+  citedLinksOnly: boolean;
   children?: ReactNode;
 }) {
   const cited = href ? citationIndex(href) : null;
@@ -64,6 +74,7 @@ function MarkdownLink({
     );
   }
   if (!href || !safeHref(href)) return <>{children}</>;
+  if (citedLinksOnly && !citations.some((citation) => citation.url === href)) return <>{children}</>;
   return (
     <a href={href} target="_blank" rel="noreferrer noopener">
       {children}
