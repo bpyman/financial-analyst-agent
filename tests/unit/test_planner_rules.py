@@ -452,8 +452,11 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
     table = present_turn(result).table
 
     assert table is not None
-    assert [r[2] for r in table.rows] == ["Reported", "Reported", "Year over year"]
-    assert table.rows[2][3:5] == ("+$10", "+2.0 pts")
+    # One row per quarter, each change in a column beside its level.
+    assert len(table.rows) == 2
+    assert table.headers[4:6] == ("Revenue, YoY", "Net margin, YoY")
+    assert table.rows[0][4:6] == ("+$10", "+2.0 pts")
+    assert table.rows[1][4:6] == ("", "")
 
 
 @pytest.mark.parametrize(
@@ -604,4 +607,19 @@ def test_a_reit_is_named_without_its_reit() -> None:
     ],
 )
 def test_everyday_words_funds_and_nicknames(question: str, companies: list[str]) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("Ares Capital net income", ["ARCC"]),
+        ("Ares Management revenue", ["ARES"]),
+        ("Blackstone Secured Lending revenue", ["BXSL"]),
+        ("Blackstone revenue", ["BX"]),
+    ],
+)
+def test_a_fund_is_named_without_taking_its_operating_namesake(
+    question: str, companies: list[str]
+) -> None:
     assert [mention.query for mention in issuer_index().find(question)] == companies

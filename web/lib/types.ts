@@ -20,6 +20,8 @@ export interface DisplayTable {
   keys: string[];
   rows: string[][];
   numbers: (number | null)[][];
+  /** Each row's company key; bar records carry the same key. Absent in older answers. */
+  row_keys?: string[];
 }
 
 export interface DisplayTrace {
@@ -47,6 +49,8 @@ interface ChartBase {
 }
 
 export interface BarRecord {
+  /** The table row's company key; absent in older answers. */
+  Key?: string;
   Company: string;
   Value: number;
   Amount: string;
@@ -96,6 +100,8 @@ export interface DisplayDisclosure {
   newer_accession: string;
   older_url: string;
   newer_url: string;
+  /** The heading the change sits under; absent in older answers. */
+  subsection?: string;
 }
 
 export interface Presentation {
@@ -153,11 +159,19 @@ export interface ThreadView {
   turn_in_flight: boolean;
 }
 
+/** What each runtime answers from, for the status line's "How runtimes differ". */
+export interface RuntimeGuide {
+  runtimes: { kind: RuntimeKind; name: string; points: string[] }[];
+  footer: string;
+}
+
 export interface Meta {
   /** The runtime a new thread gets, and whether the deployment serves only the recorded one. */
   runtime: { default: RuntimeKind; locked: boolean };
   /** Status-line copy per runtime, and the tooltip for a locked runtime switch. */
   runtime_copy: { recorded: string; live: string; locked: string };
+  /** Absent from an older API. */
+  runtime_guide?: RuntimeGuide;
   snapshot: { banner: string; stale: boolean };
   example_query: string;
   guided_stories: { label: string; question: string }[];

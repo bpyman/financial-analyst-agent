@@ -48,6 +48,8 @@ _NAME_SUFFIXES = frozenset(
         "de",
     }
 )
+# A fund's name says what it is ("Blackstone Secured Lending Fund"); asked, it is dropped.
+_FUND_WORDS = frozenset({"fund", "trust", "etf", "inc"})
 # First words that are not a company on their own ("General" Motors,
 # "American" Express), plus words a question uses for something else.
 _GENERIC_WORDS = frozenset(
@@ -280,6 +282,19 @@ class IssuerIndex:
             if len(owners) == 1 and word not in _NOT_SHORT_NAMES:
                 index.phrases.setdefault(word, owners[0])
         return index
+
+    def add_outside(self, ticker: str, name: str) -> None:
+        """A listing outside the snapshot (a fund), named so a question can reach it.
+
+        It never takes a phrase or ticker an operating company already holds:
+        "Ares" stays Ares Management, while "Ares Capital" names the fund.
+        """
+        query = ticker.upper()
+        self.tickers.setdefault(query, query)
+        self.display_names.setdefault(query, name)
+        for core in {_core_name(name), _core_name(name, _NAME_SUFFIXES | _FUND_WORDS)}:
+            if " " in core:
+                self.phrases.setdefault(core, query)
 
     def find(self, question: str) -> list[CompanyMention]:
         """Companies named exactly, longest phrase first, in question order."""

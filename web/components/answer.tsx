@@ -3,8 +3,10 @@
 import { ArrowRight, ChevronDown, ChevronsUpDown, Route, ScanSearch } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import type { ClarifyChoice } from "@/lib/clarify";
+import { sortDescription, sortedRowIndices, sortedRowKeys, type TableSort } from "@/lib/table-sort";
 import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
+import { AnswerActions, hasTakeaway } from "./answer-actions";
 import { AnswerChart } from "./answer-chart";
 import { Clarify } from "./clarify";
 import { CopyButton } from "./copy-button";
@@ -43,10 +45,13 @@ export interface ClarifyControls {
  * presentation mapping (ADR 0006); nothing is formatted in the browser.
  */
 export function Answer({
+  question = "",
   presentation,
   clarify,
   onSuggest,
 }: {
+  /** The question as the thread shows it, heading a copied answer. */
+  question?: string;
   presentation: Presentation;
   clarify?: ClarifyControls;
   /** Set on the latest answer only: sends a suggested question. */
@@ -54,18 +59,29 @@ export function Answer({
 }) {
   const { fact_card, chart, table, message, evidence, traces, banners } = presentation;
   const { essay, citations, disclosures } = presentation;
+  // Sorting the table re-orders the comparison chart's bars to match.
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const order = table ? sortedRowKeys(table, sort) : null;
+  const sortNote = table && sort ? sortDescription(table, sort) : null;
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <Badge tone="primary">{presentation.intent_label || presentation.intent}</Badge>
+        {hasTakeaway(presentation) && (
+          <AnswerActions
+            question={question}
+            presentation={presentation}
+            rowOrder={table && sort ? sortedRowIndices(table, sort) : null}
+          />
+        )}
       </div>
       {presentation.headline && (
         <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
       )}
       <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
-      {chart && <AnswerChart chart={chart} />}
-      {table && table.rows.length > 0 && <DataTable table={table} />}
+      {chart && <AnswerChart chart={chart} order={order} sortNote={sortNote} />}
+      {table && table.rows.length > 0 && <DataTable table={table} sort={sort} onSort={setSort} />}
       {message &&
         (presentation.message_tone === "info" ? (
           <p className="text-[15px] leading-relaxed text-fg">{message}</p>

@@ -253,6 +253,8 @@ class TableRow(BaseModel):
     derived_from: list[ComponentProvenance] = Field(default_factory=list)
     # A newer quarter is filed but not yet in SEC's structured data (see FinancialFact).
     newer_filing_end: date | None = None
+    # A ranked company's snapshot market cap: the order a ranking is drawn in.
+    market_cap: DecimalStr | None = None
 
 
 class DisclosureChange(BaseModel):
@@ -267,6 +269,8 @@ class DisclosureChange(BaseModel):
     newer_accession: str
     older_url: str
     newer_url: str
+    # The heading the paragraph sits under ("Liquidity and Capital Resources"), or "".
+    subsection: str = ""
     selection_rule: str = (
         "Reviewed section extracted by Item heading; paragraph diff is deterministic."
     )

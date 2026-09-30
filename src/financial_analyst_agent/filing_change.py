@@ -317,6 +317,61 @@ def _paragraphs(section_text: str) -> list[str]:
     ]
 
 
+def _subsections(section_text: str) -> dict[str, str]:
+    """Each paragraph's heading: the last heading-like line above it in the section."""
+    under: dict[str, str] = {}
+    heading = ""
+    lines = [line.strip() for line in section_text.splitlines() if line.strip()]
+    repeats = Counter(lines)
+    for index, line in enumerate(lines):
+        following = lines[index + 1] if index + 1 < len(lines) else ""
+        if (
+            _is_heading(line)
+            # A running header ("PART I") or a table's column label ("Percentage").
+            and repeats[line] < _RUNNING_HEADER_REPEATS
+            and not _PART_LABEL.fullmatch(line)
+            and not _is_figures(following)
+        ):
+            heading = _readable_heading(line)
+        else:
+            under.setdefault(line, heading)
+    for block in _blocks(section_text):
+        # A block of several lines sits under its first line's heading.
+        under.setdefault(block, under.get(block.splitlines()[0].strip(), ""))
+    return under
+
+
+def _readable_heading(line: str) -> str:
+    """ "LIQUIDITY AND CAPITAL RESOURCES" → "Liquidity and Capital Resources"."""
+    if line != line.upper():
+        return line
+    minor = {"and", "of", "the", "for", "in", "on", "to", "a", "an", "or", "with", "by"}
+    words = []
+    for index, word in enumerate(line.split()):
+        lower = word.lower()
+        if index and lower in minor:
+            words.append(lower)
+        else:
+            words.append(lower[:1].upper() + lower[1:])
+    return " ".join(words)
+
+
+def _is_heading(line: str) -> bool:
+    """ "Liquidity and Capital Resources": short, unpunctuated, mostly capitalised words."""
+    if len(line) > _MAX_HEADING or line.endswith((".", ":", ";", ",")) or _is_figures(line):
+        return False
+    if _LINE_ITEM.match(line) or not line[:1].isalpha() or not line[:1].isupper():
+        return False
+    words = [word for word in line.split() if word[:1].isalpha()]
+    minor = {"and", "of", "the", "for", "in", "on", "to", "a", "an", "or", "with", "by"}
+    capitalised = [word for word in words if word[:1].isupper() or word.casefold() in minor]
+    return 1 <= len(words) <= _HEADING_WORDS and len(capitalised) == len(words)
+
+
+_MAX_HEADING = 90
+_HEADING_WORDS = 10
+
+
 def _is_figures(block: str) -> bool:
     """A table row of amounts ("Noninterest revenue $24,470 $22,037 11 %"), not prose.
 
@@ -369,6 +424,8 @@ def diff_paragraphs(
 ) -> list[DisclosureChange]:
     left = _paragraphs(older)
     right = _paragraphs(newer)
+    under_left = _subsections(older)
+    under_right = _subsections(newer)
     # Matched with dates masked: a paragraph that differs only by its dates ("the
     # quarter ended March 31, 2026" a year on) is the same disclosure, not a change.
     matcher = SequenceMatcher(
@@ -387,6 +444,7 @@ def diff_paragraphs(
                         section_label=label,
                         change_kind="added",
                         after_text=paragraph,
+                        subsection=under_right.get(paragraph, ""),
                         older_accession=older_accession,
                         newer_accession=newer_accession,
                         older_url=filing_anchor_url(older_url, label),
@@ -401,6 +459,7 @@ def diff_paragraphs(
                         section_label=label,
                         change_kind="removed",
                         before_text=paragraph,
+                        subsection=under_left.get(paragraph, ""),
                         older_accession=older_accession,
                         newer_accession=newer_accession,
                         older_url=filing_anchor_url(older_url, paragraph),
@@ -417,6 +476,7 @@ def diff_paragraphs(
                     change_kind="changed",
                     before_text=before,
                     after_text=after,
+                    subsection=under_right.get(right[j1], "") or under_left.get(left[i1], ""),
                     older_accession=older_accession,
                     newer_accession=newer_accession,
                     older_url=filing_anchor_url(older_url, before),

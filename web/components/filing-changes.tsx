@@ -1,7 +1,8 @@
 import { ArrowRight, ChevronDown, FileDiff } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
 import type { DisplayDisclosure } from "@/lib/types";
+import { wordDiff, type DiffPiece } from "@/lib/word-diff";
 import { Badge, FilingButton, SectionLabel, type Tone } from "./ui";
 
 const KIND_TONE: Record<string, Tone> = {
@@ -79,6 +80,11 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
   const long = Math.max(item.before_text.length, item.after_text.length) > LONG_CHANGE;
   const [expanded, setExpanded] = useState(false);
   const clamped = long && !expanded;
+  // Within a changed paragraph, the words that went and the words that came.
+  const diff = useMemo(
+    () => (item.change_kind === "changed" ? wordDiff(item.before_text, item.after_text) : null),
+    [item.change_kind, item.before_text, item.after_text],
+  );
   return (
     <article
       aria-label={`${item.section_label}, ${item.change_kind}`}
@@ -87,7 +93,15 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-5">
         <h3 className="flex min-w-0 items-start gap-2 text-[13px] font-medium leading-snug text-fg">
           <FileDiff className="mt-px size-4 shrink-0 text-primary" aria-hidden />
-          <span className="min-w-0 text-pretty">{item.section_label}</span>
+          {item.subsection ? (
+            // The heading the paragraph sits under says more than the section's name.
+            <span className="min-w-0 text-pretty">
+              {item.subsection}
+              <span className="ml-2 text-[11.5px] font-normal text-subtle">{item.section_label}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 text-pretty">{item.section_label}</span>
+          )}
         </h3>
         <Badge tone={KIND_TONE[item.change_kind] ?? "neutral"} className="shrink-0 capitalize">
           {item.change_kind}
@@ -97,6 +111,7 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
         <FilingSide
           label="Previous filing"
           text={item.before_text}
+          pieces={diff?.before}
           href={item.older_url}
           link="Open previous filing"
           clamped={clamped}
@@ -105,6 +120,7 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
           current
           label="Current filing"
           text={item.after_text}
+          pieces={diff?.after}
           href={item.newer_url}
           link="Open current filing"
           clamped={clamped}
@@ -128,6 +144,7 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
 function FilingSide({
   label,
   text,
+  pieces,
   href,
   link,
   current = false,
@@ -135,6 +152,8 @@ function FilingSide({
 }: {
   label: string;
   text: string;
+  /** The text cut into kept and changed words, when the pair was compared. */
+  pieces?: DiffPiece[];
   href: string;
   link: string;
   current?: boolean;
@@ -170,7 +189,7 @@ function FilingSide({
         {text ? (
           // Filing prose, as filed: "1." or "*" in a 10-Q is not markup.
           <p className={cn("whitespace-pre-wrap break-words text-[14px] leading-[1.7] text-fg", !current && "text-muted")}>
-            {text}
+            {pieces ? <Marked pieces={pieces} current={current} /> : text}
           </p>
         ) : (
           <p className="text-[13px] italic text-subtle">Not in this filing.</p>
@@ -180,5 +199,26 @@ function FilingSide({
         <FilingButton href={href} label={link} emphasis={current} />
       </div>
     </div>
+  );
+}
+
+/** Changed words marked: struck through on the previous side, tinted on the current one. */
+function Marked({ pieces, current }: { pieces: DiffPiece[]; current: boolean }) {
+  return (
+    <>
+      {pieces.map((piece, index) =>
+        !piece.changed ? (
+          <span key={index}>{piece.text}</span>
+        ) : current ? (
+          <ins key={index} className="rounded-[3px] bg-positive-soft text-fg no-underline ring-1 ring-positive/25">
+            {piece.text}
+          </ins>
+        ) : (
+          <del key={index} className="rounded-[3px] bg-negative-soft text-fg decoration-negative/60">
+            {piece.text}
+          </del>
+        ),
+      )}
+    </>
   );
 }

@@ -201,9 +201,10 @@ def test_year_over_year_shows_a_yoy_change_for_each_quarter(runtime) -> None:  #
     answers = _conversation(runtime, "Apple revenue last 4 quarters", "show year-over-year")
     table = answers[1].table
     assert table is not None
-    changes = [row[table.headers.index("Change")] for row in table.rows]
-    assert changes.count("Year over year") == 4
-    assert "Quarter over quarter" not in changes
+    # Each quarter's year-over-year change sits beside it, in its own column.
+    changes = [row[table.headers.index("YoY change")] for row in table.rows]
+    assert sum(1 for change in changes if change) == 4
+    assert "QoQ change" not in table.headers
 
 
 def test_a_ranking_shorter_than_asked_says_so(runtime) -> None:  # type: ignore[no-untyped-def]

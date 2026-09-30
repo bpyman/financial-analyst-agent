@@ -771,6 +771,7 @@ def _rank_and_lookup_row(company: Any, index: int, metric: str, reason: str) -> 
         metric=metric,
         rank=index,
         reason=reason,
+        market_cap=getattr(company, "market_cap", None),
     )
 
 
@@ -781,6 +782,7 @@ def _with_rank_identity(row: TableRow, company: Any, index: int) -> TableRow:
             "ticker": company.ticker,
             "cik": company.cik,
             "rank": index,
+            "market_cap": getattr(company, "market_cap", None),
         }
     )
 

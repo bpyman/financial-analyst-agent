@@ -271,7 +271,60 @@ test("a company on its own gets an overview, and a suggestion extends it", async
   const next = page.getByRole("navigation", { name: "Suggested next questions" });
   await next.getByRole("button", { name: "show year-over-year" }).click();
   await analyst.waitForTurn(2);
-  await expect(analyst.tables().last().getByRole("cell", { name: "Year over year" }).first()).toBeVisible();
+  // One row per quarter, with each metric's year-over-year change in its own column.
+  await expect(analyst.tables().last().getByRole("columnheader", { name: "Revenue, YoY" })).toBeVisible();
   // Only the latest answer offers next questions.
   await expect(next).toHaveCount(1);
+});
+
+test("sorting the table re-orders the chart's bars with it", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.ask("Compare Eli Lilly and Merck net margins");
+  const table = page.getByRole("region", { name: "Answer table" });
+  const header = table.getByRole("columnheader", { name: /Net margin/ });
+
+  await header.getByRole("button").click();
+
+  await expect(header).toHaveAttribute("aria-sort", "descending");
+  await expect(page.getByText("Ordered as the table: Net margin, largest first.")).toBeVisible();
+  const margins = await table.locator("tbody tr td:nth-child(2)").allInnerTexts();
+  const values = margins.map((text) => Number.parseFloat(text));
+  expect(values).toEqual([...values].sort((a, b) => b - a));
+
+  await table.getByRole("button", { name: "Original order" }).click();
+  await expect(header).toHaveAttribute("aria-sort", "none");
+});
+
+test("an answer saves as Markdown with the table and its filings", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.ask("Compare Eli Lilly and Merck net margins");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save answer as Markdown" }).click(),
+  ]);
+
+  expect(download.suggestedFilename()).toBe("compare-eli-lilly-and-merck-net-margins.md");
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  const text = Buffer.concat(chunks).toString("utf8");
+  expect(text).toContain("## Compare Eli Lilly and Merck net margins");
+  expect(text).toMatch(/\| Eli Lilly and Company \|/);
+  expect(text).toMatch(/\*\*SEC filings\*\*\n\n- \[Eli Lilly and Company, 10-Q [\d-]+\]\(https:\/\/www\.sec\.gov\//);
+});
+
+test("the status line explains how the runtimes differ", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await page.getByRole("button", { name: "How runtimes differ" }).click();
+
+  const guide = page.getByRole("dialog", { name: "How runtimes differ" });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByRole("heading", { name: /Recorded/ })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: /Live/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(guide).toBeHidden();
 });

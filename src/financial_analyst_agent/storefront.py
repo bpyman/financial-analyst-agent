@@ -5,6 +5,8 @@ No UI framework imports here. The HTTP seam serves this text to the window as is
 
 from __future__ import annotations
 
+from typing import Any
+
 EXAMPLE_QUERY = "What was Google's net income based on their latest quarterly report?"
 GUIDED_STORIES: tuple[tuple[str, str], ...] = (
     (
@@ -88,4 +90,46 @@ def capabilities_for(
         for description, examples in CAPABILITIES
     )
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
+RUNTIME_GUIDE_FOOTER = (
+    "A conversation stays on the runtime it started on; switching starts a new one."
+)
+
+
+def runtime_guide(*, live_news: bool, live_essays: bool) -> list[dict[str, Any]]:
+    """What each runtime answers from, for the window's "How runtimes differ" panel.
+
+    The flags are whether the live runtime has news search and a writing model
+    here, so the panel never promises what this deployment cannot do.
+    """
+    if live_news and live_essays:
+        extras = "Searches recent news and writes analysis with a language model."
+    elif live_news:
+        extras = "Searches recent news; written analysis is off here."
+    elif live_essays:
+        extras = "Writes analysis with a language model; news search is off here."
+    else:
+        extras = "News search and written analysis are off here."
+    return [
+        {
+            "kind": "recorded",
+            "name": "Recorded",
+            "points": [
+                "SEC filings captured ahead of time for a fixed set of large companies: "
+                "Apple, JPMorgan, Eli Lilly and about two dozen more.",
+                "Answers come back at once and are the same every time; the figures go "
+                "through the same code as live.",
+                "News and written analysis replay a few saved examples.",
+            ],
+        },
+        {
+            "kind": "live",
+            "name": "Live",
+            "points": [
+                "Fetches filings from SEC EDGAR as you ask, for any US-listed company that "
+                "files there.",
+                "A company's first question takes a few seconds while its filings download.",
+                extras,
+            ],
+        },
+    ]
 
