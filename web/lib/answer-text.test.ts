@@ -89,6 +89,28 @@ describe("answerMarkdown", () => {
     expect(text).toContain("1. [Q2 \\[call\\] notes](https://example.com/a), Jul 1, 2026\n2. Unsafe");
     expect(text).toContain("- [Older filing A-1](https://www.sec.gov/a1)\n- [Newer filing A-2](https://www.sec.gov/a2)");
   });
+
+  it("lists an overview's recent quarters, which the table does not hold", () => {
+    const text = answerMarkdown("How is Nvidia doing?", {
+      ...EMPTY,
+      trends: [
+        {
+          kind: "line",
+          title: "Trend",
+          metric: "revenue",
+          metric_label: "Revenue",
+          value_kind: "usd",
+          caption: "",
+          horizontal: false,
+          records: [],
+          period_labels: ["Apr 26, 2026", "Jul 26, 2026"],
+          series: ["NVIDIA Corporation"],
+          amounts: [{ "NVIDIA Corporation": "$81.62 B" }, { "NVIDIA Corporation": "$96.22 B" }],
+        },
+      ],
+    });
+    expect(text).toContain("**Revenue, recent quarters:** Apr 26, 2026: $81.62 B · Jul 26, 2026: $96.22 B");
+  });
 });
 
 describe("answerFileName", () => {

@@ -1540,8 +1540,101 @@ def test_an_overview_leads_with_a_sentence() -> None:
     assert "net margin" in answer.headline
 
 
+def test_an_overview_draws_small_revenue_and_margin_trends() -> None:
+    answer = _answer("How is Nvidia doing?")
+
+    assert [chart.metric for chart in answer.trends] == ["revenue", "net_margin"]
+    revenue, margin = answer.trends
+    assert revenue.kind == "line" and revenue.value_kind == "usd"
+    assert margin.value_kind == "percent"
+    assert len(revenue.records) == 5
+    # Oldest first, ending on the quarter the table shows.
+    assert revenue.period_labels[-1] == "Jul 26, 2026"
+    assert revenue.amounts[-1] == {"NVIDIA Corporation": "$96.22 B"}
+
+
+def test_only_a_plain_overview_draws_trends() -> None:
+    assert _answer("Nvidia revenue").trends == ()
+    assert _answer("Compare Nvidia and AMD").trends == ()
+
+
 def test_a_ranking_shows_the_market_cap_it_is_ordered_by() -> None:
     answer = _answer("Top 5 semiconductor companies by revenue")
 
     column = answer.table.headers.index("Market cap")
     assert all(row[column].startswith("$") for row in answer.table.rows)
+
+
+def test_several_companies_grow_as_lines_and_mixed_changes_get_a_column_each() -> None:
+    answer = _answer("Compare Microsoft and Apple revenue growth over the last four quarters")
+
+    assert answer.chart.kind == "line"
+    assert answer.chart.title == "Growth"
+    assert answer.chart.metric_label == "Revenue growth, QoQ"
+    assert answer.chart.series == ("Microsoft Corporation", "Apple Inc.")
+    assert answer.chart.amounts[-1] == {"Microsoft Corporation": "+8.6%", "Apple Inc.": "-1.6%"}
+    assert answer.chart.caption.endswith("the table lists the amounts and the YoY change.")
+    assert answer.table.headers == (
+        "Company", "Ticker", "Revenue", "QoQ change", "YoY change", "Quarter ended",
+    )
+    assert answer.table.keys[3:5] == ("change:revenue:sequential", "change:revenue:yoy")
+
+
+def test_several_metrics_chart_the_growth_of_the_first() -> None:
+    answer = _answer("Microsoft revenue and net income year over year")
+
+    assert answer.chart.metric_label == "Revenue growth, YoY"
+    assert answer.chart.caption.endswith("the table lists the amounts and the other metrics.")
+
+
+def test_one_quarter_each_draws_a_growth_bar_per_company() -> None:
+    from financial_analyst_agent.contracts import ComponentProvenance, TableRow
+
+    def change(ticker: str, delta: str, base: str) -> TableRow:
+        end = date(2026, 6, 30)
+        prior = ComponentProvenance(
+            metric="revenue",
+            value=Decimal(base),
+            start_date=date(2025, 4, 1),
+            end_date=date(2025, 6, 30),
+            form="10-Q",
+            accession_number="0000000001-25-000001",
+            taxonomy="us-gaap",
+            concept="Revenues",
+            source_url="https://www.sec.gov/a.htm",
+            source="sec_xbrl",
+        )
+        return TableRow(
+            company_name=f"{ticker} Inc.",
+            ticker=ticker,
+            cik=f"000000000{len(ticker)}{ticker[0]}",
+            metric="revenue",
+            value=Decimal(delta),
+            start_date=date(2026, 4, 1),
+            end_date=end,
+            comparison="yoy",
+            components=[prior],
+        )
+
+    result = TurnResult(
+        intent=Intent.COMPARE,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            change("AAA", "25", "100"),
+            change("BBB", "-10", "200"),
+            change("CC", "5", "0"),
+        ],
+    )
+
+    chart = present_turn(result).chart
+    assert chart is not None and chart.kind == "bar"
+    assert [(r["Key"], r["Amount"], r["Missing"]) for r in chart.records] == [
+        ("AAA", "+25.0%", False),
+        ("BBB", "-5.0%", False),
+        # No percent from a zero base: a gap, not a bar.
+        ("CC", "", True),
+    ]
+    assert chart.caption == (
+        "YoY growth in revenue in each company's latest quarter; the table lists the amounts."
+    )

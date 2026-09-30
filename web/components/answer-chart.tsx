@@ -9,6 +9,7 @@ import {
   ComposedChart,
   Line,
   Rectangle,
+  ReferenceLine,
   Tooltip,
   XAxis,
   YAxis,
@@ -44,13 +45,17 @@ export function AnswerChart({
   chart,
   order = null,
   sortNote = null,
+  compact = false,
 }: {
   chart: ChartSpec;
   order?: string[] | null;
   /** What the table is sorted by, when it is: bars follow it, a trend keeps time. */
   sortNote?: string | null;
+  /** A small trend beside an overview: shorter, and the company goes unnamed. */
+  compact?: boolean;
 }) {
-  const single = chart.kind === "line" && chart.series.length === 1 ? chart.series[0] : null;
+  const single =
+    !compact && chart.kind === "line" && chart.series.length === 1 ? chart.series[0] : null;
   return (
     <figure
       aria-label={`${chart.title}: ${chart.metric_label}`}
@@ -75,7 +80,7 @@ export function AnswerChart({
       </header>
       <div className="px-1 pb-3 pt-4 sm:px-3">
         {chart.kind === "line" ? (
-          <TrendChart chart={chart} />
+          <TrendChart chart={chart} height={compact ? 150 : 280} />
         ) : (
           // A new order draws the bars afresh: animating heights between orders
           // would pair each label with another company's bar for a moment.
@@ -111,7 +116,7 @@ function LineKey({ color }: { color: string }) {
 const AXIS_TICK = { fill: "var(--subtle)", fontSize: 11 } as const;
 const GRID = "var(--border)";
 
-function TrendChart({ chart }: { chart: LineChartSpec }) {
+function TrendChart({ chart, height }: { chart: LineChartSpec; height: number }) {
   const gradientId = useId().replace(/:/g, "");
   const series = lineSeries(chart);
   const rows = lineRows(chart);
@@ -127,7 +132,7 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
       responsive
       data={rows}
       margin={{ top: 22, right: 20, bottom: 4, left: 4 }}
-      style={{ width: "100%", height: 280 }}
+      style={{ width: "100%", height }}
     >
       {lone && (
         <defs>
@@ -173,6 +178,10 @@ function TrendChart({ chart }: { chart: LineChartSpec }) {
         interval={0}
         width={56}
       />
+      {domain[0] < 0 && domain[1] > 0 && (
+        // Growth that turns negative: zero is the line that matters.
+        <ReferenceLine y={0} stroke="var(--border-strong)" strokeWidth={1} ifOverflow="extendDomain" />
+      )}
       <Tooltip
         cursor={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
         // Beside the pointer, not pinned to the top where the peaks are drawn.

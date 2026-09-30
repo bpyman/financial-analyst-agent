@@ -27,6 +27,12 @@ export function answerMarkdown(
     blocks.push(lines.filter(Boolean).join("  \n"));
   }
 
+  for (const trend of presentation.trends ?? []) {
+    const name = trend.series[0] ?? "";
+    const points = trend.period_labels.map((period, index) => `${period}: ${trend.amounts[index]?.[name] ?? "—"}`);
+    blocks.push(`**${trend.metric_label}, recent quarters:** ${points.join(" · ")}`);
+  }
+
   const table = presentation.table;
   if (table && table.rows.length > 0) blocks.push(markdownTable(table, rowOrder));
   if (presentation.chart?.caption) blocks.push(`_${oneLine(presentation.chart.caption)}_`);

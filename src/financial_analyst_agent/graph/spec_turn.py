@@ -1487,6 +1487,14 @@ def run_spec_turn_context(
             metric for metric in _unique_metrics_from_phrase(message) if metric in spec.metrics
         ]
         merged = _order_companies_by_metric(merged, named[0] if named else spec.metrics[0])
+    trend = overview_trend(spec, runtime, query=message, max_workers=max_workers)
+    if trend is not None:
+        merged = merged.model_copy(
+            update={
+                "trend_rows": trend.table_rows,
+                "tool_traces": [*merged.tool_traces, *trend.tool_traces],
+            }
+        )
     # Planner notes first: a corrected company name explains the whole answer.
     planner_notes = [
         note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
@@ -1502,6 +1510,52 @@ def run_spec_turn_context(
     if notes:
         merged = merged.model_copy(update={"banners": [*merged.banners, *notes]})
     return merged, _identity_from_rows(spec, merged), patch
+
+
+# One company's overview carries a few quarters of these beside its table.
+TREND_METRICS: tuple[str, ...] = ("revenue", "net_margin")
+TREND_QUARTERS = 5
+
+
+def overview_trend(
+    spec: AnalysisSpec,
+    runtime: Runtime,
+    *,
+    query: str = "",
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
+) -> TurnResult | None:
+    """The last few quarters of revenue and net margin for "How is Nvidia doing?".
+
+    Only the overview of one company at its latest quarter gets them: the small
+    trend charts above its table. The rows read the same filings the table does;
+    a lookup that fails or runs out of the thread's allowance leaves the charts
+    out and the answer as it was.
+    """
+    if (
+        len(spec.companies) != 1
+        or spec.constituents is not None
+        or spec.operations
+        or spec.periods.kind != "latest_quarter"
+        or spec.metrics != OVERVIEW_METRICS
+    ):
+        return None
+    window = spec.model_copy(
+        update={
+            "metrics": TREND_METRICS,
+            "periods": PeriodSelection(kind="last_n_quarters", count=TREND_QUARTERS),
+        }
+    )
+    try:
+        window = materialize_period_dates(window, runtime)
+        tasks = compile_tasks(window)
+        results = dispatch_compiled_tasks(tasks, runtime, query=query, max_workers=max_workers)
+    except (CompanyNotFoundError, ProviderError, SessionQuotaError):
+        return None
+    if not tasks:
+        return None
+    merged = merge_task_results(tasks, results, across_periods=False)
+    levels = [row for row in merged.table_rows if row.comparison is None and row.value is not None]
+    return merged.model_copy(update={"table_rows": levels})
 
 
 def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:

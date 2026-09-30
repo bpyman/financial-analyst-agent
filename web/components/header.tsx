@@ -29,7 +29,7 @@ export function Header({
   onStartOver: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-bg">
+    <header className="z-30 border-b border-border bg-bg tall:sticky tall:top-0">
       <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
         <Link
           href="/"

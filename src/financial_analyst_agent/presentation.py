@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -502,6 +503,8 @@ class Presentation:
     message_tone: str = "warning"
     # One sentence that answers the question before the table ("grew 17.8%").
     headline: str | None = None
+    # Small trend charts beside one company's overview: revenue, net margin.
+    trends: tuple[ChartSpec, ...] = ()
 
 
 def metric_legend() -> tuple[str, ...]:
@@ -746,51 +749,123 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
 
 
 def _growth_chart(result: TurnResult) -> ChartSpec | None:
-    """One company's growth, quarter by quarter: what a year-over-year question asks.
+    """Growth rates, not levels: what a year-over-year or sequential question asks.
 
-    The levels stay in the table; a margin changes in points, not percent, so it
-    keeps its trend line.
+    One company draws a bar per quarter; several companies at one quarter each, a
+    bar per company; several companies over quarters, a line per company. With
+    several metrics the chart follows the first that changes by a percent, since
+    a margin changes in points; the table keeps the levels and the rest.
     """
     changes = [
         row for row in result.table_rows if row.comparison is not None and row.value is not None
     ]
-    kinds = {(row.company_name, row.metric, row.comparison) for row in changes}
-    if len(changes) < 2 or len(kinds) != 1:
+    if not changes:
         return None
-    percents = [change_percent(row) for row in changes]
-    if any(percent is None for percent in percents):
+    # Quarter over quarter across a window with the latest year over year beside
+    # it: chart the kind that covers more quarters.
+    counts = Counter(row.comparison for row in changes)
+    kind = max(counts, key=lambda kind: (counts[kind], _COMPARISON_ORDER.get(kind, 0)))
+    if kind not in _CHANGE_COLUMN_LABELS:
         return None
-    metric = changes[0].metric
-    label = _CHANGE_COLUMN_LABELS.get(changes[0].comparison or "", "")
-    records = []
-    for row, percent in sorted(
-        zip(changes, percents, strict=True), key=lambda pair: pair[0].end_date or date.min
-    ):
-        assert percent is not None
-        amount = f"{'+' if percent > 0 else ''}{percent:.1f}%"
-        end = row.end_date
-        records.append(
-            {
-                "Key": _dated_key(row),
-                "Company": f"{end:%b} {end.year}" if end else "",
-                "Value": float(percent) / 100,
-                "Amount": amount,
-                "Label": amount,
-                "Missing": False,
-                "Period": _period_label(row.start_date, row.end_date),
-            }
-        )
-    return ChartSpec(
-        kind="bar",
-        title="Growth",
-        records=tuple(records),
-        metric=metric,
-        caption=f"{label} growth in {_humanize_field(metric).lower()}, quarter by quarter; "
-        "the table lists the amounts.",
-        horizontal=False,
+    extras = [
+        *(["the other metrics"] if len({row.metric for row in changes}) > 1 else []),
+        *(
+            f"the {_CHANGE_COLUMN_LABELS.get(other or '', 'other')} change"
+            for other in counts
+            if other != kind
+        ),
+    ]
+    changes = [row for row in changes if row.comparison == kind]
+    metric = next((row.metric for row in changes if change_percent(row) is not None), None)
+    if metric is None:
+        return None
+    rows = [row for row in changes if row.metric == metric]
+    label = _CHANGE_COLUMN_LABELS[kind]
+    humanized = _humanize_field(metric)
+    rest = "".join(f" and {extra}" for extra in extras)
+    metric_label = f"{humanized} growth, {label}"
+    quarters: dict[str, int] = {}
+    for row in rows:
+        company = row.cik or row.company_name
+        quarters[company] = quarters.get(company, 0) + 1
+    if len(quarters) == 1:
+        if len(rows) < 2 or any(change_percent(row) is None for row in rows):
+            return None
+        ordered = sorted(rows, key=lambda row: row.end_date or date.min)
+        return ChartSpec(
+            kind="bar",
+            title="Growth",
+            records=tuple(
+                _growth_bar(row, name=_month_label(row.end_date), key=_dated_key(row))
+                for row in ordered
+            ),
+            caption=f"{label} growth in {humanized.lower()}, quarter by quarter; "
+            f"the table lists the amounts{rest}.",
+            metric=metric,
         value_kind="percent",
-        metric_label=f"{_humanize_field(metric)} growth, {label}",
+        metric_label=metric_label,
+        )
+    if all(count == 1 for count in quarters.values()):
+        return ChartSpec(
+            kind="bar",
+            title="Growth",
+            records=tuple(_growth_bar(row, name=_row_key(row), key=_row_key(row)) for row in rows),
+            caption=f"{label} growth in {humanized.lower()} in each company's latest quarter; "
+            f"the table lists the amounts{rest}.",
+            metric=metric,
+        value_kind="percent",
+        metric_label=metric_label,
+        )
+    buckets = _fiscal_week_buckets({row.end_date for row in rows if row.end_date})
+    merged: dict[date, dict[str, object]] = {}
+    shown: dict[date, dict[str, str]] = {}
+    for row in rows:
+        if row.end_date is None:
+            continue
+        period = buckets[row.end_date]
+        percent = change_percent(row)
+        merged.setdefault(period, {"Period": period.isoformat()})[row.company_name] = (
+            float(percent) / 100 if percent is not None else None
+        )
+        if percent is not None:
+            shown.setdefault(period, {})[row.company_name] = _percent_label(percent)
+    periods = sorted(merged)
+    return ChartSpec(
+        kind="line",
+        title="Growth",
+        records=tuple(merged[period] for period in periods),
+        caption=f"{label} growth in {humanized.lower()}, quarter by quarter; "
+        f"the table lists the amounts{rest}.",
+        period_labels=tuple(format_date(period) for period in periods),
+        series=tuple(dict.fromkeys(row.company_name for row in rows)),
+        amounts=tuple(shown.get(period, {}) for period in periods),
+        metric=metric,
+        value_kind="percent",
+        metric_label=metric_label,
     )
+
+
+def _growth_bar(row: TableRow, *, name: str, key: str) -> dict[str, object]:
+    """A bar for one change row: its percent, or a gap when the base was zero or below."""
+    percent = change_percent(row)
+    amount = _percent_label(percent) if percent is not None else ""
+    return {
+        "Key": key,
+        "Company": name,
+        "Value": float(percent) / 100 if percent is not None else 0.0,
+        "Amount": amount,
+        "Label": amount or "No % change",
+        "Missing": percent is None,
+        "Period": _period_label(row.start_date, row.end_date),
+    }
+
+
+def _month_label(end: date | None) -> str:
+    return f"{end:%b} {end.year}" if end else ""
+
+
+def _percent_label(percent: Decimal) -> str:
+    return f"{'+' if percent > 0 else ''}{percent:.1f}%"
 
 
 def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
@@ -1083,6 +1158,7 @@ def present_turn(result: TurnResult) -> Presentation:
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
         headline=growth_headline(result.table_rows) or overview_headline(result.table_rows),
+        trends=overview_trends(result.trend_rows),
     )
 
 
@@ -1256,6 +1332,11 @@ _CHANGE_COLUMN_LABELS = {"yoy": "YoY", "sequential": "QoQ"}
 _COMPARISON_ORDER = {None: 0, "sequential": 1, "yoy": 2}
 
 
+def _change_key(metric: str, kind: str | None) -> str:
+    """ "change:revenue", or "change:revenue:yoy" when a table has two kinds of change."""
+    return f"{WIDE_CHANGE_PREFIX}{metric}" + (f":{kind}" if kind else "")
+
+
 def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable | None:
     """A row per company and quarter (and change), a column per metric.
 
@@ -1282,15 +1363,27 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         dated = [other for other in cells if other[0] == undated[0] and other != undated]
         if len(dated) == 1 and not set(cells[undated]) & set(cells[dated[0]]):
             cells[dated[0]].update(cells.pop(undated))
-    # One kind of change (all year over year, say) reads best beside its level:
-    # a row per quarter, the change in its own column, not rows of each mixed.
-    kinds = {slot[2] for slot in cells if slot[2] is not None}
-    change_label = _CHANGE_COLUMN_LABELS.get(next(iter(kinds))) if len(kinds) == 1 else None
-    if change_label is not None:
+    # A change reads best beside its level: a row per quarter, each kind of
+    # change (quarter over quarter, year over year) in its own column.
+    kinds = sorted(
+        {slot[2] for slot in cells if slot[2] is not None},
+        key=lambda kind: _COMPARISON_ORDER.get(kind, 3),
+    )
+    change_headers: dict[str, str] = {}
+    if kinds and all(kind in _CHANGE_COLUMN_LABELS for kind in kinds):
+        for metric in metrics:
+            for kind in kinds:
+                label = _CHANGE_COLUMN_LABELS[kind]
+                key = _change_key(metric, kind if len(kinds) > 1 else None)
+                change_headers[key] = (
+                    f"{label} change"
+                    if len(metrics) == 1
+                    else f"{_humanize_field(metric)}, {label}"
+                )
         for slot in [slot for slot in cells if slot[2] is not None]:
             level = cells.setdefault((slot[0], slot[1], None), {})
             for metric, row in cells.pop(slot).items():
-                level[f"{WIDE_CHANGE_PREFIX}{metric}"] = row
+                level[_change_key(metric, slot[2] if len(kinds) > 1 else None)] = row
     entities = list(dict.fromkeys(slot[0] for slot in cells))
     ordered = sorted(
         cells,
@@ -1311,19 +1404,11 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         "ticker",
         *(["comparison"] if changes else []),
         *(f"{WIDE_VALUE_PREFIX}{metric}" for metric in metrics),
-        *(
-            f"{WIDE_CHANGE_PREFIX}{metric}"
-            for metric in metrics
-            if any(f"{WIDE_CHANGE_PREFIX}{metric}" in group for group in cells.values())
-        ),
+        *(key for key in change_headers if any(key in group for group in cells.values())),
         "end_date",
     ]
     headers = tuple(
-        (
-            f"{change_label} change"
-            if len(metrics) == 1
-            else f"{_humanize_field(key[len(WIDE_CHANGE_PREFIX) :])}, {change_label}"
-        )
+        change_headers[key]
         if key.startswith(WIDE_CHANGE_PREFIX)
         else _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
         if key.startswith(WIDE_VALUE_PREFIX)
@@ -1461,6 +1546,49 @@ def _format_cell(row: TableRow, key: str) -> str:
     if key == "market_cap":
         return format_usd(value)
     return str(value)
+
+
+def overview_trends(rows: list[TableRow]) -> tuple[ChartSpec, ...]:
+    """A small line per measure over the overview's last few quarters.
+
+    Revenue and net margin are separate charts, each on its own scale, never
+    one chart with two axes. A measure with fewer than two quarters is left out.
+    """
+    charts: list[ChartSpec] = []
+    for metric in dict.fromkeys(row.metric for row in rows):
+        points = sorted(
+            (
+                row
+                for row in rows
+                if row.metric == metric and row.end_date and row.value is not None
+            ),
+            key=lambda row: row.end_date or date.min,
+        )
+        if len(points) < 2:
+            continue
+        name = points[0].company_name
+        charts.append(
+            ChartSpec(
+                kind="line",
+                title="Trend",
+                records=tuple(
+                    {
+                        "Period": row.end_date.isoformat() if row.end_date else "",
+                        name: float(row.value or 0),
+                    }
+                    for row in points
+                ),
+                metric=metric,
+                value_kind=chart_value_kind(metric),
+                metric_label=_humanize_field(metric),
+                period_labels=tuple(format_date(row.end_date) for row in points if row.end_date),
+                series=(name,),
+                amounts=tuple(
+                    {name: format_chart_amount(metric, row.value)} for row in points
+                ),
+            )
+        )
+    return tuple(charts)
 
 
 def overview_headline(rows: list[TableRow]) -> str | None:

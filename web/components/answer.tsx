@@ -81,6 +81,11 @@ export function Answer({
       <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
       {chart && <AnswerChart chart={chart} order={order} sortNote={sortNote} />}
+      {(presentation.trends?.length ?? 0) > 0 && (
+        <section aria-label="Recent quarters" className="grid gap-3 sm:grid-cols-2">
+          {presentation.trends?.map((trend) => <AnswerChart key={trend.metric} chart={trend} compact />)}
+        </section>
+      )}
       {table && table.rows.length > 0 && <DataTable table={table} sort={sort} onSort={setSort} />}
       {message &&
         (presentation.message_tone === "info" ? (

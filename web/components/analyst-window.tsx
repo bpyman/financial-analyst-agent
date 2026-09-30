@@ -348,7 +348,7 @@ export function AnalystWindow() {
         chips={view?.spec_chips ?? []}
         turns={view ? { count: view.turn_count, max: view.max_turns } : null}
       />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-44 sm:px-6">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-44 short:pb-24 sm:px-6">
         {notice && (
           <Callout kind={notice.kind} className="mt-6 animate-fade-up">
             <div className="flex items-start justify-between gap-3">
