@@ -8,7 +8,7 @@ quarters (ADR 0007).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -101,7 +101,55 @@ def periods_from_filings(
             quarter=quarter,
             form=filing.form,
         )
-    return tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True))
+    return _sequenced(tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True)))
+
+
+def _sequenced(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
+    """Newest-first periods, with quarters that repeat the year just closed renumbered.
+
+    A filing's own ``fy`` is sometimes wrong: Oracle's 10-Q for the quarter ended
+    August 31, 2026 (Q1 of fiscal 2027) declares 2026, the year its 10-K just
+    closed, and NetApp's first two quarters of fiscal 2026 declare 2025. A Q1
+    that follows a Q4 of the same fiscal year belongs to the next year, with
+    the quarters after it that keep that label. When the Q4's own label is not
+    confirmed by the 10-K a year before it, a later report keeping the year
+    means the Q4 is the wrong one, and nothing is renumbered; so too when the
+    next 10-K closes that same year. Only filed labels
+    are compared, so one bad label never shifts the rest.
+    """
+    ordered = list(reversed(periods))
+    repaired = list(ordered)
+    for index in range(1, len(ordered)):
+        closed, period = ordered[index - 1], ordered[index]
+        if not (
+            closed.quarter == 4
+            and period.quarter == 1
+            and period.fiscal_year is not None
+            and period.fiscal_year == closed.fiscal_year
+        ):
+            continue
+        year = period.fiscal_year
+        earlier = [item for item in ordered[: index - 1] if item.quarter == 4]
+        confirmed = not earlier or earlier[-1].fiscal_year == year - 1
+        run = index
+        while (
+            run < len(ordered)
+            and ordered[run].quarter in (1, 2, 3)
+            and ordered[run].fiscal_year == year
+        ):
+            run += 1
+        if not confirmed and run < len(ordered) and ordered[run].fiscal_year == year:
+            continue
+        if not confirmed and run - index > 1:
+            continue
+        following = next((item for item in ordered[run:] if item.quarter == 4), None)
+        if following is not None and following.fiscal_year == year:
+            # The next 10-K closes this year: the Q4 before was the mislabelled one
+            # (Domino's 53-week year ending January 1, 2023 declares 2023).
+            continue
+        for fixed in range(index, run):
+            repaired[fixed] = replace(ordered[fixed], fiscal_year=year + 1)
+    return tuple(reversed(repaired))
 
 
 def calendar_quarter(end: date) -> tuple[int, int]:
