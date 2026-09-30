@@ -259,6 +259,9 @@ _FILING_WORDS = (
     "management's discussion",
     "10-q",
     "10q",
+    "10-k",
+    "10k",
+    "annual report",
     "filing",
     "disclosure",
     "quarterly report",
@@ -271,7 +274,10 @@ def _is_filing_change_query(normalized: str) -> bool:
         r"|\bdiff(?:erence)?s? (?:in|between)\b|\bsummar(?:y|ise|ize)\b",
         normalized,
     )
-    return asks_change is not None and any(token in normalized for token in _FILING_WORDS)
+    return asks_change is not None and (
+        any(token in normalized for token in _FILING_WORDS)
+        or _ACCESSION_PATTERN.search(normalized) is not None
+    )
 
 
 def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
@@ -466,6 +472,8 @@ class DemoCompleter:
             plan = _filing_change_plan(query, normalized)
             if companies:
                 plan.company = companies[0]
+                # One company's filings are compared at a time; the turn says so.
+                plan.other_companies = tuple(companies[1:])
             plan.notes = notes
             return plan
         if "disrupt" in normalized or re.search(

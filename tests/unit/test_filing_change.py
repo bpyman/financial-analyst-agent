@@ -796,3 +796,45 @@ def test_templated_sentences_that_repeat_are_still_compared() -> None:
     newer = "\n\n".join(f"Revenue increased ${n}.2 billion or {n}1%." for n in (1, 2, 3))
 
     assert len(_diff(older, newer)) == 1
+
+
+@pytest.mark.parametrize(
+    ("query", "company", "others", "expected"),
+    [
+        ("Changes in 0000950170-25-061046 vs 0000950170-25-061046?", "MSFT", (), "same filing"),
+        (
+            "Compare 0000950170-25-061046 0001193125-26-191507 0001193125-26-323660",
+            "MSFT",
+            (),
+            "exactly two",
+        ),
+        ("What changed in Microsoft and Apple's 10-Q?", "Microsoft", ("Apple",), "one company"),
+        ("What changed in the latest 10-Q?", "unknown", (), "which company"),
+    ],
+)
+def test_filing_change_requests_it_cannot_compare_say_why(
+    query: str, company: str, others: tuple[str, ...], expected: str
+) -> None:
+    from financial_analyst_agent.filing_change import _request_refusal
+
+    plan = SimpleNamespace(other_companies=others)
+
+    assert expected in _request_refusal(query, company, "", "", plan)
+
+
+def test_a_10k_question_compares_10ks_and_20f_filers_are_named() -> None:
+    from financial_analyst_agent.filing_change import _form_asked, _too_few_message
+
+    assert _form_asked("What changed in Microsoft's latest 10-K?") == "10-K"
+    assert _form_asked("What changed in Microsoft's latest 10-Q?") == "10-Q"
+    assert "20-F" in _too_few_message({"form": ["20-F", "6-K"]}, "Taiwan Semiconductor", "10-Q")
+
+
+def test_an_annual_report_or_accession_question_is_a_filing_change() -> None:
+    from financial_analyst_agent.rules_planner import DemoCompleter
+
+    for question in (
+        "What changed in Microsoft's latest 10-K?",
+        "What changed between 0000950170-25-061046 and 0001193125-26-191507?",
+    ):
+        assert DemoCompleter().complete(question).intent is Intent.FILING_CHANGE

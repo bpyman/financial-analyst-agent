@@ -515,8 +515,10 @@ _YEAR = 365
 _SAME_QUARTER_DAYS = 20
 
 
-def _year_apart_quarterlies(recent: dict[str, Any]) -> tuple[str, str] | None:
-    """The newest 10-Q and the 10-Q for the same quarter a year before it.
+def _year_apart_quarterlies(
+    recent: dict[str, Any], form: str = "10-Q"
+) -> tuple[str, str] | None:
+    """The newest report of ``form`` and the one for the same period a year before it.
 
     A year apart compares like with like: the same fiscal quarter, so seasonal
     wording does not read as change. Without one, the previous 10-Q stands in.
@@ -527,8 +529,8 @@ def _year_apart_quarterlies(recent: dict[str, Any]) -> tuple[str, str] | None:
     if not (isinstance(accessions, list) and isinstance(forms, list) and isinstance(dates, list)):
         return None
     quarterlies: list[tuple[date, str]] = []
-    for accession, form, raw in zip(accessions, forms, dates, strict=False):
-        if form != "10-Q" or not isinstance(raw, str) or not isinstance(accession, str):
+    for accession, kind, raw in zip(accessions, forms, dates, strict=False):
+        if kind != form or not isinstance(raw, str) or not isinstance(accession, str):
             continue
         try:
             quarterlies.append((date.fromisoformat(raw), accession))
@@ -566,6 +568,85 @@ def _order_accessions(recent: dict[str, Any], first: str, second: str) -> tuple[
     if left and right and left > right:
         return second, first
     return first, second
+
+
+_REVIEWED_FORMS = ("10-Q", "10-Q/A", "10-K", "10-K/A")
+_ANNUAL_WORDING = re.compile(r"\b10-?k\b|\bannual report\b", re.IGNORECASE)
+
+
+def _form_asked(query: str) -> str:
+    """ "What changed in Microsoft's latest 10-K?" compares 10-Ks; otherwise 10-Qs."""
+    return "10-K" if _ANNUAL_WORDING.search(query) else "10-Q"
+
+
+def _request_refusal(query: str, company: str, older: str, newer: str, plan: Any) -> str:
+    """Why this request cannot be compared as asked, or ""."""
+    found = _ACCESSION_PATTERN.findall(query)
+    if len(set(found)) > 2:
+        return "Give exactly two accession numbers: the older filing and the newer one."
+    if found and len(set(found)) == 1 and len(found) > 1:
+        return "Those two accession numbers are the same filing. Give two different ones."
+    others = tuple(getattr(plan, "other_companies", ()) or ())
+    if others and company:
+        return (
+            "I compare one company's filings at a time. Ask about each company "
+            "separately, for example “What changed in Apple's latest 10-Q?”."
+        )
+    if not company or company == "unknown":
+        return (
+            "I couldn't tell which company's filings to compare. Name one, for example "
+            "“What changed in Apple's latest 10-Q?”, or give two of its accession numbers."
+        )
+    if bool(older) != bool(newer):
+        return (
+            "Give two accession numbers to compare, or none to compare the latest 10-Q "
+            "with the one a year earlier."
+        )
+    return ""
+
+
+def _form_of(recent: dict[str, Any], accession: str) -> str:
+    for candidate, form in zip(
+        recent.get("accessionNumber") or [], recent.get("form") or [], strict=False
+    ):
+        if candidate == accession:
+            return str(form)
+    return ""
+
+
+def _check_reviewable(recent: dict[str, Any], accession: str) -> None:
+    """Refuse an accession that is this company's, but not a 10-Q or 10-K."""
+    form = _form_of(recent, accession)
+    if form and form not in _REVIEWED_FORMS:
+        raise ProviderError(
+            f"Accession {accession} is a {form}, not a 10-Q or 10-K; only quarterly and "
+            "annual reports are compared."
+        )
+
+
+def _chosen_pair_banner(recent: dict[str, Any], name: str, first: str, second: str) -> str:
+    """Say which reports two given accession numbers are, and when they differ in kind."""
+    older, newer = _order_accessions(recent, first, second)
+    parts = [
+        f"its {_form_of(recent, accession) or 'filing'} for the period ended "
+        f"{_pretty(_filing_date(recent, accession))}"
+        for accession in (older, newer)
+    ]
+    banner = f"Comparing {short_name(name)}'s {parts[0].removeprefix('its ')} with {parts[1]}."
+    kinds = {_form_of(recent, accession).removesuffix("/A") for accession in (older, newer)}
+    if len(kinds) > 1:
+        banner += " A 10-K and a 10-Q are laid out differently, so more reads as changed."
+    return banner
+
+
+def _too_few_message(recent: dict[str, Any], name: str, form: str) -> str:
+    forms = set(recent.get("form") or [])
+    if forms & {"20-F", "40-F"} and "10-Q" not in forms:
+        return (
+            f"{short_name(name)} files annual 20-F or 40-F reports with the SEC rather "
+            "than 10-Qs, so there are no quarterly reports to compare."
+        )
+    return f"Fewer than two {form} filings are available for this company."
 
 
 def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tuple[str, str]:
@@ -658,16 +739,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             },
         )
     ]
-    if not company or company == "unknown" or bool(older) != bool(newer):
+    refused = _request_refusal(query, company, older, newer, plan)
+    if refused:
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message=(
-                "Name one company to compare its latest 10-Q with the same quarter a "
-                "year earlier, or give two accession numbers."
-            ),
+            message=refused,
         )
+    form = _form_asked(query)
     try:
         resolved = resolve_company(company, _tickers_payload(runtime))
     except Exception as exc:
@@ -702,15 +782,20 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     try:
         recent = _submissions_recent(runtime, cik)
         if not older:
-            pair = _year_apart_quarterlies(recent)
+            pair = _year_apart_quarterlies(recent, form)
             if pair is None:
-                raise ProviderError("Fewer than two 10-Q filings are available for this company")
+                raise ProviderError(_too_few_message(recent, name, form))
             older, newer = pair
+            period = "quarter" if form == "10-Q" else "year"
             chosen_banner = (
-                f"Comparing {short_name(name)}'s latest 10-Q (quarter ended "
+                f"Comparing {short_name(name)}'s latest {form} ({period} ended "
                 f"{_pretty(_filing_date(recent, newer))}) with the one for "
                 f"{_pretty(_filing_date(recent, older))}."
             )
+        else:
+            for accession in (older, newer):
+                _check_reviewable(recent, accession)
+            chosen_banner = _chosen_pair_banner(recent, name, older, newer)
         older, newer = _order_accessions(recent, older, newer)
         traces[0] = traces[0].model_copy(
             update={
