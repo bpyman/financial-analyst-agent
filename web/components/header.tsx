@@ -21,7 +21,7 @@ export function Header({
   onSwitchRuntime,
   onStartOver,
 }: {
-  runtime: RuntimeKind;
+  runtime: RuntimeKind | null;
   locked: boolean;
   lockedNotice: string;
   busy: boolean;
@@ -49,7 +49,7 @@ export function Header({
             runtime={runtime}
             locked={locked}
             lockedNotice={lockedNotice}
-            disabled={busy}
+            disabled={busy || runtime === null}
             onChange={onSwitchRuntime}
           />
           <span aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
@@ -83,7 +83,7 @@ function RuntimeSwitch({
   disabled,
   onChange,
 }: {
-  runtime: RuntimeKind;
+  runtime: RuntimeKind | null;
   locked: boolean;
   lockedNotice: string;
   disabled: boolean;

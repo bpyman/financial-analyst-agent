@@ -57,6 +57,8 @@ export function AnalystWindow() {
   const [view, setView] = useState<ThreadView | null>(null);
   const [chosenRuntime, setChosenRuntime] = useState<RuntimeKind | null>(null);
   const [booted, setBooted] = useState(false);
+  const [resumeFailed, setResumeFailed] = useState(false);
+  const [resumeAttempt, setResumeAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [turn, dispatch] = useReducer(turnReducer, IDLE);
   const [draft, setDraft] = useState("");
@@ -72,11 +74,11 @@ export function AnalystWindow() {
     () => null,
   );
 
-  const runtime: RuntimeKind = view?.runtime ?? chosenRuntime ?? meta?.runtime.default ?? "recorded";
   const locked = meta?.runtime.locked ?? false;
   // Until the saved thread is back, a question or Start over would start another
   // thread under it, and the restored one would then replace it on screen.
   const resuming = !booted && storedThreadId !== null;
+  const runtime = view?.runtime ?? (resuming || resumeFailed ? null : chosenRuntime ?? meta?.runtime.default ?? null);
   const busy = turn.status === "running" || switching || resuming;
 
   // Wake on visit, then resume the stored thread. A reload mid-turn finds the
@@ -109,18 +111,25 @@ export function AnalystWindow() {
       .then((resumed) => {
         // `null`: the analyst started another thread while this one loaded.
         if (signal.aborted || resumed === null) return;
+        setResumeFailed(false);
         setView(resumed.view);
-        if (resumed.notice) setNotice({ kind: "info", text: resumed.notice });
+        setNotice(resumed.notice ? { kind: "info", text: resumed.notice } : null);
         if (resumed.view?.turn_in_flight) void reattach(resumed.view);
       })
       .catch((error: unknown) => {
-        if (!signal.aborted) setNotice({ kind: "error", text: errorText(error) });
+        if (!signal.aborted) {
+          setResumeFailed(true);
+          setNotice({
+            kind: "error",
+            text: `Your conversation couldn't be loaded. ${errorText(error)}`,
+          });
+        }
       })
       .finally(() => {
         if (!signal.aborted) setBooted(true);
       });
     return () => aborted.abort();
-  }, [store]);
+  }, [store, resumeAttempt]);
 
   // A live thread on a deployment locked to the recorded runtime would refuse
   // every turn: Start over on the recorded runtime and say why.
@@ -148,7 +157,7 @@ export function AnalystWindow() {
   useEffect(() => {
     let cancelled = false;
     const waking = window.setTimeout(() => setMetaWaking(true), WAKE_AFTER_MS);
-    getMeta(runtime)
+    getMeta(runtime ?? undefined)
       .then((loaded) => {
         if (cancelled) return;
         setMeta(loaded);
@@ -177,12 +186,15 @@ export function AnalystWindow() {
           ? document.querySelector(`[data-turn="${turnCount - 1}"]`)
           : null;
     shownTurns.current = turnCount;
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
   }, [turn.status, turnCount]);
 
   async function send(text: string) {
     const message = text.trim();
-    if (!message || inFlight.current || resuming) return;
+    if (!message || inFlight.current || resuming || resumeFailed) return;
     inFlight.current = true;
     dispatch({ type: "send", message });
     setDraft("");
@@ -239,17 +251,19 @@ export function AnalystWindow() {
   }
 
   /** Start over on `next`: the same runtime, or the other one when the switch flips. */
-  async function restart(next: RuntimeKind) {
+  async function restart(next: RuntimeKind | null) {
     if (inFlight.current || resuming) return;
     inFlight.current = true;
     setSwitching(true);
+    setResumeFailed(false);
+    setDraft("");
     setNotice(null);
     setChosenRuntime(next);
     dispatch({ type: "reset" });
     window.scrollTo({ top: 0 });
     try {
       const previous = view?.thread_id ?? store.getItem(THREAD_STORAGE_KEY);
-      const started = await startThread(threadApi, store, next, previous);
+      const started = await startThread(threadApi, store, next ?? undefined, previous);
       shownTurns.current = 0;
       setView(started.view);
       if (started.notice) setNotice({ kind: "info", text: started.notice });
@@ -281,7 +295,7 @@ export function AnalystWindow() {
       />
       <StatusLine
         runtime={runtime}
-        runtimeBanner={meta ? meta.runtime_copy[runtime] : metaError ? "" : null}
+        runtimeBanner={meta && runtime ? meta.runtime_copy[runtime] : metaError || resumeFailed ? "" : null}
         snapshot={meta?.snapshot ?? null}
         chips={view?.spec_chips ?? []}
         turns={view ? { count: view.turn_count, max: view.max_turns } : null}
@@ -291,20 +305,34 @@ export function AnalystWindow() {
           <Callout kind={notice.kind} className="mt-6 animate-fade-up">
             <div className="flex items-start justify-between gap-3">
               <span>{notice.text}</span>
-              <button
-                type="button"
-                onClick={() => setNotice(null)}
-                aria-label="Dismiss"
-                className="-mr-1 rounded p-0.5 text-subtle hover:text-fg"
-              >
-                <X className="size-3.5" aria-hidden />
-              </button>
+              {resumeFailed ? (
+                <button
+                  type="button"
+                  disabled={resuming}
+                  onClick={() => {
+                    setBooted(false);
+                    setResumeAttempt((attempt) => attempt + 1);
+                  }}
+                  className="shrink-0 rounded text-sm font-medium underline underline-offset-4 disabled:opacity-50"
+                >
+                  Try again
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setNotice(null)}
+                  aria-label="Dismiss"
+                  className="-mr-1 rounded p-0.5 text-subtle hover:text-fg"
+                >
+                  <X className="size-3.5" aria-hidden />
+                </button>
+              )}
             </div>
           </Callout>
         )}
         {resuming ? (
           <ResumeSkeleton />
-        ) : hasThread ? (
+        ) : resumeFailed ? null : hasThread ? (
           <Thread turns={view?.turns ?? []} turn={turn} onRetry={send} onAsk={send} />
         ) : (
           <Landing
@@ -322,8 +350,8 @@ export function AnalystWindow() {
         value={draft}
         onChange={setDraft}
         onSend={send}
-        busy={busy}
-        busyLabel={resuming ? "Loading your thread" : "Analysis running"}
+        busy={busy || resumeFailed}
+        busyLabel={resuming ? "Loading your thread" : resumeFailed ? "Resume your thread to continue" : "Analysis running"}
         placeholder={meta?.example_query ?? FALLBACK_PLACEHOLDER}
         maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
         inputRef={inputRef}

@@ -1416,6 +1416,12 @@ def _append_trace_field(
     if key == "metric" and isinstance(value, str):
         fields.append((label, _humanize_field(value)))
         return
+    if key in _USER_TEXT_FIELDS and isinstance(value, str):
+        # The analyst's own words: one plain line, so the window never renders
+        # them as markdown ("**Verified by SEC:** [download](...)").
+        text = " ".join(value.split())
+        fields.append((label, "\\" + text if text.startswith("[") else text))
+        return
     if key == "source_url" and value:
         url = str(value)
         fields.append((label, f"[{_truncate_url(url)}]({url})"))
@@ -1425,6 +1431,9 @@ def _append_trace_field(
         fields.append((label, _SOURCE_LABELS.get(raw, raw)))
         return
     fields.append((label, _format_trace_value(value)))
+
+
+_USER_TEXT_FIELDS = frozenset({"topic", "query", "message", "question"})
 
 
 def _trace_fields(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:

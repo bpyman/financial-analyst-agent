@@ -218,7 +218,7 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
             id={selectId}
             value={chosen}
             onChange={(event) => setChosen(Number(event.target.value))}
-            className="h-8 w-full appearance-none truncate rounded-lg border border-border bg-surface-2 pl-2.5 pr-8 text-[13px] text-fg outline-none hover:border-border-strong focus-visible:border-primary"
+            className="h-8 w-full appearance-none truncate rounded-lg border border-border bg-surface-2 pl-2.5 pr-8 text-[13px] text-fg outline-none hover:border-border-strong focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary"
           >
             {items.map((option, index) => (
               <option key={`${option.label}-${index}`} value={index}>

@@ -11,7 +11,7 @@ export function StatusLine({
   chips,
   turns,
 }: {
-  runtime: RuntimeKind;
+  runtime: RuntimeKind | null;
   /** null while loading; empty when the storefront copy could not be loaded. */
   runtimeBanner: string | null;
   snapshot: { banner: string; stale: boolean } | null;

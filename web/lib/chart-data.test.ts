@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  barDomain,
   barRows,
   calendarsDiffer,
   endLabelSides,
@@ -193,5 +194,29 @@ describe("niceTicks", () => {
 
   it("survives a flat range", () => {
     expect(niceTicks([0, 0]).length).toBeGreaterThan(1);
+  });
+});
+
+describe("barDomain", () => {
+  it.each([[[-8, 12]], [[-10, -8]], [[3, 10]]])("leaves room beyond nonzero bar ends: %j", (values) => {
+    const [low, high] = barDomain(values);
+    const min = Math.min(0, ...values);
+    const max = Math.max(0, ...values);
+    if (min < 0) expect((min - low) / (high - low)).toBeGreaterThanOrEqual(0.14);
+    else expect(low).toBe(0);
+    if (max > 0) expect((high - max) / (high - low)).toBeGreaterThanOrEqual(0.14);
+    else expect(high).toBe(0);
+    const ticks = niceTicks([low, high]);
+    expect(ticks[0]).toBeLessThanOrEqual(low);
+    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(high);
+  });
+
+  it("ignores missing and nonfinite values and handles zero or empty data", () => {
+    expect(barDomain([null, undefined, NaN, Infinity, -8])).toEqual(barDomain([-8]));
+    for (const values of [[], [0, 0], [null]]) {
+      const [low, high] = barDomain(values);
+      expect(low).toBe(0);
+      expect(high).toBeGreaterThan(low);
+    }
   });
 });

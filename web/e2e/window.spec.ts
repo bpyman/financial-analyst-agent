@@ -156,7 +156,8 @@ test("the storefront reports the deployment's runtime and asks for that runtime'
   await new Analyst(page).open();
   const response = await asked;
 
-  expect(new URL(response.url()).searchParams.get("runtime")).toBe("recorded");
+  // Until the deployment says which runtime it runs, the window names none.
+  expect(new URL(response.url()).searchParams.get("runtime")).toBeNull();
   expect((await response.json()).runtime).toEqual({ default: deployed ? "live" : "recorded", locked: false });
 });
 
