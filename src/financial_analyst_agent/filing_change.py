@@ -45,6 +45,9 @@ _NEXT_ITEM = re.compile(r"^item\s+\d+[a-z]?(?=[\s.:—–-]|$)", re.IGNORECASE |
 # running header (Microsoft prints one on every page), not the next section.
 _BARE_ITEM = re.compile(r"^item\s+\d+[a-z]?$", re.IGNORECASE | re.MULTILINE)
 _RUNNING_HEADER_REPEATS = 3
+# Disclosure on the heading's own line ("Item 1A. Risk Factors. There have been
+# no material changes..."): a full stop, then a sentence ending in one.
+_SENTENCE = re.compile(r"\.\s+[A-Za-z].*\w\.\s*$")
 # A contents entry taken for a section: nothing under its heading but a page.
 _STUB_BODY = re.compile(r"^\W*(?:pages?\s*)?\d{0,3}(?:\s*[-–]\s*\d{1,3})?\W*$", re.IGNORECASE)
 # What may precede a heading on its line: "PART II — OTHER INFORMATION Item 1A. …".
@@ -150,7 +153,8 @@ def _section_under_item(text: str, section: SectionId) -> str:
                 break
         found = text[match.start() : end].strip()
         body = found.split("\n", 1)[1] if "\n" in found else ""
-        if _STUB_BODY.fullmatch(body.strip()):
+        same_line = found.split("\n", 1)[0][match.end() - match.start() :]
+        if _STUB_BODY.fullmatch(body.strip()) and not _SENTENCE.search(same_line):
             continue
         candidates.append(found)
     return max(candidates, key=len, default="")

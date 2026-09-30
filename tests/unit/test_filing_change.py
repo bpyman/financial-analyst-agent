@@ -230,6 +230,19 @@ def test_a_filing_that_only_cites_risk_factors_has_no_section() -> None:
     assert extract_section(html, "risk_factors") == ""
 
 
+def test_a_disclosure_on_its_heading_line_is_the_section() -> None:
+    html = (
+        "<p>Item 1A. Risk Factors 42</p>"
+        "<p>Item 2. Unregistered Sales of Equity Securities 43</p>"
+        "<p>Item 1A. Risk Factors. There have been no material changes to our risk factors.</p>"
+        "<p>Item 2. Unregistered Sales of Equity Securities</p>"
+    )
+
+    assert extract_section(html, "risk_factors") == (
+        "Item 1A. Risk Factors. There have been no material changes to our risk factors."
+    )
+
+
 @pytest.mark.parametrize("punctuation", [".", ":", ""])
 @pytest.mark.parametrize(
     ("section", "heading", "next_heading"),
