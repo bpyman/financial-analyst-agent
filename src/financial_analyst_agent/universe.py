@@ -83,10 +83,14 @@ def _ineligible_issuer_ciks(path: Path = _INELIGIBLE_ISSUERS_PATH) -> frozenset[
 INELIGIBLE_ISSUER_CIKS = _ineligible_issuer_ciks()
 
 
-def ineligible_issuer_tickers(path: Path = _INELIGIBLE_ISSUERS_PATH) -> tuple[str, ...]:
-    """The tickers of funds and other listings the analyst does not cover (ADR 0001)."""
+def ineligible_issuers(path: Path = _INELIGIBLE_ISSUERS_PATH) -> tuple[tuple[str, str], ...]:
+    """(ticker, SEC name) of the funds and other listings the analyst does not cover."""
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return tuple(str(issuer["ticker"]) for issuer in payload["issuers"] if issuer.get("ticker"))
+    return tuple(
+        (str(issuer["ticker"]), str(issuer.get("name") or ""))
+        for issuer in payload["issuers"]
+        if issuer.get("ticker")
+    )
 
 
 class UniverseCompany(BaseModel):

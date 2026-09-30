@@ -605,3 +605,18 @@ def test_a_reit_is_named_without_its_reit() -> None:
 )
 def test_everyday_words_funds_and_nicknames(question: str, companies: list[str]) -> None:
     assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("Ares Capital net income", ["ARCC"]),
+        ("Ares Management revenue", ["ARES"]),
+        ("Blackstone Secured Lending revenue", ["BXSL"]),
+        ("Blackstone revenue", ["BX"]),
+    ],
+)
+def test_a_fund_is_named_without_taking_its_operating_namesake(
+    question: str, companies: list[str]
+) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies
