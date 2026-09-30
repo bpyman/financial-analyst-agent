@@ -124,3 +124,32 @@ def test_recorded_explain_essay_answers_after_a_lookup_and_names_its_runtime() -
     with pytest.raises(ProviderError, match="OpenAI key") as refused:
         RecordedEssayCompleter(live=True).complete_essay("Why is the sky blue?", grounding)
     assert "live runtime" not in str(refused.value)
+
+
+def test_recorded_replay_takes_a_question_however_it_is_punctuated() -> None:
+    from financial_analyst_agent.news import FIXTURE_NEWS_QUERY, RecordedNewsSearch
+    from financial_analyst_agent.runtime import (
+        FIXTURE_EXPLAIN_ESSAY,
+        FIXTURE_EXPLAIN_QUERY,
+        RecordedEssayCompleter,
+    )
+
+    assert RecordedNewsSearch().search_news(f"  {FIXTURE_NEWS_QUERY.upper()}? ")
+    assert RecordedEssayCompleter().complete_essay(FIXTURE_EXPLAIN_QUERY.rstrip("?") + ".") == (
+        FIXTURE_EXPLAIN_ESSAY
+    )
+
+
+def test_capability_examples_are_ones_the_runtime_can_answer() -> None:
+    from financial_analyst_agent.storefront import CAPABILITIES, capabilities_for
+
+    recorded = capabilities_for(
+        live_news=False, live_essays=False, recorded_news="NEWS?", recorded_essay="ESSAY?"
+    )
+    live = capabilities_for(
+        live_news=True, live_essays=True, recorded_news="NEWS?", recorded_essay="ESSAY?"
+    )
+
+    examples = [example for _, group in recorded for example in group]
+    assert "NEWS?" in examples and "ESSAY?" in examples
+    assert live == CAPABILITIES

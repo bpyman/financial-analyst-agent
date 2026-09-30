@@ -39,15 +39,19 @@ from financial_analyst_agent.domain.errors import (
     RuntimeMismatchError,
     SessionQuotaError,
 )
+from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
 from financial_analyst_agent.runtime import (
+    FIXTURE_EXPLAIN_QUERY,
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     _snapshot_ranking,
     default_runtime_kind,
+    openai_enabled,
     resolve_runtime_kind,
     runtime_for,
     runtime_locked,
+    tavily_enabled,
 )
 from financial_analyst_agent.session import (
     SessionBudget,
@@ -56,12 +60,12 @@ from financial_analyst_agent.session import (
     snapshot_status,
 )
 from financial_analyst_agent.storefront import (
-    CAPABILITIES,
     EXAMPLE_QUERY,
     GUIDED_STORIES,
     LIVE_RUNTIME_CAPTION,
     LIVE_RUNTIME_LOCKED_NOTICE,
     RECORDED_BANNER,
+    capabilities_for,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
 from financial_analyst_agent.turn import RuntimeKind, TurnResult
@@ -501,6 +505,7 @@ def create_app(
         """Storefront copy; ``runtime`` picks whose snapshot banner to report."""
         default = default_runtime_kind(resolved)
         kind = resolve_runtime_kind(runtime or default, resolved)
+        live = kind is RuntimeKind.LIVE
         banner, stale = snapshot_status(
             _snapshot_as_of(kind),
             stale_after_days=resolved.snapshot_stale_after_days,
@@ -520,7 +525,12 @@ def create_app(
             ],
             "capabilities": [
                 {"description": description, "examples": list(examples)}
-                for description, examples in CAPABILITIES
+                for description, examples in capabilities_for(
+                    live_news=live and tavily_enabled(resolved),
+                    live_essays=live and openai_enabled(resolved),
+                    recorded_news=FIXTURE_NEWS_QUERY,
+                    recorded_essay=FIXTURE_EXPLAIN_QUERY,
+                )
             ],
             "metric_groups": [
                 {"title": title, "names": list(names)} for title, names in metric_groups()

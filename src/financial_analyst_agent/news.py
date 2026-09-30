@@ -28,15 +28,17 @@ FIXTURE_RESEARCH_QUERY = (
 )
 
 
+def replay_key(question: str) -> str:
+    """A recorded question as matched: case, spacing and closing marks aside."""
+    return " ".join(question.split()).strip(" ?.!").casefold()
+
+
 class RecordedNewsSearch:
     """Recorded Tavily-shaped hits so news_and_explain stays offline."""
 
     def search_news(self, query: str) -> list[NewsHit]:
-        normalized = query.strip().casefold()
-        if normalized in {
-            FIXTURE_NEWS_QUERY.casefold(),
-            FIXTURE_RESEARCH_QUERY.casefold(),
-        }:
+        recorded = {replay_key(FIXTURE_NEWS_QUERY), replay_key(FIXTURE_RESEARCH_QUERY)}
+        if replay_key(query) in recorded:
             return list(FIXTURE_NEWS_HITS)
         return []
 

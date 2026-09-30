@@ -14,6 +14,7 @@ from financial_analyst_agent.news import (
     FIXTURE_RESEARCH_QUERY,
     RecordedNewsSearch,
     TavilyNewsSearch,
+    replay_key,
 )
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
 from financial_analyst_agent.providers.sec.cache import CachingSECDataSource
@@ -116,15 +117,15 @@ class RecordedEssayCompleter:
         )
 
     def complete_essay(self, query: str, tool_json: str = "") -> str:
-        asked = query.strip().casefold()
-        if asked == FIXTURE_EXPLAIN_QUERY.casefold():
+        asked = replay_key(query)
+        if asked == replay_key(FIXTURE_EXPLAIN_QUERY):
             # Asked after a lookup, the question arrives with that lookup's facts.
             return FIXTURE_EXPLAIN_ESSAY
         if not tool_json:
             raise self._refusal(f"“{FIXTURE_EXPLAIN_QUERY}”")
         if asked not in {
-            FIXTURE_NEWS_QUERY.casefold(),
-            FIXTURE_RESEARCH_QUERY.casefold(),
+            replay_key(FIXTURE_NEWS_QUERY),
+            replay_key(FIXTURE_RESEARCH_QUERY),
         } and "disclosure changes" not in asked:
             raise self._refusal(
                 f"“{FIXTURE_EXPLAIN_QUERY}” and “{FIXTURE_NEWS_QUERY}”"
@@ -221,6 +222,20 @@ def recorded_runtime() -> Runtime:
     )
 
 
+def openai_enabled(settings: Settings) -> bool:
+    """Whether the live runtime plans and writes with OpenAI (a key, and allowed here)."""
+    return bool(settings.openai_api_key.strip()) and (
+        not settings.public_demo or settings.allow_public_openai
+    )
+
+
+def tavily_enabled(settings: Settings) -> bool:
+    """Whether the live runtime searches news with Tavily (a key, and allowed here)."""
+    return bool(settings.tavily_api_key.strip()) and (
+        not settings.public_demo or settings.allow_public_tavily
+    )
+
+
 def live_runtime(
     settings: Settings | None = None,
     *,
@@ -228,12 +243,8 @@ def live_runtime(
 ) -> Runtime:
     resolved = settings or get_settings()
     # Without a key the rules planner plans the question, as on the public demo.
-    use_openai = bool(resolved.openai_api_key.strip()) and (
-        not resolved.public_demo or resolved.allow_public_openai
-    )
-    use_tavily = bool(resolved.tavily_api_key.strip()) and (
-        not resolved.public_demo or resolved.allow_public_tavily
-    )
+    use_openai = openai_enabled(resolved)
+    use_tavily = tavily_enabled(resolved)
     completer = (
         OpenAIStructuredCompleter.from_settings(resolved)
         if use_openai
