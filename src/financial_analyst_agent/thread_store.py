@@ -10,6 +10,7 @@ EvidenceStore so checkpoints stay small and threads do not share evidence.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -87,11 +88,26 @@ class ThreadStore(Protocol):
     def clear(self, thread_id: str) -> None: ...
 
 
+# A checkpoint dated this far ahead of the clock was not written by it.
+_CLOCK_SKEW = timedelta(minutes=5)
+# Thread ids name files: letters, digits, "-" and "_" only, so ".." names none.
+_THREAD_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
+
+
 def _expired(state: ThreadState, now: datetime, ttl_seconds: int) -> bool:
     updated = state.updated_at
     if updated.tzinfo is None:
         updated = updated.replace(tzinfo=UTC)
+    if updated - now > _CLOCK_SKEW:
+        # A future date would otherwise never expire.
+        return True
     return now - updated >= timedelta(seconds=ttl_seconds)
+
+
+def _checked_id(thread_id: str) -> str:
+    if not _THREAD_ID.fullmatch(thread_id):
+        raise ValueError("A thread id is 1 to 128 letters, digits, '-' or '_'")
+    return thread_id
 
 
 class LocalThreadStore:
@@ -115,10 +131,10 @@ class LocalThreadStore:
         return LocalEvidenceStore(self._evidence_dir(thread_id))
 
     def _path(self, thread_id: str) -> Path:
-        return self._root / f"{quote(thread_id, safe='')}.json"
+        return self._root / f"{quote(_checked_id(thread_id), safe='')}.json"
 
     def _evidence_dir(self, thread_id: str) -> Path:
-        return self._evidence_root / quote(thread_id, safe="")
+        return self._evidence_root / quote(_checked_id(thread_id), safe="")
 
     def load(
         self,
@@ -192,13 +208,20 @@ class LocalThreadStore:
         results: list[TurnResult] = []
         for ref in state.evidence_refs:
             if ref.startswith("result-"):
-                results.append(evidence.get_result(ref))
+                try:
+                    results.append(evidence.get_result(ref))
+                except (KeyError, OSError, ValueError):
+                    # A gone or damaged answer is left out; the rest still show.
+                    continue
         return tuple(results)
 
     def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
         if state.last_result_ref is None:
             return None
-        return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+        try:
+            return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+        except (KeyError, OSError, ValueError):
+            return None
 
     def clear(self, thread_id: str) -> None:
         with self._lock:
@@ -252,13 +275,20 @@ class EphemeralThreadStore:
         results: list[TurnResult] = []
         for ref in state.evidence_refs:
             if ref.startswith("result-"):
-                results.append(evidence.get_result(ref))
+                try:
+                    results.append(evidence.get_result(ref))
+                except (KeyError, OSError, ValueError):
+                    # A gone or damaged answer is left out; the rest still show.
+                    continue
         return tuple(results)
 
     def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
         if state.last_result_ref is None:
             return None
-        return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+        try:
+            return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+        except (KeyError, OSError, ValueError):
+            return None
 
     def clear(self, thread_id: str) -> None:
         self._states.pop(thread_id, None)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import os
 import threading
 import uuid
 from datetime import date
@@ -211,9 +212,15 @@ class LocalEvidenceStore:
         return frozenset(ids)
 
     def _write(self, record: EvidenceRecord) -> None:
-        self._path(record.evidence_id).write_text(
-            record.model_dump_json(), encoding="utf-8"
-        )
+        """Write the whole record or nothing: a reader never sees a torn file."""
+        path = self._path(record.evidence_id)
+        temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temp.write_text(record.model_dump_json(), encoding="utf-8")
+            os.replace(temp, path)
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
 
     def _read(self, evidence_id: str) -> EvidenceRecord:
         path = self._path(evidence_id)
