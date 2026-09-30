@@ -20512,18 +20512,6 @@
       "industry": "Security & Protection Services"
     },
     {
-      "cik": "0001280784",
-      "name": "Hercules Capital, Inc.",
-      "ticker": "HTGC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "3176173080",
-      "price": "16.97",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001504008",
       "name": "BankUnited, Inc.",
       "ticker": "BKU",
@@ -26673,18 +26661,6 @@
       "industry": "Telecommunications Services"
     },
     {
-      "cik": "0001786108",
-      "name": "Trinity Capital Inc.",
-      "ticker": "TRIN",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "1587415740",
-      "price": "17.66",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001737450",
       "name": "Opera Limited",
       "ticker": "OPRA",
@@ -27037,18 +27013,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0002002660",
-      "name": "Pershing Square USA, Ltd.",
-      "ticker": "PSUS",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "1508400000",
-      "price": "37.71",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001632790",
       "name": "Energizer Holdings, Inc.",
       "ticker": "ENR",
@@ -27398,18 +27362,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Oil & Gas Exploration & Production"
-    },
-    {
-      "cik": "0000017313",
-      "name": "Capital Southwest Corporation",
-      "ticker": "CSWC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "1437314391",
-      "price": "23.13",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000895419",
@@ -31155,18 +31107,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0001224450",
-      "name": "Cohen & Steers REIT and Preferred Income Fund, Inc.",
-      "ticker": "RNP",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "908641495",
-      "price": "18.93",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0002096300",
       "name": "Aevex Corp.",
       "ticker": "AVEX",
@@ -33081,18 +33021,6 @@
       "industry": "REIT - Mortgage"
     },
     {
-      "cik": "0001278752",
-      "name": "MidCap Financial Investment Corporation",
-      "ticker": "MFIC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "731468937",
-      "price": "8.88",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001787117",
       "name": "Reformation Inc. (California)",
       "ticker": "REF",
@@ -33179,18 +33107,6 @@
       "is_fund": false,
       "industry": "Oil & Gas Exploration & Production",
       "files_quarterly": false
-    },
-    {
-      "cik": "0001513363",
-      "name": "Fidus Investment Corporation",
-      "ticker": "FDUS",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "726826071",
-      "price": "19.15",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001464423",
@@ -33534,18 +33450,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Independent Power Producers"
-    },
-    {
-      "cik": "0001504619",
-      "name": "PennantPark Floating Rate Capital Ltd.",
-      "ticker": "PFLT",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "693533093",
-      "price": "6.99",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000076282",
@@ -34142,18 +34046,6 @@
       "files_quarterly": false
     },
     {
-      "cik": "0001418076",
-      "name": "SLR Investment Corp.",
-      "ticker": "SLRC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "640471403",
-      "price": "11.74",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001275187",
       "name": "AngioDynamics, Inc.",
       "ticker": "ANGO",
@@ -34262,18 +34154,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Medical - Diagnostics & Research"
-    },
-    {
-      "cik": "0001321741",
-      "name": "Gladstone Investment Corp.",
-      "ticker": "GAIN",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "629585820",
-      "price": "15.81",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001743725",
@@ -35980,18 +35860,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Oil & Gas Exploration & Production"
-    },
-    {
-      "cik": "0001930147",
-      "name": "Sound Point Meridian Capital, Inc.",
-      "ticker": "SPME",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "509321072",
-      "price": "24.8",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001754226",
@@ -38832,18 +38700,6 @@
       "industry": "Restaurants"
     },
     {
-      "cik": "0001534254",
-      "name": "CION Investment Corporation",
-      "ticker": "CION",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "356490744",
-      "price": "7.16",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001814114",
       "name": "Orchestra BioMed Holdings, Inc.",
       "ticker": "OBIO",
@@ -40460,18 +40316,6 @@
       "files_quarterly": false
     },
     {
-      "cik": "0001653384",
-      "name": "Runway Growth Finance Corp.",
-      "ticker": "RWAY",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "287909622",
-      "price": "6.78",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Financial - Credit Services"
-    },
-    {
       "cik": "0001576942",
       "name": "Stitch Fix, Inc.",
       "ticker": "SFIX",
@@ -40798,18 +40642,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Apparel - Retail"
-    },
-    {
-      "cik": "0001377936",
-      "name": "Saratoga Investment Corp.",
-      "ticker": "SAR",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "279074383",
-      "price": "17.11",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001625641",
@@ -42169,18 +42001,6 @@
       "industry": "Apparel - Retail"
     },
     {
-      "cik": "0001754836",
-      "name": "Eagle Point Income Company Inc.",
-      "ticker": "EICA",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "233539912",
-      "price": "24.96",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001434728",
       "name": "Global Water Resources, Inc.",
       "ticker": "GWRS",
@@ -42786,18 +42606,6 @@
       "industry": "Chemicals - Specialty"
     },
     {
-      "cik": "0001383414",
-      "name": "PennantPark Investment Corporation",
-      "ticker": "PNNT",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "216783032",
-      "price": "3.32",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001653087",
       "name": "Alector, Inc.",
       "ticker": "ALEC",
@@ -42918,18 +42726,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Advertising Agencies"
-    },
-    {
-      "cik": "0001509470",
-      "name": "Neostellar Capital Corp.",
-      "ticker": "NSLR",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "210726672",
-      "price": "7.96",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0000935419",
@@ -47476,18 +47272,6 @@
       "industry": "Staffing & Employment Services"
     },
     {
-      "cik": "0001490349",
-      "name": "PhenixFIN Corporation",
-      "ticker": "PFX",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "88107234",
-      "price": "45.59",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001997403",
       "name": "ZenaTech, Inc.",
       "ticker": "ZENA",
@@ -47659,18 +47443,6 @@
       "is_fund": false,
       "industry": "Internet Content & Information",
       "files_quarterly": false
-    },
-    {
-      "cik": "0001372807",
-      "name": "BCP Investment Corporation",
-      "ticker": "BCIC",
-      "sector": "Financial Services",
-      "exchange": "NASDAQ",
-      "market_cap": "85899850",
-      "price": "6.94",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
     },
     {
       "cik": "0001979414",
@@ -55859,18 +55631,6 @@
       "files_quarterly": false
     },
     {
-      "cik": "0000878932",
-      "name": "Equus Total Return Inc",
-      "ticker": "EQS",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "13952729",
-      "price": "0.999",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management"
-    },
-    {
       "cik": "0001684425",
       "name": "TDH Holdings, Inc.",
       "ticker": "PETZ",
@@ -63443,30 +63203,6 @@
       "is_fund": false,
       "industry": "Financial - Capital Markets",
       "files_quarterly": false
-    },
-    {
-      "cik": "0000070502",
-      "name": "National Rural Utilities Cooper",
-      "ticker": "NRUC",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "0",
-      "price": "20.92",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Financial - Credit Services"
-    },
-    {
-      "cik": "0001284143",
-      "name": "Corporate Backed Trust Certificates, Goldman Sachs Capital I Securities-Backed Series 2004-6 04-6 A1 3.50",
-      "ticker": "JBK",
-      "sector": "Financial Services",
-      "exchange": "NYSE",
-      "market_cap": "0",
-      "price": "25.32",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Asset Management - Income"
     }
   ]
 }

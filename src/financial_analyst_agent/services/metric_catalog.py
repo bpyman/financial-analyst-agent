@@ -17,6 +17,11 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         # insurance premiums, rent, financing income and membership fees
         # (Berkshire, Welltower, GM Financial, Walmart).
         ("us-gaap", "Revenues"),
+        # Banks and brokers report net revenue (JPMorgan, Goldman, SoFi, American
+        # Express); their contract revenue is fees only, without interest.
+        ("us-gaap", "RevenuesNetOfInterestExpense"),
+        # Utilities (NextEra, Duke).
+        ("us-gaap", "RegulatedAndUnregulatedOperatingRevenue"),
         ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
         ("us-gaap", "SalesRevenueNet"),
     ],
@@ -35,6 +40,8 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     ],
     Metric.RESEARCH_AND_DEVELOPMENT: [
         ("us-gaap", "ResearchAndDevelopmentExpense"),
+        # Drug makers expense acquired in-process R&D separately (Lilly, Amgen, AbbVie).
+        ("us-gaap", "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"),
     ],
     Metric.SELLING_GENERAL_AND_ADMINISTRATIVE: [
         ("us-gaap", "SellingGeneralAndAdministrativeExpense"),
@@ -71,6 +78,8 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
     Metric.CAPITAL_EXPENDITURE: [
         ("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment"),
         ("us-gaap", "PaymentsToAcquireProductiveAssets"),
+        # Lilly's "purchases of property and equipment".
+        ("us-gaap", "PaymentsToAcquireOtherPropertyPlantAndEquipment"),
     ],
     Metric.DEPRECIATION_AMORTIZATION: [
         ("us-gaap", "DepreciationDepletionAndAmortization"),

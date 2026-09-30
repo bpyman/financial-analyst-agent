@@ -111,6 +111,37 @@ def test_fourth_quarter_is_the_year_minus_nine_months() -> None:
     assert fact.derivation.parts[1].source_url == "https://www.sec.gov/q3.htm"
 
 
+def test_a_fourth_quarter_subtracts_the_nine_months_as_then_reported() -> None:
+    # 3M, 2023: a 10-Q filed after the 10-K recast the nine months for a spin-off.
+    start, nine, year = date(2023, 1, 1), date(2023, 9, 30), date(2023, 12, 31)
+    original = _fact(REVENUE, start, nine, "24668", "q3", "10-Q")
+    recast = _fact(REVENUE, start, nine, "18608", "q3-2024", "10-Q").model_copy(
+        update={"filed_date": date(2024, 10, 22)}
+    )
+    annual = _fact(REVENUE, start, year, "32681", "k", "10-K").model_copy(
+        update={"filed_date": date(2024, 2, 7)}
+    )
+
+    fact = _derive([original, recast, annual], _filing("10-K", "k", year), Metric.REVENUE)
+
+    assert fact.value == Decimal("8013")
+    assert fact.derivation is not None
+    assert fact.derivation.parts[1].accession_number == "q3"
+
+
+def test_a_quarter_is_not_derived_from_a_part_filed_after_its_total() -> None:
+    start, nine, year = date(2023, 1, 1), date(2023, 9, 30), date(2023, 12, 31)
+    recast_only = _fact(REVENUE, start, nine, "18608", "q3-2024", "10-Q").model_copy(
+        update={"filed_date": date(2024, 10, 22)}
+    )
+    annual = _fact(REVENUE, start, year, "32681", "k", "10-K").model_copy(
+        update={"filed_date": date(2024, 2, 7)}
+    )
+
+    with pytest.raises(UnsupportedQuarterlyFactError):
+        _derive([recast_only, annual], _filing("10-K", "k", year), Metric.REVENUE)
+
+
 def test_a_standalone_fourth_quarter_in_the_10k_is_used_as_reported() -> None:
     facts = [
         _fact(REVENUE, FY_START, FY_END, "416161", "k", "10-K"),
@@ -338,3 +369,15 @@ def test_live_index_knows_street_names_for_large_companies() -> None:
 
     assert [m.query for m in index.find("Citi vs Chase net income")] == ["C", "JPM"]
     assert [m.query for m in index.find("Schwab and Capital One revenue")] == ["SCHW", "COF"]
+
+
+def test_revenue_reads_net_revenue_before_contract_revenue() -> None:
+    from financial_analyst_agent.services.metric_catalog import get_concept_candidates
+
+    concepts = [concept for _, concept in get_concept_candidates(Metric.REVENUE)]
+
+    # A bank's contract revenue is its fees alone; its net revenue includes interest.
+    assert concepts.index("RevenuesNetOfInterestExpense") < concepts.index(
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+    )
+    assert "RegulatedAndUnregulatedOperatingRevenue" in concepts
