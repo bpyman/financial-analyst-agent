@@ -208,6 +208,36 @@ def gross_profit_from_components(revenue: FinancialFact, cost: FinancialFact) ->
     )
 
 
+REVENUE_FROM_COMPONENTS_LABEL = (
+    "Gross profit plus cost of revenue, because the filing's own revenue figure "
+    "is smaller than either and so mis-scaled"
+)
+
+
+def revenue_from_components(
+    filed: FinancialFact, gross: FinancialFact, cost: FinancialFact
+) -> FinancialFact:
+    """Revenue as gross profit plus cost of revenue, when the filed revenue is mis-scaled."""
+    return filed.model_copy(
+        update={
+            "value": gross.value + cost.value,
+            "concept": f"{gross.concept} + {cost.concept}",
+            "accession_number": gross.accession_number,
+            "form": gross.form,
+            "source_url": gross.source_url,
+            "directly_reported": False,
+            "derivation": Derivation(
+                method="sum",
+                label=REVENUE_FROM_COMPONENTS_LABEL,
+                parts=[
+                    _derivation_part(gross).model_copy(update={"metric": gross.metric.value}),
+                    _derivation_part(cost).model_copy(update={"metric": cost.metric.value}),
+                ],
+            ),
+        }
+    )
+
+
 DEPRECIATION_AMORTIZATION_LABEL = "Depreciation plus amortization of intangible assets"
 
 

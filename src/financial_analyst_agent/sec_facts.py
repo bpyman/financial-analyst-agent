@@ -43,6 +43,7 @@ from financial_analyst_agent.services.fiscal_periods import (
     fiscal_labels,
     gross_profit_from_components,
     periods_from_filings,
+    revenue_from_components,
     sum_of_components,
 )
 from financial_analyst_agent.services.metric_catalog import (
@@ -500,6 +501,21 @@ class SecFactLookup:
         report_date: date | None,
         filer_ciks: Mapping[str, str] | None = None,
     ) -> FinancialFact:
+        if metric is Metric.REVENUE:
+            fact = _select_or_derive(
+                records,
+                filings,
+                metric,
+                unit,
+                company_name,
+                ticker,
+                cik,
+                report_date=report_date,
+                filer_ciks=filer_ciks,
+            )
+            return self._plausible_revenue(
+                fact, payload, filings, unit, company_name, ticker, cik, filer_ciks=filer_ciks
+            )
         try:
             return _select_or_derive(
                 records,
@@ -550,6 +566,63 @@ class SecFactLookup:
             if _reports_excluding_costs(payload, revenue.end_date):
                 raise
             return gross_profit_from_components(revenue, cost)
+
+    def _plausible_revenue(
+        self,
+        revenue: FinancialFact,
+        payload: dict[str, Any],
+        filings: list[Filing],
+        unit: str,
+        company_name: str,
+        ticker: str,
+        cik: str,
+        *,
+        filer_ciks: Mapping[str, str] | None,
+    ) -> FinancialFact:
+        """Revenue, unless the filing's own gross profit or cost of revenue exceeds it.
+
+        Plexus tagged a quarter's revenue as $1,304,778, its thousands without
+        their scale, beside $131 million of gross profit. Revenue is then gross
+        profit plus cost of revenue, both as filed, when the two cover the
+        quarter; otherwise the mis-scaled figure is refused, never shown.
+        """
+        parts: list[FinancialFact] = []
+        for component in (Metric.GROSS_PROFIT, Metric.COST_OF_REVENUE):
+            component_records, _ = parse_company_facts(payload, component, unit)
+            try:
+                parts.append(
+                    _select_or_derive(
+                        component_records,
+                        filings,
+                        component,
+                        unit,
+                        company_name,
+                        ticker,
+                        cik,
+                        report_date=revenue.end_date,
+                        filer_ciks=filer_ciks,
+                    )
+                )
+            except (UnsupportedQuarterlyFactError, FilingNotFoundError):
+                continue
+        period = (revenue.start_date, revenue.end_date)
+        same = {part.metric: part for part in parts if (part.start_date, part.end_date) == period}
+        gross, cost = same.get(Metric.GROSS_PROFIT), same.get(Metric.COST_OF_REVENUE)
+        if gross is not None and cost is not None:
+            total = gross.value + cost.value
+            # Cost above revenue is a negative gross margin, not an error, when
+            # the three agree; only a revenue the parts do not add up to is.
+            agrees = abs(total - revenue.value) <= abs(total) / 100
+            if agrees or revenue.value >= max(gross.value, cost.value):
+                return revenue
+            return revenue_from_components(revenue, gross, cost)
+        if gross is None or not gross.value > revenue.value > 0:
+            return revenue
+        raise UnsupportedQuarterlyFactError(
+            "The filing's revenue is smaller than its own gross profit or cost of "
+            "revenue, so the filed figure is mis-scaled",
+            details={"metric": Metric.REVENUE.value, "concept": revenue.concept},
+        )
 
     def _depreciation_plus_amortization(
         self,

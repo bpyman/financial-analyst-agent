@@ -700,3 +700,76 @@ def test_periodic_filings_are_rebuilt_from_company_facts() -> None:
     assert filings["0000019617-25-000615"].report_date == date(2025, 6, 30)
     assert filings["0000019617-25-000100"].form == "10-K"
     assert filings["0000019617-25-000300"].report_date == date(2024, 12, 31)
+
+
+def _plexus_lookup(revenue: int, gross: int, cost: int) -> SecFactLookup:
+    cik, accession = "0000785786", "0000785786-26-000054"
+
+    def entry(value: int) -> dict[str, object]:
+        return {
+            "start": "2026-04-05",
+            "end": "2026-07-04",
+            "val": value,
+            "accn": accession,
+            "form": "10-Q",
+            "filed": "2026-08-05",
+        }
+
+    facts = {
+        "cik": int(cik),
+        "entityName": "PLEXUS CORP",
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {"USD": [entry(revenue)]}
+                },
+                "GrossProfit": {"units": {"USD": [entry(gross)]}},
+                "CostOfGoodsAndServicesSold": {"units": {"USD": [entry(cost)]}},
+            }
+        },
+    }
+    submissions = {
+        "cik": int(cik),
+        "name": "PLEXUS CORP",
+        "tickers": ["PLXS"],
+        "filings": {
+            "recent": {
+                "form": ["10-Q"],
+                "accessionNumber": [accession],
+                "filingDate": ["2026-08-05"],
+                "reportDate": ["2026-07-04"],
+                "primaryDocument": ["plxs-20260704.htm"],
+            }
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/company_tickers.json"):
+            return httpx.Response(
+                200, json={"0": {"cik_str": int(cik), "ticker": "PLXS", "title": "PLEXUS CORP"}}
+            )
+        if path.endswith(f"/submissions/CIK{cik}.json"):
+            return httpx.Response(200, json=submissions)
+        if path.endswith(f"/companyfacts/CIK{cik}.json"):
+            return httpx.Response(200, json=facts)
+        return httpx.Response(404, json={"error": path})
+
+    settings = Settings(sec_user_agent="FinancialAnalystAgent (dev@example.com)")
+    client = SECClient(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    return SecFactLookup(settings, client=client)
+
+
+def test_a_mis_scaled_revenue_is_gross_profit_plus_cost_of_revenue() -> None:
+    fact = _plexus_lookup(1_304_778, 131_379_000, 1_173_399_000).get_financials("PLXS", "revenue")
+
+    assert fact.value == Decimal("1304778000")
+    assert fact.derivation is not None
+    assert [part.metric for part in fact.derivation.parts] == ["gross_profit", "cost_of_revenue"]
+
+
+def test_a_negative_gross_margin_keeps_the_filed_revenue() -> None:
+    fact = _plexus_lookup(1_000, -200, 1_200).get_financials("PLXS", "revenue")
+
+    assert fact.value == Decimal("1000")
+    assert fact.derivation is None
