@@ -161,3 +161,16 @@ def test_a_balance_sheet_amount_shows_its_date_not_a_period() -> None:
     )
     assert answer.fact_card is not None
     assert answer.fact_card.period_label == "Balance sheet · At Jun 27, 2026"
+
+
+def test_a_derived_gross_profit_names_each_part_by_its_own_metric() -> None:
+    from financial_analyst_agent.services.fiscal_periods import gross_profit_from_components
+    from financial_analyst_agent.turn import _table_row_from_fact
+
+    gross = gross_profit_from_components(
+        _fact("revenue", "70530000000", _QUARTER), _fact("cost_of_revenue", "61520000000", _QUARTER)
+    )
+
+    row = _table_row_from_fact(gross)
+
+    assert [part.metric for part in row.derived_from] == ["revenue", "cost_of_revenue"]

@@ -351,10 +351,11 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
     source = _fact_source_kind(fact)
 
-    def provenance(part: Any) -> ComponentProvenance:
+    def provenance(part: Any, parent: str = metric) -> ComponentProvenance:
         nested = getattr(part, "derivation", None)
+        own = getattr(part, "metric", None) or parent
         return ComponentProvenance(
-            metric=metric,
+            metric=own,
             value=part.value,
             start_date=part.start_date,
             end_date=part.end_date,
@@ -365,7 +366,7 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
             source_url=part.source_url,
             source=source,
             derivation=nested.label if nested is not None else None,
-            derived_from=[provenance(inner) for inner in nested.parts] if nested else [],
+            derived_from=[provenance(inner, own) for inner in nested.parts] if nested else [],
         )
 
     return {

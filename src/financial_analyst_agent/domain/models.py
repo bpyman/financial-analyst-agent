@@ -57,6 +57,9 @@ class DerivationPart(BaseModel):
     # Set when this part is itself derived (a fiscal Q4's revenue inside a gross
     # profit), so the evidence keeps the filings it came from.
     derivation: "Derivation | None" = None
+    # The part's own metric when it differs from the derived one: a gross
+    # profit's parts are revenue and cost of revenue. None: the same metric.
+    metric: str | None = None
 
 
 class Derivation(BaseModel):
