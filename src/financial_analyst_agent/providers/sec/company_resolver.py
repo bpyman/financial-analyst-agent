@@ -42,17 +42,18 @@ def _group_by_cik(entries: list[dict[str, str]]) -> dict[str, dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     for entry in entries:
         cik = entry["cik"]
-        bucket = grouped.setdefault(cik, {"title": entry["title"], "tickers": set()})
-        bucket["tickers"].add(entry["ticker"])
+        bucket = grouped.setdefault(cik, {"title": entry["title"], "tickers": {}})
+        # SEC lists a filer's main listing first (BRK-B before BRK-A); keep that order.
+        bucket["tickers"].setdefault(entry["ticker"], None)
     return grouped
 
 
-def _ordered_tickers(tickers: set[str], primary_ticker: str | None = None) -> list[str]:
-    sorted_tickers = sorted(tickers)
+def _ordered_tickers(tickers: dict[str, None], primary_ticker: str | None = None) -> list[str]:
+    listed = list(tickers)
     if primary_ticker is None:
-        return sorted_tickers
+        return listed
     primary = primary_ticker.upper()
-    others = [ticker for ticker in sorted_tickers if ticker != primary]
+    others = [ticker for ticker in listed if ticker != primary]
     return [primary, *others]
 
 

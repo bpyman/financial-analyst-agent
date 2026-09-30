@@ -250,10 +250,14 @@ class SecFactLookup:
         settings: Settings | None = None,
         client: SECDataSource | None = None,
         display_names: Mapping[str, str] | None = None,
+        listed_tickers: Mapping[str, str] | None = None,
     ) -> None:
         # SEC's ticker file titles companies "AMAZON COM INC"; the snapshot
         # knows them as "Amazon.com, Inc.". Keyed by 10-digit CIK.
         self._display_names: Mapping[str, str] = display_names or {}
+        # The snapshot's listing for a company with several (GOOG of GOOGL and
+        # GOOG), so a table row and the ranking name it alike. Keyed by CIK.
+        self._listed_tickers: Mapping[str, str] = listed_tickers or {}
         self._tickers: dict[str, Any] | None = None
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
@@ -415,7 +419,14 @@ class SecFactLookup:
                 "outside what this analyst covers.",
                 details={"cik": resolved.cik},
             )
-        ticker = resolved.tickers[0] if resolved.tickers else company.upper()
+        listed = self._listed_tickers.get(resolved.cik)
+        ticker = (
+            listed
+            if listed in resolved.tickers
+            else resolved.tickers[0]
+            if resolved.tickers
+            else company.upper()
+        )
         filings = self._filings(resolved.cik)
         # "Latest" is the newest period any 10-Q or 10-K covers (ADR 0007).
         target = report_date if report_date is not None else latest_period_end(filings)

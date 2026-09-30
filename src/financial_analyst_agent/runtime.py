@@ -167,6 +167,13 @@ def _display_names(path: Path | None) -> dict[str, str]:
     }
 
 
+def _listed_tickers(path: Path | None) -> dict[str, str]:
+    """The snapshot's ticker for each CIK: the listing rankings show."""
+    return {
+        company.cik: company.ticker for company in _snapshot_ranking(path).snapshot_companies()
+    }
+
+
 def _snapshot_ranking(path: Path | None) -> SnapshotRanking:
     """The snapshot is immutable per file version; parse it once, not on every turn."""
     from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH
@@ -205,6 +212,7 @@ def recorded_runtime() -> Runtime:
         facts=SecFactLookup(
             client=RecordedSECDataSource(),
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+            listed_tickers=_listed_tickers(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         ),
         ranking=_snapshot_ranking(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=RecordedNewsSearch(),
@@ -241,7 +249,11 @@ def live_runtime(
     client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
     return Runtime(
         completer=completer,
-        facts=SecFactLookup(client=client, display_names=_display_names(None)),
+        facts=SecFactLookup(
+            client=client,
+            display_names=_display_names(None),
+            listed_tickers=_listed_tickers(None),
+        ),
         ranking=_snapshot_ranking(None),
         news=news,
         essay=essay,
