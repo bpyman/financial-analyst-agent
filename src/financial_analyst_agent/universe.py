@@ -14,6 +14,7 @@ from financial_analyst_agent.domain.serialization import DecimalStr
 
 DEFAULT_SNAPSHOT_PATH = Path(__file__).parent / "data" / "universe_snapshot.json"
 _INELIGIBLE_ISSUERS_PATH = Path(__file__).parent / "data" / "ineligible_issuers.json"
+_SEC_FILER_NAMES_PATH = Path(__file__).parent / "data" / "sec_filer_names.json"
 
 US_EXCHANGES: frozenset[str] = frozenset(
     {
@@ -81,6 +82,16 @@ def _ineligible_issuer_ciks(path: Path = _INELIGIBLE_ISSUERS_PATH) -> frozenset[
 
 
 INELIGIBLE_ISSUER_CIKS = _ineligible_issuer_ciks()
+
+
+def sec_filer_names(path: Path = _SEC_FILER_NAMES_PATH) -> tuple[tuple[str, str], ...]:
+    """(ticker, SEC name) of listed operating filers the snapshot leaves out.
+
+    Subsidiaries that file their own 10-Qs (Southern California Edison) and
+    other listings outside the freeze; scripts/build_sec_filer_names.py writes them.
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return tuple((filer["ticker"], filer["name"]) for filer in payload["filers"])
 
 
 def ineligible_issuers(path: Path = _INELIGIBLE_ISSUERS_PATH) -> tuple[tuple[str, str], ...]:

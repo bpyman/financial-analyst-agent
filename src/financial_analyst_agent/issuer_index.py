@@ -156,6 +156,8 @@ _METRIC_STARTS = {
     "NET": frozenset({"income", "margin", "loss", "losses", "sales", "profit", "debt", "interest"}),
     "CASH": frozenset({"flow", "flows"}),
 }
+# SEC titles end with a state or "new" marker: "CONSUMERS BANCORP INC /OH/".
+_SEC_STATE = re.compile(r"\s*/[A-Za-z .]+/?\s*$")
 _CIK = re.compile(r"\bcik\s*#?:?\s*(\d{1,10})\b|\b(0\d{9})\b", re.IGNORECASE)
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
@@ -295,6 +297,22 @@ class IssuerIndex:
         for core in {_core_name(name), _core_name(name, _NAME_SUFFIXES | _FUND_WORDS)}:
             if " " in core:
                 self.phrases.setdefault(core, query)
+
+    def add_filer(self, ticker: str, name: str, *, reserved: frozenset[str]) -> None:
+        """An operating SEC filer outside the snapshot, named by its full name only.
+
+        "Southern California Edison" and "Entergy Texas" then match whole, ahead
+        of "Edison" or "Entergy" alone. A filer never takes a phrase a snapshot
+        company holds, a one-word name, or a name with a ``reserved`` word in it,
+        so "Apple Revenue Trust" could not capture "Apple revenue".
+        """
+        core = _core_name(_SEC_STATE.sub("", name))
+        words = core.split()
+        if len(words) < 2 or any(word in reserved or word.isdigit() for word in words):
+            return
+        query = ticker.upper()
+        if self.phrases.setdefault(core, query) == query:
+            self.display_names.setdefault(query, name)
 
     def find(self, question: str) -> list[CompanyMention]:
         """Companies named exactly, longest phrase first, in question order."""
