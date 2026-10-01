@@ -202,7 +202,10 @@ function FilingSide({
   );
 }
 
-/** Changed words marked: struck through on the previous side, tinted on the current one. */
+/**
+ * Changed words marked by colour alone: red on the previous side, green on the
+ * current one. No strike-through, so the old wording stays easy to read.
+ */
 function Marked({ pieces, current }: { pieces: DiffPiece[]; current: boolean }) {
   return (
     <>
@@ -214,7 +217,7 @@ function Marked({ pieces, current }: { pieces: DiffPiece[]; current: boolean }) 
             {piece.text}
           </ins>
         ) : (
-          <del key={index} className="rounded-[3px] bg-negative-soft text-fg decoration-negative/60">
+          <del key={index} className="rounded-[3px] bg-negative-soft text-fg no-underline ring-1 ring-negative/25">
             {piece.text}
           </del>
         ),
