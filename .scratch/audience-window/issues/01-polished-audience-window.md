@@ -1,6 +1,8 @@
 # 01 — Polished audience window
 
-**Status:** ready-for-agent
+**Status:** wontfix
+
+Superseded: the Streamlit window this ticket polishes was replaced by the Next.js window (ADR 0006, `.scratch/react-audience-window/`) and deleted.
 
 ## Problem Statement
 
