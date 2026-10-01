@@ -20,7 +20,9 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
 
 <sub>"Compare Eli Lilly and Pfizer revenue over the last eight quarters", on the public demo. Fiscal fourth quarters are derived from the 10-K and marked †.</sub>
 
-## Why this is different
+## How it works
+
+The model plans; code owns every number.
 
 1. **SEC quarterly facts, with provenance.** Standalone 10-Q amounts from companyfacts XBRL, each with its accession, period, concept, and an EDGAR filing link.
 2. **Constrained planning.** The model proposes a typed analysis-spec patch; code resolves CIKs, catalog metrics, and period windows. It does not chain tools or invent constituents.
@@ -62,9 +64,9 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
 
 Hosted demo (opens on the live runtime, straight from SEC EDGAR; switch to Recorded for the captured filings): [onfile-analyst.vercel.app](https://onfile-analyst.vercel.app). The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
 
-![Compare four quarters in one click, add Apple, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
+![Compare Eli Lilly, Pfizer and Merck revenue, show it year over year, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
-[Walkthrough video](docs/portfolio/images/demo-walkthrough.mp4): one-click four-quarter compare, `add Apple`, the two-company chart, then the exact 10-Q source behind an Apple value.
+[Walkthrough video](docs/portfolio/images/demo-walkthrough.mp4): Eli Lilly, Pfizer and Merck revenue over eight quarters, the follow-up `show year-over-year` redrawing it as growth rates, then the exact 10-Q source behind a Lilly value.
 
 ![Microsoft quarterly revenue trend and its table, with the filing link on every row](docs/portfolio/images/compare-four-quarters.png)
 
@@ -200,7 +202,7 @@ uv run python -m financial_analyst_agent.mcp_server
 
 ## Portfolio images
 
-`web/scripts/capture-portfolio.ts` drives the window the way the walkthrough shows it, compare four quarters, then `add Apple`, then inspect the exact 10-Q source. It also asks the two showcase questions (Eli Lilly vs Pfizer revenue, and what changed in Microsoft's latest 10-Q) and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the Lilly vs Pfizer chart, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
+`web/scripts/capture-portfolio.ts` drives the window the way a visitor would: for the walkthrough, Eli Lilly, Pfizer and Merck revenue, then `show year-over-year`, then the exact 10-Q source; for the stills, compare four quarters, then `add Apple`, then the inspector. It also asks the showcase questions (Eli Lilly vs Pfizer revenue, what changed in Microsoft's latest 10-Q, an overview and a sorted ranking) and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the Lilly vs Pfizer chart, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
 
 ```text
 cd web
