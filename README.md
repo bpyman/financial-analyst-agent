@@ -158,10 +158,11 @@ uv run python -m pytest tests/integration/test_live_sec_lookup.py -m network
 uv run python -m pytest tests/integration/test_live_tavily_news.py -m network
 ```
 
-The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** recorded-runtime cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
+The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) runs **30** recorded-runtime cases (lookups, fiscal calendars and derived quarters, growth, rankings, refusals, clarification, multi-turn follow-ups, filing changes, the numeral lock) with p50/p95 latency. [Figures checked against their filings](docs/evaluation/filing-check.md) takes 25 figures the live window shows, across sectors and metrics, and finds each in the text of the 10-Q it cites. Regenerate them with:
 
 ```text
 uv run python -m financial_analyst_agent.evaluation
+uv run python scripts/check_against_filings.py   # live: reads about 25 filings from SEC
 ```
 
 Rebuild the ranking freeze (not during a demo turn):
