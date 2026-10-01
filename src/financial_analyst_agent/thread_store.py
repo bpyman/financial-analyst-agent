@@ -22,7 +22,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import Intent, RuntimeKind, TurnResult
+from financial_analyst_agent.contracts import ClarifyKind, Intent, RuntimeKind, TurnResult
 from financial_analyst_agent.evidence_store import (
     EvidenceStore,
     InMemoryEvidenceStore,
@@ -39,7 +39,7 @@ class ThreadMessage(BaseModel):
 class PendingClarification(BaseModel):
     """Analysis held awaiting the analyst's answer. Nothing has been fetched."""
 
-    kind: Literal["ambiguous_metric", "ambiguous_mode"]
+    kind: ClarifyKind
     candidates: tuple[str, ...]
     patch: SpecPatch
     intent: Intent = Intent.LOOKUP
@@ -110,7 +110,34 @@ def _checked_id(thread_id: str) -> str:
     return thread_id
 
 
-class LocalThreadStore:
+class _ResultResolver:
+    """Turn results read back from a thread's evidence, shared by both stores."""
+
+    def evidence_for(self, thread_id: str) -> EvidenceStore:
+        raise NotImplementedError
+
+    def resolve_results(self, state: ThreadState) -> tuple[TurnResult, ...]:
+        evidence = self.evidence_for(state.thread_id)
+        results: list[TurnResult] = []
+        for ref in state.evidence_refs:
+            if ref.startswith("result-"):
+                try:
+                    results.append(evidence.get_result(ref))
+                except (KeyError, OSError, ValueError):
+                    # A gone or damaged answer is left out; the rest still show.
+                    continue
+        return tuple(results)
+
+    def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
+        if state.last_result_ref is None:
+            return None
+        try:
+            return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
+        except (KeyError, OSError, ValueError):
+            return None
+
+
+class LocalThreadStore(_ResultResolver):
     """JSON thread checkpoints plus a per-thread evidence directory.
 
     Loads, saves, clears, and expiry share one lock. Expiry re-reads the
@@ -203,26 +230,6 @@ class LocalThreadStore:
                     removed += 1
         return removed
 
-    def resolve_results(self, state: ThreadState) -> tuple[TurnResult, ...]:
-        evidence = self.evidence_for(state.thread_id)
-        results: list[TurnResult] = []
-        for ref in state.evidence_refs:
-            if ref.startswith("result-"):
-                try:
-                    results.append(evidence.get_result(ref))
-                except (KeyError, OSError, ValueError):
-                    # A gone or damaged answer is left out; the rest still show.
-                    continue
-        return tuple(results)
-
-    def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
-        if state.last_result_ref is None:
-            return None
-        try:
-            return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
-        except (KeyError, OSError, ValueError):
-            return None
-
     def clear(self, thread_id: str) -> None:
         with self._lock:
             self._clear(thread_id)
@@ -236,7 +243,7 @@ class LocalThreadStore:
             shutil.rmtree(evidence_dir)
 
 
-class EphemeralThreadStore:
+class EphemeralThreadStore(_ResultResolver):
     """In-process store for single-message compatibility threads."""
 
     def __init__(self) -> None:
@@ -258,37 +265,13 @@ class EphemeralThreadStore:
         state = self._states.get(thread_id)
         if state is None or ttl_seconds is None:
             return state
-        clock = now or datetime.now(UTC)
-        updated = state.updated_at
-        if updated.tzinfo is None:
-            updated = updated.replace(tzinfo=UTC)
-        if clock - updated >= timedelta(seconds=ttl_seconds):
+        if _expired(state, now or datetime.now(UTC), ttl_seconds):
             self.clear(thread_id)
             return None
         return state
 
     def save(self, state: ThreadState) -> None:
         self._states[state.thread_id] = state
-
-    def resolve_results(self, state: ThreadState) -> tuple[TurnResult, ...]:
-        evidence = self.evidence_for(state.thread_id)
-        results: list[TurnResult] = []
-        for ref in state.evidence_refs:
-            if ref.startswith("result-"):
-                try:
-                    results.append(evidence.get_result(ref))
-                except (KeyError, OSError, ValueError):
-                    # A gone or damaged answer is left out; the rest still show.
-                    continue
-        return tuple(results)
-
-    def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
-        if state.last_result_ref is None:
-            return None
-        try:
-            return self.evidence_for(state.thread_id).get_result(state.last_result_ref)
-        except (KeyError, OSError, ValueError):
-            return None
 
     def clear(self, thread_id: str) -> None:
         self._states.pop(thread_id, None)

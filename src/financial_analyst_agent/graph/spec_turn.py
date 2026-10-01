@@ -15,7 +15,9 @@ from typing import Any
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
+    DEFAULT_RANK_LIMIT,
     MISSING_FACT,
+    NOT_OPERATING_COMPANY,
     QUALITATIVE_INTENTS,
     SOURCE_UNAVAILABLE,
     STRUCTURED_INTENTS,
@@ -26,9 +28,12 @@ from financial_analyst_agent.contracts import (
     TableRow,
     ToolTrace,
     TurnResult,
+    refuse_unknown_metric,
+    unknown_metric_message,
 )
 from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
+    IneligibleIssuerError,
     ProviderError,
     SessionQuotaError,
     UnknownIndustryError,
@@ -40,6 +45,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     CompiledTask,
     NamedPeriodSpec,
     PeriodSelection,
+    SpecDraft,
     SpecPatch,
     SpecRejection,
     apply_patch,
@@ -192,37 +198,32 @@ class TurnContext:
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
     """Lift a one-shot closed Plan into a replace-mode spec patch."""
     intent = plan.intent
+    metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
+    metrics = (metric,) if metric else ()
     if intent is Intent.LOOKUP:
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
-        return SpecPatch(
-            mode="replace",
-            add_companies=(plan.company,),
-            add_metrics=(metric,) if metric else (),
-        )
+        return SpecPatch(mode="replace", add_companies=(plan.company,), add_metrics=metrics)
     if intent is Intent.COMPARE:
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
         return SpecPatch(
             mode="replace",
             add_companies=tuple(plan.companies),
-            add_metrics=(metric,) if metric else (),
+            add_metrics=metrics,
             add_operations=("across_companies",),
         )
+    if intent not in (Intent.RANK, Intent.RANK_AND_LOOKUP):
+        raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
+    ranked = (
+        plan.industry or "",
+        int(getattr(plan, "limit", DEFAULT_RANK_LIMIT) or DEFAULT_RANK_LIMIT),
+    )
     if intent is Intent.RANK:
-        industry = plan.industry or ""
-        limit = int(getattr(plan, "limit", 10) or 10)
-        return SpecPatch(mode="replace", ranked_request=(industry, limit))
-    if intent is Intent.RANK_AND_LOOKUP:
-        industry = plan.industry or ""
-        limit = int(getattr(plan, "limit", 10) or 10)
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
-        ordered = getattr(plan, "order_by_metric", False) is True
-        return SpecPatch(
-            mode="replace",
-            ranked_request=(industry, limit),
-            add_metrics=(metric,) if metric else (),
-            add_operations=("rank", "order_by_metric") if ordered else ("rank",),
-        )
-    raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
+        return SpecPatch(mode="replace", ranked_request=ranked)
+    ordered = getattr(plan, "order_by_metric", False) is True
+    return SpecPatch(
+        mode="replace",
+        ranked_request=ranked,
+        add_metrics=metrics,
+        add_operations=("rank", "order_by_metric") if ordered else ("rank",),
+    )
 
 
 # Wording that asks for numbers without naming a metric. Each maps to the
@@ -329,13 +330,9 @@ def bind_metrics_from_message(
             tool_traces=[],
             renderer=RendererKind.CLARIFY,
             candidates=resolved.candidates,
+            clarify_kind="ambiguous_metric",
         )
-    phrased: tuple[str, ...] = ()
-    if resolved.kind == "unique":
-        if resolved.metrics:
-            phrased = resolved.metrics
-        elif resolved.metric is not None:
-            phrased = (resolved.metric,)
+    phrased = resolved.unique_metrics
     if phrased:
         if patch.mode == "replace":
             return patch.model_copy(update={"add_metrics": phrased}), None
@@ -354,31 +351,18 @@ def bind_metrics_from_message(
         return patch.model_copy(update={"add_metrics": implied}), None
     if patch.ranked_request is not None and not patch.add_metrics:
         return patch, None
-    # Replace-mode metric question with an unknown phrase: refuse like execute_turn
+    # Replace-mode metric question with an unknown phrase: refuse with the full catalog
     # even when the planner guessed a catalog slug.
     term = "unknown"
     if patch.add_metrics:
         candidate = patch.add_metrics[0]
         if candidate not in ALLOWED_METRICS:
             term = candidate
-    allowed = ", ".join(ALLOWED_METRICS)
-    return patch, TurnResult(
-        intent=effective_intent,
-        tool_traces=[],
-        renderer=RendererKind.REFUSE,
-        message=f"Unknown metric {term!r}. Allowed: {allowed}",
-    )
+    return patch, refuse_unknown_metric(effective_intent, term)
 
 
 def _unique_metrics_from_phrase(text: str) -> tuple[str, ...]:
-    resolved = resolve_metric_phrase(text)
-    if resolved.kind != "unique":
-        return ()
-    if resolved.metrics:
-        return resolved.metrics
-    if resolved.metric is not None:
-        return (resolved.metric,)
-    return ()
+    return resolve_metric_phrase(text).unique_metrics
 
 
 def _companies_named_in(companies: tuple[str, ...], text: str) -> tuple[str, ...]:
@@ -531,6 +515,11 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     )
 
 
+def _extend(patch: SpecPatch, **fields: Any) -> SpecPatch:
+    """The patch as an edit of the current analysis rather than a new ranking."""
+    return patch.model_copy(update={"mode": "extend", "ranked_request": None, **fields})
+
+
 def refine_patch_from_message(
     patch: SpecPatch,
     message: str,
@@ -548,24 +537,18 @@ def refine_patch_from_message(
         add_metrics = _unique_metrics_from_phrase(incoming)
         remove_metrics = _unique_metrics_from_phrase(outgoing)
         if add_metrics and remove_metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_metrics": add_metrics,
-                    "remove_metrics": remove_metrics,
-                    "add_companies": (),
-                    "remove_companies": (),
-                    "ranked_request": None,
-                }
+            return _extend(
+                patch,
+                add_metrics=add_metrics,
+                remove_metrics=remove_metrics,
+                add_companies=(),
+                remove_companies=(),
             )
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": (incoming,),
-                "remove_companies": (outgoing,),
-                "add_metrics": (),
-                "ranked_request": None,
-            }
+        return _extend(
+            patch,
+            add_companies=(incoming,),
+            remove_companies=(outgoing,),
+            add_metrics=(),
         )
 
     added = _ADD_EDIT.match(message.strip())
@@ -575,89 +558,32 @@ def refine_patch_from_message(
         # "add Google margin" adds Google as well as the margin.
         named = _companies_named_in(patch.add_companies, token)
         if metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_metrics": metrics,
-                    "add_companies": named,
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_metrics=metrics, add_companies=named)
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": named,
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=named)
         if patch.add_metrics and not patch.add_companies:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=())
         companies = _company_tokens(token)
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": companies,
-                "add_metrics": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, add_companies=companies, add_metrics=())
 
     dropped = _DROP_EDIT.match(message.strip())
     if dropped is not None:
         token = dropped.group(1).strip(" .,")
         metrics = _unique_metrics_from_phrase(token)
         if metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "remove_metrics": metrics,
-                    "add_metrics": (),
-                    "add_companies": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, remove_metrics=metrics, add_metrics=(), add_companies=())
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (),
-                    "remove_companies": (),
-                    "add_metrics": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=(), remove_companies=(), add_metrics=())
         companies = _company_tokens(token)
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "remove_companies": companies,
-                "add_metrics": (),
-                "add_companies": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, remove_companies=companies, add_metrics=(), add_companies=())
 
     compare_to = _COMPARE_TO_ISSUER.match(message.strip())
     if compare_to is not None and _YOY.search(message) is None:
         token = compare_to.group(1).strip(" .,")
         if token and not _unique_metrics_from_phrase(token):
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (token,),
-                    "add_metrics": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=(token,), add_metrics=())
 
     standalone = (
         _STANDALONE_LOOKUP.search(message.strip()) is not None
@@ -668,14 +594,7 @@ def refine_patch_from_message(
     # income") is a new question and keeps what it names.
     period_only = not _names_new_subject(patch, current_spec, message)
     if patch.set_periods is not None and patch.mode == "replace" and not standalone and period_only:
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": (),
-                "add_metrics": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, add_companies=(), add_metrics=())
     if standalone and _YOY.search(message) is None:
         return patch.model_copy(
             update={
@@ -688,10 +607,7 @@ def refine_patch_from_message(
 
 
 def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
-    try:
-        return tuple(listing(company, limit=count))
-    except (AttributeError, TypeError):
-        return ()
+    return tuple(listing(company, limit=count))
 
 
 def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:
@@ -858,9 +774,16 @@ def is_structured_proposal(proposal: Any) -> bool:
     return intent in STRUCTURED_INTENTS
 
 
-def _rejection_result(rejection: SpecRejection) -> TurnResult:
+def _draft_intent(draft: SpecDraft) -> Intent:
+    """The closed intent a draft's shape asks for, when no planned intent came with it."""
+    if draft.ranked_request is not None:
+        return Intent.RANK_AND_LOOKUP if draft.metrics else Intent.RANK
+    return Intent.COMPARE if len(draft.company_queries) > 1 else Intent.LOOKUP
+
+
+def _rejection_result(rejection: SpecRejection, intent: Intent) -> TurnResult:
     return TurnResult(
-        intent=Intent.LOOKUP,
+        intent=intent,
         tool_traces=[],
         renderer=RendererKind.REFUSE,
         message=rejection.message,
@@ -872,53 +795,18 @@ def execute_compiled_task(
 ) -> TurnResult:
     from financial_analyst_agent.graph import run_workflow_turn
 
-    if task.kind == "lookup":
-        plan = SimpleNamespace(
-            intent=Intent.LOOKUP,
-            company=task.company_queries[0],
-            companies=[],
-            metric=task.metric,
-            industry=None,
-            limit=10,
-            topic=None,
-            report_date=task.report_date,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "compare":
-        plan = SimpleNamespace(
-            intent=Intent.COMPARE,
-            company=None,
-            companies=list(task.company_queries),
-            metric=task.metric,
-            industry=None,
-            limit=10,
-            topic=None,
-            report_date=task.report_date,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "rank":
-        plan = SimpleNamespace(
-            intent=Intent.RANK,
-            company=None,
-            companies=[],
-            metric=None,
-            industry=task.industry,
-            limit=task.limit or 10,
-            topic=None,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "rank_and_lookup":
-        plan = SimpleNamespace(
-            intent=Intent.RANK_AND_LOOKUP,
-            company=None,
-            companies=[],
-            metric=task.metric,
-            industry=task.industry,
-            limit=task.limit or 10,
-            topic=None,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    raise ValueError(f"unsupported compiled task: {task.kind!r}")
+    # CompiledTask kinds are Intent values; rank tasks carry no metric or period.
+    plan = SimpleNamespace(
+        intent=Intent(task.kind),
+        company=task.company_queries[0] if task.kind == "lookup" else None,
+        companies=list(task.company_queries) if task.kind == "compare" else [],
+        metric=task.metric,
+        industry=task.industry,
+        limit=task.limit or DEFAULT_RANK_LIMIT,
+        topic=None,
+        report_date=task.report_date,
+    )
+    return run_workflow_turn(plan, runtime, query=query)
 
 
 RANKED_LATEST_QUARTER_BANNER = (
@@ -936,6 +824,19 @@ CALENDARS_DIFFER_BANNER = (
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
 
 
+def _missing_cell(
+    company: str, metric: str, report_date: date | None, reason: str = MISSING_FACT
+) -> TableRow:
+    return TableRow(
+        company_name=company,
+        ticker="",
+        cik="",
+        metric=metric,
+        end_date=report_date,
+        reason=reason,
+    )
+
+
 def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
     """Isolate an unexpected cell failure as a typed partial or refuse.
 
@@ -944,37 +845,15 @@ def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
     never reaches the visitor.
     """
     reason = SOURCE_UNAVAILABLE if isinstance(exc, ProviderError) else MISSING_FACT
-    if task.kind == "lookup" and task.company_queries and task.metric:
+    if task.kind in ("lookup", "compare") and task.company_queries and task.metric:
+        companies = task.company_queries[:1] if task.kind == "lookup" else task.company_queries
         return TurnResult(
-            intent=Intent.LOOKUP,
+            intent=Intent(task.kind),
             tool_traces=[],
             renderer=RendererKind.TABLE,
             table_rows=[
-                TableRow(
-                    company_name=task.company_queries[0],
-                    ticker="",
-                    cik="",
-                    metric=task.metric,
-                    end_date=task.report_date,
-                    reason=reason,
-                )
-            ],
-        )
-    if task.kind == "compare" and task.company_queries and task.metric:
-        return TurnResult(
-            intent=Intent.COMPARE,
-            tool_traces=[],
-            renderer=RendererKind.TABLE,
-            table_rows=[
-                TableRow(
-                    company_name=company,
-                    ticker="",
-                    cik="",
-                    metric=task.metric,
-                    end_date=task.report_date,
-                    reason=reason,
-                )
-                for company in task.company_queries
+                _missing_cell(company, task.metric, task.report_date, reason)
+                for company in companies
             ],
         )
     return TurnResult(
@@ -1053,19 +932,17 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
         return list(result.table_rows)
     if task.kind != "lookup" or not task.company_queries or not task.metric:
         return list(result.table_rows)
-    return [
-        TableRow(
-            company_name=task.company_queries[0],
-            ticker="",
-            cik="",
-            metric=task.metric,
-            end_date=task.report_date,
-            reason=MISSING_FACT,
-        )
-    ]
+    # A fund in a window of quarters says so, as it does in a comparison (ADR 0002).
+    codes = {
+        trace.provenance.get("error", {}).get("code")
+        for trace in result.tool_traces
+        if isinstance(trace.provenance.get("error"), dict)
+    }
+    reason = NOT_OPERATING_COMPANY if IneligibleIssuerError.code in codes else MISSING_FACT
+    return [_missing_cell(task.company_queries[0], task.metric, task.report_date, reason)]
 
 
-def _provenance_from_level(row: TableRow) -> ComponentProvenance:
+def _subtracted_level_provenance(row: TableRow) -> ComponentProvenance:
     """The level a change row subtracts, with the facts it came from.
 
     A margin level keeps its formula inputs and a derived quarter its source
@@ -1103,7 +980,7 @@ def _change_row(current: TableRow, prior: TableRow, *, comparison: str) -> Table
         currency=current.currency,
         start_date=prior.start_date,
         end_date=current.end_date,
-        components=[_provenance_from_level(prior), _provenance_from_level(current)],
+        components=[_subtracted_level_provenance(prior), _subtracted_level_provenance(current)],
         comparison=comparison,  # type: ignore[arg-type]
     )
 
@@ -1352,6 +1229,7 @@ def run_spec_turn_context(
                     tool_traces=[],
                     renderer=RendererKind.CLARIFY,
                     candidates=("extend", "replace"),
+                    clarify_kind="ambiguous_mode",
                 ),
                 current_spec,
                 patch,
@@ -1361,6 +1239,8 @@ def run_spec_turn_context(
         return early, current_spec, patch
 
     draft = apply_patch(current_spec, patch)
+    # A refusal names the analysis that was asked for, not a default lookup.
+    asked = intent or _draft_intent(draft)
     # Drop model-supplied metrics that are not in the catalog when wording did not
     # resolve a unique phrase (plan slug may still be present on replace).
     if draft.metrics and any(m not in ALLOWED_METRICS for m in draft.metrics):
@@ -1369,10 +1249,9 @@ def run_spec_turn_context(
             _rejection_result(
                 SpecRejection(
                     code="invalid_metric",
-                    message=(
-                        f"Unknown metric {bad!r}. Allowed: {', '.join(ALLOWED_METRICS)}"
-                    ),
-                )
+                    message=unknown_metric_message(bad),
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1383,11 +1262,7 @@ def run_spec_turn_context(
     except UnknownIndustryError as exc:
         return (
             TurnResult(
-                intent=Intent.RANK
-                if draft.ranked_request is not None and not draft.metrics
-                else Intent.RANK_AND_LOOKUP
-                if draft.ranked_request is not None
-                else Intent.LOOKUP,
+                intent=asked,
                 tool_traces=[],
                 renderer=RendererKind.REFUSE,
                 message=str(exc),
@@ -1397,13 +1272,14 @@ def run_spec_turn_context(
         )
     outcome = validate_spec(spec)
     if outcome is not None:
-        return _rejection_result(outcome), None, patch
+        return _rejection_result(outcome, asked), None, patch
 
     spec, annual_filers = drop_annual_filers(spec, runtime)
     if annual_filers and not spec.companies and spec.constituents is None:
         return (
             _rejection_result(
-                SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers))
+                SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers)),
+                asked,
             ),
             None,
             patch,
@@ -1414,7 +1290,7 @@ def run_spec_turn_context(
     except (CompanyNotFoundError, ProviderError) as exc:
         return (
             TurnResult(
-                intent=Intent.LOOKUP,
+                intent=asked,
                 tool_traces=[],
                 renderer=RendererKind.REFUSE,
                 message=str(exc),
@@ -1436,7 +1312,8 @@ def run_spec_turn_context(
                         "years as each company names them; filings older than about "
                         "ten years may not be available."
                     ),
-                )
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1450,7 +1327,8 @@ def run_spec_turn_context(
                         "Could not determine quarterly report dates "
                         "for the requested window"
                     ),
-                )
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1459,7 +1337,8 @@ def run_spec_turn_context(
     if not tasks:
         return (
             _rejection_result(
-                SpecRejection(code="empty_spec", message="Analysis compiled to no tasks")
+                SpecRejection(code="empty_spec", message="Analysis compiled to no tasks"),
+                asked,
             ),
             None,
             patch,
@@ -1759,25 +1638,3 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         if 0 < shown < wanted:
             notes.append(f"The filings here hold only {shown} of the {wanted} quarters asked for.")
     return notes
-
-
-def run_spec_turn(
-    message: str,
-    runtime: Runtime,
-    *,
-    current_spec: AnalysisSpec | None,
-    proposal: Any,
-    on_progress: ProgressCallback | None = None,
-    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
-) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
-    """Compatibility wrapper: bundle args into TurnContext and delegate."""
-    return run_spec_turn_context(
-        TurnContext(
-            message=message,
-            current_spec=current_spec,
-            proposal=proposal,
-            on_progress=on_progress,
-            max_workers=max_workers,
-        ),
-        runtime,
-    )

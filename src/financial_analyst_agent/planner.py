@@ -6,6 +6,7 @@ import openai
 from pydantic import AfterValidator, BaseModel, model_validator
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import ALLOWED_METRICS, DEFAULT_RANK_LIMIT, Intent
 from financial_analyst_agent.domain.errors import PlannerError
 from financial_analyst_agent.graph.analysis_spec import (
     MAX_QUARTERS_ASKED,
@@ -13,7 +14,6 @@ from financial_analyst_agent.graph.analysis_spec import (
     PeriodSelection,
     SpecPatch,
 )
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 
 _PLANNER_FAILED_MESSAGE = "LLM planner failed"
 _SYSTEM_PROMPT = (
@@ -97,14 +97,14 @@ class _ComparePlan(BaseModel):
 class _RankPlan(BaseModel):
     intent: Literal[Intent.RANK]
     industry: NonEmptyText
-    limit: PositiveLimit = 10
+    limit: PositiveLimit = DEFAULT_RANK_LIMIT
 
 
 class _RankAndLookupPlan(BaseModel):
     intent: Literal[Intent.RANK_AND_LOOKUP]
     industry: NonEmptyText
     metric: NonEmptyText
-    limit: PositiveLimit = 10
+    limit: PositiveLimit = DEFAULT_RANK_LIMIT
 
 
 class _ExplainPlan(BaseModel):
@@ -142,8 +142,8 @@ PlanAction = (
 )
 
 
-class Plan(BaseModel):
-    action: PlanAction
+class _FlatActionModel(BaseModel):
+    """Accept a bare action object as ``{"action": ...}``."""
 
     @model_validator(mode="before")
     @classmethod
@@ -151,6 +151,10 @@ class Plan(BaseModel):
         if isinstance(value, dict) and "action" not in value and "intent" in value:
             return {"action": value}
         return value
+
+
+class Plan(_FlatActionModel):
+    action: PlanAction
 
     @property
     def intent(self) -> Intent:
@@ -221,7 +225,7 @@ class _SpecPatchAction(BaseModel):
             periods = PeriodSelection()
         ranked = None
         if self.ranked_industry:
-            ranked = (self.ranked_industry, int(self.ranked_limit or 10))
+            ranked = (self.ranked_industry, int(self.ranked_limit or DEFAULT_RANK_LIMIT))
         return SpecPatch(
             mode=self.mode,
             add_companies=self.add_companies,
@@ -244,15 +248,8 @@ FollowUpAction = (
 )
 
 
-class FollowUpPlan(BaseModel):
+class FollowUpPlan(_FlatActionModel):
     action: FollowUpAction
-
-    @model_validator(mode="before")
-    @classmethod
-    def _accept_flat_action(cls, value: Any) -> Any:
-        if isinstance(value, dict) and "action" not in value and "intent" in value:
-            return {"action": value}
-        return value
 
 
 def format_spec_for_planner(spec: AnalysisSpec) -> str:
@@ -331,15 +328,11 @@ class OpenAIStructuredCompleter:
         parsed = getattr(message, "parsed", None)
         if parsed is None:
             raise PlannerError(_PLANNER_FAILED_MESSAGE, details={"stage": "missing_parsed"})
+        if not isinstance(parsed, (Plan, FollowUpPlan)):
+            schema = Plan if current_spec is None else FollowUpPlan
+            parsed = schema.model_validate(parsed)
         if isinstance(parsed, FollowUpPlan):
             if isinstance(parsed.action, _SpecPatchAction):
                 return parsed.action.to_spec_patch()
             return Plan(action=parsed.action)
-        if isinstance(parsed, Plan):
-            return parsed
-        if current_spec is None:
-            return Plan.model_validate(parsed)
-        follow = FollowUpPlan.model_validate(parsed)
-        if isinstance(follow.action, _SpecPatchAction):
-            return follow.action.to_spec_patch()
-        return Plan(action=follow.action)
+        return parsed

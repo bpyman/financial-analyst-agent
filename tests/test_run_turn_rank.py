@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH, DemoCompleter
@@ -20,7 +21,7 @@ from financial_analyst_agent.snapshot_builder import (
     fetch_fmp_rows,
     main,
 )
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 from financial_analyst_agent.universe import (
     INELIGIBLE_ISSUER_CIKS,
     UniverseCompany,
@@ -138,7 +139,7 @@ class _MissingIndustryCompleter:
     def __init__(self, intent: Intent) -> None:
         self._intent = intent
 
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         return SimpleNamespace(
             intent=self._intent,
             industry=None,
@@ -261,7 +262,9 @@ def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
 
 
 class _ExplodingFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("rank must not call fact lookup")
 
 

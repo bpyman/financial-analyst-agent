@@ -3,7 +3,7 @@
 import pytest
 
 from financial_analyst_agent.config import AppMode, Settings
-from financial_analyst_agent.contracts import RuntimeKind
+from financial_analyst_agent.contracts import Intent, RendererKind, RuntimeKind
 from financial_analyst_agent.runtime import (
     build_runtime,
     live_runtime,
@@ -11,7 +11,7 @@ from financial_analyst_agent.runtime import (
     runtime_for,
     runtime_locked,
 )
-from financial_analyst_agent.turn import Intent, RendererKind, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_lookup import ACCESSION, GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY, NET_INCOME
 
 _USER_AGENT = "FinancialAnalystAgent (dev@example.com)"

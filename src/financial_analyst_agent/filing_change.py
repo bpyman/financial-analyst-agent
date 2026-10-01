@@ -20,12 +20,14 @@ from financial_analyst_agent.contracts import (
     ToolTrace,
     TurnResult,
 )
+from financial_analyst_agent.domain.enums import PERIODIC_FORMS
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
+from financial_analyst_agent.providers.sec.submissions import require_recent_filings
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
-from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
+from financial_analyst_agent.universe import sec_identity_is_operating
 
 SectionId = Literal["mda", "risk_factors"]
 
@@ -53,7 +55,7 @@ _SENTENCE = re.compile(r"\.\s+[A-Za-z].*\w\.\s*$")
 _STUB_BODY = re.compile(r"^\W*(?:pages?\s*)?\d{0,3}(?:\s*[-–]\s*\d{1,3})?\W*$", re.IGNORECASE)
 # What may precede a heading on its line: "PART II — OTHER INFORMATION Item 1A. …".
 _PART_LABEL = re.compile(r"part\s+i{1,2}\b.{0,60}", re.IGNORECASE)
-_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
+ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
 _SECTION_ALIASES: dict[str, SectionId] = {
     "md&a": "mda",
     "mda": "mda",
@@ -127,7 +129,10 @@ _SHORT_MDA = 2000
 
 
 def extract_section(html: str, section: SectionId) -> str:
-    text = html_to_text(html)
+    return _section_from_text(html_to_text(html), section)
+
+
+def _section_from_text(text: str, section: SectionId) -> str:
     found = _section_under_item(text, section)
     if section == "mda" and len(found) < _SHORT_MDA:
         # Banks and some others (JPMorgan, Wells Fargo, Intel) file MD&A under
@@ -499,50 +504,7 @@ def parse_sections(raw: str) -> tuple[SectionId, ...]:
     return tuple(found)
 
 
-def _document_for(runtime: Runtime, cik: str, accession: str, document: str) -> str:
-    facts = runtime.facts
-    getter = getattr(facts, "get_filing_document", None)
-    if not callable(getter):
-        inner = getattr(facts, "_inner", facts)
-        getter = getattr(inner, "get_filing_document", None)
-    if not callable(getter):
-        client = getattr(getattr(facts, "_inner", facts), "_client", None)
-        getter = getattr(client, "get_filing_document", None)
-    if not callable(getter):
-        raise ProviderError("Filing documents are not available on this runtime")
-    return str(getter(cik, accession, document))
-
-
-def _tickers_payload(runtime: Runtime) -> dict[str, Any]:
-    facts = runtime.facts
-    inner = getattr(facts, "_inner", facts)
-    client = getattr(inner, "_client", None)
-    if client is None:
-        raise ProviderError("Company identity is not available on this runtime")
-    payload = client.get_company_tickers()
-    if not isinstance(payload, dict):
-        raise ProviderError("Company ticker payload must be an object")
-    return payload
-
-
-def _submissions_recent(runtime: Runtime, cik: str) -> dict[str, Any]:
-    facts = runtime.facts
-    inner = getattr(facts, "_inner", facts)
-    client = getattr(inner, "_client", None)
-    getter = getattr(client, "get_submissions", None)
-    if not callable(getter):
-        raise ProviderError("Filing submissions are not available on this runtime")
-    payload = getter(cik)
-    if not isinstance(payload, dict) or not isinstance(payload.get("filings"), dict):
-        raise ProviderError("submissions payload missing filings object")
-    recent = payload["filings"].get("recent")
-    if not isinstance(recent, dict):
-        raise ProviderError("submissions payload missing filings.recent object")
-    return recent
-
-
-def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
-    recent = _submissions_recent(runtime, cik)
+def _primary_document(recent: dict[str, Any], accession: str) -> str:
     accessions = recent.get("accessionNumber")
     documents = recent.get("primaryDocument")
     forms = recent.get("form")
@@ -555,7 +517,7 @@ def _primary_document(runtime: Runtime, cik: str, accession: str) -> str:
     if len(accessions) != len(documents) or len(accessions) != len(forms):
         raise ProviderError("submissions filing arrays have inconsistent lengths")
     for index, candidate in enumerate(accessions):
-        if candidate == accession and forms[index] in ("10-Q", "10-Q/A", "10-K", "10-K/A"):
+        if candidate == accession and forms[index] in PERIODIC_FORMS:
             document = documents[index]
             if isinstance(document, str) and document.strip():
                 return document
@@ -630,7 +592,6 @@ def _order_accessions(recent: dict[str, Any], first: str, second: str) -> tuple[
     return first, second
 
 
-_REVIEWED_FORMS = ("10-Q", "10-Q/A", "10-K", "10-K/A")
 _ANNUAL_WORDING = re.compile(r"\b10-?k\b|\bannual report\b", re.IGNORECASE)
 
 
@@ -641,7 +602,7 @@ def _form_asked(query: str) -> str:
 
 def _request_refusal(query: str, company: str, older: str, newer: str, plan: Any) -> str:
     """Why this request cannot be compared as asked, or ""."""
-    found = _ACCESSION_PATTERN.findall(query)
+    found = ACCESSION_PATTERN.findall(query)
     if len(set(found)) > 2:
         return "Give exactly two accession numbers: the older filing and the newer one."
     if found and len(set(found)) == 1 and len(found) > 1:
@@ -677,7 +638,7 @@ def _form_of(recent: dict[str, Any], accession: str) -> str:
 def _check_reviewable(recent: dict[str, Any], accession: str) -> None:
     """Refuse an accession that is this company's, but not a 10-Q or 10-K."""
     form = _form_of(recent, accession)
-    if form and form not in _REVIEWED_FORMS:
+    if form and form not in PERIODIC_FORMS:
         raise ProviderError(
             f"Accession {accession} is a {form}, not a 10-Q or 10-K; only quarterly and "
             "annual reports are compared."
@@ -710,7 +671,7 @@ def _too_few_message(recent: dict[str, Any], name: str, form: str) -> str:
 
 
 def _accessions_from_query(query: str, plan_older: str, plan_newer: str) -> tuple[str, str]:
-    found = _ACCESSION_PATTERN.findall(query)
+    found = ACCESSION_PATTERN.findall(query)
     if query.strip():
         if len(found) >= 2:
             return found[0], found[1]
@@ -733,8 +694,8 @@ _NOT_RISK = re.compile(rf"\b{_NEGATION}(?:{_RISK_WORDS})\b", re.IGNORECASE)
 _NOT_MDA = re.compile(rf"\b{_NEGATION}(?:{_MDA_WORDS})\b", re.IGNORECASE)
 
 
-def requested_sections(text: str) -> str | None:
-    """The reviewed sections a question names: "mda", "risk_factors", both, or None.
+def requested_sections(text: str) -> tuple[SectionId, ...] | None:
+    """The reviewed sections a question names, or None when it names neither.
 
     "MD&A, not the risk factors" and "excluding risk factors" leave a section
     out; a question naming neither asks about the whole filing.
@@ -744,18 +705,14 @@ def requested_sections(text: str) -> str | None:
     excluded_risk = _NOT_RISK.search(text) is not None
     excluded_mda = _NOT_MDA.search(text) is not None
     if risk and mda:
-        return "mda and risk_factors"
+        return REVIEWED_SECTIONS
     if risk or (excluded_mda and not mda):
-        return "risk_factors"
+        return ("risk_factors",)
     if mda or excluded_risk:
-        return "mda"
+        return ("mda",)
     if re.search(r"\bboth\b", text, re.IGNORECASE):
-        return "mda and risk_factors"
+        return REVIEWED_SECTIONS
     return None
-
-
-def _section_choice(query: str, fallback: str) -> str:
-    return requested_sections(query) or fallback
 
 
 def _labels(sections: list[SectionId]) -> str:
@@ -787,7 +744,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         str(getattr(plan, "older_accession", "") or ""),
         str(getattr(plan, "newer_accession", "") or ""),
     )
-    sections = parse_sections(_section_choice(query, str(getattr(plan, "section", "mda"))))
+    sections = requested_sections(query) or parse_sections(str(getattr(plan, "section", "mda")))
     traces = [
         ToolTrace(
             tool="filing_change",
@@ -808,8 +765,16 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=refused,
         )
     form = _form_asked(query)
+    filings = runtime.filings
+    if filings is None:
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="Filing documents are not available on this runtime.",
+        )
     try:
-        resolved = resolve_company(company, _tickers_payload(runtime))
+        resolved = resolve_company(company, filings.get_company_tickers())
     except Exception as exc:
         return TurnResult(
             intent=Intent.FILING_CHANGE,
@@ -818,8 +783,8 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
-    if cik in INELIGIBLE_ISSUER_CIKS:
-        # The same membership rule lookups and rankings apply (ADR 0001).
+    if not sec_identity_is_operating(cik, resolved.name):
+        # The same membership rule lookups and rankings apply (ADR 0001, 0002).
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,
@@ -840,7 +805,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     compared: list[SectionId] = []
     unreadable: list[SectionId] = []
     try:
-        recent = _submissions_recent(runtime, cik)
+        recent = require_recent_filings(filings.get_submissions(cik))
         if not older:
             pair = _year_apart_quarterlies(recent, form)
             if pair is None:
@@ -866,15 +831,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                 }
             }
         )
+        older_doc = _primary_document(recent, older)
+        newer_doc = _primary_document(recent, newer)
+        older_text = html_to_text(filings.get_filing_document(cik, older, older_doc))
+        newer_text = html_to_text(filings.get_filing_document(cik, newer, newer_doc))
+        older_url = build_filing_document_url(cik, older, older_doc)
+        newer_url = build_filing_document_url(cik, newer, newer_doc)
         for section in sections:
-            older_doc = _primary_document(runtime, cik, older)
-            newer_doc = _primary_document(runtime, cik, newer)
-            older_html = _document_for(runtime, cik, older, older_doc)
-            newer_html = _document_for(runtime, cik, newer, newer_doc)
-            older_url = build_filing_document_url(cik, older, older_doc)
-            newer_url = build_filing_document_url(cik, newer, newer_doc)
-            older_section = extract_section(older_html, section)
-            newer_section = extract_section(newer_html, section)
+            older_section = _section_from_text(older_text, section)
+            newer_section = _section_from_text(newer_text, section)
             if not older_section or not newer_section:
                 section_errors.append(f"{SECTION_LABELS[section]} was not found")
                 unreadable.append(section)
@@ -966,8 +931,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             )
             extras = _numeral_lock_extras(essay, grounding)
             if extras:
-                # The summary is withheld; say why rather than label nothing.
+                # The summary is withheld; say why rather than label nothing. The
+                # turn itself succeeds, so the extras go on the trace, not the result
+                # (numeral-lock extras are empty on a successful turn).
                 essay = None
+                traces[0] = traces[0].model_copy(
+                    update={
+                        "provenance": {**traces[0].provenance, "summary_numeral_lock": extras}
+                    }
+                )
                 banners.append(
                     "The model's summary was withheld because it quoted numbers "
                     "that are not in these filings."
@@ -985,5 +957,4 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         disclosure_changes=changes,
         essay=essay,
         banners=banners,
-        numeral_lock_extras=extras,
     )

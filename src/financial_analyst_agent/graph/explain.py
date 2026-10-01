@@ -7,9 +7,8 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from langgraph.graph import END, START, StateGraph
-
 from financial_analyst_agent.contracts import Runtime, TurnResult
+from financial_analyst_agent.graph.subgraph import SingleNodeGraph
 
 
 class ExplainState(TypedDict):
@@ -31,30 +30,15 @@ def _explain_node(state: ExplainState) -> dict[str, TurnResult]:
     }
 
 
-def _build_explain_graph() -> Any:
-    builder = StateGraph(ExplainState)
-    builder.add_node("explain", _explain_node)
-    builder.add_edge(START, "explain")
-    builder.add_edge("explain", END)
-    return builder.compile()
-
-
-_EXPLAIN_GRAPH = _build_explain_graph()
+_EXPLAIN_GRAPH = SingleNodeGraph(
+    ExplainState, "explain", _explain_node, label="qualitative explanation"
+)
 
 
 def run_qualitative_explanation(
     plan: Any, runtime: Runtime, *, grounding_json: str = ""
 ) -> TurnResult:
     """Execute the qualitative-explanation workflow; return TurnResult."""
-    final: ExplainState = _EXPLAIN_GRAPH.invoke(
-        {
-            "plan": plan,
-            "runtime": runtime,
-            "grounding_json": grounding_json,
-            "result": None,
-        }
+    return _EXPLAIN_GRAPH.run(
+        {"plan": plan, "runtime": runtime, "grounding_json": grounding_json}
     )
-    result = final["result"]
-    if result is None:
-        raise RuntimeError("qualitative explanation subgraph produced no result")
-    return result

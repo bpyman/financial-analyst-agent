@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from financial_analyst_agent.contracts import ALLOWED_METRICS
+from financial_analyst_agent.contracts import ALLOWED_METRICS, unknown_metric_message
 from financial_analyst_agent.domain.errors import AmbiguousCompanyError, CompanyNotFoundError
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 
@@ -298,7 +298,7 @@ def validate_spec(spec: AnalysisSpec) -> SpecRejection | None:
         if metric not in ALLOWED_METRICS:
             return SpecRejection(
                 code="invalid_metric",
-                message=f"Unknown metric {metric!r}. Allowed: {', '.join(ALLOWED_METRICS)}",
+                message=unknown_metric_message(metric),
             )
     for operation in spec.operations:
         if operation not in SUPPORTED_OPERATIONS:
@@ -370,21 +370,9 @@ def _base_tasks(spec: AnalysisSpec) -> tuple[CompiledTask, ...]:
     queries = tuple(company.query for company in spec.companies)
     if not queries or not spec.metrics:
         return ()
-    if len(queries) == 1:
-        return tuple(
-            CompiledTask(
-                kind="lookup",
-                company_queries=queries,
-                metric=metric,
-            )
-            for metric in spec.metrics
-        )
+    kind: Literal["lookup", "compare"] = "lookup" if len(queries) == 1 else "compare"
     return tuple(
-        CompiledTask(
-            kind="compare",
-            company_queries=queries,
-            metric=metric,
-        )
+        CompiledTask(kind=kind, company_queries=queries, metric=metric)
         for metric in spec.metrics
     )
 

@@ -116,6 +116,17 @@ def is_common_operating_listing(company: UniverseCompany) -> bool:
     return _is_common_share(company) and _is_operating_issuer(company)
 
 
+def sec_identity_is_operating(cik: str, title: str) -> bool:
+    """Judge a looked-up company with what SEC identity shows (ADR 0002).
+
+    The ineligible CIK list and instrument words in the SEC title ("5.25% Notes",
+    "Capital Trust") mark a non-operating listing. Ticker suffixes do not: a
+    utility or insurer whose only listed shares are preferreds (Southern
+    California Edison) still files 10-Qs as an operating company.
+    """
+    return cik not in INELIGIBLE_ISSUER_CIKS and _INSTRUMENT_TITLE.search(title) is None
+
+
 def _is_common_share(company: UniverseCompany) -> bool:
     if company.is_etf or company.is_fund:
         return False

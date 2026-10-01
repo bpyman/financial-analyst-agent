@@ -3,8 +3,8 @@
 import pytest
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import Intent
 from financial_analyst_agent.planner import OpenAIStructuredCompleter
-from financial_analyst_agent.turn import Intent
 from test_run_turn_compare import MSFT_GOOG_OPERATING_MARGINS_QUERY
 from test_run_turn_explain import AI_HEALTHCARE_QUERY
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY

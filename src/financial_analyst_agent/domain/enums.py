@@ -43,6 +43,12 @@ class FormType(StrEnum):
     FORM_10_K_A = "10-K/A"
 
 
+QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
+ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
+# 10-Ks are kept for the fiscal fourth quarter they cover (ADR 0007).
+PERIODIC_FORMS = QUARTERLY_FORMS | ANNUAL_FORMS
+
+
 class DataSourceKind(StrEnum):
     """Origin of a data value."""
 

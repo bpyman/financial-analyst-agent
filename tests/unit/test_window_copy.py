@@ -5,11 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, PeriodSelection
-from financial_analyst_agent.graph.spec_turn import FISCAL_Q4_GAP_BANNER, _period_notes
-from financial_analyst_agent.presentation import present_turn
-from financial_analyst_agent.runtime import DemoCompleter, _companies_from_query
-from financial_analyst_agent.turn import (
+from financial_analyst_agent.contracts import (
     ComponentProvenance,
     Intent,
     RendererKind,
@@ -17,6 +13,10 @@ from financial_analyst_agent.turn import (
     ToolTrace,
     TurnResult,
 )
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, PeriodSelection
+from financial_analyst_agent.graph.spec_turn import FISCAL_Q4_GAP_BANNER, _period_notes
+from financial_analyst_agent.presentation import present_turn
+from financial_analyst_agent.runtime import DemoCompleter, _companies_from_query
 from financial_analyst_agent.universe import allowed_industry_names, load_universe_snapshot
 
 

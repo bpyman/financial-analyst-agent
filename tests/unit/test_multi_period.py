@@ -78,6 +78,7 @@ class _PeriodFacts:
             currency="USD",
             start_date=start,
             end_date=report_date,
+            filed_date=report_date,
             form="10-Q",
             accession_number=f"acc-{report_date.isoformat()}",
             taxonomy="us-gaap",
@@ -124,7 +125,7 @@ def test_period_window_reruns_metrics_across_quarters(tmp_path: Path) -> None:
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _FourQuarterLookup:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),
@@ -168,7 +169,7 @@ def test_change_window_keeps_companies_metrics_operations(tmp_path: Path) -> Non
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _Initial:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),
@@ -181,7 +182,7 @@ def test_change_window_keeps_companies_metrics_operations(tmp_path: Path) -> Non
             )
 
     class _Widen:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="extend",
                 set_periods=PeriodSelection(
@@ -220,7 +221,7 @@ def test_across_periods_sequential_and_yoy(tmp_path: Path) -> None:
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _Across:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),
@@ -276,7 +277,7 @@ def test_across_companies_for_named_period_still_works(tmp_path: Path) -> None:
     }
 
     class _CompareOnePeriod:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft", "Google"),
@@ -353,6 +354,7 @@ def test_mismatched_periods_and_zero_denominator_do_not_compute(tmp_path: Path) 
                 currency="USD",
                 start_date=start,
                 end_date=end,
+                filed_date=end,
                 form="10-Q",
                 accession_number="acc",
                 taxonomy="us-gaap",
@@ -362,7 +364,7 @@ def test_mismatched_periods_and_zero_denominator_do_not_compute(tmp_path: Path) 
             )
 
     class _CompareMargin:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft", "Google"),
@@ -398,7 +400,7 @@ def test_window_with_missing_quarter_keeps_typed_gap(tmp_path: Path) -> None:
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _FourWithGap:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),

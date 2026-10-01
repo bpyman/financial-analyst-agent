@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -25,15 +24,6 @@ def configure_logging() -> None:
     handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter("%(message)s"))
     _LOGGER.addHandler(handler)
-
-
-@contextmanager
-def log_context(**fields: Any) -> Iterator[None]:
-    token = bind_log_context(**fields)
-    try:
-        yield
-    finally:
-        reset_log_context(token)
 
 
 def bind_log_context(**fields: Any) -> Any:

@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from financial_analyst_agent.contracts import MODEL_ANALYSIS_BANNER, Intent, RendererKind, Runtime
+from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.filing_change import (
     SectionId,
     diff_paragraphs,
@@ -102,13 +103,21 @@ class _Client:
 
 class _Facts:
     def __init__(self) -> None:
+        # The SEC source filing change reads, passed as the runtime's filings port.
         self._client = _Client()
 
     def get_financials(self, company: str, metric: str, **kwargs: object) -> object:
         raise AssertionError("filing change must not look up XBRL facts")
 
-    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
-        return self._client.get_filing_document(cik, accession, document)
+
+def _runtime(facts: _Facts | None = None, **kwargs: Any) -> Runtime:
+    facts = facts or _Facts()
+    return Runtime(
+        completer=SimpleNamespace(),  # type: ignore[arg-type]
+        facts=facts,  # type: ignore[arg-type]
+        filings=facts._client,
+        **kwargs,
+    )
 
 
 def test_extracts_reviewed_sections() -> None:
@@ -339,7 +348,7 @@ def test_run_filing_change_maps_both_reviewed_sections() -> None:
             section="MD&A and Risk Factors",
             summarize=False,
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
     assert result.intent is Intent.FILING_CHANGE
     assert result.renderer is RendererKind.TABLE
@@ -365,7 +374,7 @@ def test_run_filing_change_resolves_actual_primary_document(
             newer_accession=NEWER,
             section="risk_factors",
         ),
-        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+        _runtime(facts),
     )
 
     assert result.renderer is RendererKind.TABLE
@@ -419,13 +428,16 @@ def test_run_filing_change_refuses_unresolved_document(
         recent["primaryDocument"][1] = "   "
     monkeypatch.setattr(facts._client, "get_submissions", lambda cik: payload)
     if problem == "no_submissions":
-        monkeypatch.delattr(facts._client, "get_submissions")
-        monkeypatch.delattr(_Client, "get_submissions")
+
+        def unavailable(cik: str) -> dict[str, object]:
+            raise ProviderError("SEC submissions are unavailable")
+
+        monkeypatch.setattr(facts._client, "get_submissions", unavailable)
 
     def unexpected_download(*args: object) -> str:
         pytest.fail("Unresolved documents must be refused before downloading")
 
-    monkeypatch.setattr(facts, "get_filing_document", unexpected_download)
+    monkeypatch.setattr(facts._client, "get_filing_document", unexpected_download)
     result = run_filing_change(
         SimpleNamespace(
             company="Microsoft",
@@ -433,7 +445,7 @@ def test_run_filing_change_refuses_unresolved_document(
             newer_accession=NEWER,
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+        _runtime(facts),
     )
 
     assert result.renderer is RendererKind.REFUSE
@@ -455,14 +467,12 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
             section="mda",
             summarize=True,
         ),
-        Runtime(
-            completer=SimpleNamespace(),
-            facts=_Facts(),  # type: ignore[arg-type]
-            essay=_Essay(),
-        ),
+        _runtime(essay=_Essay()),
     )
     assert result.essay is None
-    assert result.numeral_lock_extras
+    # The table still answers, so extras stay off the result and go on the trace.
+    assert result.numeral_lock_extras == []
+    assert result.tool_traces[0].provenance["summary_numeral_lock"]
     # The model-analysis banner labels a summary; none is shown, so say why instead.
     assert MODEL_ANALYSIS_BANNER not in result.banners
     assert any("withheld" in banner for banner in result.banners)
@@ -478,7 +488,7 @@ def test_run_filing_change_refuses_without_a_company_or_with_one_accession() -> 
                 newer_accession="",
                 section="mda",
             ),
-            Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+            _runtime(),
         )
         assert result.renderer is RendererKind.REFUSE
         assert "accession" in (result.message or "").lower()
@@ -494,7 +504,7 @@ def test_run_filing_change_without_accessions_picks_a_year_apart() -> None:
             newer_accession="",
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
     assert result.renderer is RendererKind.TABLE
     assert result.disclosure_changes
@@ -514,7 +524,7 @@ def test_filing_change_banner_uses_the_snapshot_name() -> None:
             newer_accession="",
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_NamedFacts()),  # type: ignore[arg-type]
+        _runtime(_NamedFacts()),
     )
 
     assert any(banner.startswith("Comparing Microsoft's latest 10-Q") for banner in result.banners)
@@ -528,7 +538,7 @@ def test_run_filing_change_orders_accessions_by_report_date() -> None:
             newer_accession=OLDER,
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
     assert result.renderer is RendererKind.TABLE
     assert {item.older_accession for item in result.disclosure_changes} == {OLDER}
@@ -543,7 +553,7 @@ def test_run_filing_change_uses_query_accessions_not_plan() -> None:
             newer_accession="1111111111-11-111111",
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
         query=f"What changed in Microsoft's MD&A between {OLDER} and {NEWER}?",
     )
     assert result.renderer is RendererKind.TABLE
@@ -560,7 +570,7 @@ def test_run_filing_change_ignores_planner_accessions_absent_from_query() -> Non
             newer_accession=NEWER,
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
         query="What changed in Microsoft's MD&A",
     )
     assert any("latest 10-Q" in banner for banner in result.banners)
@@ -569,14 +579,14 @@ def test_run_filing_change_ignores_planner_accessions_absent_from_query() -> Non
 def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     import financial_analyst_agent.filing_change as filing_change
 
-    original = filing_change.extract_section
+    original = filing_change._section_from_text
 
-    def missing_risk(html: str, section: str) -> str:
+    def missing_risk(text: str, section: str) -> str:
         if section == "risk_factors":
             return ""
-        return original(html, section)
+        return original(text, section)
 
-    monkeypatch.setattr(filing_change, "extract_section", missing_risk)
+    monkeypatch.setattr(filing_change, "_section_from_text", missing_risk)
     result = filing_change.run_filing_change(
         SimpleNamespace(
             company="Microsoft",
@@ -584,7 +594,7 @@ def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -
             newer_accession=NEWER,
             section="mda and risk_factors",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
     assert result.renderer is RendererKind.TABLE
     assert {item.section for item in result.disclosure_changes} == {"mda"}
@@ -598,19 +608,21 @@ def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -
 def _unchanged_facts(monkeypatch: pytest.MonkeyPatch) -> _Facts:
     """Both filings carry the same text, so every section that can be read is unchanged."""
     facts = _Facts()
-    monkeypatch.setattr(facts, "get_filing_document", lambda cik, accession, document: OLDER_HTML)
+    monkeypatch.setattr(
+        facts._client, "get_filing_document", lambda cik, accession, document: OLDER_HTML
+    )
     return facts
 
 
 def _without(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
     import financial_analyst_agent.filing_change as filing_change
 
-    original = filing_change.extract_section
+    original = filing_change._section_from_text
 
-    def extract(html: str, section: str) -> str:
-        return "" if section in missing else original(html, section)
+    def extract(text: str, section: str) -> str:
+        return "" if section in missing else original(text, section)
 
-    monkeypatch.setattr(filing_change, "extract_section", extract)
+    monkeypatch.setattr(filing_change, "_section_from_text", extract)
 
 
 def _both_sections(facts: _Facts) -> Any:
@@ -621,7 +633,7 @@ def _both_sections(facts: _Facts) -> Any:
             newer_accession=NEWER,
             section="mda and risk_factors",
         ),
-        Runtime(completer=SimpleNamespace(), facts=facts),  # type: ignore[arg-type]
+        _runtime(facts),
     )
 
 
@@ -657,7 +669,7 @@ def test_one_unreadable_section_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
             newer_accession=NEWER,
             section="risk_factors",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
     assert result.renderer is RendererKind.REFUSE
     assert result.message == (
@@ -695,11 +707,7 @@ def test_a_summary_the_model_cannot_write_is_explained() -> None:
             section="mda",
             summarize=True,
         ),
-        Runtime(
-            completer=SimpleNamespace(),
-            facts=_Facts(),  # type: ignore[arg-type]
-            essay=_Essay(),
-        ),
+        _runtime(essay=_Essay()),
     )
     assert result.renderer is RendererKind.TABLE
     assert result.disclosure_changes
@@ -709,9 +717,9 @@ def test_a_summary_the_model_cannot_write_is_explained() -> None:
 
 
 def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> None:
-    import financial_analyst_agent.filing_change as filing_change
+    import financial_analyst_agent.universe as universe
 
-    monkeypatch.setattr(filing_change, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
+    monkeypatch.setattr(universe, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
 
     result = run_filing_change(
         SimpleNamespace(
@@ -721,7 +729,7 @@ def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> No
             newer_accession="",
             section="mda",
         ),
-        Runtime(completer=SimpleNamespace(), facts=_Facts()),  # type: ignore[arg-type]
+        _runtime(),
     )
 
     assert result.renderer is RendererKind.REFUSE
@@ -744,6 +752,33 @@ def test_numeral_lock_does_not_ground_figures_on_links_or_accessions() -> None:
     assert _numeral_lock_extras("Revenue grew 12%.", grounding) == []
     assert _numeral_lock_extras("Revenue grew 25%.", grounding) == ["25"]
     assert _numeral_lock_extras("Margins hit 789019.", grounding) == ["789019"]
+
+
+def test_numeral_lock_treats_dates_as_dates_not_figures() -> None:
+    from financial_analyst_agent.turn import _numeral_lock_extras
+
+    grounding = json.dumps([{"value": "245122000000", "end_date": "2026-03-31"}])
+
+    # A date's parts do not unlock a figure...
+    assert _numeral_lock_extras("Revenue rose 31%.", grounding) == ["31"]
+    assert _numeral_lock_extras("Margins moved 03 points.", grounding) == ["03"]
+    # ...and a date written in the essay is not scanned as one.
+    assert _numeral_lock_extras(
+        "Revenue was 245122000000 in the quarter ended March 31, 2026.", grounding
+    ) == []
+    assert _numeral_lock_extras("In fiscal 2026 revenue rose.", grounding) == []
+    # A list comma and the next word are not part of a number.
+    assert _numeral_lock_extras("It grew 29, then 30.", grounding) == ["29", "30"]
+    # A year is a date only beside a word that dates it; an amount stays an amount.
+    assert _numeral_lock_extras("Revenue was 2050 million dollars.", grounding) == [
+        "2050 million"
+    ]
+    assert _numeral_lock_extras("USD 1999 million on buybacks", grounding) == ["1999 million"]
+    assert _numeral_lock_extras("They plan to hire 2000 engineers.", grounding) == ["2000"]
+    assert _numeral_lock_extras("Sales rose in March 12% year over year.", grounding) == ["12"]
+    # The source's years may be quoted: its dates are 2026.
+    assert _numeral_lock_extras("2026 was a strong year.", grounding) == []
+    assert _numeral_lock_extras("In 2025, revenue rose.", grounding) == []
 
 
 def test_table_cells_are_separated_in_filing_text() -> None:

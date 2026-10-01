@@ -6,7 +6,7 @@ from datetime import date
 from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.domain.enums import Metric
+from financial_analyst_agent.domain.enums import PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import (
     FilingNotFoundError,
     IneligibleIssuerError,
@@ -14,7 +14,7 @@ from financial_analyst_agent.domain.errors import (
     ProviderError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FactRecord, Filing, FinancialFact
+from financial_analyst_agent.domain.models import Company, FactRecord, Filing, FinancialFact
 from financial_analyst_agent.providers.sec.client import SECClient
 from financial_analyst_agent.providers.sec.company_facts import parse_company_facts
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
@@ -53,7 +53,7 @@ from financial_analyst_agent.services.metric_catalog import (
     metric_unit,
     parse_metric,
 )
-from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
+from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS, sec_identity_is_operating
 
 # How many periods back "latest" may step when SEC has not yet added the
 # newest filings' numbers to companyfacts. A year: Citigroup's companyfacts
@@ -73,7 +73,6 @@ class SECDataSource(Protocol):
     def close(self) -> None: ...
 
 
-_PERIODIC_FORMS = frozenset({"10-Q", "10-K", "10-Q/A", "10-K/A"})
 # History the submissions list must span before company facts is asked for more.
 _FULL_HISTORY_DAYS = 3 * 365
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
@@ -255,6 +254,7 @@ class SecFactLookup:
         # GOOG), so a table row and the ranking name it alike. Keyed by CIK.
         self._listed_tickers: Mapping[str, str] = listed_tickers or {}
         self._tickers: dict[str, Any] | None = None
+        self._resolved_by_query: dict[str, Company] = {}
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
         self._fiscal_labels_by_cik: dict[str, dict[str, FiscalLabel]] = {}
@@ -280,6 +280,15 @@ class SecFactLookup:
         if self._tickers is None:
             self._tickers = self._client.get_company_tickers()
         return self._tickers
+
+    def _resolve(self, company: str) -> Company:
+        # Resolution scans the whole ticker map; a turn repeats the same query per
+        # metric, period, and formula component.
+        resolved = self._resolved_by_query.get(company)
+        if resolved is None:
+            resolved = resolve_company(company, self._cached_company_tickers())
+            self._resolved_by_query[company] = resolved
+        return resolved
 
     def _cached_submissions(self, cik: str) -> dict[str, Any]:
         payload = self._submissions_by_cik.get(cik)
@@ -361,7 +370,7 @@ class SecFactLookup:
         return [*records, *extra], folders
 
     def _find_predecessor(self, cik: str, filings: list[Filing]) -> str | None:
-        periodic = [filing for filing in filings if filing.form in _PERIODIC_FORMS]
+        periodic = [filing for filing in filings if filing.form in PERIODIC_FORMS]
         if len(periodic) >= _THIN_HISTORY:
             return None
         for filing in periodic:
@@ -405,10 +414,14 @@ class SecFactLookup:
     ) -> FinancialFact:
         parsed_metric = parse_metric(metric)
         unit = metric_unit(parsed_metric)
-        tickers_payload = self._cached_company_tickers()
-        resolved = resolve_company(company, tickers_payload)
-        if resolved.cik in INELIGIBLE_ISSUER_CIKS:
-            # Lookup applies the ranking's membership rule (ADR 0002).
+        resolved = self._resolve(company)
+        # Lookup applies the ranking's membership rule (ADR 0002): a snapshot member
+        # has been judged already, unless its CIK was listed ineligible since the
+        # snapshot was built; any other name is judged by its SEC identity.
+        if resolved.cik in INELIGIBLE_ISSUER_CIKS or (
+            resolved.cik not in self._listed_tickers
+            and not sec_identity_is_operating(resolved.cik, resolved.name)
+        ):
             raise IneligibleIssuerError(
                 f"{resolved.name} is not an operating company (it is a fund, business "
                 "development company or similar listing), so its 10-Q figures are "
@@ -695,8 +708,7 @@ class SecFactLookup:
 
         Newest first. A 10-K's period is the fiscal fourth quarter.
         """
-        tickers_payload = self._cached_company_tickers()
-        resolved = resolve_company(company, tickers_payload)
+        resolved = self._resolve(company)
         filings = self._filings(resolved.cik)
         labels: dict[str, FiscalLabel] = {}
         predecessor = self._predecessor_ciks.get(resolved.cik)
@@ -712,21 +724,14 @@ class SecFactLookup:
 
     def files_quarterly(self, company: str) -> tuple[bool, str]:
         """(Whether the company files 10-Qs, its name). False for 20-F/40-F filers."""
-        resolved = resolve_company(company, self._cached_company_tickers())
+        resolved = self._resolve(company)
         name = self._display_names.get(resolved.cik, resolved.name)
         return files_quarterly_reports(self._cached_submissions(resolved.cik)), name
 
     def list_quarterly_report_dates(self, company: str, *, limit: int) -> tuple[date, ...]:
         """Newest-first distinct quarterly report dates for a company."""
-        tickers_payload = self._cached_company_tickers()
-        resolved = resolve_company(company, tickers_payload)
+        resolved = self._resolve(company)
         return tuple(list_quarterly_report_dates(self._filings(resolved.cik), limit=limit))
-
-    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
-        getter = getattr(self._client, "get_filing_document", None)
-        if not callable(getter):
-            raise ProviderError("Filing documents are not available on this SEC source")
-        return str(getter(cik, accession, document))
 
 
 def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
@@ -743,7 +748,7 @@ def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
 
 
 def _periodic_history_days(filings: list[Filing]) -> int:
-    ends = [filing.report_date for filing in filings if filing.form in _PERIODIC_FORMS]
+    ends = [filing.report_date for filing in filings if filing.form in PERIODIC_FORMS]
     return (max(ends) - min(ends)).days if ends else 0
 
 

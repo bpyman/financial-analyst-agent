@@ -4,12 +4,13 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     UnsupportedQuarterlyFactError,
 )
 from financial_analyst_agent.ranking import SnapshotRanking
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_rank import (
     FIXTURE_SNAPSHOT_PATH,
     HEALTHCARE_TOP_10,
@@ -113,7 +114,7 @@ def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None
 
 def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:
     class _DecoyCompleter:
-        def complete(self, query: str) -> SimpleNamespace:
+        def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
             return SimpleNamespace(
                 intent=Intent.RANK_AND_LOOKUP,
                 industry="healthcare",
@@ -143,7 +144,9 @@ def test_run_turn_rank_and_lookup_ignores_model_typed_constituents() -> None:
 
 def test_run_turn_rank_and_lookup_keeps_good_rows_when_issuers_have_no_10_q() -> None:
     class _Missing10QFacts(_CikOnlyFacts):
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             if company == "0000059478":
                 return super().get_financials(company, metric)
             raise UnsupportedQuarterlyFactError("No 10-Q or 10-Q/A filings found")
@@ -166,7 +169,11 @@ def test_run_turn_rank_and_lookup_keeps_good_rows_when_issuers_have_no_10_q() ->
 class _CikOnlyFacts:
     """Resolves recorded facts by ranking CIK only — a typed ticker list would miss."""
 
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+
+        self, company: str, metric: str, *, report_date: date | None = None
+
+    ) -> SimpleNamespace:
         if company == "0000059478" and metric == "net_income":
             return _fact(
                 "Eli Lilly and Company",
@@ -212,6 +219,7 @@ def _fact(
         currency="USD",
         start_date=start_date,
         end_date=end_date,
+        filed_date=end_date,
         form=FORM,
         accession_number=accession,
         taxonomy=TAXONOMY,
@@ -223,7 +231,9 @@ def _fact(
 
 def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
     class _AmbiguousLillyFacts(_CikOnlyFacts):
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             if company == "0000059478":
                 raise AmbiguousFactError("Supported concepts produced conflicting values")
             return super().get_financials(company, metric)
@@ -308,7 +318,7 @@ def test_run_turn_rank_and_lookup_computes_net_margin_per_ranked_issuer() -> Non
 
 
 class _RankAndLookupNetMarginCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != HEALTHCARE_NET_MARGINS_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(
@@ -322,7 +332,11 @@ class _RankAndLookupNetMarginCompleter:
 class _CikMarginFacts(_CikOnlyFacts):
     """Adds revenue facts; UNH uses a different fiscal calendar than Lilly."""
 
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+
+        self, company: str, metric: str, *, report_date: date | None = None
+
+    ) -> SimpleNamespace:
         income = super().get_financials(company, "net_income")
         if company == "0000731766":
             income = _fact(

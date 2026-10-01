@@ -1,12 +1,12 @@
 import pytest
 
+from financial_analyst_agent.contracts import ALLOWED_METRICS
 from financial_analyst_agent.domain.errors import UnknownMetricError
 from financial_analyst_agent.services.metric_catalog import (
     parse_metric,
     resolve_metric_phrase,
     resolve_metric_phrases,
 )
-from financial_analyst_agent.turn import ALLOWED_METRICS
 
 
 def test_profit_is_ambiguous_among_profit_concepts() -> None:

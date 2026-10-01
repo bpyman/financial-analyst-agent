@@ -7,16 +7,14 @@ references. Reuse across turns is the caller's responsibility to label.
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import os
 import threading
 import uuid
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Literal, Protocol
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +23,7 @@ from financial_analyst_agent.contracts import (
     NewsHit,
     TurnResult,
 )
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.models import FinancialFact
 
 EvidenceKind = Literal["fact", "news", "result"]
 
@@ -54,46 +52,13 @@ def news_evidence_id(url: str) -> str:
 
 
 def _fact_to_payload(fact: Any) -> dict[str, Any]:
-    if hasattr(fact, "model_dump"):
-        dumped = fact.model_dump(mode="json")
-        return dict(dumped)
-    return {
-        key: getattr(fact, key)
-        for key in (
-            "company_name",
-            "ticker",
-            "cik",
-            "metric",
-            "value",
-            "currency",
-            "start_date",
-            "end_date",
-            "form",
-            "accession_number",
-            "taxonomy",
-            "concept",
-            "source_url",
-            "source",
-        )
-        if hasattr(fact, key)
-    }
+    # Validated on the way in, so a cache hit reads back as the same FinancialFact.
+    return FinancialFact.model_validate(fact, from_attributes=True).model_dump(mode="json")
 
 
-def _payload_to_fact(payload: dict[str, Any]) -> Any:
-    data = dict(payload)
-    for key in ("start_date", "end_date", "filed_date"):
-        raw = data.get(key)
-        if isinstance(raw, str):
-            data[key] = date.fromisoformat(raw)
-    if "value" in data and data["value"] is not None:
-        from decimal import Decimal
-
-        data["value"] = Decimal(str(data["value"]))
-    if isinstance(data.get("derivation"), dict):
-        from financial_analyst_agent.domain.models import Derivation
-
-        data["derivation"] = Derivation.model_validate(data["derivation"])
-    return SimpleNamespace(**data)
+def _payload_to_fact(payload: dict[str, Any]) -> FinancialFact:
+    # A cache hit is the same FinancialFact the facts port returned (ADR 0003).
+    return FinancialFact.model_validate(payload)
 
 
 class EvidenceStore(Protocol):
@@ -121,7 +86,55 @@ class EvidenceStore(Protocol):
     def known_ids(self) -> frozenset[str]: ...
 
 
-class InMemoryEvidenceStore:
+class _RecordStore:
+    """Typed evidence methods over a subclass's raw ``_write`` / ``_read``."""
+
+    def _write(self, record: EvidenceRecord) -> None:
+        raise NotImplementedError
+
+    def _read(self, evidence_id: str) -> EvidenceRecord:
+        """Return the record or raise ``KeyError``."""
+        raise NotImplementedError
+
+    def _put(self, evidence_id: str, kind: EvidenceKind, payload: dict[str, Any]) -> str:
+        self._write(EvidenceRecord(evidence_id=evidence_id, kind=kind, payload=payload))
+        return evidence_id
+
+    def _payload(self, evidence_id: str, kind: EvidenceKind) -> dict[str, Any]:
+        record = self._read(evidence_id)
+        if record.kind != kind:
+            raise KeyError(evidence_id)
+        return record.payload
+
+    def put_fact(
+        self,
+        company: str,
+        metric: str,
+        fact: Any,
+        *,
+        report_date: date | None = None,
+    ) -> str:
+        evidence_id = fact_evidence_id(company, metric, report_date)
+        return self._put(evidence_id, "fact", _fact_to_payload(fact))
+
+    def get_fact(self, evidence_id: str) -> Any:
+        return _payload_to_fact(self._payload(evidence_id, "fact"))
+
+    def put_news(self, hit: NewsHit) -> str:
+        return self._put(news_evidence_id(hit.url), "news", hit.model_dump(mode="json"))
+
+    def get_news(self, evidence_id: str) -> NewsHit:
+        return NewsHit.model_validate(self._payload(evidence_id, "news"))
+
+    def put_result(self, result: TurnResult) -> str:
+        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
+        return self._put(evidence_id, "result", result.model_dump(mode="json"))
+
+    def get_result(self, evidence_id: str) -> TurnResult:
+        return TurnResult.model_validate(self._payload(evidence_id, "result"))
+
+
+class InMemoryEvidenceStore(_RecordStore):
     """Process-local evidence for ephemeral conversation threads."""
 
     def __init__(self) -> None:
@@ -133,60 +146,14 @@ class InMemoryEvidenceStore:
     def known_ids(self) -> frozenset[str]:
         return frozenset(self._records)
 
-    def put_fact(
-        self,
-        company: str,
-        metric: str,
-        fact: Any,
-        *,
-        report_date: date | None = None,
-    ) -> str:
-        evidence_id = fact_evidence_id(company, metric, report_date)
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="fact",
-            payload=_fact_to_payload(fact),
-        )
-        return evidence_id
+    def _write(self, record: EvidenceRecord) -> None:
+        self._records[record.evidence_id] = record
 
-    def get_fact(self, evidence_id: str) -> Any:
-        record = self._records[evidence_id]
-        if record.kind != "fact":
-            raise KeyError(evidence_id)
-        return _payload_to_fact(record.payload)
-
-    def put_news(self, hit: NewsHit) -> str:
-        evidence_id = news_evidence_id(hit.url)
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="news",
-            payload=hit.model_dump(mode="json"),
-        )
-        return evidence_id
-
-    def get_news(self, evidence_id: str) -> NewsHit:
-        record = self._records[evidence_id]
-        if record.kind != "news":
-            raise KeyError(evidence_id)
-        return NewsHit.model_validate(record.payload)
-
-    def put_result(self, result: TurnResult) -> str:
-        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="result",
-            payload=result.model_dump(mode="json"),
-        )
-        return evidence_id
-
-    def get_result(self, evidence_id: str) -> TurnResult:
-        record = self._records[evidence_id]
-        if record.kind != "result":
-            raise KeyError(evidence_id)
-        return TurnResult.model_validate(record.payload)
+    def _read(self, evidence_id: str) -> EvidenceRecord:
+        return self._records[evidence_id]
 
 
-class LocalEvidenceStore:
+class LocalEvidenceStore(_RecordStore):
     """JSON files under a directory, one record per evidence id."""
 
     def __init__(self, root: Path) -> None:
@@ -200,16 +167,8 @@ class LocalEvidenceStore:
         return self._path(evidence_id).is_file()
 
     def known_ids(self) -> frozenset[str]:
-        ids: set[str] = set()
-        for path in self._root.glob("*.json"):
-            try:
-                record = EvidenceRecord.model_validate_json(
-                    path.read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError):
-                continue
-            ids.add(record.evidence_id)
-        return frozenset(ids)
+        # The filename is the quoted id (temp files end in .tmp), so listing reads no files.
+        return frozenset(unquote(path.stem) for path in self._root.glob("*.json"))
 
     def _write(self, record: EvidenceRecord) -> None:
         """Write the whole record or nothing: a reader never sees a torn file."""
@@ -227,74 +186,6 @@ class LocalEvidenceStore:
         if not path.is_file():
             raise KeyError(evidence_id)
         return EvidenceRecord.model_validate_json(path.read_text(encoding="utf-8"))
-
-    def put_fact(
-        self,
-        company: str,
-        metric: str,
-        fact: Any,
-        *,
-        report_date: date | None = None,
-    ) -> str:
-        evidence_id = fact_evidence_id(company, metric, report_date)
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="fact",
-                payload=_fact_to_payload(fact),
-            )
-        )
-        return evidence_id
-
-    def get_fact(self, evidence_id: str) -> Any:
-        record = self._read(evidence_id)
-        if record.kind != "fact":
-            raise KeyError(evidence_id)
-        return _payload_to_fact(record.payload)
-
-    def put_news(self, hit: NewsHit) -> str:
-        evidence_id = news_evidence_id(hit.url)
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="news",
-                payload=hit.model_dump(mode="json"),
-            )
-        )
-        return evidence_id
-
-    def get_news(self, evidence_id: str) -> NewsHit:
-        record = self._read(evidence_id)
-        if record.kind != "news":
-            raise KeyError(evidence_id)
-        return NewsHit.model_validate(record.payload)
-
-    def put_result(self, result: TurnResult) -> str:
-        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="result",
-                payload=result.model_dump(mode="json"),
-            )
-        )
-        return evidence_id
-
-    def get_result(self, evidence_id: str) -> TurnResult:
-        record = self._read(evidence_id)
-        if record.kind != "result":
-            raise KeyError(evidence_id)
-        return TurnResult.model_validate(record.payload)
-
-
-def _accepts_report_date(func: Any) -> bool:
-    try:
-        parameters = inspect.signature(func).parameters.values()
-    except (TypeError, ValueError):
-        return True
-    return any(
-        p.name == "report_date" or p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters
-    )
 
 
 class EvidenceCachedFacts:
@@ -331,15 +222,9 @@ class EvidenceCachedFacts:
                 if evidence_id in self._prior_ids:
                     self.reused_ids.add(evidence_id)
                 return self._store.get_fact(evidence_id)
-        kwargs: dict[str, Any] = {}
-        if report_date is not None:
-            kwargs["report_date"] = report_date
-        if kwargs and not _accepts_report_date(self._inner.get_financials):
-            # Fixture ports that omit report_date. Checked from the signature, not
-            # by catching TypeError, so a real error inside a dated lookup is never
-            # retried as a latest-quarter lookup and cached under the dated id.
-            kwargs = {}
-        fact = self._inner.get_financials(company, metric, **kwargs)
+        fetched = self._inner.get_financials(company, metric, report_date=report_date)
+        # The port returns a FinancialFact (ADR 0003), fresh or cached alike.
+        fact = FinancialFact.model_validate(fetched, from_attributes=True)
         with self._lock:
             if not self._store.has(evidence_id):
                 self._store.put_fact(company, metric, fact, report_date=report_date)
@@ -368,24 +253,20 @@ class EvidenceCachedFacts:
             return ()
         return tuple(periods(company))
 
-    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
-        getter = getattr(self._inner, "get_filing_document", None)
-        if not callable(getter):
-            raise ProviderError("Filing documents are not available")
-        return str(getter(cik, accession, document))
-
     def display_name(self, cik: str, fallback: str) -> str:
         named = getattr(self._inner, "display_name", None)
         return str(named(cik, fallback)) if callable(named) else fallback
 
 
-def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:
-    if not reused:
+def with_banner(result: TurnResult, banner: str) -> TurnResult:
+    """Append ``banner`` once."""
+    if banner in result.banners:
         return result
-    banners = list(result.banners)
-    if THREAD_EVIDENCE_BANNER not in banners:
-        banners.append(THREAD_EVIDENCE_BANNER)
-    return result.model_copy(update={"banners": banners})
+    return result.model_copy(update={"banners": [*result.banners, banner]})
+
+
+def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:
+    return with_banner(result, THREAD_EVIDENCE_BANNER) if reused else result
 
 
 def retain_result_evidence(store: EvidenceStore, result: TurnResult) -> str:

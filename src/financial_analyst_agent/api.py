@@ -33,6 +33,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from financial_analyst_agent.config import Settings, get_settings
+from financial_analyst_agent.contracts import RuntimeKind, TurnResult
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import (
     ConfigurationError,
@@ -70,7 +71,6 @@ from financial_analyst_agent.storefront import (
     runtime_guide,
 )
 from financial_analyst_agent.thread_store import LocalThreadStore
-from financial_analyst_agent.turn import RuntimeKind, TurnResult
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
 PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."

@@ -7,9 +7,9 @@ without loading those workflows.
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
@@ -124,8 +124,24 @@ MARKET_FORMULAS: tuple[str, ...] = ("pe_ratio",)
 INSTANT_METRICS: tuple[str, ...] = ("cash", "shareholders_equity")
 PER_SHARE_METRICS: tuple[str, ...] = ("eps_diluted", "eps_basic", "dividends_per_share", "price")
 
+# A ranked list's length when the question names none.
+DEFAULT_RANK_LIMIT = 10
+SNAPSHOT_BANNER_PREFIX = "Universe snapshot as of "
+
+
+def snapshot_banner(as_of: str) -> str:
+    """Raw banner naming the ranking snapshot; presentation reformats the timestamp."""
+    return f"{SNAPSHOT_BANNER_PREFIX}{as_of}"
+
+
+def unknown_metric_message(term: str) -> str:
+    # presentation._UNKNOWN_METRIC parses this wording back out; keep the two in step.
+    return f"Unknown metric {term!r}. Allowed: {', '.join(ALLOWED_METRICS)}"
+
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
+# A named company that fails the membership rule: a fund, BDC, note, preferred.
+NOT_OPERATING_COMPANY = "not_operating_company"
 # The source (EDGAR) failed for this cell; the fact may well exist.
 SOURCE_UNAVAILABLE = "source_unavailable"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
@@ -184,6 +200,16 @@ class RuntimeKind(StrEnum):
     LIVE = "live"
 
 
+class FilingsPort(Protocol):
+    """Raw SEC filing access for accession-pinned filing comparison."""
+
+    def get_company_tickers(self) -> dict[str, Any]: ...
+
+    def get_submissions(self, cik: str) -> dict[str, Any]: ...
+
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str: ...
+
+
 @dataclass(frozen=True)
 class Runtime:
     """Provider set for a turn. ``kind`` says whether it is the recorded or live runtime.
@@ -197,7 +223,13 @@ class Runtime:
     ranking: RankingPort | None = None
     news: NewsPort | None = None
     essay: EssayCompleter | None = None
+    # The same SEC source the facts lookup wraps, for filing comparison.
+    filings: FilingsPort | None = None
     kind: RuntimeKind = RuntimeKind.RECORDED
+    # On the live runtime, whether news search and written answers reach Tavily and
+    # OpenAI. Without them it replays the recorded demo's answers and says so (story 36).
+    live_news: bool = True
+    live_essays: bool = True
 
 
 class NewsHit(BaseModel):
@@ -276,6 +308,10 @@ class DisclosureChange(BaseModel):
     )
 
 
+# What a CLARIFY result asks: pick one metric, or extend vs replace the analysis.
+ClarifyKind = Literal["ambiguous_metric", "ambiguous_mode"]
+
+
 class TurnResult(BaseModel):
     intent: Intent
     tool_traces: list[ToolTrace]
@@ -287,6 +323,7 @@ class TurnResult(BaseModel):
     essay: str | None = None
     citations: list[NewsHit] = Field(default_factory=list)
     candidates: tuple[str, ...] = ()
+    clarify_kind: ClarifyKind | None = None
     disclosure_changes: list[DisclosureChange] = Field(default_factory=list)
     # Questions the window offers next, phrased so the planner reads them.
     suggestions: list[str] = Field(default_factory=list)
@@ -296,3 +333,21 @@ class TurnResult(BaseModel):
     ordered_by: str | None = None
     # A few quarters of revenue and net margin beside one company's overview.
     trend_rows: list[TableRow] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _infer_clarify_kind(self) -> Self:
+        """A clarification saved before ``clarify_kind`` existed says its kind by its candidates."""
+        if self.renderer is RendererKind.CLARIFY and self.clarify_kind is None and self.candidates:
+            self.clarify_kind = (
+                "ambiguous_mode" if self.candidates == ("extend", "replace") else "ambiguous_metric"
+            )
+        return self
+
+
+def refuse_unknown_metric(intent: Intent, term: str) -> TurnResult:
+    return TurnResult(
+        intent=intent,
+        tool_traces=[],
+        renderer=RendererKind.REFUSE,
+        message=unknown_metric_message(term),
+    )

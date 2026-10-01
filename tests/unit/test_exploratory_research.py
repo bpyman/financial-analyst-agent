@@ -14,12 +14,12 @@ FIXTURE_RESEARCH_QUERY = (
 
 
 class _SilentCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         raise AssertionError("workflow graph entry must not re-plan")
 
 
 class _ExploratoryCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=query)

@@ -25,11 +25,5 @@ def build_filing_source_url(cik: str, filing: Filing) -> str:
 
     Falls back to the SEC filing index URL when primary_document is missing.
     """
-    cik_segment = _cik_path_segment(cik)
-    accession_segment = _accession_path_segment(filing.accession_number)
-    if filing.primary_document:
-        return f"{_SEC_ARCHIVES_BASE}/{cik_segment}/{accession_segment}/{filing.primary_document}"
-    return (
-        f"{_SEC_ARCHIVES_BASE}/{cik_segment}/{accession_segment}/"
-        f"{filing.accession_number}-index.htm"
-    )
+    document = filing.primary_document or f"{filing.accession_number}-index.htm"
+    return build_filing_document_url(cik, filing.accession_number, document)

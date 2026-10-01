@@ -11,16 +11,13 @@ New multi-turn behaviour is asserted at ``run_conversation_turn``.
 import json
 import re
 from datetime import date, datetime
-from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.contracts import (
-    ALLOWED_METRICS,
     AMBIGUOUS_CONCEPT,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
-    FORMULA_METRICS,
     INSTANT_METRICS,
     LATEST_PERIOD_ONLY,
     MARKET_FORMULAS,
@@ -28,24 +25,19 @@ from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
     NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
+    NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
-    PERCENT_FORMULAS,
     PERIOD_MISMATCH,
-    REPORTED_METRICS,
     SEARCH_NEWS_MAX_RESULTS,
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
     SNAPSHOT_METRICS,
     SUM_FORMULAS,
     ZERO_DENOMINATOR,
-    Completer,
     ComponentProvenance,
-    DisclosureChange,
-    EssayCompleter,
     FactsPort,
     Intent,
     NewsHit,
-    NewsPort,
     RankingPort,
     RendererKind,
     Runtime,
@@ -53,20 +45,21 @@ from financial_analyst_agent.contracts import (
     TableRow,
     ToolTrace,
     TurnResult,
+    snapshot_banner,
 )
 from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    IneligibleIssuerError,
     PerShareNotDerivableError,
     ProviderError,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FinancialFact
+from financial_analyst_agent.domain.models import DerivationPart, FinancialFact
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
-from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _LOOKUP_FAILURES = (
     AmbiguousFactError,
@@ -75,51 +68,44 @@ _LOOKUP_FAILURES = (
     CompanyNotFoundError,
 )
 _NUMERIC_TOKEN = re.compile(
-    r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
+    # A number never ends in its list comma ("29, then"), and a one-letter unit
+    # must end the word ("5B", not the "t" of "then").
+    r"\$?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s*(?:[KMBTkmbt]\b|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 # Grounding keys whose digits identify a document rather than state a figure.
 _IDENTIFIER_KEYS = frozenset({"url", "cik", "document", "primary_document", "anchor"})
+_MONTH = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?"
+    r"|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
+# What may follow a date and makes it an amount instead: "March 12%", "2050 million".
+_AMOUNT_AFTER = (
+    r"(?!\s*(?:%|percent\b|[KMBTkmbt]\b|thousand\b|million\b|billion\b|trillion\b"
+    r"|dollars?\b|shares\b)|[.,]?\d)"
+)
+# Dates are when, not how much: "March 31, 2026", "2026-03-31" or "in fiscal 2026" in
+# an essay is not a figure, and a grounding date's "31" or "03" must not unlock "31%"
+# elsewhere. A bare four-digit number is a year only beside a word that dates it;
+# "hire 2000 engineers" stays a figure.
+_DATE_TEXT = re.compile(
+    rf"\b\d{{4}}-\d{{2}}-\d{{2}}(?:T[\d:.+-]+Z?)?\b"
+    rf"|\b{_MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+(?:19|20)\d{{2}})?\b{_AMOUNT_AFTER}"
+    rf"|\b{_MONTH}\.?\s+(?:19|20)\d{{2}}\b{_AMOUNT_AFTER}"
+    r"|\b(?:in|during|since|by|until|through|from|fiscal(?:\s+year)?|calendar(?:\s+year)?"
+    r"|FY|Q[1-4]|H[12]|early|mid|late|end\s+of)\s*'?(?:19|20)\d{2}\b"
+    rf"{_AMOUNT_AFTER}",
+    re.IGNORECASE,
+)
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 
 __all__ = [
-    "ALLOWED_METRICS",
-    "AMBIGUOUS_CONCEPT",
-    "EXPLORATORY_RESEARCH_BANNER",
-    "NEWS_SUMMARY_BANNER",
-    "FORMULA_COMPONENTS",
-    "FORMULA_METRICS",
-    "MARKET_FORMULAS",
-    "MISSING_FACT",
-    "MODEL_ANALYSIS_BANNER",
-    "PERCENT_FORMULAS",
-    "PERIOD_MISMATCH",
-    "REPORTED_METRICS",
-    "SEARCH_NEWS_MAX_RESULTS",
-    "SEARCH_NEWS_TIME_RANGE",
-    "SEARCH_NEWS_TOPIC",
-    "SNAPSHOT_METRICS",
-    "ZERO_DENOMINATOR",
-    "Completer",
-    "ComponentProvenance",
-    "DisclosureChange",
-    "EssayCompleter",
-    "FactsPort",
-    "Intent",
-    "NewsHit",
-    "NewsPort",
-    "RankingPort",
-    "RendererKind",
-    "Runtime",
-    "RuntimeKind",
-    "TableRow",
-    "ToolTrace",
-    "TurnResult",
     "compare_metrics",
-    "execute_turn",
     "market_formula_rows",
     "run_turn",
     "snapshot_compare_rows",
 ]
+
 
 def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     def replace(match: re.Match[str]) -> str:
@@ -164,12 +150,20 @@ def _grounding_text(tool_json: str) -> str:
     return "\n".join(parts)
 
 
+def _figures(text: str) -> list[str]:
+    """Numeric tokens outside dates."""
+    return _NUMERIC_TOKEN.findall(_DATE_TEXT.sub(" ", text))
+
+
 def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
     scanned = _strip_valid_citation_markers(essay, hit_count)
-    allowed = set(_NUMERIC_TOKEN.findall(_grounding_text(tool_json)))
-    return list(
-        dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(scanned) if token not in allowed)
-    )
+    grounding = _grounding_text(tool_json)
+    # A source's dates do not unlock their day or month, but their years may be quoted.
+    years = {
+        year for date in _DATE_TEXT.findall(grounding) for year in _YEAR.findall(date)
+    }
+    allowed = set(_figures(grounding)) | years
+    return list(dict.fromkeys(token for token in _figures(scanned) if token not in allowed))
 
 
 def _numeral_lock_message(invented: str) -> str:
@@ -218,7 +212,14 @@ def _explain_turn(
         intent=Intent.EXPLAIN,
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
-        banners=[MODEL_ANALYSIS_BANNER],
+        banners=[
+            MODEL_ANALYSIS_BANNER,
+            *(
+                [REPLAYED_ESSAY_BANNER]
+                if runtime.kind is RuntimeKind.LIVE and not runtime.live_essays
+                else []
+            ),
+        ],
         essay=essay,
     )
 
@@ -247,14 +248,40 @@ NO_NEWS_MESSAGE = (
 )
 
 
+REPLAYED_NEWS_BANNER = (
+    "Replayed: this server has no live news search, so these are the recorded demo's articles."
+)
+REPLAYED_ESSAY_BANNER = (
+    "Replayed: this server has no OpenAI key, so this is the recorded demo's written answer."
+)
+
+
+def _replays_news(runtime: Runtime) -> bool:
+    return runtime.kind is RuntimeKind.RECORDED or not runtime.live_news
+
+
+def _replay_banners(runtime: Runtime) -> list[str]:
+    """On the live runtime, label an answer replayed from the recorded demo (story 36)."""
+    if runtime.kind is RuntimeKind.RECORDED:
+        return []
+    banners = [] if runtime.live_news else [REPLAYED_NEWS_BANNER]
+    return banners + ([] if runtime.live_essays else [REPLAYED_ESSAY_BANNER])
+
+
 def _no_news_message(runtime: Runtime) -> str:
-    if runtime.kind is not RuntimeKind.RECORDED:
+    if not _replays_news(runtime):
         return NO_NEWS_MESSAGE
     from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 
+    if runtime.kind is RuntimeKind.RECORDED:
+        return (
+            f"{NO_NEWS_MESSAGE} The recorded demo only replays captured news for "
+            f"“{FIXTURE_NEWS_QUERY}”."
+        )
+    # No search ran: saying "I found no news" would claim one did.
     return (
-        f"{NO_NEWS_MESSAGE} The recorded demo only replays captured news for "
-        f"“{FIXTURE_NEWS_QUERY}”."
+        "News search is off on this server, and I only answer news questions from "
+        f"articles I can cite. It can replay the captured news for “{FIXTURE_NEWS_QUERY}”."
     )
 
 
@@ -322,7 +349,7 @@ def _news_grounded_essay_turn(
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
         citations=hits,
-        banners=list(banners) if banners else [],
+        banners=[*(banners or []), *_replay_banners(runtime)],
         essay=essay,
     )
 
@@ -345,15 +372,15 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
 
 def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     """A derived quarter's label and the reported facts it came from (ADR 0007)."""
-    derivation = getattr(fact, "derivation", None)
+    derivation = fact.derivation
     if derivation is None:
         return {}
-    metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
+    metric = fact.metric.value
     source = _fact_source_kind(fact)
 
-    def provenance(part: Any, parent: str = metric) -> ComponentProvenance:
-        nested = getattr(part, "derivation", None)
-        own = getattr(part, "metric", None) or parent
+    def provenance(part: DerivationPart, parent: str = metric) -> ComponentProvenance:
+        nested = part.derivation
+        own = part.metric or parent
         return ComponentProvenance(
             metric=own,
             value=part.value,
@@ -376,13 +403,11 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
 
 
 def _table_row_from_fact(fact: FinancialFact) -> TableRow:
-    metric = fact.metric
-    metric_value = metric.value if hasattr(metric, "value") else metric
     return TableRow(
         company_name=fact.company_name,
         ticker=fact.ticker,
         cik=fact.cik,
-        metric=metric_value,
+        metric=fact.metric.value,
         value=fact.value,
         currency=fact.currency,
         start_date=fact.start_date,
@@ -392,18 +417,17 @@ def _table_row_from_fact(fact: FinancialFact) -> TableRow:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
-        newer_filing_end=getattr(fact, "newer_filing_end", None),
+        newer_filing_end=fact.newer_filing_end,
         **_derivation_fields(fact),
     )
 
 
 def _fact_source_kind(fact: FinancialFact) -> str:
-    source = getattr(fact, "source", None)
-    return str(source) if source else "sec_xbrl"
+    return str(fact.source)
 
 
 def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
-    derivation = getattr(fact, "derivation", None)
+    derivation = fact.derivation
     extra: dict[str, Any] = {}
     if derivation is not None:
         extra["derivation"] = derivation.model_dump(mode="json")
@@ -419,57 +443,49 @@ def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
     }
 
 
-def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
-    allowed = ", ".join(ALLOWED_METRICS)
-    return TurnResult(
-        intent=intent,
-        tool_traces=[],
-        renderer=RendererKind.REFUSE,
-        message=f"Unknown metric {metric!r}. Allowed: {allowed}",
-    )
-
-
-def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
+def _ranked_table(
+    plan: Any, runtime: Runtime, intent: Intent
+) -> tuple[Any, ToolTrace] | TurnResult:
+    """Rank the plan's industry, or a refusal when the industry is unknown."""
     if runtime.ranking is None:
-        raise RuntimeError("rank intent requires a ranking adapter")
+        raise RuntimeError(f"{intent.value} intent requires a ranking adapter")
     industry = plan.industry or ""
     try:
         table = runtime.ranking.rank_companies(industry, plan.limit)
     except UnknownIndustryError as exc:
         return TurnResult(
-            intent=Intent.RANK,
+            intent=intent,
             tool_traces=[],
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
+    trace = ToolTrace(
+        tool="rank_companies",
+        args={"industry": industry, "limit": plan.limit},
+        provenance={
+            "snapshot_as_of": table.as_of,
+            "source": table.source,
+            "sector": table.sector,
+        },
+    )
+    return table, trace
+
+
+def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    ranked = _ranked_table(plan, runtime, Intent.RANK)
+    if isinstance(ranked, TurnResult):
+        return ranked
+    table, trace = ranked
     rows = [
-        TableRow(
-            company_name=company.name,
-            ticker=company.ticker,
-            cik=company.cik,
-            metric="market_cap",
-            rank=index,
-            value=company.market_cap,
-            currency="USD",
-        )
+        _snapshot_row(company, "market_cap", rank=index)
         for index, company in enumerate(table.companies, start=1)
     ]
     return TurnResult(
         intent=Intent.RANK,
-        tool_traces=[
-            ToolTrace(
-                tool="rank_companies",
-                args={"industry": industry, "limit": plan.limit},
-                provenance={
-                    "snapshot_as_of": table.as_of,
-                    "source": table.source,
-                    "sector": table.sector,
-                },
-            )
-        ],
+        tool_traces=[trace],
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {table.as_of}"],
+        banners=[snapshot_banner(table.as_of)],
     )
 
 
@@ -509,8 +525,7 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
 
 
 def _metric_name(fact: FinancialFact) -> str:
-    metric = fact.metric
-    return metric.value if hasattr(metric, "value") else str(metric)
+    return fact.metric.value
 
 
 def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
@@ -553,6 +568,9 @@ def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
 
 
 def _partial_lookup_reason(exc: BaseException) -> str:
+    if isinstance(exc, IneligibleIssuerError):
+        # A typed miss: the row says why, rather than implying a missing filing.
+        return NOT_OPERATING_COMPANY
     if isinstance(exc, PerShareNotDerivableError):
         return NOT_REPORTED_FOR_QUARTER
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
@@ -595,15 +613,10 @@ def compare_metrics(
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            if report_date is None:
-                fetched = [
-                    facts.get_financials(issuer, component) for component in component_names
-                ]
-            else:
-                fetched = [
-                    facts.get_financials(issuer, component, report_date=report_date)
-                    for component in component_names
-                ]
+            fetched = [
+                facts.get_financials(issuer, component, report_date=report_date)
+                for component in component_names
+            ]
         except _LOOKUP_FAILURES as exc:
             rows.append(
                 _compare_unresolved_row(
@@ -661,7 +674,7 @@ def compare_metrics(
                     (
                         pending
                         for fact in fetched
-                        if (pending := getattr(fact, "newer_filing_end", None))
+                        if (pending := fact.newer_filing_end)
                     ),
                     default=None,
                 ),
@@ -788,30 +801,12 @@ def _with_rank_identity(row: TableRow, company: Any, index: int) -> TableRow:
 
 
 def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    if runtime.ranking is None:
-        raise RuntimeError("rank_and_lookup intent requires a ranking adapter")
+    ranked = _ranked_table(plan, runtime, Intent.RANK_AND_LOOKUP)
+    if isinstance(ranked, TurnResult):
+        return ranked
+    table, trace = ranked
     metric = plan.metric
-    industry = plan.industry or ""
-    try:
-        table = runtime.ranking.rank_companies(industry, plan.limit)
-    except UnknownIndustryError as exc:
-        return TurnResult(
-            intent=Intent.RANK_AND_LOOKUP,
-            tool_traces=[],
-            renderer=RendererKind.REFUSE,
-            message=str(exc),
-        )
-    traces = [
-        ToolTrace(
-            tool="rank_companies",
-            args={"industry": industry, "limit": plan.limit},
-            provenance={
-                "snapshot_as_of": table.as_of,
-                "source": table.source,
-                "sector": table.sector,
-            },
-        )
-    ]
+    traces = [trace]
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
         if metric in SNAPSHOT_METRICS:
@@ -842,7 +837,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         tool_traces=traces,
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {table.as_of}"],
+        banners=[snapshot_banner(table.as_of)],
     )
 
 
@@ -957,7 +952,7 @@ def _snapshot_metrics_turn(
         ],
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {as_of}"],
+        banners=[snapshot_banner(as_of)],
     )
 
 
@@ -981,12 +976,7 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if report_date is not None:
         args["report_date"] = report_date.isoformat()
     try:
-        if report_date is None:
-            fact = runtime.facts.get_financials(plan.company, metric)
-        else:
-            fact = runtime.facts.get_financials(
-                plan.company, metric, report_date=report_date
-            )
+        fact = runtime.facts.get_financials(plan.company, metric, report_date=report_date)
     except _LOOKUP_FAILURES as exc:
         if isinstance(exc, PerShareNotDerivableError):
             # Not a failure: the filings say this figure exists only for the year.
@@ -1007,7 +997,13 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
             )
         return TurnResult(
             intent=Intent.LOOKUP,
-            tool_traces=[],
+            tool_traces=[
+                ToolTrace(
+                    tool="get_financials",
+                    args=args,
+                    provenance={"error": {"code": exc.code, "message": str(exc)}},
+                )
+            ],
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
@@ -1023,75 +1019,6 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         renderer=RendererKind.TABLE,
         table_rows=[_table_row_from_fact(fact)],
     )
-
-
-def _plan_with_metric(plan: Any, metric: str) -> Any:
-    return SimpleNamespace(
-        intent=plan.intent,
-        company=getattr(plan, "company", None),
-        companies=list(getattr(plan, "companies", []) or []),
-        metric=metric,
-        industry=getattr(plan, "industry", None),
-        limit=getattr(plan, "limit", 10),
-        topic=getattr(plan, "topic", None),
-    )
-
-
-def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
-    return TurnResult(
-        intent=intent,
-        tool_traces=[],
-        renderer=RendererKind.CLARIFY,
-        candidates=candidates,
-    )
-
-
-def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
-    from financial_analyst_agent.graph import run_workflow_turn
-
-    return run_workflow_turn(plan, runtime, query=query)
-
-
-def execute_turn(query: str, runtime: Runtime) -> TurnResult:
-    """Plan and run one one-shot analysis. Run state is not returned or persisted."""
-    plan = runtime.completer.complete(query)
-    if plan.intent in (
-        Intent.EXPLAIN,
-        Intent.FILING_CHANGE,
-        Intent.NEWS_AND_EXPLAIN,
-        Intent.EXPLORATORY_RESEARCH,
-        Intent.RANK,
-    ):
-        return _run_workflow(plan, runtime, query=query)
-    resolved = resolve_metric_phrase(query)
-    if resolved.kind == "ambiguous":
-        return _clarify_metric(plan.intent, resolved.candidates)
-    if resolved.kind == "unknown":
-        fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
-        term = fallback if fallback not in ALLOWED_METRICS else "unknown"
-        return _refuse_unknown_metric(plan.intent, term)
-    if resolved.kind == "unique" and len(resolved.metrics) > 1:
-        # One-shot execute_turn still clarifies; multi-metric composition runs
-        # through run_spec_turn on the conversation seam (ticket 09).
-        return _clarify_metric(plan.intent, resolved.metrics)
-    if resolved.kind == "unique" and resolved.metric is not None:
-        metric = resolved.metric
-    else:
-        metric = str(plan.metric or "")
-    plan = _plan_with_metric(plan, metric)
-    if plan.intent is Intent.COMPARE:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.RANK_AND_LOOKUP:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.LOOKUP:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    raise ValueError(f"unsupported intent: {plan.intent!r}")
 
 
 def run_turn(query: str, runtime: Runtime) -> TurnResult:

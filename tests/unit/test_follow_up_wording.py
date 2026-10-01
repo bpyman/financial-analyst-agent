@@ -49,6 +49,7 @@ class _PeriodFacts:
             currency="USD",
             start_date=date(end.year, end.month, 1),
             end_date=end,
+            filed_date=end,
             form="10-Q",
             accession_number="acc",
             taxonomy="us-gaap",

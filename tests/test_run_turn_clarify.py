@@ -2,8 +2,9 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.runtime import recorded_runtime
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_lookup import (
     UNKNOWN_METRIC_QUERY,
     _ExplodingFacts,
@@ -16,7 +17,7 @@ PROFIT_MARGIN_QUERY = "What was Google's profit margin?"
 
 
 class _GuessNetIncomeCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="net_income")
 
 
@@ -76,7 +77,9 @@ def test_unique_phrase_overrides_planner_metric() -> None:
     fetched: list[str] = []
 
     class _Facts:
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             fetched.append(metric)
             return SimpleNamespace(
                 company_name="Alphabet Inc.",
@@ -87,6 +90,7 @@ def test_unique_phrase_overrides_planner_metric() -> None:
                 currency="USD",
                 start_date=date(2026, 1, 1),
                 end_date=date(2026, 3, 31),
+                filed_date=date(2026, 3, 31),
                 form="10-Q",
                 accession_number="0001652044-26-000048",
                 taxonomy="us-gaap",

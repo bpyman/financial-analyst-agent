@@ -76,6 +76,7 @@ class _SlowFacts:
                 if report_date.month > 2
                 else date(report_date.year - 1, 10, 1),
                 end_date=report_date,
+                filed_date=report_date,
                 form="10-Q",
                 accession_number=f"acc-{report_date.isoformat()}",
                 taxonomy="us-gaap",
@@ -111,7 +112,7 @@ def _wide_lookup_completer():
     from financial_analyst_agent.graph.analysis_spec import PeriodSelection, SpecPatch
 
     class _Wide:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),

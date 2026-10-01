@@ -6,11 +6,12 @@ from decimal import Decimal
 import pytest
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime, RuntimeKind
 from financial_analyst_agent.news import TavilyNewsSearch
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import DemoCompleter, RecordedEssayCompleter
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, RuntimeKind, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
 ALPHABET_CIK = "0001652044"

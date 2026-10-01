@@ -9,9 +9,22 @@ from typing import Any
 from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import (
+    ALLOWED_METRICS,
+    EXPLORATORY_RESEARCH_BANNER,
+    FORMULA_METRICS,
+    MODEL_ANALYSIS_BANNER,
     MULTIPLE_FORMULAS,
+    NEWS_SUMMARY_BANNER,
     PER_SHARE_METRICS,
+    PERCENT_FORMULAS,
+    REPORTED_METRICS,
+    SNAPSHOT_BANNER_PREFIX,
+    SNAPSHOT_METRICS,
     TRAILING_YEAR_FORMULAS,
+    Intent,
+    RendererKind,
+    TableRow,
+    TurnResult,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
 from financial_analyst_agent.guide import short_name
@@ -25,20 +38,6 @@ from financial_analyst_agent.services.fiscal_periods import (
     DEPRECIATION_AMORTIZATION_LABEL,
     GROSS_PROFIT_LABEL,
     REVENUE_FROM_COMPONENTS_LABEL,
-)
-from financial_analyst_agent.turn import (
-    ALLOWED_METRICS,
-    EXPLORATORY_RESEARCH_BANNER,
-    FORMULA_METRICS,
-    MODEL_ANALYSIS_BANNER,
-    NEWS_SUMMARY_BANNER,
-    PERCENT_FORMULAS,
-    REPORTED_METRICS,
-    SNAPSHOT_METRICS,
-    Intent,
-    RendererKind,
-    TableRow,
-    TurnResult,
 )
 
 _MONTHS = (
@@ -63,6 +62,7 @@ _TENTH = Decimal("0.1")
 
 _REASON_LABELS = {
     "missing_fact": "Missing fact",
+    "not_operating_company": "Not an operating company",
     "period_mismatch": "Period mismatch",
     "ambiguous_concept": "Ambiguous concept",
     "zero_denominator": "Zero denominator",
@@ -187,7 +187,7 @@ def format_datetime_utc(value: datetime) -> str:
     return f"{format_date(utc.date())}, {hour12}:{utc.minute:02d} {suffix} UTC"
 
 
-def _humanize_field(key: str) -> str:
+def format_field_name(key: str) -> str:
     label = _FIELD_LABELS.get(key)
     if label is None:
         return " ".join(part.capitalize() for part in key.split("_"))
@@ -201,10 +201,6 @@ def _in_sentence(label: str) -> str:
     return label[:1].lower() + label[1:]
 
 
-def format_field_name(key: str) -> str:
-    return _humanize_field(key)
-
-
 def format_reason(reason: str) -> str:
     label = _REASON_LABELS.get(reason)
     if label is None:
@@ -212,16 +208,28 @@ def format_reason(reason: str) -> str:
     return label
 
 
+def chart_value_kind(metric: str) -> str:
+    if metric in MULTIPLE_FORMULAS:
+        return "multiple"
+    if metric in PERCENT_FORMULAS:
+        return "percent"
+    if metric in PER_SHARE_METRICS:
+        return "per_share"
+    return "usd"
+
+
+_VALUE_FORMATTERS = {
+    "multiple": format_multiple,
+    "percent": format_percent,
+    "per_share": format_per_share,
+    "usd": format_usd,
+}
+
+
 def format_metric_value(metric: str, value: Decimal | None) -> str:
     if value is None:
         return ""
-    if metric in MULTIPLE_FORMULAS:
-        return format_multiple(value)
-    if metric in PERCENT_FORMULAS:
-        return format_percent(value)
-    if metric in PER_SHARE_METRICS:
-        return format_per_share(value)
-    return format_usd(value)
+    return _VALUE_FORMATTERS[chart_value_kind(metric)](value)
 
 
 def derived_banner(rows: list[TableRow]) -> str:
@@ -355,16 +363,6 @@ def format_chart_amount(metric: str, value: object) -> str:
     return format_metric_value(metric, amount)
 
 
-def chart_value_kind(metric: str) -> str:
-    if metric in MULTIPLE_FORMULAS:
-        return "multiple"
-    if metric in PERCENT_FORMULAS:
-        return "percent"
-    if metric in PER_SHARE_METRICS:
-        return "per_share"
-    return "usd"
-
-
 def try_parse_datetime(raw: str) -> datetime | None:
     text = raw.strip()
     if text.endswith("Z"):
@@ -419,7 +417,6 @@ _COMPARISON_LABELS = {
     "sequential": "Quarter over quarter",
 }
 _LEVEL_LABEL = "Reported"
-_SNAPSHOT_PREFIX = "Universe snapshot as of "
 # Banner codes a qualitative turn carries, in the words the window shows.
 _BANNER_COPY = {
     MODEL_ANALYSIS_BANNER: (
@@ -437,7 +434,6 @@ _BANNER_COPY = {
 }
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
 _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
-_SCOPE_CANDIDATES = ("extend", "replace")
 
 
 @dataclass(frozen=True)
@@ -508,19 +504,19 @@ class Presentation:
 
 
 def metric_legend() -> tuple[str, ...]:
-    return tuple(_humanize_field(metric) for metric in ALLOWED_METRICS)
+    return tuple(format_field_name(metric) for metric in ALLOWED_METRICS)
 
 
 def metric_groups() -> tuple[tuple[str, tuple[str, ...]], ...]:
     return (
         (
             "Reported (SEC EDGAR)",
-            tuple(_humanize_field(metric) for metric in REPORTED_METRICS),
+            tuple(format_field_name(metric) for metric in REPORTED_METRICS),
         ),
-        ("Calculated", tuple(_humanize_field(metric) for metric in FORMULA_METRICS)),
+        ("Calculated", tuple(format_field_name(metric) for metric in FORMULA_METRICS)),
         (
             "Daily snapshot (FMP)",
-            tuple(_humanize_field(metric) for metric in SNAPSHOT_METRICS),
+            tuple(format_field_name(metric) for metric in SNAPSHOT_METRICS),
         ),
     )
 
@@ -597,7 +593,7 @@ class DisplayDisclosure:
 
 
 def intent_label(intent: str) -> str:
-    return _INTENT_LABELS.get(intent, _humanize_field(intent))
+    return _INTENT_LABELS.get(intent, format_field_name(intent))
 
 
 def spec_chips(spec: Any) -> tuple[str, ...]:
@@ -612,7 +608,7 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     if constituents is not None:
         chips.append(f"Top {constituents.limit} {constituents.industry}")
     for metric in getattr(spec, "metrics", ()):
-        chips.append(_humanize_field(str(metric)))
+        chips.append(format_field_name(str(metric)))
     periods = getattr(spec, "periods", None)
     if constituents is not None:
         # A ranking shows each company's latest quarter whatever period was named.
@@ -712,7 +708,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             records=records,
             metric=metric,
             value_kind=chart_value_kind(metric),
-            metric_label=_humanize_field(metric),
+            metric_label=format_field_name(metric),
             period_labels=tuple(format_date(period) for period in periods),
             series=tuple(dict.fromkeys(row.company_name for row in rows)),
             amounts=tuple(
@@ -743,7 +739,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             ),
             horizontal=rank_cross_section,
             value_kind=chart_value_kind(metric),
-            metric_label=_humanize_field(metric),
+            metric_label=format_field_name(metric),
         )
     return None
 
@@ -781,7 +777,7 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
         return None
     rows = [row for row in changes if row.metric == metric]
     label = _CHANGE_COLUMN_LABELS[kind]
-    humanized = _humanize_field(metric)
+    humanized = format_field_name(metric)
     rest = "".join(f" and {extra}" for extra in extras)
     metric_label = f"{humanized} growth, {label}"
     quarters: dict[str, int] = {}
@@ -894,11 +890,11 @@ def _bar_caption(
 ) -> str:
     if ranked and metric != "market_cap":
         order = (
-            f"Ordered by {_humanize_field(ordered_by).lower()} among the largest by market cap"
+            f"Ordered by {format_field_name(ordered_by).lower()} among the largest by market cap"
             if ordered_by
             else "Ordered by market cap"
         )
-        caption = f"{order}; bar length is latest-quarter {_humanize_field(metric)}."
+        caption = f"{order}; bar length is latest-quarter {format_field_name(metric)}."
         if mixed_periods:
             return f"{caption} Periods differ by issuer."
         return caption
@@ -950,14 +946,8 @@ def _exact_amount(value: Decimal | None) -> str:
     return f"{value:,.6f}".rstrip("0").rstrip(".")
 
 
-def _evidence_item(row: TableRow) -> EvidenceItem:
-    amount = (
-        format_metric_value(row.metric, row.value)
-        if row.value is not None
-        else (row.reason or "")
-    )
-    raw = str(row.value) if row.value is not None else ""
-    period = _period_label(row.start_date, row.end_date)
+def _row_provenance(row: TableRow) -> tuple[str, str, str, str]:
+    """Concept, form, accession and URL, falling back to formula components."""
     concept = row.concept or ""
     form = row.form or ""
     accession_number = row.accession_number or ""
@@ -972,8 +962,20 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         form = form or first.form
         accession_number = accession_number or first.accession_number
         source_url = source_url or first.source_url
+    return concept, form, accession_number, source_url
+
+
+def _evidence_item(row: TableRow) -> EvidenceItem:
+    amount = (
+        format_metric_value(row.metric, row.value)
+        if row.value is not None
+        else (row.reason or "")
+    )
+    raw = str(row.value) if row.value is not None else ""
+    period = _period_label(row.start_date, row.end_date)
+    concept, form, accession_number, source_url = _row_provenance(row)
     change = _COMPARISON_LABELS.get(row.comparison or "")
-    metric_label = _humanize_field(row.metric) + (f" · {change.lower()} change" if change else "")
+    metric_label = format_field_name(row.metric) + (f" · {change.lower()} change" if change else "")
     return EvidenceItem(
         label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
@@ -1011,7 +1013,7 @@ def _evidence_from_component(row: TableRow, component: Any) -> EvidenceItem:
     period = _period_label(component.start_date, component.end_date)
     return EvidenceItem(
         label=(
-            f"{row.company_name} · {_humanize_field(component.metric)}"
+            f"{row.company_name} · {format_field_name(component.metric)}"
             + (f" · {period}" if period else "")
         ),
         amount=format_metric_value(component.metric, component.value),
@@ -1113,7 +1115,7 @@ def present_turn(result: TurnResult) -> Presentation:
     if newer:
         banners.append(newer)
     if result.ordered_by:
-        label = _in_sentence(_humanize_field(result.ordered_by))
+        label = _in_sentence(format_field_name(result.ordered_by))
         amount = (
             f"a higher {label}"
             if result.ordered_by in (*PERCENT_FORMULAS, *MULTIPLE_FORMULAS, *PER_SHARE_METRICS)
@@ -1153,7 +1155,7 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.renderer is not RendererKind.CLARIFY
             else None
         ),
-        candidates=tuple(_humanize_field(name) for name in result.candidates),
+        candidates=tuple(format_field_name(name) for name in result.candidates),
         clarify_prompt=_clarify_prompt(result),
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
@@ -1221,7 +1223,7 @@ def _friendly_message(message: str | None) -> str | None:
                 f"from SEC 10-Q facts such as {_METRIC_EXAMPLES}, for example "
                 "“What was Microsoft's latest quarterly revenue?”"
             )
-        supported = ", ".join(_humanize_field(name) for name in ALLOWED_METRICS)
+        supported = ", ".join(format_field_name(name) for name in ALLOWED_METRICS)
         return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
     industry = _UNKNOWN_INDUSTRY.match(message)
     if industry is not None:
@@ -1250,7 +1252,7 @@ def _friendly_message(message: str | None) -> str | None:
 def _clarify_prompt(result: TurnResult) -> str | None:
     if result.renderer is not RendererKind.CLARIFY or not result.candidates:
         return None
-    if tuple(result.candidates) == _SCOPE_CANDIDATES:
+    if result.clarify_kind == "ambiguous_mode":
         return _SCOPE_CLARIFY_PROMPT
     return _METRIC_CLARIFY_PROMPT
 
@@ -1258,20 +1260,7 @@ def _clarify_prompt(result: TurnResult) -> str | None:
 def _fact_card(row: TableRow) -> QuarterlyFactCard:
     assert row.start_date is not None
     assert row.end_date is not None
-    form = row.form or ""
-    accession_number = row.accession_number or ""
-    concept = row.concept or ""
-    source_url = row.source_url or ""
-    if row.components and not concept:
-        concept = " / ".join(
-            component.concept for component in row.components if component.concept
-        )
-        # A snapshot component (P/E's market cap) has no filing to point at.
-        filed = [component for component in row.components if component.accession_number]
-        first = filed[0] if filed else row.components[0]
-        form = form or first.form
-        accession_number = accession_number or first.accession_number
-        source_url = source_url or first.source_url
+    concept, form, accession_number, source_url = _row_provenance(row)
     if is_derived(row):
         lead = "Derived †"
     elif row.start_date == row.end_date:
@@ -1281,7 +1270,7 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,
-        metric_header=_humanize_field(row.metric),
+        metric_header=format_field_name(row.metric),
         amount=format_metric_value(row.metric, row.value),
         period_label=f"{lead} · {_period_label(row.start_date, row.end_date)}",
         form=form,
@@ -1378,7 +1367,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                 change_headers[key] = (
                     f"{label} change"
                     if len(metrics) == 1
-                    else f"{_humanize_field(metric)}, {label}"
+                    else f"{format_field_name(metric)}, {label}"
                 )
         for slot in [slot for slot in cells if slot[2] is not None]:
             level = cells.setdefault((slot[0], slot[1], None), {})
@@ -1410,7 +1399,7 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     headers = tuple(
         change_headers[key]
         if key.startswith(WIDE_CHANGE_PREFIX)
-        else _humanize_field(key[len(WIDE_VALUE_PREFIX) :])
+        else format_field_name(key[len(WIDE_VALUE_PREFIX) :])
         if key.startswith(WIDE_VALUE_PREFIX)
         else "Quarter ended"
         if key == "end_date"
@@ -1491,7 +1480,7 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
     keys = [key for key in allowed if any(not _cell_empty(getattr(row, key)) for row in rows)]
     metrics = {row.metric for row in rows if row.metric}
     single_metric = len(metrics) == 1
-    value_header = _humanize_field(next(iter(metrics))) if single_metric else None
+    value_header = format_field_name(next(iter(metrics))) if single_metric else None
     if single_metric:
         keys = [key for key in keys if key != "metric"]
         if "value" not in keys:
@@ -1536,13 +1525,11 @@ def _format_cell(row: TableRow, key: str) -> str:
                 formatted = f"{formatted} ({'+' if percent > 0 else ''}{percent:.1f}%)"
         return formatted + (DERIVED_MARK if is_derived(row) else "")
     if key == "metric":
-        return _humanize_field(str(value))
+        return format_field_name(str(value))
     if key in {"start_date", "end_date"}:
         return format_date(value)
     if key == "reason":
         return format_reason(value)
-    if key == "rank":
-        return str(value)
     if key == "market_cap":
         return format_usd(value)
     return str(value)
@@ -1580,7 +1567,7 @@ def overview_trends(rows: list[TableRow]) -> tuple[ChartSpec, ...]:
                 ),
                 metric=metric,
                 value_kind=chart_value_kind(metric),
-                metric_label=_humanize_field(metric),
+                metric_label=format_field_name(metric),
                 period_labels=tuple(format_date(row.end_date) for row in points if row.end_date),
                 series=(name,),
                 amounts=tuple(
@@ -1640,7 +1627,7 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     ordered = sorted(
         latest.values(), key=lambda row: change_percent(row) or Decimal(0), reverse=True
     )
-    label = _humanize_field(next(iter(metrics))).lower()
+    label = format_field_name(next(iter(metrics))).lower()
     parts: list[str] = []
     for index, row in enumerate(ordered):
         percent = change_percent(row) or Decimal(0)
@@ -1677,12 +1664,12 @@ def change_percent(row: TableRow) -> Decimal | None:
 def _format_banner(banner: str) -> str:
     if banner in _BANNER_COPY:
         return _BANNER_COPY[banner]
-    if not banner.startswith(_SNAPSHOT_PREFIX):
+    if not banner.startswith(SNAPSHOT_BANNER_PREFIX):
         return banner
-    parsed = try_parse_datetime(banner[len(_SNAPSHOT_PREFIX) :])
+    parsed = try_parse_datetime(banner[len(SNAPSHOT_BANNER_PREFIX) :])
     if parsed is None:
         return banner
-    return f"{_SNAPSHOT_PREFIX}{format_datetime_utc(parsed)}"
+    return f"{SNAPSHOT_BANNER_PREFIX}{format_datetime_utc(parsed)}"
 
 
 def _trace_identity(args: dict[str, Any]) -> str:
@@ -1690,7 +1677,7 @@ def _trace_identity(args: dict[str, Any]) -> str:
     for key in ("company", "metric", "industry", "query", "topic"):
         value = args.get(key)
         if value is not None and value != "":
-            parts.append(_humanize_field(str(value)) if key == "metric" else str(value))
+            parts.append(format_field_name(str(value)) if key == "metric" else str(value))
     issuers = args.get("issuers")
     if isinstance(issuers, list) and issuers:
         parts.append(", ".join(str(item) for item in issuers))
@@ -1720,7 +1707,7 @@ def _truncate_url(url: str, max_len: int = 48) -> str:
 def _append_trace_field(
     fields: list[tuple[str, str]], key: str, value: Any
 ) -> None:
-    label = _humanize_field(str(key))
+    label = format_field_name(str(key))
     if key == "components" and isinstance(value, list):
         _append_component_fields(fields, value)
         return
@@ -1731,7 +1718,7 @@ def _append_trace_field(
         fields.append((label, _format_hit_traces(value)))
         return
     if key == "metric" and isinstance(value, str):
-        fields.append((label, _humanize_field(value)))
+        fields.append((label, format_field_name(value)))
         return
     if key in _USER_TEXT_FIELDS and isinstance(value, str):
         # The analyst's own words: one plain line, so the window never renders
@@ -1856,7 +1843,7 @@ def _append_component_fields(fields: list[tuple[str, str]], components: list[Any
             continue
         if index:
             fields.append(("", ""))
-        metric = _humanize_field(str(item.get("metric") or "Component"))
+        metric = format_field_name(str(item.get("metric") or "Component"))
         fields.append((metric, _format_component_amount(item.get("value"))))
         for key in _COMPONENT_FIELD_ORDER:
             raw = item.get(key)
@@ -1931,7 +1918,7 @@ def _format_hit_traces(hits: list[Any]) -> str:
             if value is None or value == "" or isinstance(value, (dict, list)):
                 continue
             lines.append(
-                f"  - {_humanize_field(str(key))}: {_escape_markdown(_format_trace_value(value))}"
+                f"  - {format_field_name(str(key))}: {_escape_markdown(_format_trace_value(value))}"
             )
         snippet = item.get("snippet")
         if snippet:
@@ -1961,7 +1948,7 @@ def _format_trace_value(value: Any) -> str:
     if isinstance(value, dict):
         lines: list[str] = []
         for key, item in value.items():
-            label = _humanize_field(str(key))
+            label = format_field_name(str(key))
             formatted = _format_trace_value(item)
             if isinstance(item, (dict, list)):
                 lines.append(f"{label}:")

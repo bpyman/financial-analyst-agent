@@ -7,6 +7,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+from financial_analyst_agent.contracts import Intent, TurnResult
 from financial_analyst_agent.domain.enums import Metric
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.presentation import (
@@ -14,13 +15,7 @@ from financial_analyst_agent.presentation import (
     long_quarter_banner,
     present_turn,
 )
-from financial_analyst_agent.turn import (
-    Intent,
-    TurnResult,
-    compare_metrics,
-    market_formula_rows,
-    snapshot_compare_rows,
-)
+from financial_analyst_agent.turn import compare_metrics, market_formula_rows, snapshot_compare_rows
 
 _QUARTER = (date(2026, 3, 29), date(2026, 6, 27))
 _YEAR = (date(2025, 6, 29), date(2026, 6, 27))
