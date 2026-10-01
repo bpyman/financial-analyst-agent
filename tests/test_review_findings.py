@@ -94,3 +94,48 @@ def test_an_ineligible_issuer_is_a_typed_miss_in_a_comparison() -> None:
 
     assert row.reason == NOT_OPERATING_COMPANY
     assert row.value is None
+
+
+def _keyless_live_runtime() -> Runtime:
+    """The live runtime's news and writing ports when the server has no keys."""
+    from dataclasses import replace
+
+    from financial_analyst_agent.contracts import RuntimeKind
+    from financial_analyst_agent.news import RecordedNewsSearch
+    from financial_analyst_agent.runtime import RecordedEssayCompleter
+
+    return replace(
+        recorded_runtime(),
+        news=RecordedNewsSearch(),
+        essay=RecordedEssayCompleter(live=True),
+        kind=RuntimeKind.LIVE,
+        live_news=False,
+        live_essays=False,
+    )
+
+
+def test_a_replayed_news_answer_on_the_live_runtime_says_it_is_replayed() -> None:
+    # Story 36: do not pretend a cassette is live.
+    from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
+    from financial_analyst_agent.turn import (
+        REPLAYED_ESSAY_BANNER,
+        REPLAYED_NEWS_BANNER,
+        _news_and_explain_turn,
+    )
+
+    result = _news_and_explain_turn(FIXTURE_NEWS_QUERY, _keyless_live_runtime())
+
+    assert result.renderer is RendererKind.ESSAY
+    assert REPLAYED_NEWS_BANNER in result.banners
+    assert REPLAYED_ESSAY_BANNER in result.banners
+
+
+def test_news_off_does_not_claim_a_search_found_nothing() -> None:
+    from financial_analyst_agent.turn import NO_NEWS_MESSAGE, _news_and_explain_turn
+
+    result = _news_and_explain_turn("What is new with Eli Lilly?", _keyless_live_runtime())
+
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message is not None
+    assert NO_NEWS_MESSAGE not in result.message
+    assert "News search is off on this server" in result.message

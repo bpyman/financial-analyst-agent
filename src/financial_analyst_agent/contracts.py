@@ -226,6 +226,10 @@ class Runtime:
     # The same SEC source the facts lookup wraps, for filing comparison.
     filings: FilingsPort | None = None
     kind: RuntimeKind = RuntimeKind.RECORDED
+    # On the live runtime, whether news search and written answers reach Tavily and
+    # OpenAI. Without them it replays the recorded demo's answers and says so (story 36).
+    live_news: bool = True
+    live_essays: bool = True
 
 
 class NewsHit(BaseModel):

@@ -272,6 +272,8 @@ def live_runtime(
         news=news,
         essay=essay,
         kind=RuntimeKind.LIVE,
+        live_news=use_tavily,
+        live_essays=use_openai,
     )
 
 

@@ -240,7 +240,14 @@ def _explain_turn(
         intent=Intent.EXPLAIN,
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
-        banners=[MODEL_ANALYSIS_BANNER],
+        banners=[
+            MODEL_ANALYSIS_BANNER,
+            *(
+                [REPLAYED_ESSAY_BANNER]
+                if runtime.kind is RuntimeKind.LIVE and not runtime.live_essays
+                else []
+            ),
+        ],
         essay=essay,
     )
 
@@ -269,14 +276,40 @@ NO_NEWS_MESSAGE = (
 )
 
 
+REPLAYED_NEWS_BANNER = (
+    "Replayed: this server has no live news search, so these are the recorded demo's articles."
+)
+REPLAYED_ESSAY_BANNER = (
+    "Replayed: this server has no OpenAI key, so this is the recorded demo's written answer."
+)
+
+
+def _replays_news(runtime: Runtime) -> bool:
+    return runtime.kind is RuntimeKind.RECORDED or not runtime.live_news
+
+
+def _replay_banners(runtime: Runtime) -> list[str]:
+    """On the live runtime, label an answer replayed from the recorded demo (story 36)."""
+    if runtime.kind is RuntimeKind.RECORDED:
+        return []
+    banners = [] if runtime.live_news else [REPLAYED_NEWS_BANNER]
+    return banners + ([] if runtime.live_essays else [REPLAYED_ESSAY_BANNER])
+
+
 def _no_news_message(runtime: Runtime) -> str:
-    if runtime.kind is not RuntimeKind.RECORDED:
+    if not _replays_news(runtime):
         return NO_NEWS_MESSAGE
     from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 
+    if runtime.kind is RuntimeKind.RECORDED:
+        return (
+            f"{NO_NEWS_MESSAGE} The recorded demo only replays captured news for "
+            f"“{FIXTURE_NEWS_QUERY}”."
+        )
+    # No search ran: saying "I found no news" would claim one did.
     return (
-        f"{NO_NEWS_MESSAGE} The recorded demo only replays captured news for "
-        f"“{FIXTURE_NEWS_QUERY}”."
+        "News search is off on this server, and I only answer news questions from "
+        f"articles I can cite. It can replay the captured news for “{FIXTURE_NEWS_QUERY}”."
     )
 
 
@@ -344,7 +377,7 @@ def _news_grounded_essay_turn(
         tool_traces=traces,
         renderer=RendererKind.ESSAY,
         citations=hits,
-        banners=list(banners) if banners else [],
+        banners=[*(banners or []), *_replay_banners(runtime)],
         essay=essay,
     )
 
