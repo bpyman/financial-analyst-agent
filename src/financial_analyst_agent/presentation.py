@@ -64,6 +64,7 @@ _TENTH = Decimal("0.1")
 
 _REASON_LABELS = {
     "missing_fact": "Missing fact",
+    "not_operating_company": "Not an operating company",
     "period_mismatch": "Period mismatch",
     "ambiguous_concept": "Ambiguous concept",
     "zero_denominator": "Zero denominator",

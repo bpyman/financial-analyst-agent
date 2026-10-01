@@ -60,3 +60,37 @@ def test_a_cached_fact_reads_back_as_the_same_financial_fact() -> None:
 
     assert isinstance(again, FinancialFact)
     assert again == fresh == fact
+
+
+@pytest.mark.parametrize(
+    ("title", "tickers", "operating"),
+    [
+        ("MICROSOFT CORP", ["MSFT"], True),
+        ("CITIGROUP INC", ["C", "C-PN"], True),
+        ("ACME CAPITAL TRUST II 7.875% NOTES", ["ACMA"], False),
+        ("ACME FINANCE CO", ["ACM-PA", "ACM-PB"], False),
+    ],
+)
+def test_a_name_outside_the_freeze_is_judged_by_its_sec_identity(
+    title: str, tickers: list[str], operating: bool
+) -> None:
+    # ADR 0002: ticker suffix and listing-title tokens, not only the CIK list.
+    from financial_analyst_agent.universe import sec_identity_is_operating
+
+    assert sec_identity_is_operating("0009999999", title, tickers) is operating
+
+
+def test_an_ineligible_issuer_is_a_typed_miss_in_a_comparison() -> None:
+    # ADR 0002: the row that failed the rule says so; the other row stays.
+    from financial_analyst_agent.contracts import NOT_OPERATING_COMPANY
+    from financial_analyst_agent.domain.errors import IneligibleIssuerError
+    from financial_analyst_agent.turn import compare_metrics
+
+    class _Facts:
+        def get_financials(self, company: str, metric: str, **_: object) -> object:
+            raise IneligibleIssuerError("ARES CAPITAL CORP is not an operating company")
+
+    [row] = compare_metrics(_Facts(), ["ARCC"], "revenue")  # type: ignore[arg-type]
+
+    assert row.reason == NOT_OPERATING_COMPANY
+    assert row.value is None

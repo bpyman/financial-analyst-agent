@@ -28,6 +28,7 @@ from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
     NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
+    NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
     PERCENT_FORMULAS,
     PERIOD_MISMATCH,
@@ -60,6 +61,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
+    IneligibleIssuerError,
     PerShareNotDerivableError,
     ProviderError,
     UnknownIndustryError,
@@ -561,6 +563,9 @@ def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
 
 
 def _partial_lookup_reason(exc: BaseException) -> str:
+    if isinstance(exc, IneligibleIssuerError):
+        # A typed miss: the row says why, rather than implying a missing filing.
+        return NOT_OPERATING_COMPANY
     if isinstance(exc, PerShareNotDerivableError):
         return NOT_REPORTED_FOR_QUARTER
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT

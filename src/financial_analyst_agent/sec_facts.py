@@ -53,7 +53,7 @@ from financial_analyst_agent.services.metric_catalog import (
     metric_unit,
     parse_metric,
 )
-from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
+from financial_analyst_agent.universe import sec_identity_is_operating
 
 # How many periods back "latest" may step when SEC has not yet added the
 # newest filings' numbers to companyfacts. A year: Citigroup's companyfacts
@@ -415,8 +415,11 @@ class SecFactLookup:
         parsed_metric = parse_metric(metric)
         unit = metric_unit(parsed_metric)
         resolved = self._resolve(company)
-        if resolved.cik in INELIGIBLE_ISSUER_CIKS:
-            # Lookup applies the ranking's membership rule (ADR 0002).
+        # Lookup applies the ranking's membership rule (ADR 0002): a snapshot member
+        # has been judged already; any other name is judged by its SEC identity.
+        if resolved.cik not in self._listed_tickers and not sec_identity_is_operating(
+            resolved.cik, resolved.name, resolved.tickers
+        ):
             raise IneligibleIssuerError(
                 f"{resolved.name} is not an operating company (it is a fund, business "
                 "development company or similar listing), so its 10-Q figures are "

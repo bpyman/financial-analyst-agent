@@ -27,7 +27,7 @@ from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.submissions import require_recent_filings
 from financial_analyst_agent.providers.sec.urls import build_filing_document_url
-from financial_analyst_agent.universe import INELIGIBLE_ISSUER_CIKS
+from financial_analyst_agent.universe import sec_identity_is_operating
 
 SectionId = Literal["mda", "risk_factors"]
 
@@ -787,8 +787,8 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
-    if cik in INELIGIBLE_ISSUER_CIKS:
-        # The same membership rule lookups and rankings apply (ADR 0001).
+    if not sec_identity_is_operating(cik, resolved.name, resolved.tickers):
+        # The same membership rule lookups and rankings apply (ADR 0001, 0002).
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,

@@ -717,9 +717,9 @@ def test_a_summary_the_model_cannot_write_is_explained() -> None:
 
 
 def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> None:
-    import financial_analyst_agent.filing_change as filing_change
+    import financial_analyst_agent.universe as universe
 
-    monkeypatch.setattr(filing_change, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
+    monkeypatch.setattr(universe, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
 
     result = run_filing_change(
         SimpleNamespace(

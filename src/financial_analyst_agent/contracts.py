@@ -140,6 +140,8 @@ def unknown_metric_message(term: str) -> str:
 
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
+# A named company that fails the membership rule: a fund, BDC, note, preferred.
+NOT_OPERATING_COMPANY = "not_operating_company"
 # The source (EDGAR) failed for this cell; the fact may well exist.
 SOURCE_UNAVAILABLE = "source_unavailable"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
