@@ -208,10 +208,12 @@ def _shared_sec_client(settings: Settings) -> SECClient:
 
 def recorded_runtime() -> Runtime:
     """Replay captured SEC, news, and model responses; never touches the network."""
+    source = RecordedSECDataSource()
     return Runtime(
         completer=DemoCompleter(recorded_issuer_index(), recorded=True),
+        filings=source,
         facts=SecFactLookup(
-            client=RecordedSECDataSource(),
+            client=source,
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
             listed_tickers=_listed_tickers(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         ),
@@ -260,6 +262,7 @@ def live_runtime(
     client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
     return Runtime(
         completer=completer,
+        filings=client,
         facts=SecFactLookup(
             client=client,
             display_names=_display_names(None),

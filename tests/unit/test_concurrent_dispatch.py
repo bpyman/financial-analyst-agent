@@ -111,7 +111,7 @@ def _wide_lookup_completer():
     from financial_analyst_agent.graph.analysis_spec import PeriodSelection, SpecPatch
 
     class _Wide:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Microsoft",),

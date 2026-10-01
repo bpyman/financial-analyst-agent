@@ -198,6 +198,16 @@ class RuntimeKind(StrEnum):
     LIVE = "live"
 
 
+class FilingsPort(Protocol):
+    """Raw SEC filing access for accession-pinned filing comparison."""
+
+    def get_company_tickers(self) -> dict[str, Any]: ...
+
+    def get_submissions(self, cik: str) -> dict[str, Any]: ...
+
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str: ...
+
+
 @dataclass(frozen=True)
 class Runtime:
     """Provider set for a turn. ``kind`` says whether it is the recorded or live runtime.
@@ -211,6 +221,8 @@ class Runtime:
     ranking: RankingPort | None = None
     news: NewsPort | None = None
     essay: EssayCompleter | None = None
+    # The same SEC source the facts lookup wraps, for filing comparison.
+    filings: FilingsPort | None = None
     kind: RuntimeKind = RuntimeKind.RECORDED
 
 

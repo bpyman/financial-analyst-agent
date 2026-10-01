@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -138,7 +138,7 @@ class _MissingIndustryCompleter:
     def __init__(self, intent: Intent) -> None:
         self._intent = intent
 
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         return SimpleNamespace(
             intent=self._intent,
             industry=None,
@@ -261,7 +261,9 @@ def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
 
 
 class _ExplodingFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("rank must not call fact lookup")
 
 

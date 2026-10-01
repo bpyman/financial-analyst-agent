@@ -728,12 +728,6 @@ class SecFactLookup:
         resolved = self._resolve(company)
         return tuple(list_quarterly_report_dates(self._filings(resolved.cik), limit=limit))
 
-    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
-        getter = getattr(self._client, "get_filing_document", None)
-        if not callable(getter):
-            raise ProviderError("Filing documents are not available on this SEC source")
-        return str(getter(cik, accession, document))
-
 
 def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
     """Whether the company reports costs that "cost of revenue" leaves out, for ``end``."""

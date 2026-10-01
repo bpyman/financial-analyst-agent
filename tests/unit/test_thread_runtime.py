@@ -23,7 +23,9 @@ QUESTION = "What was Google's net income based on their latest quarterly report?
 
 
 class _Facts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             company_name="Alphabet Inc.",
             ticker="GOOG",
@@ -43,7 +45,7 @@ class _Facts:
 
 
 class _Completer:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(

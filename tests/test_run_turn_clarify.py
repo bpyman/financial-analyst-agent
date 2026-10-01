@@ -16,7 +16,7 @@ PROFIT_MARGIN_QUERY = "What was Google's profit margin?"
 
 
 class _GuessNetIncomeCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="net_income")
 
 
@@ -76,7 +76,9 @@ def test_unique_phrase_overrides_planner_metric() -> None:
     fetched: list[str] = []
 
     class _Facts:
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             fetched.append(metric)
             return SimpleNamespace(
                 company_name="Alphabet Inc.",

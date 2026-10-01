@@ -504,42 +504,6 @@ def parse_sections(raw: str) -> tuple[SectionId, ...]:
     return tuple(found)
 
 
-def _document_for(runtime: Runtime, cik: str, accession: str, document: str) -> str:
-    facts = runtime.facts
-    getter = getattr(facts, "get_filing_document", None)
-    if not callable(getter):
-        inner = getattr(facts, "_inner", facts)
-        getter = getattr(inner, "get_filing_document", None)
-    if not callable(getter):
-        client = getattr(getattr(facts, "_inner", facts), "_client", None)
-        getter = getattr(client, "get_filing_document", None)
-    if not callable(getter):
-        raise ProviderError("Filing documents are not available on this runtime")
-    return str(getter(cik, accession, document))
-
-
-def _tickers_payload(runtime: Runtime) -> dict[str, Any]:
-    facts = runtime.facts
-    inner = getattr(facts, "_inner", facts)
-    client = getattr(inner, "_client", None)
-    if client is None:
-        raise ProviderError("Company identity is not available on this runtime")
-    payload = client.get_company_tickers()
-    if not isinstance(payload, dict):
-        raise ProviderError("Company ticker payload must be an object")
-    return payload
-
-
-def _submissions_recent(runtime: Runtime, cik: str) -> dict[str, Any]:
-    facts = runtime.facts
-    inner = getattr(facts, "_inner", facts)
-    client = getattr(inner, "_client", None)
-    getter = getattr(client, "get_submissions", None)
-    if not callable(getter):
-        raise ProviderError("Filing submissions are not available on this runtime")
-    return require_recent_filings(getter(cik))
-
-
 def _primary_document(recent: dict[str, Any], accession: str) -> str:
     accessions = recent.get("accessionNumber")
     documents = recent.get("primaryDocument")
@@ -805,8 +769,16 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=refused,
         )
     form = _form_asked(query)
+    filings = runtime.filings
+    if filings is None:
+        return TurnResult(
+            intent=Intent.FILING_CHANGE,
+            tool_traces=traces,
+            renderer=RendererKind.REFUSE,
+            message="Filing documents are not available on this runtime.",
+        )
     try:
-        resolved = resolve_company(company, _tickers_payload(runtime))
+        resolved = resolve_company(company, filings.get_company_tickers())
     except Exception as exc:
         return TurnResult(
             intent=Intent.FILING_CHANGE,
@@ -837,7 +809,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     compared: list[SectionId] = []
     unreadable: list[SectionId] = []
     try:
-        recent = _submissions_recent(runtime, cik)
+        recent = require_recent_filings(filings.get_submissions(cik))
         if not older:
             pair = _year_apart_quarterlies(recent, form)
             if pair is None:
@@ -865,8 +837,8 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         )
         older_doc = _primary_document(recent, older)
         newer_doc = _primary_document(recent, newer)
-        older_text = html_to_text(_document_for(runtime, cik, older, older_doc))
-        newer_text = html_to_text(_document_for(runtime, cik, newer, newer_doc))
+        older_text = html_to_text(filings.get_filing_document(cik, older, older_doc))
+        newer_text = html_to_text(filings.get_filing_document(cik, newer, newer_doc))
         older_url = build_filing_document_url(cik, older, older_doc)
         newer_url = build_filing_document_url(cik, newer, newer_doc)
         for section in sections:

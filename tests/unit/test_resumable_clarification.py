@@ -58,7 +58,7 @@ class _LookupFacts:
 
 
 class _GuessNetIncome:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -73,7 +73,7 @@ class _GuessNetIncome:
 
 
 class _UnknownMetricCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -88,7 +88,7 @@ class _UnknownMetricCompleter:
 
 
 class _ExplainCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -255,7 +255,7 @@ def test_ambiguous_mode_follow_up_clarifies_instead_of_guessing(tmp_path: Path) 
     assert facts.calls == [("Google", "net_income")]
 
     class _AmbiguousMode:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode=None,
                 add_operations=("across_periods",),
@@ -297,7 +297,7 @@ def test_answering_mode_clarification_resumes_with_chosen_mode(tmp_path: Path) -
     )
 
     class _AmbiguousMode:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode=None,
                 set_periods=PeriodSelection(kind="last_n_quarters", count=2),
@@ -346,7 +346,7 @@ def test_answering_replace_resumes_the_held_question(tmp_path: Path) -> None:
     )
 
     class _AmbiguousMode:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode=None, add_companies=("Apple",), add_metrics=("revenue",))
 
     held = run_conversation_turn(

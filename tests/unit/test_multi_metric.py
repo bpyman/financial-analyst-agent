@@ -22,7 +22,11 @@ class _MultiMetricFacts:
         self.missing = missing or set()
         self.calls: list[tuple[str, str]] = []
 
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+
+        self, company: str, metric: str, *, report_date: date | None = None
+
+    ) -> SimpleNamespace:
         self.calls.append((company, metric))
         if (company, metric) in self.missing:
             raise UnsupportedQuarterlyFactError(f"no standalone quarter for {company} {metric}")
@@ -56,7 +60,7 @@ class _MultiMetricFacts:
 
 
 class _CompareCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -134,7 +138,7 @@ def test_add_and_remove_metric_keeps_companies(tmp_path: Path) -> None:
     )
 
     class _AddRd:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", add_metrics=("rd_to_sales",))
 
     turn = run_conversation_turn(
@@ -150,7 +154,7 @@ def test_add_and_remove_metric_keeps_companies(tmp_path: Path) -> None:
     assert metrics_present == {"revenue", "operating_margin", "rd_to_sales"}
 
     class _RemoveRevenue:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", remove_metrics=("revenue",))
 
     turn = run_conversation_turn(
@@ -201,7 +205,7 @@ def test_unsupported_combination_refuses_explicitly(tmp_path: Path) -> None:
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _AcrossPeriodsLatest:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Google",),

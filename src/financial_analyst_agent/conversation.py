@@ -15,7 +15,6 @@ otherwise its first turn does. A turn on the other runtime raises
 
 from __future__ import annotations
 
-import inspect
 import re
 from collections.abc import Callable
 from dataclasses import replace
@@ -65,25 +64,10 @@ _REMOVE_METRIC_EDIT = re.compile(
 )
 
 
-def _accepts_current_spec(completer: Any) -> bool:
-    try:
-        params = inspect.signature(completer.complete).parameters
-    except (TypeError, ValueError):
-        return False
-    if "current_spec" in params:
-        return True
-    return any(
-        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
-    )
-
-
 def _complete(completer: Any, message: str, current_spec: AnalysisSpec | None) -> Any:
-    if _accepts_current_spec(completer):
-        return call_provider(
-            "planner",
-            lambda: completer.complete(message, current_spec=current_spec),
-        )
-    return call_provider("planner", lambda: completer.complete(message))
+    return call_provider(
+        "planner", lambda: completer.complete(message, current_spec=current_spec)
+    )
 
 
 class ConversationTurn(BaseModel):

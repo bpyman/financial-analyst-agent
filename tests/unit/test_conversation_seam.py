@@ -15,7 +15,9 @@ from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY
 
 
 class _LookupFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         assert company == "Google"
         assert metric == "net_income"
         return SimpleNamespace(
@@ -37,7 +39,7 @@ class _LookupFacts:
 
 
 class _LookupCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -52,7 +54,7 @@ class _LookupCompleter:
 
 
 class _ExplainCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(

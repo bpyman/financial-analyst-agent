@@ -673,10 +673,7 @@ def refine_patch_from_message(
 
 
 def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
-    try:
-        return tuple(listing(company, limit=count))
-    except (AttributeError, TypeError):
-        return ()
+    return tuple(listing(company, limit=count))
 
 
 def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSpec:

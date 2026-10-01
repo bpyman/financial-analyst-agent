@@ -589,15 +589,10 @@ def compare_metrics(
     seen_ciks: set[str] = set()
     for issuer in issuers:
         try:
-            if report_date is None:
-                fetched = [
-                    facts.get_financials(issuer, component) for component in component_names
-                ]
-            else:
-                fetched = [
-                    facts.get_financials(issuer, component, report_date=report_date)
-                    for component in component_names
-                ]
+            fetched = [
+                facts.get_financials(issuer, component, report_date=report_date)
+                for component in component_names
+            ]
         except _LOOKUP_FAILURES as exc:
             rows.append(
                 _compare_unresolved_row(
@@ -957,12 +952,7 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
     if report_date is not None:
         args["report_date"] = report_date.isoformat()
     try:
-        if report_date is None:
-            fact = runtime.facts.get_financials(plan.company, metric)
-        else:
-            fact = runtime.facts.get_financials(
-                plan.company, metric, report_date=report_date
-            )
+        fact = runtime.facts.get_financials(plan.company, metric, report_date=report_date)
     except _LOOKUP_FAILURES as exc:
         if isinstance(exc, PerShareNotDerivableError):
             # Not a failure: the filings say this figure exists only for the year.

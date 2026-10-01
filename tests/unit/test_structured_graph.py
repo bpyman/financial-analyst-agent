@@ -15,7 +15,9 @@ from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
 
 class _LookupFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         assert company == "Google"
         assert metric == "net_income"
         return SimpleNamespace(
@@ -37,7 +39,9 @@ class _LookupFacts:
 
 
 class _CompareFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         values = {
             ("Microsoft", "operating_income"): Decimal("100"),
             ("Microsoft", "revenue"): Decimal("400"),
@@ -64,7 +68,7 @@ class _CompareFacts:
 
 
 class _SilentCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         raise AssertionError("structured graph entry must not re-plan")
 
 

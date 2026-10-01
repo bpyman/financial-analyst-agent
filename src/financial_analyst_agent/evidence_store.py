@@ -7,7 +7,6 @@ references. Reuse across turns is the caller's responsibility to label.
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import os
 import threading
@@ -25,7 +24,6 @@ from financial_analyst_agent.contracts import (
     NewsHit,
     TurnResult,
 )
-from financial_analyst_agent.domain.errors import ProviderError
 
 EvidenceKind = Literal["fact", "news", "result"]
 
@@ -223,16 +221,6 @@ class LocalEvidenceStore(_RecordStore):
         return EvidenceRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _accepts_report_date(func: Any) -> bool:
-    try:
-        parameters = inspect.signature(func).parameters.values()
-    except (TypeError, ValueError):
-        return True
-    return any(
-        p.name == "report_date" or p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters
-    )
-
-
 class EvidenceCachedFacts:
     """FactsPort wrapper: retain fetched facts and serve them by identifier.
 
@@ -267,15 +255,7 @@ class EvidenceCachedFacts:
                 if evidence_id in self._prior_ids:
                     self.reused_ids.add(evidence_id)
                 return self._store.get_fact(evidence_id)
-        kwargs: dict[str, Any] = {}
-        if report_date is not None:
-            kwargs["report_date"] = report_date
-        if kwargs and not _accepts_report_date(self._inner.get_financials):
-            # Fixture ports that omit report_date. Checked from the signature, not
-            # by catching TypeError, so a real error inside a dated lookup is never
-            # retried as a latest-quarter lookup and cached under the dated id.
-            kwargs = {}
-        fact = self._inner.get_financials(company, metric, **kwargs)
+        fact = self._inner.get_financials(company, metric, report_date=report_date)
         with self._lock:
             if not self._store.has(evidence_id):
                 self._store.put_fact(company, metric, fact, report_date=report_date)
@@ -303,12 +283,6 @@ class EvidenceCachedFacts:
         if periods is None:
             return ()
         return tuple(periods(company))
-
-    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
-        getter = getattr(self._inner, "get_filing_document", None)
-        if not callable(getter):
-            raise ProviderError("Filing documents are not available")
-        return str(getter(cik, accession, document))
 
     def display_name(self, cik: str, fallback: str) -> str:
         named = getattr(self._inner, "display_name", None)

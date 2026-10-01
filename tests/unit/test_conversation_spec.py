@@ -18,7 +18,11 @@ class _LookupFacts:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+
+        self, company: str, metric: str, *, report_date: date | None = None
+
+    ) -> SimpleNamespace:
         self.calls.append((company, metric))
         values = {
             ("Google", "net_income"): Decimal("62578000000"),
@@ -51,12 +55,14 @@ class _LookupFacts:
 
 
 class _SilentFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError(f"provider must not run for invalid patch: {company} {metric}")
 
 
 class _LookupCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -71,7 +77,7 @@ class _LookupCompleter:
 
 
 class _ExplainCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -160,7 +166,7 @@ def test_swap_add_remove_company_keeps_metrics(tmp_path: Path) -> None:
     )
 
     class _Swap:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="extend",
                 remove_companies=("Google",),
@@ -179,7 +185,7 @@ def test_swap_add_remove_company_keeps_metrics(tmp_path: Path) -> None:
     assert facts.calls[-1] == ("Apple", "net_income")
 
     class _Add:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", add_companies=("Nvidia",))
 
     turn = run_conversation_turn(
@@ -193,7 +199,7 @@ def test_swap_add_remove_company_keeps_metrics(tmp_path: Path) -> None:
     assert turn.analysis_spec.metrics == ("net_income",)  # type: ignore[union-attr]
 
     class _Remove:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", remove_companies=("Nvidia",))
 
     turn = run_conversation_turn(
@@ -261,7 +267,7 @@ def test_invalid_patch_rejects_before_provider(tmp_path: Path) -> None:
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _BadMetric:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("Google",),
@@ -287,7 +293,7 @@ def test_ranked_request_uses_ranking_port_ignores_model_companies(tmp_path: Path
     from financial_analyst_agent.thread_store import LocalThreadStore
 
     class _RankPatch:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(
                 mode="replace",
                 add_companies=("FakeCo", "InventedInc"),
