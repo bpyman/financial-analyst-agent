@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContextOptions, type Locator, type Page } from "@playwright/test";
 import { Analyst } from "../e2e/analyst";
@@ -28,6 +28,7 @@ const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastA
 /** The showcase questions, both answerable on the recorded runtime. */
 const LILLY_VS_PFIZER = "Compare Eli Lilly and Pfizer revenue over the last eight quarters";
 const MSFT_10Q_CHANGES = "What changed in Microsoft's latest 10-Q?";
+const NVIDIA_OVERVIEW = "How is Nvidia doing?";
 
 const FILES = {
   landing: "guided-first-run.png",
@@ -35,6 +36,8 @@ const FILES = {
   inspect: "inspect-exact-source.png",
   lilly: "compare-lilly-pfizer.png",
   changes: "filing-changes.png",
+  overview: "overview-trends.png",
+  sorted: "sorted-ranking.png",
   social: "social-preview.png",
   mp4: "demo-walkthrough.mp4",
   gif: "demo-walkthrough.gif",
@@ -99,6 +102,21 @@ async function captureShowcase(browser: Browser) {
   await frame(page, mdna);
   await shoot(page, FILES.changes);
 
+  // One company's overview: a sentence, then its recent quarters as small trends.
+  await analyst.startOver();
+  await analyst.ask(NVIDIA_OVERVIEW);
+  await expect(lastTurn(page).getByRole("region", { name: "Recent quarters" }).getByRole("figure")).toHaveCount(2);
+  await frame(page, lastTurn(page));
+  await shoot(page, FILES.overview);
+
+  // A ranking re-sorted by its R&D column, the chart's bars following the table.
+  await analyst.startOver();
+  await analyst.tell("Rank then inspect filings");
+  await analyst.tables().last().getByRole("columnheader", { name: /Research and development/ }).getByRole("button").click();
+  await expect(lastTurn(page).getByText(/^Ordered as the table:/)).toBeVisible();
+  await frame(page, lastTurn(page));
+  await shoot(page, FILES.sorted);
+
   await context.close();
 }
 
@@ -132,6 +150,8 @@ async function captureSocial(browser: Browser) {
   );
   await settle(canvas);
   await canvas.screenshot({ path: path.join(OUT, FILES.social), animations: "disabled" });
+  // The same card is the site's link preview (LinkedIn, X, Slack); see app/layout.tsx.
+  copyFileSync(path.join(OUT, FILES.social), path.resolve(__dirname, "../public/social-preview.png"));
   await composer.close();
 }
 

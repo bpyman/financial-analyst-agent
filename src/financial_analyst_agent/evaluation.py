@@ -12,6 +12,8 @@ from typing import Any
 
 from financial_analyst_agent.contracts import Intent, RendererKind
 from financial_analyst_agent.conversation import run_conversation_turn
+from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
+from financial_analyst_agent.presentation import is_derived, present_turn
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.thread_store import EphemeralThreadStore
 from financial_analyst_agent.turn import run_turn
@@ -35,6 +37,20 @@ class EvalCase:
     expect_concepts: tuple[str, ...] = ()
     invent_numbers: bool = False
     expect_lock_extras: bool = False
+    # Later turns of the same conversation; checks apply to the last answer.
+    turns: tuple[str, ...] = ()
+    # Tickers in this order, first rows of the answer's table.
+    expect_order: tuple[str, ...] = ()
+    expect_ordered_by: str | None = None
+    min_rows: int = 0
+    expect_banner: str = ""
+    expect_message: str = ""
+    expect_candidates: tuple[str, ...] = ()
+    # The chart's title on screen ("Growth", "Trend", "Comparison").
+    expect_chart: str = ""
+    # An end date (ISO) whose figure must be marked derived, as a fiscal Q4 is.
+    expect_derived_end: str = ""
+    expect_trends: int = 0
 
 
 class _InventingEssay:
@@ -124,6 +140,182 @@ def _cases() -> tuple[EvalCase, ...]:
             RendererKind.TABLE,
             expect_accessions=("0000950170-25-061046", "0001193125-26-191507"),
         ),
+        # Periods and fiscal calendars
+        EvalCase(
+            "window_four_quarters",
+            "periods_and_calendars",
+            "Microsoft revenue over the last four quarters",
+            Intent.LOOKUP,
+            RendererKind.TABLE,
+            min_rows=4,
+            expect_values=("90007000000", "82886000000", "81273000000", "77673000000"),
+            # Microsoft's fiscal Q4 is the 10-K's year less the 10-Q's nine months.
+            expect_derived_end="2026-06-30",
+        ),
+        EvalCase(
+            "named_fiscal_quarter",
+            "periods_and_calendars",
+            "Apple diluted EPS in Q3 FY2025",
+            Intent.LOOKUP,
+            RendererKind.TABLE,
+            expect_values=("1.57",),
+            expect_banner="Q3 FY2025 ended Jun 28, 2025",
+        ),
+        EvalCase(
+            "calendars_differ",
+            "periods_and_calendars",
+            "Compare Nvidia and AMD revenue over the last four quarters",
+            Intent.COMPARE,
+            RendererKind.TABLE,
+            expect_tickers=("NVDA", "AMD"),
+            min_rows=8,
+            expect_banner="fiscal quarters end on",
+        ),
+        EvalCase(
+            "unreported_future_quarter",
+            "periods_and_calendars",
+            "Microsoft revenue Q1 2030",
+            Intent.LOOKUP,
+            RendererKind.REFUSE,
+            expect_message="has not been reported yet",
+        ),
+        EvalCase(
+            "sub_quarter_period",
+            "periods_and_calendars",
+            "Apple revenue last month",
+            Intent.LOOKUP,
+            RendererKind.TABLE,
+            expect_banner="Filings report quarters",
+        ),
+        # Growth, margins and overviews
+        EvalCase(
+            "growth_chart",
+            "growth_and_trends",
+            "Microsoft revenue year over year",
+            Intent.LOOKUP,
+            RendererKind.TABLE,
+            expect_chart="Growth",
+        ),
+        EvalCase(
+            "growth_lines_two_companies",
+            "growth_and_trends",
+            "Compare Microsoft and Apple revenue growth over the last four quarters",
+            Intent.COMPARE,
+            RendererKind.TABLE,
+            expect_tickers=("MSFT", "AAPL"),
+            expect_chart="Growth",
+        ),
+        EvalCase(
+            "overview_with_trends",
+            "growth_and_trends",
+            "How is Nvidia doing?",
+            Intent.LOOKUP,
+            RendererKind.TABLE,
+            expect_values=("96221000000", "59688000000"),
+            expect_trends=2,
+        ),
+        EvalCase(
+            "formula_margin",
+            "growth_and_trends",
+            "Compare Eli Lilly and Merck net margins",
+            Intent.COMPARE,
+            RendererKind.TABLE,
+            expect_tickers=("LLY", "MRK"),
+        ),
+        # Rankings and membership
+        EvalCase(
+            "ranking_ordered_by_metric",
+            "rankings",
+            "Top 5 semiconductor companies by revenue",
+            Intent.RANK_AND_LOOKUP,
+            RendererKind.TABLE,
+            expect_order=("NVDA", "AVGO", "AMD", "AMAT"),
+            expect_ordered_by="revenue",
+        ),
+        EvalCase(
+            "ranking_by_market_cap",
+            "rankings",
+            "Top 5 banks by market cap",
+            Intent.RANK_AND_LOOKUP,
+            RendererKind.TABLE,
+            expect_order=("JPM", "BAC", "WFC"),
+        ),
+        EvalCase(
+            "fund_is_not_a_company",
+            "rankings",
+            "SPY revenue",
+            Intent.LOOKUP,
+            RendererKind.REFUSE,
+        ),
+        # Clarification and refusal
+        EvalCase(
+            "clarify_income",
+            "ambiguity_refusal",
+            "Apple income",
+            Intent.LOOKUP,
+            RendererKind.CLARIFY,
+            expect_candidates=("net_income", "operating_income"),
+        ),
+        EvalCase(
+            "advice_declined",
+            "ambiguity_refusal",
+            "Should I buy Nvidia stock?",
+            Intent.LOOKUP,
+            RendererKind.REFUSE,
+            expect_message="investment advice",
+        ),
+        EvalCase(
+            "off_topic_refused",
+            "ambiguity_refusal",
+            "What's the weather?",
+            Intent.LOOKUP,
+            RendererKind.REFUSE,
+        ),
+        # Follow-ups edit the analysis
+        EvalCase(
+            "follow_up_metric_and_company",
+            "stateful_follow_up",
+            "Microsoft revenue over the last four quarters",
+            turns=("add Apple", "now add operating margin"),
+            expect_tickers=("MSFT", "AAPL"),
+            min_rows=8,
+        ),
+        EvalCase(
+            "follow_up_sort",
+            "stateful_follow_up",
+            "Compare Microsoft, Apple and Nvidia revenue",
+            turns=("sort by revenue",),
+            expect_order=("AAPL", "NVDA", "MSFT"),
+        ),
+        EvalCase(
+            "follow_up_swap_company",
+            "stateful_follow_up",
+            "Compare JPM and BAC net income",
+            turns=("what about Goldman?",),
+            expect_tickers=("GS",),
+        ),
+        EvalCase(
+            "follow_up_start_over",
+            "stateful_follow_up",
+            "Compare Apple and Microsoft revenue",
+            turns=("start over",),
+            expect_message="Started over",
+        ),
+        # Filings and news
+        EvalCase(
+            "filing_change_latest",
+            "filing_change",
+            "What changed in Microsoft's latest 10-Q?",
+            Intent.FILING_CHANGE,
+            RendererKind.TABLE,
+        ),
+        EvalCase(
+            "news_kept_apart",
+            "news",
+            FIXTURE_NEWS_QUERY,
+            Intent.NEWS_AND_EXPLAIN,
+            expect_banner="not from SEC filings",
+        ),
     )
 
 
@@ -163,6 +355,33 @@ def _check_result(case: EvalCase, result: Any) -> str:
     missing_concepts = [concept for concept in case.expect_concepts if concept not in have_concepts]
     if missing_concepts:
         return f"missing concepts {missing_concepts}"
+    rows = result.table_rows
+    if len(rows) < case.min_rows:
+        return f"{len(rows)} rows, expected at least {case.min_rows}"
+    if case.expect_order:
+        order = list(dict.fromkeys(row.ticker for row in rows))[: len(case.expect_order)]
+        if tuple(order) != case.expect_order:
+            return f"order {order}"
+    if case.expect_ordered_by is not None and result.ordered_by != case.expect_ordered_by:
+        return f"ordered by {result.ordered_by}"
+    if case.expect_candidates and tuple(result.candidates) != case.expect_candidates:
+        return f"candidates {result.candidates}"
+    if case.expect_message and case.expect_message not in (result.message or ""):
+        return f"message {result.message!r}"
+    shown = present_turn(result)
+    if case.expect_banner and not any(case.expect_banner in banner for banner in shown.banners):
+        return f"missing banner {case.expect_banner!r}"
+    if case.expect_chart and (shown.chart is None or shown.chart.title != case.expect_chart):
+        return f"chart {shown.chart.title if shown.chart else None}"
+    if case.expect_trends and len(shown.trends) != case.expect_trends:
+        return f"{len(shown.trends)} trend charts"
+    if case.expect_derived_end and not any(
+        row.end_date is not None
+        and row.end_date.isoformat() == case.expect_derived_end
+        and is_derived(row)
+        for row in rows
+    ):
+        return f"no derived figure ending {case.expect_derived_end}"
     if case.category == "filing_change" and not result.disclosure_changes:
         return "missing disclosure changes"
     if case.category == "filing_change" and not all(
@@ -218,6 +437,13 @@ def run_suite() -> dict[str, Any]:
                             ),
                             second.result,
                         )
+            elif case.turns:
+                store = EphemeralThreadStore()
+                turn = run_conversation_turn("eval", case.query, case_runtime, store=store)
+                for message in case.turns:
+                    turn = run_conversation_turn("eval", message, case_runtime, store=store)
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                detail = _check_result(case, turn.result)
             else:
                 result = run_turn(case.query, case_runtime)
                 elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -278,6 +504,12 @@ def render_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             f"| `{row['id']}` | {row['category']} | {mark} | {row['elapsed_ms']} |"
         )
+    lines.append("")
+    lines.append(
+        "The cases run on the recorded runtime, so they are repeatable and need no keys. "
+        "[Figures checked against their filings](filing-check.md) is the live "
+        "counterpart: each figure the window shows, found in the text of the 10-Q it cites."
+    )
     lines.append("")
     lines.append(
         "SEC JSON is disk-cached on the live path; retries and 429/5xx backoff live in "

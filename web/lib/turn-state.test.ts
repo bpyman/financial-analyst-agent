@@ -96,3 +96,15 @@ describe("turnCounterLabel", () => {
     expect(turnCounterLabel(1, 1)).toBe("1 of 1 turn");
   });
 });
+
+describe("a turn waiting for a free slot", () => {
+  it("says so until its first progress", () => {
+    const sent = turnReducer(IDLE, { type: "send", message: "Apple revenue" });
+    const queued = turnReducer(sent, { type: "queued" });
+    expect(queued.status === "running" && progressLabel(queued)).toBe(
+      "Busy right now, waiting for a free slot…",
+    );
+    const moving = turnReducer(queued, { type: "event", event: { event: "progress", data: { done: 1, total: 2 } } });
+    expect(moving.status === "running" && progressLabel(moving)).toBe("Fetched 1 of 2 cells");
+  });
+});

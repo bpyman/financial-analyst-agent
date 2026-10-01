@@ -739,6 +739,34 @@ def test_a_turn_past_the_process_cap_is_refused_busy_until_a_slot_frees(
     assert _ask(client, second, GUIDED_STORIES[0][1])["turn_count"] == 1
 
 
+def test_waiting_for_a_busy_slot_does_not_use_up_the_hour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The window retries a busy turn on its own; those tries are not questions asked.
+    client = TestClient(
+        create_app(
+            _settings(max_concurrent_turns=1, client_turns_per_hour=2), store_root=tmp_path
+        )
+    )
+    first, second = _new_thread(client), _new_thread(client)
+    held = _HeldTurn(api.run_conversation_turn)
+    monkeypatch.setattr(api, "run_conversation_turn", held)
+    outcome: dict[str, Any] = {}
+    running = threading.Thread(
+        target=lambda: outcome.setdefault("response", _post_turn(client, first, "hi")),
+        daemon=True,
+    )
+    running.start()
+    assert held.started.wait(10)
+
+    for _ in range(3):
+        assert _post_turn(client, second, GUIDED_STORIES[0][1]).status_code == 429
+
+    held.go.set()
+    running.join(30)
+    assert _ask(client, second, GUIDED_STORIES[0][1])["turn_count"] == 1
+
+
 def test_a_failed_turn_frees_its_slot(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     thread_id = _new_thread(client)
     monkeypatch.setattr(api, "run_conversation_turn", _boom)

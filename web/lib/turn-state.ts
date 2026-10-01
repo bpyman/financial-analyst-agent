@@ -11,6 +11,8 @@ export type TurnState =
       progress: { done: number; total: number } | null;
       /** Nothing has come back yet and the host is probably asleep. */
       waking: boolean;
+      /** Every turn slot is taken; the window is waiting for one to free. */
+      queued?: boolean;
     }
   | { status: "failed"; message: string; error: string };
 
@@ -19,6 +21,7 @@ export type TurnAction =
   | { type: "reattach" }
   | { type: "event"; event: TurnEvent }
   | { type: "wake" }
+  | { type: "queued" }
   | { type: "fail"; error: string }
   | { type: "reset" };
 
@@ -38,10 +41,15 @@ export function turnReducer(state: TurnState, action: TurnAction): TurnState {
     case "wake":
       if (state.status !== "running" || state.progress !== null || state.waking) return state;
       return { ...state, waking: true };
+    case "queued":
+      if (state.status !== "running") return state;
+      return { ...state, queued: true, waking: false };
     case "event": {
       if (state.status !== "running") return state;
       const { event } = action;
-      if (event.event === "progress") return { ...state, progress: event.data, waking: false };
+      if (event.event === "progress") {
+        return { ...state, progress: event.data, waking: false, queued: false };
+      }
       if (event.event === "error") {
         return { status: "failed", message: state.message, error: event.data.message };
       }
@@ -56,6 +64,9 @@ export function turnReducer(state: TurnState, action: TurnAction): TurnState {
 }
 
 export function progressLabel(state: Extract<TurnState, { status: "running" }>): string {
+  if (state.queued && state.progress === null) {
+    return "Busy right now, waiting for a free slot…";
+  }
   if (state.waking) return "Waking the analysis service…";
   if (state.progress === null) {
     return state.message ? "Sending your question…" : "Finishing your last question…";

@@ -1,33 +1,33 @@
 {
-  "generated_at": "2026-09-27T23:05:55.787493+00:00",
+  "generated_at": "2026-10-01T14:16:58.291120+00:00",
   "model": "recorded DemoCompleter",
   "live_cost_usd": null,
-  "pass_count": 9,
-  "case_count": 9,
+  "pass_count": 30,
+  "case_count": 30,
   "pass_rate": 1.0,
-  "p50_ms": 5,
-  "p95_ms": 10,
-  "mean_ms": 17.333333333333332,
+  "p50_ms": 6,
+  "p95_ms": 31,
+  "mean_ms": 15.6,
   "cases": [
     {
       "id": "lookup_msft_pretax",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 120,
+      "elapsed_ms": 205,
       "detail": ""
     },
     {
       "id": "compare_tsla_gm",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 5,
+      "elapsed_ms": 7,
       "detail": ""
     },
     {
       "id": "rank_tech_rd",
       "category": "intent_routing",
       "passed": true,
-      "elapsed_ms": 7,
+      "elapsed_ms": 13,
       "detail": ""
     },
     {
@@ -41,7 +41,7 @@
       "id": "clarify_profit",
       "category": "ambiguity_refusal",
       "passed": true,
-      "elapsed_ms": 2,
+      "elapsed_ms": 1,
       "detail": ""
     },
     {
@@ -70,6 +70,153 @@
       "category": "filing_change",
       "passed": true,
       "elapsed_ms": 10,
+      "detail": ""
+    },
+    {
+      "id": "window_four_quarters",
+      "category": "periods_and_calendars",
+      "passed": true,
+      "elapsed_ms": 11,
+      "detail": ""
+    },
+    {
+      "id": "named_fiscal_quarter",
+      "category": "periods_and_calendars",
+      "passed": true,
+      "elapsed_ms": 3,
+      "detail": ""
+    },
+    {
+      "id": "calendars_differ",
+      "category": "periods_and_calendars",
+      "passed": true,
+      "elapsed_ms": 18,
+      "detail": ""
+    },
+    {
+      "id": "unreported_future_quarter",
+      "category": "periods_and_calendars",
+      "passed": true,
+      "elapsed_ms": 1,
+      "detail": ""
+    },
+    {
+      "id": "sub_quarter_period",
+      "category": "periods_and_calendars",
+      "passed": true,
+      "elapsed_ms": 3,
+      "detail": ""
+    },
+    {
+      "id": "growth_chart",
+      "category": "growth_and_trends",
+      "passed": true,
+      "elapsed_ms": 20,
+      "detail": ""
+    },
+    {
+      "id": "growth_lines_two_companies",
+      "category": "growth_and_trends",
+      "passed": true,
+      "elapsed_ms": 17,
+      "detail": ""
+    },
+    {
+      "id": "overview_with_trends",
+      "category": "growth_and_trends",
+      "passed": true,
+      "elapsed_ms": 31,
+      "detail": ""
+    },
+    {
+      "id": "formula_margin",
+      "category": "growth_and_trends",
+      "passed": true,
+      "elapsed_ms": 6,
+      "detail": ""
+    },
+    {
+      "id": "ranking_ordered_by_metric",
+      "category": "rankings",
+      "passed": true,
+      "elapsed_ms": 6,
+      "detail": ""
+    },
+    {
+      "id": "ranking_by_market_cap",
+      "category": "rankings",
+      "passed": true,
+      "elapsed_ms": 3,
+      "detail": ""
+    },
+    {
+      "id": "fund_is_not_a_company",
+      "category": "rankings",
+      "passed": true,
+      "elapsed_ms": 3,
+      "detail": ""
+    },
+    {
+      "id": "clarify_income",
+      "category": "ambiguity_refusal",
+      "passed": true,
+      "elapsed_ms": 1,
+      "detail": ""
+    },
+    {
+      "id": "advice_declined",
+      "category": "ambiguity_refusal",
+      "passed": true,
+      "elapsed_ms": 0,
+      "detail": ""
+    },
+    {
+      "id": "off_topic_refused",
+      "category": "ambiguity_refusal",
+      "passed": true,
+      "elapsed_ms": 4,
+      "detail": ""
+    },
+    {
+      "id": "follow_up_metric_and_company",
+      "category": "stateful_follow_up",
+      "passed": true,
+      "elapsed_ms": 47,
+      "detail": ""
+    },
+    {
+      "id": "follow_up_sort",
+      "category": "stateful_follow_up",
+      "passed": true,
+      "elapsed_ms": 15,
+      "detail": ""
+    },
+    {
+      "id": "follow_up_swap_company",
+      "category": "stateful_follow_up",
+      "passed": true,
+      "elapsed_ms": 8,
+      "detail": ""
+    },
+    {
+      "id": "follow_up_start_over",
+      "category": "stateful_follow_up",
+      "passed": true,
+      "elapsed_ms": 6,
+      "detail": ""
+    },
+    {
+      "id": "filing_change_latest",
+      "category": "filing_change",
+      "passed": true,
+      "elapsed_ms": 12,
+      "detail": ""
+    },
+    {
+      "id": "news_kept_apart",
+      "category": "news",
+      "passed": true,
+      "elapsed_ms": 5,
       "detail": ""
     }
   ]

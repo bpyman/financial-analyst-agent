@@ -34,8 +34,9 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
 | Quarterly figures | revenue, net income, operating and gross margin, EPS, R&D, cash flow, cash, equity, dividends |
 | Derived figures | EBITDA, return on equity, P/E, share price ([ADR 0008](docs/adr/0008-balance-sheet-trailing-year-and-market-figures.md)) |
 | Comparisons and trends | `Compare Eli Lilly and Pfizer revenue over the last eight quarters` |
+| Growth and overviews | `Compare Microsoft and Apple revenue growth` charts the growth rates; `How is Nvidia doing?` answers in a sentence with recent quarters |
 | Rankings | `Top 10 technology companies by net margin`, over a dated snapshot of about 5,200 US operating companies |
-| Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors |
+| Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors with the changed words marked |
 | Context | recent news and a short explanation, kept apart from the numbers |
 
 <table>
@@ -44,8 +45,16 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
     <td width="50%"><img src="docs/portfolio/images/inspect-exact-source.png" alt="Evidence inspector with the exact amount, CIK, accession, concept, selection rule, and Open filing"></td>
   </tr>
   <tr>
-    <td><sub>What changed in the latest 10-Q: a deterministic paragraph diff, not a model summary.</sub></td>
+    <td><sub>What changed in the latest 10-Q: a deterministic paragraph diff, with the words that changed marked.</sub></td>
     <td><sub>Every value opens to its exact source: amount, CIK, accession, concept, and filing.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/portfolio/images/overview-trends.png" alt="How is Nvidia doing: a one-sentence answer, revenue and net-margin trends over five quarters, and the table"></td>
+    <td width="50%"><img src="docs/portfolio/images/sorted-ranking.png" alt="The top 10 tech companies re-sorted by R&amp;D in the table, with the chart's bars following the new order"></td>
+  </tr>
+  <tr>
+    <td><sub>A company overview answers in a sentence, then shows its recent quarters.</sub></td>
+    <td><sub>Sort any table column; the chart's bars follow the table.</sub></td>
   </tr>
 </table>
 
@@ -158,10 +167,11 @@ uv run python -m pytest tests/integration/test_live_sec_lookup.py -m network
 uv run python -m pytest tests/integration/test_live_tavily_news.py -m network
 ```
 
-The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) reports **9/9** recorded-runtime cases passing, p50/p95 latency, and live cost **not measured** on the recorded path. Regenerate with:
+The checked-in [evaluation scorecard](docs/evaluation/scorecard.md) runs **30** recorded-runtime cases (lookups, fiscal calendars and derived quarters, growth, rankings, refusals, clarification, multi-turn follow-ups, filing changes, the numeral lock) with p50/p95 latency. [Figures checked against their filings](docs/evaluation/filing-check.md) takes 25 figures the live window shows, across sectors and metrics, and finds each in the text of the 10-Q it cites. Regenerate them with:
 
 ```text
 uv run python -m financial_analyst_agent.evaluation
+uv run python scripts/check_against_filings.py   # live: reads about 25 filings from SEC
 ```
 
 Rebuild the ranking freeze (not during a demo turn):
