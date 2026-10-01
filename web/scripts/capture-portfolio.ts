@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContextOptions, type Locator, type Page } from "@playwright/test";
 import { Analyst } from "../e2e/analyst";
@@ -150,6 +150,8 @@ async function captureSocial(browser: Browser) {
   );
   await settle(canvas);
   await canvas.screenshot({ path: path.join(OUT, FILES.social), animations: "disabled" });
+  // The same card is the site's link preview (LinkedIn, X, Slack); see app/layout.tsx.
+  copyFileSync(path.join(OUT, FILES.social), path.resolve(__dirname, "../public/social-preview.png"));
   await composer.close();
 }
 
