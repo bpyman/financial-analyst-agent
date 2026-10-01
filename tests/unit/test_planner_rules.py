@@ -599,7 +599,8 @@ def test_a_reit_is_named_without_its_reit() -> None:
 @pytest.mark.parametrize(
     ("question", "companies"),
     [
-        ("Georgia Power revenue", []),
+        # Georgia Power's own listing, not Power REIT or its parent Southern Co.
+        ("Georgia Power revenue", ["GPJA"]),
         ("Power REIT revenue", ["PW"]),
         ("Target revenue", ["TGT"]),
         ("TSMC revenue", ["TSM"]),
@@ -623,3 +624,38 @@ def test_a_fund_is_named_without_taking_its_operating_namesake(
     question: str, companies: list[str]
 ) -> None:
     assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        # Filers outside the snapshot are named whole, ahead of their words.
+        ("Southern California Edison revenue", ["SCE-PM"]),
+        ("Consumers Energy net income", ["CMS-PB"]),
+        ("Entergy Texas revenue", ["ETI-P"]),
+        # The parents and everyday questions are unchanged.
+        ("Edison International revenue", ["EIX"]),
+        ("Entergy revenue", ["ETR"]),
+        ("Southern Company revenue", ["SO"]),
+        ("Apple vs Microsoft net income", ["Apple", "Microsoft"]),
+    ],
+)
+def test_a_filer_outside_the_snapshot_is_named_by_its_full_name(
+    question: str, companies: list[str]
+) -> None:
+    assert [mention.query for mention in issuer_index().find(question)] == companies
+
+
+def test_a_filer_name_never_takes_a_company_word_or_a_metric() -> None:
+    from financial_analyst_agent.issuer_index import IssuerIndex
+
+    index = IssuerIndex(phrases={"apple": "Apple"})
+    reserved = frozenset({"revenue", "cash", "flow"})
+    index.add_filer("ART", "APPLE REVENUE TRUST", reserved=reserved)
+    index.add_filer("CFC", "Cash Flow Corp", reserved=reserved)
+    index.add_filer("ACM", "Acme", reserved=reserved)
+    index.add_filer("XAP", "Apple Inc /DE/", reserved=reserved)
+    index.add_filer("CBK", "CONSUMERS BANCORP INC /OH/", reserved=reserved)
+
+    # A metric word, a one-word name, or a phrase a company holds: not indexed.
+    assert index.phrases == {"apple": "Apple", "consumers bancorp": "CBK"}

@@ -38,6 +38,7 @@ from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
     ineligible_issuers,
     load_universe_snapshot,
+    sec_filer_names,
 )
 
 FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
@@ -311,6 +312,23 @@ _METRIC_WORDS = frozenset(word for phrase in metric_phrases() for word in phrase
     "capital",
     "spending",
 }
+# Words a question uses around a company: a filer named with one of them is not
+# indexed, so its name cannot swallow "Nvidia stock price" or "Apple vs Microsoft".
+_FILER_RESERVED_WORDS = _METRIC_WORDS | {
+    "vs",
+    "versus",
+    "compare",
+    "quarter",
+    "quarterly",
+    "annual",
+    "latest",
+    "last",
+    "stock",
+    "shares",
+    "results",
+    "report",
+    "growth",
+}
 
 
 @lru_cache(maxsize=4)
@@ -321,6 +339,10 @@ def _index_for(path: Path, _mtime_ns: int) -> IssuerIndex:
     # lookup then says it is not an operating company (ADR 0001).
     for ticker, name in ineligible_issuers():
         index.add_outside(ticker, name)
+    # Operating filers the snapshot leaves out, by full name: "Southern California
+    # Edison" is that utility, not California Resources and Edison International.
+    for ticker, name in sec_filer_names():
+        index.add_filer(ticker, name, reserved=_FILER_RESERVED_WORDS)
     return index
 
 
