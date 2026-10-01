@@ -12,7 +12,7 @@ How it works: a language model turns the question into a typed analysis plan. De
 
 It also sorts tables by any column (the chart follows), and "What changed in Microsoft's latest 10-Q?" returns a paragraph diff of MD&A and Risk Factors with the changed words marked, not a model summary.
 
-To check it, I took 25 figures the app shows across sectors and found every one in the text of the 10-Q it cites. The 30-case scorecard and that check are in the repo.
+I checked it two ways, and both are in the repo. I took 25 figures the app shows, across sectors, and found every one in the text of the 10-Q it cites. And a set of 30 test questions (lookups, follow-ups, refusals, fiscal calendars, rankings) passes in full.
 
 What it doesn't cover yet: subsidiaries that file jointly with their parent have no quarterly figures of their own in SEC's data, foreign companies that file 20-Fs are out of scope, and market caps come from a dated snapshot.
 
