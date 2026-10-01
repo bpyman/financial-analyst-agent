@@ -694,8 +694,8 @@ _NOT_RISK = re.compile(rf"\b{_NEGATION}(?:{_RISK_WORDS})\b", re.IGNORECASE)
 _NOT_MDA = re.compile(rf"\b{_NEGATION}(?:{_MDA_WORDS})\b", re.IGNORECASE)
 
 
-def requested_sections(text: str) -> str | None:
-    """The reviewed sections a question names: "mda", "risk_factors", both, or None.
+def requested_sections(text: str) -> tuple[SectionId, ...] | None:
+    """The reviewed sections a question names, or None when it names neither.
 
     "MD&A, not the risk factors" and "excluding risk factors" leave a section
     out; a question naming neither asks about the whole filing.
@@ -705,18 +705,14 @@ def requested_sections(text: str) -> str | None:
     excluded_risk = _NOT_RISK.search(text) is not None
     excluded_mda = _NOT_MDA.search(text) is not None
     if risk and mda:
-        return "mda and risk_factors"
+        return REVIEWED_SECTIONS
     if risk or (excluded_mda and not mda):
-        return "risk_factors"
+        return ("risk_factors",)
     if mda or excluded_risk:
-        return "mda"
+        return ("mda",)
     if re.search(r"\bboth\b", text, re.IGNORECASE):
-        return "mda and risk_factors"
+        return REVIEWED_SECTIONS
     return None
-
-
-def _section_choice(query: str, fallback: str) -> str:
-    return requested_sections(query) or fallback
 
 
 def _labels(sections: list[SectionId]) -> str:
@@ -748,7 +744,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         str(getattr(plan, "older_accession", "") or ""),
         str(getattr(plan, "newer_accession", "") or ""),
     )
-    sections = parse_sections(_section_choice(query, str(getattr(plan, "section", "mda"))))
+    sections = requested_sections(query) or parse_sections(str(getattr(plan, "section", "mda")))
     traces = [
         ToolTrace(
             tool="filing_change",

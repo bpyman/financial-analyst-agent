@@ -15,7 +15,11 @@ from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.contracts import ALLOWED_METRICS, Intent
-from financial_analyst_agent.filing_change import ACCESSION_PATTERN, requested_sections
+from financial_analyst_agent.filing_change import (
+    ACCESSION_PATTERN,
+    REVIEWED_SECTIONS,
+    requested_sections,
+)
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_PLAN,
@@ -229,7 +233,8 @@ def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
     older = accessions[0] if len(accessions) >= 2 else ""
     newer = accessions[1] if len(accessions) >= 2 else ""
     # "What changed in Apple's 10-Q?" names no section: it asks about the filing.
-    section = requested_sections(normalized) or "mda and risk_factors"
+    # The plan's section field is text, as the model planner fills it.
+    section = " and ".join(requested_sections(normalized) or REVIEWED_SECTIONS)
     return SimpleNamespace(
         intent=Intent.FILING_CHANGE,
         company=_company_from_query(normalized),

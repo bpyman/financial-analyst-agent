@@ -196,37 +196,32 @@ class TurnContext:
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
     """Lift a one-shot closed Plan into a replace-mode spec patch."""
     intent = plan.intent
+    metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
+    metrics = (metric,) if metric else ()
     if intent is Intent.LOOKUP:
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
-        return SpecPatch(
-            mode="replace",
-            add_companies=(plan.company,),
-            add_metrics=(metric,) if metric else (),
-        )
+        return SpecPatch(mode="replace", add_companies=(plan.company,), add_metrics=metrics)
     if intent is Intent.COMPARE:
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
         return SpecPatch(
             mode="replace",
             add_companies=tuple(plan.companies),
-            add_metrics=(metric,) if metric else (),
+            add_metrics=metrics,
             add_operations=("across_companies",),
         )
+    if intent not in (Intent.RANK, Intent.RANK_AND_LOOKUP):
+        raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
+    ranked = (
+        plan.industry or "",
+        int(getattr(plan, "limit", DEFAULT_RANK_LIMIT) or DEFAULT_RANK_LIMIT),
+    )
     if intent is Intent.RANK:
-        industry = plan.industry or ""
-        limit = int(getattr(plan, "limit", 10) or 10)
-        return SpecPatch(mode="replace", ranked_request=(industry, limit))
-    if intent is Intent.RANK_AND_LOOKUP:
-        industry = plan.industry or ""
-        limit = int(getattr(plan, "limit", 10) or 10)
-        metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
-        ordered = getattr(plan, "order_by_metric", False) is True
-        return SpecPatch(
-            mode="replace",
-            ranked_request=(industry, limit),
-            add_metrics=(metric,) if metric else (),
-            add_operations=("rank", "order_by_metric") if ordered else ("rank",),
-        )
-    raise ValueError(f"cannot lift intent to spec patch: {intent!r}")
+        return SpecPatch(mode="replace", ranked_request=ranked)
+    ordered = getattr(plan, "order_by_metric", False) is True
+    return SpecPatch(
+        mode="replace",
+        ranked_request=ranked,
+        add_metrics=metrics,
+        add_operations=("rank", "order_by_metric") if ordered else ("rank",),
+    )
 
 
 # Wording that asks for numbers without naming a metric. Each maps to the
@@ -518,6 +513,11 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     )
 
 
+def _extend(patch: SpecPatch, **fields: Any) -> SpecPatch:
+    """The patch as an edit of the current analysis rather than a new ranking."""
+    return patch.model_copy(update={"mode": "extend", "ranked_request": None, **fields})
+
+
 def refine_patch_from_message(
     patch: SpecPatch,
     message: str,
@@ -535,24 +535,18 @@ def refine_patch_from_message(
         add_metrics = _unique_metrics_from_phrase(incoming)
         remove_metrics = _unique_metrics_from_phrase(outgoing)
         if add_metrics and remove_metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_metrics": add_metrics,
-                    "remove_metrics": remove_metrics,
-                    "add_companies": (),
-                    "remove_companies": (),
-                    "ranked_request": None,
-                }
+            return _extend(
+                patch,
+                add_metrics=add_metrics,
+                remove_metrics=remove_metrics,
+                add_companies=(),
+                remove_companies=(),
             )
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": (incoming,),
-                "remove_companies": (outgoing,),
-                "add_metrics": (),
-                "ranked_request": None,
-            }
+        return _extend(
+            patch,
+            add_companies=(incoming,),
+            remove_companies=(outgoing,),
+            add_metrics=(),
         )
 
     added = _ADD_EDIT.match(message.strip())
@@ -562,89 +556,32 @@ def refine_patch_from_message(
         # "add Google margin" adds Google as well as the margin.
         named = _companies_named_in(patch.add_companies, token)
         if metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_metrics": metrics,
-                    "add_companies": named,
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_metrics=metrics, add_companies=named)
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": named,
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=named)
         if patch.add_metrics and not patch.add_companies:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=())
         companies = _company_tokens(token)
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": companies,
-                "add_metrics": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, add_companies=companies, add_metrics=())
 
     dropped = _DROP_EDIT.match(message.strip())
     if dropped is not None:
         token = dropped.group(1).strip(" .,")
         metrics = _unique_metrics_from_phrase(token)
         if metrics:
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "remove_metrics": metrics,
-                    "add_metrics": (),
-                    "add_companies": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, remove_metrics=metrics, add_metrics=(), add_companies=())
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (),
-                    "remove_companies": (),
-                    "add_metrics": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=(), remove_companies=(), add_metrics=())
         companies = _company_tokens(token)
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "remove_companies": companies,
-                "add_metrics": (),
-                "add_companies": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, remove_companies=companies, add_metrics=(), add_companies=())
 
     compare_to = _COMPARE_TO_ISSUER.match(message.strip())
     if compare_to is not None and _YOY.search(message) is None:
         token = compare_to.group(1).strip(" .,")
         if token and not _unique_metrics_from_phrase(token):
-            return patch.model_copy(
-                update={
-                    "mode": "extend",
-                    "add_companies": (token,),
-                    "add_metrics": (),
-                    "ranked_request": None,
-                }
-            )
+            return _extend(patch, add_companies=(token,), add_metrics=())
 
     standalone = (
         _STANDALONE_LOOKUP.search(message.strip()) is not None
@@ -655,14 +592,7 @@ def refine_patch_from_message(
     # income") is a new question and keeps what it names.
     period_only = not _names_new_subject(patch, current_spec, message)
     if patch.set_periods is not None and patch.mode == "replace" and not standalone and period_only:
-        return patch.model_copy(
-            update={
-                "mode": "extend",
-                "add_companies": (),
-                "add_metrics": (),
-                "ranked_request": None,
-            }
-        )
+        return _extend(patch, add_companies=(), add_metrics=())
     if standalone and _YOY.search(message) is None:
         return patch.model_copy(
             update={
