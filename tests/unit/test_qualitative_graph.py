@@ -14,7 +14,7 @@ from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY
 
 
 class _SilentCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         raise AssertionError("workflow graph entry must not re-plan")
 
 

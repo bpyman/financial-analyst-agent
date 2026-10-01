@@ -10,10 +10,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from financial_analyst_agent.contracts import Intent, RendererKind
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.thread_store import EphemeralThreadStore
-from financial_analyst_agent.turn import Intent, RendererKind, run_turn
+from financial_analyst_agent.turn import run_turn
 
 SCORECARD_PATH = Path("docs/evaluation/scorecard.md")
 SCORECARD_JSON_PATH = Path("docs/evaluation/scorecard.json")

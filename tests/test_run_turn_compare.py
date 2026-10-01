@@ -4,17 +4,12 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import (
-    PERIODS_DIFFER_BANNER,
-    Intent,
-    RendererKind,
-    Runtime,
-    run_turn,
-)
+from financial_analyst_agent.turn import PERIODS_DIFFER_BANNER, run_turn
 
 MSFT_GOOG_OPERATING_MARGINS_QUERY = "compare Microsoft and Google operating margins"
 UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROA"
@@ -162,7 +157,7 @@ GOOGLE_PRIOR_QUARTER_END = date(2025, 12, 31)
 
 
 class _CompareCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != MSFT_GOOG_OPERATING_MARGINS_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(
@@ -173,7 +168,9 @@ class _CompareCompleter:
 
 
 class _MismatchedPeriodFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         if company == "Microsoft":
             return _component_fact(
                 company_name=MICROSOFT_NAME,
@@ -239,6 +236,7 @@ def _component_fact(
         currency="USD",
         start_date=start_date,
         end_date=end_date,
+        filed_date=end_date,
         form=FORM,
         accession_number=accession_number,
         taxonomy=TAXONOMY,
@@ -269,7 +267,7 @@ def test_run_turn_never_blends_margins_across_mismatched_periods() -> None:
 
 
 class _ShareClassCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         return SimpleNamespace(
             intent=Intent.COMPARE,
             companies=["GOOG", "GOOGL"],
@@ -298,7 +296,9 @@ def test_run_turn_consolidates_goog_and_googl_to_one_alphabet_row() -> None:
 
 
 class _MissingMicrosoftFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         if company == "Microsoft":
             raise UnsupportedQuarterlyFactError(
                 "No directly reported standalone-quarter fact exists for metric"
@@ -344,7 +344,9 @@ def test_run_turn_keeps_partial_compare_row_when_one_issuer_fact_is_missing() ->
 
 def test_run_turn_preserves_ambiguous_fact_reason_in_partial_compare_row() -> None:
     class _AmbiguousMicrosoftFacts(_MissingMicrosoftFacts):
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             if company == "Microsoft":
                 raise AmbiguousFactError("Supported concepts produced conflicting values")
             return super().get_financials(company, metric)
@@ -361,7 +363,9 @@ def test_run_turn_preserves_ambiguous_fact_reason_in_partial_compare_row() -> No
 
 
 class _ZeroRevenueFacts(_MissingMicrosoftFacts):
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         if company == "Microsoft":
             return _component_fact(
                 company_name=MICROSOFT_NAME,
@@ -403,7 +407,9 @@ def test_run_turn_keeps_partial_compare_row_when_revenue_is_zero() -> None:
 
 def test_run_turn_compare_does_not_pick_one_conflicting_concept() -> None:
     class _ConflictingMicrosoftFacts(_MissingMicrosoftFacts):
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             if company == "Microsoft" and metric == "operating_income":
                 raise AmbiguousFactError("Supported concepts produced conflicting values")
             return super().get_financials(company, metric)

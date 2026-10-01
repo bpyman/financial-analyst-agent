@@ -8,6 +8,7 @@ This supersedes "one user prompt maps to one intent" (PRD) and the one-shot rati
 
 - Facts stay SEC XBRL quarterly facts; formulas stay `Decimal` over period-aligned components; constituents stay snapshot-derived; identity stays CIK inside tools; essays stay numeral-locked.
 - A spec must be **resolved** before any provider call. An invalid patch is a typed rejection, not a best-effort fetch.
+  - *Revised:* a period window or named period on a **ranked list** is a valid spec whose rows show each member's latest quarter, because constituents are snapshot-dated and fiscal calendars differ across members. The answer says so in a banner ("Ranked lists show each company's latest quarter. Name the companies to see a multi-quarter window.") rather than refusing; naming the companies runs the full window.
 - Metric resolution keeps running on the analyst's wording, not on a model slug (ADR 0004's phrase table).
 - The parent graph's edges are fixed and typed. The model selects a workflow from a closed set; it does not select nodes or chain tools.
 - Three separated state kinds: **thread state** persisted (messages, active spec, pending clarification, last result, evidence references); **run state** ephemeral (proposed patch, validation outcome, compiled tasks, task results, failures); **evidence** referenced by identifier so checkpoints stay small.

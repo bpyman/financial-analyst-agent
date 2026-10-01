@@ -44,15 +44,16 @@ def test_contracts_import_without_loading_turn_workflows() -> None:
         sys.modules.update(removed)
 
 
-def test_turn_reexports_contract_names() -> None:
+def test_turn_exports_its_workflows_and_contracts_owns_the_types() -> None:
+    # Contract types are imported from contracts; turn exports only its own functions.
     from financial_analyst_agent import turn
 
-    assert turn.Intent is not None
-    assert turn.Runtime is not None
-    assert turn.TurnResult is not None
-    assert turn.ALLOWED_METRICS is not None
-    assert turn.SNAPSHOT_METRICS is not None
-    assert turn.NewsHit is not None
+    assert set(turn.__all__) == {
+        "compare_metrics",
+        "market_formula_rows",
+        "run_turn",
+        "snapshot_compare_rows",
+    }
     assert callable(turn.run_turn)
     assert callable(turn.compare_metrics)
     assert callable(turn.snapshot_compare_rows)

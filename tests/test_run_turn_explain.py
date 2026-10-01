@@ -1,23 +1,24 @@
 """Explain with numeral lock through run_turn."""
 
+from datetime import date
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, recorded_runtime
-from financial_analyst_agent.turn import (
+from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
     EssayCompleter,
     Intent,
     RendererKind,
     Runtime,
-    run_turn,
 )
+from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, recorded_runtime
+from financial_analyst_agent.turn import run_turn
 
 AI_HEALTHCARE_QUERY = "How can AI disrupt healthcare?"
 AI_MINING_QUERY = "How can AI disrupt mining?"
 
 
 class _ExplainCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != AI_HEALTHCARE_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.EXPLAIN, topic=query)
@@ -31,7 +32,9 @@ class _NumberFreeEssay:
 
 
 class _ExplodingFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("explain must not look up financials")
 
 

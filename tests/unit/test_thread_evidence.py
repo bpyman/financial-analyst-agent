@@ -52,6 +52,7 @@ class _CountingFacts:
             currency="USD",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 3, 31),
+            filed_date=date(2026, 3, 31),
             form="10-Q",
             accession_number="acc",
             taxonomy="us-gaap",
@@ -62,7 +63,7 @@ class _CountingFacts:
 
 
 class _CompareCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         from financial_analyst_agent.contracts import Intent
 
         return SimpleNamespace(
@@ -135,7 +136,7 @@ def test_follow_up_reuses_retained_evidence_and_labels_it(tmp_path: Path) -> Non
     assert first_calls
 
     class _AddRd:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", add_metrics=("rd_to_sales",))
 
     turn = run_conversation_turn(
@@ -175,7 +176,7 @@ def test_qualitative_after_analysis_receives_deterministic_result(tmp_path: Path
     received: dict[str, str] = {}
 
     class _ExplainCompleter:
-        def complete(self, query: str) -> SimpleNamespace:
+        def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
             return SimpleNamespace(
                 intent=Intent.EXPLAIN,
                 company=None,
@@ -300,7 +301,7 @@ def test_thread_checkpoint_stays_small_as_turns_accumulate(tmp_path: Path) -> No
     )
 
     class _AddNet:
-        def complete(self, query: str) -> SpecPatch:
+        def complete(self, query: str, current_spec: object = None) -> SpecPatch:
             return SpecPatch(mode="extend", add_metrics=("net_income",))
 
     for _ in range(5):

@@ -8,6 +8,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
+from financial_analyst_agent.contracts import TableRow
 from financial_analyst_agent.filing_change import diff_paragraphs
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
@@ -27,7 +28,6 @@ from financial_analyst_agent.graph.spec_turn import (
 from financial_analyst_agent.presentation import long_quarter_banner
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
-from financial_analyst_agent.turn import TableRow
 
 # Costco's quarters end on Sundays of 12- and 16-week periods; Walmart's at month ends.
 _COSTCO = (date(2026, 5, 10), date(2026, 2, 15), date(2025, 11, 23), date(2025, 8, 31))

@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from financial_analyst_agent.domain.enums import FormType, Metric
+from financial_analyst_agent.domain.enums import ANNUAL_FORMS, PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import UnsupportedQuarterlyFactError
 from financial_analyst_agent.domain.models import (
     Derivation,
@@ -23,10 +23,6 @@ from financial_analyst_agent.domain.models import (
 )
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 
-_PERIODIC_FORMS = frozenset(
-    {FormType.FORM_10_Q, FormType.FORM_10_Q_A, FormType.FORM_10_K, FormType.FORM_10_K_A}
-)
-_ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
 _QUARTER_OF_PERIOD = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "FY": 4}
 GROSS_PROFIT_LABEL = "Revenue minus cost of revenue"
 
@@ -87,13 +83,13 @@ def periods_from_filings(
     by_end: dict[date, FiscalPeriod] = {}
     # The original filing names the period; an amendment repeats it.
     for filing in sorted(filings, key=lambda item: item.filed_date):
-        if filing.form not in _PERIODIC_FORMS:
+        if filing.form not in PERIODIC_FORMS:
             continue
         if any(abs(end - filing.report_date) <= FISCAL_WEEK_TOLERANCE for end in by_end):
             continue
         label = labels.get(filing.accession_number, FiscalLabel(None, None))
         quarter = _QUARTER_OF_PERIOD.get(label.fiscal_period or "")
-        if filing.form in _ANNUAL_FORMS:
+        if filing.form in ANNUAL_FORMS:
             quarter = 4
         by_end[filing.report_date] = FiscalPeriod(
             end=filing.report_date,

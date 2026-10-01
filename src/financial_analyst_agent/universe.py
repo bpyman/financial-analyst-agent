@@ -116,6 +116,21 @@ def is_common_operating_listing(company: UniverseCompany) -> bool:
     return _is_common_share(company) and _is_operating_issuer(company)
 
 
+def sec_identity_is_operating(cik: str, title: str, tickers: Sequence[str]) -> bool:
+    """Judge a company outside the freeze with what SEC identity shows (ADR 0002).
+
+    The ineligible CIK list, instrument words in the SEC title ("5.25% Notes",
+    "Capital Trust"), and a ticker set holding only preferred, unit, warrant or
+    right symbols each mark a non-operating listing.
+    """
+    if cik in INELIGIBLE_ISSUER_CIKS:
+        return False
+    if _INSTRUMENT_TITLE.search(title):
+        return False
+    listed = [ticker.strip() for ticker in tickers if ticker.strip()]
+    return not listed or any(_NON_COMMON_TICKER.search(ticker) is None for ticker in listed)
+
+
 def _is_common_share(company: UniverseCompany) -> bool:
     if company.is_etf or company.is_fund:
         return False

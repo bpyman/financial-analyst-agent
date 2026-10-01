@@ -1,17 +1,13 @@
 """News-and-explain through run_turn with an injected news adapter."""
 
+from datetime import date
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, NewsHit, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.runtime import recorded_runtime
-from financial_analyst_agent.turn import (
-    Intent,
-    NewsHit,
-    RendererKind,
-    Runtime,
-    run_turn,
-)
+from financial_analyst_agent.turn import run_turn
 
 NVIDIA_SUPPLY_QUERY = "What is going on with NVIDIA supply chain?"
 MICROSOFT_NEWS_QUERY = "What's going on with Microsoft?"
@@ -29,14 +25,14 @@ GROUNDED_ESSAY = (
 
 
 class _NewsCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != NVIDIA_SUPPLY_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=query)
 
 
 class _RewritingNewsCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != NVIDIA_SUPPLY_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query="NVIDIA")
@@ -57,7 +53,9 @@ class _ExplodingEssay:
 
 
 class _ExplodingFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("news_and_explain must not look up financials")
 
 

@@ -4,6 +4,16 @@ from typing import Any
 
 import pytest
 
+from financial_analyst_agent.contracts import (
+    ComponentProvenance,
+    DisclosureChange,
+    Intent,
+    NewsHit,
+    RendererKind,
+    TableRow,
+    ToolTrace,
+    TurnResult,
+)
 from financial_analyst_agent.presentation import (
     format_chart_amount,
     format_date,
@@ -17,16 +27,6 @@ from financial_analyst_agent.presentation import (
     metric_legend,
     present_turn,
     try_parse_datetime,
-)
-from financial_analyst_agent.turn import (
-    ComponentProvenance,
-    DisclosureChange,
-    Intent,
-    NewsHit,
-    RendererKind,
-    TableRow,
-    ToolTrace,
-    TurnResult,
 )
 
 
@@ -713,6 +713,7 @@ def test_present_clarify_lists_humanized_candidates() -> None:
         intent=Intent.LOOKUP,
         renderer=RendererKind.CLARIFY,
         candidates=("gross_profit", "operating_income", "net_income"),
+        clarify_kind="ambiguous_metric",
         tool_traces=[],
     )
     presented = present_turn(result)
@@ -728,6 +729,7 @@ def test_present_scope_clarify_asks_extend_or_replace() -> None:
         intent=Intent.LOOKUP,
         renderer=RendererKind.CLARIFY,
         candidates=("extend", "replace"),
+        clarify_kind="ambiguous_mode",
         tool_traces=[],
     )
     presented = present_turn(result)

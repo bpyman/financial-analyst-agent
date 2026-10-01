@@ -6,11 +6,12 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import date
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.domain.enums import PERIODIC_FORMS
 from financial_analyst_agent.domain.errors import ProviderError, SessionQuotaError
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_facts import validate_companyfacts_response
@@ -24,10 +25,11 @@ _COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _HISTORY_DAYS = 3 * 365 + 30
 _MAX_OLDER_PAGES = 4
 _PAGE_NAME = re.compile(r"CIK\d{10}-submissions-\d{3}\.json")
-_PERIODIC_FORMS = frozenset({"10-Q", "10-K", "10-Q/A", "10-K/A"})
 _MAX_RETRIES = 3
 _DEFAULT_RETRY_DELAY_SECONDS = 1.0
 _MAX_RETRY_DELAY_SECONDS = 5.0
+
+T = TypeVar("T")
 
 
 class _RateLimiter:
@@ -97,33 +99,28 @@ class SECClient:
     def _acquire(self) -> None:
         self._limiter.acquire()
 
-    def _fetch_json(self, url: str) -> object:
-        def _run() -> object:
-            last_error: Exception | None = None
-            for attempt in range(_MAX_RETRIES):
+    def _with_retries(self, url: str, once: Callable[[], T]) -> T:
+        def _run() -> T:
+            attempt = 0
+            while True:
                 self._acquire()
                 try:
-                    return self._fetch_json_once(url)
+                    return once()
                 except ProviderError as exc:
-                    last_error = exc
-                    if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
+                    attempt += 1
+                    if not exc.details.get("retryable") or attempt >= _MAX_RETRIES:
                         raise
-                    delay = min(
-                        _DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1),
-                        _MAX_RETRY_DELAY_SECONDS,
+                    time.sleep(
+                        min(_DEFAULT_RETRY_DELAY_SECONDS * attempt, _MAX_RETRY_DELAY_SECONDS)
                     )
-                    time.sleep(delay)
-            if last_error is not None:
-                raise last_error
-            raise ProviderError("SEC request failed after retries", details={"url": url})
 
         return call_provider("sec", _run, url=url)
 
-    def _fetch_json_once(self, url: str) -> object:
+    def _get(self, url: str, accept: str) -> httpx.Response:
         headers = {
             "User-Agent": self._user_agent,
             "Accept-Encoding": "gzip, deflate",
-            "Accept": "application/json",
+            "Accept": accept,
         }
         try:
             response = self._http().get(url, headers=headers, timeout=self._timeout)
@@ -154,6 +151,13 @@ class SECClient:
                 "Unexpected SEC response status",
                 details={"url": url, "status_code": status, "retryable": False},
             )
+        return response
+
+    def _fetch_json(self, url: str) -> object:
+        return self._with_retries(url, lambda: self._fetch_json_once(url))
+
+    def _fetch_json_once(self, url: str) -> object:
+        response = self._get(url, "application/json")
         try:
             decoded: object = response.json()
         except json.JSONDecodeError as exc:
@@ -164,62 +168,9 @@ class SECClient:
         return decoded
 
     def _fetch_body(self, url: str) -> str:
-        def _run() -> str:
-            last_error: Exception | None = None
-            for attempt in range(_MAX_RETRIES):
-                self._acquire()
-                try:
-                    return self._fetch_body_once(url)
-                except ProviderError as exc:
-                    last_error = exc
-                    if not exc.details.get("retryable") or attempt + 1 >= _MAX_RETRIES:
-                        raise
-                    delay = min(
-                        _DEFAULT_RETRY_DELAY_SECONDS * (attempt + 1),
-                        _MAX_RETRY_DELAY_SECONDS,
-                    )
-                    time.sleep(delay)
-            if last_error is not None:
-                raise last_error
-            raise ProviderError("SEC request failed after retries", details={"url": url})
-
-        return call_provider("sec", _run, url=url)
-
-    def _fetch_body_once(self, url: str) -> str:
-        headers = {
-            "User-Agent": self._user_agent,
-            "Accept-Encoding": "gzip, deflate",
-            "Accept": "text/html,application/xhtml+xml,application/json",
-        }
-        try:
-            response = self._http().get(url, headers=headers, timeout=self._timeout)
-        except httpx.TimeoutException as exc:
-            raise ProviderError(
-                "SEC request timed out",
-                details={"url": url, "retryable": True},
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise ProviderError(
-                "SEC request failed",
-                details={"url": url, "retryable": True},
-            ) from exc
-        status = response.status_code
-        if status == 429 or 500 <= status <= 599:
-            raise ProviderError(
-                "SEC rate limit exceeded" if status == 429 else "SEC server error",
-                details={"url": url, "status_code": status, "retryable": True},
-            )
-        if 400 <= status <= 499:
-            raise ProviderError(
-                "SEC client error",
-                details={"url": url, "status_code": status, "retryable": False},
-            )
-        if status < 200 or status >= 300:
-            raise ProviderError(
-                "Unexpected SEC response status",
-                details={"url": url, "status_code": status, "retryable": False},
-            )
-        return response.text
+        return self._with_retries(
+            url, lambda: self._get(url, "text/html,application/xhtml+xml,application/json").text
+        )
 
     def get_filing_document(self, cik: str, accession: str, document: str) -> str:
         from financial_analyst_agent.providers.sec.urls import build_filing_document_url
@@ -294,7 +245,7 @@ def _periodic_span_days(recent: dict[str, Any]) -> int:
     """Days between the newest and oldest 10-Q/10-K report dates in ``recent``."""
     dates: list[date] = []
     for form, raw in zip(recent.get("form", []), recent.get("reportDate", []), strict=False):
-        if form in _PERIODIC_FORMS and isinstance(raw, str):
+        if form in PERIODIC_FORMS and isinstance(raw, str):
             try:
                 dates.append(date.fromisoformat(raw))
             except ValueError:

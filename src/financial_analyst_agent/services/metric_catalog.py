@@ -145,6 +145,11 @@ class MetricPhraseResolution:
     metrics: tuple[str, ...] = ()
     candidates: tuple[str, ...] = ()
 
+    @property
+    def unique_metrics(self) -> tuple[str, ...]:
+        """Metrics named by a unique resolution; empty for any other kind."""
+        return self.metrics if self.kind == "unique" else ()
+
 
 def get_concept_candidates(metric: Metric) -> list[tuple[str, str]]:
     """Return ordered (taxonomy, concept) candidates for a validated metric."""
@@ -336,6 +341,14 @@ _NOT_FOLLOWED_BY: dict[str, re.Pattern[str]] = {
     "cash": re.compile(r"\s+(?:flows?|from|generation|burn|conversion)\b"),
     "price": re.compile(r"\s+(?:targets?|increases?|hikes?|cuts?|war|elasticity)\b"),
 }
+
+
+def metric_phrases() -> tuple[str, ...]:
+    """Every phrase the catalog reads as a metric, unique or ambiguous, longest first."""
+    phrases = {phrase for phrase, _ in _UNIQUE_PHRASES} | {
+        phrase for phrase, _ in _AMBIGUOUS_PHRASES
+    }
+    return tuple(sorted(phrases, key=len, reverse=True))
 
 
 def _phrase_spans(query: str, phrase: str) -> list[tuple[int, int]]:

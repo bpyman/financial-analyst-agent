@@ -2,12 +2,10 @@
 
 from datetime import date, timedelta
 
-from financial_analyst_agent.domain.enums import FormType
+from financial_analyst_agent.domain.enums import ANNUAL_FORMS, QUARTERLY_FORMS, FormType
 from financial_analyst_agent.domain.errors import FilingNotFoundError
 from financial_analyst_agent.domain.models import Filing
 
-_QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
-ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
 # A 52/53-week fiscal quarter ends on a weekday up to six days from the calendar
 # quarter end (Apple's March 28 against Microsoft's March 31), never a neighbouring
 # quarter, which ends about 90 days away.
@@ -30,7 +28,7 @@ def get_candidate_filings(
     Amendments (10-Q/A) are listed first by filed_date descending; original 10-Q
     filings follow as fallback.
     """
-    quarterly = [filing for filing in filings if filing.form in _QUARTERLY_FORMS]
+    quarterly = [filing for filing in filings if filing.form in QUARTERLY_FORMS]
     if not quarterly:
         raise FilingNotFoundError(
             "No 10-Q or 10-Q/A filing found",
@@ -101,7 +99,7 @@ def latest_period_end(filings: list[Filing]) -> date | None:
     ends = [
         filing.report_date
         for filing in filings
-        if filing.form in _QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
+        if filing.form in QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
     ]
     return max(ends) if ends else None
 
@@ -121,7 +119,7 @@ def list_quarterly_report_dates(
     periodic = [
         filing
         for filing in filings
-        if filing.form in _QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
+        if filing.form in QUARTERLY_FORMS or filing.form in ANNUAL_FORMS
     ]
     unique: list[date] = []
     for day in sorted({filing.report_date for filing in periodic}, reverse=True):

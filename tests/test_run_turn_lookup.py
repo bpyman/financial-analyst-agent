@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import ALLOWED_METRICS, Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import AmbiguousFactError
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.ranking import SnapshotRanking
@@ -13,7 +14,7 @@ from financial_analyst_agent.runtime import (
     build_runtime,
     recorded_runtime,
 )
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
     "What was Google's net income based on their latest quarterly report?"
@@ -57,14 +58,16 @@ SOURCE_URL = "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000071
 
 
 class _FakeCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="net_income")
 
 
 class _FixtureFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         if company != "Google" or metric != "net_income":
             raise AssertionError(f"unexpected get_financials({company!r}, {metric!r})")
         return SimpleNamespace(
@@ -76,6 +79,7 @@ class _FixtureFacts:
             currency="USD",
             start_date=PERIOD_START,
             end_date=PERIOD_END,
+            filed_date=PERIOD_END,
             form=FORM,
             accession_number=ACCESSION,
             taxonomy=TAXONOMY,
@@ -86,21 +90,21 @@ class _FixtureFacts:
 
 
 class _UnknownMetricCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != UNKNOWN_METRIC_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="roa")
 
 
 class _ShopifyNetMarginCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != SHOPIFY_NET_MARGIN_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="net_margin")
 
 
 class _ShopifyRdToSalesCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != SHOPIFY_RD_TO_SALES_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="rd_to_sales")
@@ -111,7 +115,11 @@ class _ComponentFacts:
         self._company = company
         self._values = values
 
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+
+        self, company: str, metric: str, *, report_date: date | None = None
+
+    ) -> SimpleNamespace:
         if company != self._company or metric not in self._values:
             raise AssertionError(f"unexpected get_financials({company!r}, {metric!r})")
         return SimpleNamespace(
@@ -123,6 +131,7 @@ class _ComponentFacts:
             currency="USD",
             start_date=PERIOD_START,
             end_date=PERIOD_END,
+            filed_date=PERIOD_END,
             form=FORM,
             accession_number="0001594805-26-000012",
             taxonomy=TAXONOMY,
@@ -133,12 +142,16 @@ class _ComponentFacts:
 
 
 class _ExplodingFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("get_financials must not invent a number for an unknown metric")
 
 
 class _SuccessorFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         resolved = resolve_company(company, SUCCESSOR_TICKERS)
         return SimpleNamespace(
             company_name=resolved.name,
@@ -149,6 +162,7 @@ class _SuccessorFacts:
             currency="USD",
             start_date=PERIOD_START,
             end_date=PERIOD_END,
+            filed_date=PERIOD_END,
             form=FORM,
             accession_number="0000034088-26-000093",
             taxonomy=TAXONOMY,
@@ -369,7 +383,9 @@ def test_run_turn_lookup_resolves_exxon_prefix() -> None:
 
 def test_run_turn_refuses_conflicting_catalog_concepts() -> None:
     class _AmbiguousFacts:
-        def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+        def get_financials(
+            self, company: str, metric: str, *, report_date: date | None = None
+        ) -> SimpleNamespace:
             raise AmbiguousFactError(
                 "Supported concepts produced conflicting quarterly values",
                 details={"metric": metric, "concepts": ["NetIncomeLoss", "ProfitLoss"]},
@@ -383,7 +399,10 @@ def test_run_turn_refuses_conflicting_catalog_concepts() -> None:
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
-    assert result.tool_traces == []
+    # The refusal still shows the lookup it tried and why it stopped.
+    [trace] = result.tool_traces
+    assert trace.tool == "get_financials"
+    assert trace.provenance["error"]["code"] == "ambiguous_fact"
     assert result.message is not None
     assert "conflicting" in result.message.casefold()
 
@@ -397,7 +416,10 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
-    assert result.tool_traces == []
+    # The refusal still shows the lookup it tried and why it stopped.
+    [trace] = result.tool_traces
+    assert trace.tool == "get_financials"
+    assert trace.provenance["error"]["code"] == "ambiguous_company"
     assert result.message is not None
     assert "appl" in result.message.casefold() or "multiple" in result.message.casefold()
 
@@ -409,14 +431,16 @@ SNAPSHOT_AS_OF = "2026-09-27T22:43:45.015184+00:00"
 
 
 class _ShopifyMarketCapCompleter:
-    def complete(self, query: str) -> SimpleNamespace:
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
         if query != SHOPIFY_MARKET_CAP_QUERY:
             raise AssertionError(f"unexpected query: {query!r}")
         return SimpleNamespace(intent=Intent.LOOKUP, company="Shopify", metric="market_cap")
 
 
 class _NoFacts:
-    def get_financials(self, company: str, metric: str) -> SimpleNamespace:
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
         raise AssertionError("snapshot metrics must not call get_financials")
 
 
