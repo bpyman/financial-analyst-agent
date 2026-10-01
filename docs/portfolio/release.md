@@ -2,11 +2,15 @@
 
 ## LinkedIn post (draft)
 
-I built Onfile: ask about a public company and get the number and the SEC filing behind it. The AI model plans the question; it is never allowed to touch the numbers.
+Attach `images/demo-walkthrough.mp4` (34 s, no sound needed). Its first frame is the landing page headline, which works as the cover.
 
-Ask "Compare Eli Lilly and Pfizer revenue over the last eight quarters" and you get a chart where Lilly overtakes Pfizer in mid-2025. Every point on it comes from a 10-Q or 10-K, and one click shows the exact amount, the accession number, the XBRL concept, and a link to the filing.
+I built Onfile: ask about a public company in plain English and get the number and the SEC filing behind it. The AI model plans the question; it is never allowed to touch the numbers.
 
-A language model turns the question into a typed analysis plan. Deterministic Python fetches the quarterly facts from SEC EDGAR, derives fiscal Q4 from the 10-K when needed (and marks it), lines up companies whose fiscal quarters end on different dates, and computes margins, growth, EBITDA, ROE and P/E in Decimal. Follow-ups like "add Apple" or "show year-over-year" edit the analysis instead of starting over. Tables sort by any column and the chart follows. "What changed in Microsoft's latest 10-Q?" returns a paragraph diff of MD&A and Risk Factors with the changed words marked, not a model summary.
+In the video I ask for Eli Lilly, Pfizer and Merck revenue over the last eight quarters, then type "show year-over-year". The same analysis redraws as growth rates: in the latest quarter Lilly grew 47.7%, Merck 5.1% and Pfizer 2.6%. Then one click shows where Lilly's $22.97B came from: the exact amount, the 10-Q's accession number, the XBRL concept, and a link to the filing.
+
+How it works: a language model turns the question into a typed analysis plan. Deterministic Python fetches the quarterly facts from SEC EDGAR, derives fiscal Q4 from the 10-K when needed (and marks it), lines up companies whose fiscal quarters end on different dates, and computes margins, growth, EBITDA, ROE and P/E. The model never writes a figure.
+
+It also sorts tables by any column (the chart follows), and "What changed in Microsoft's latest 10-Q?" returns a paragraph diff of MD&A and Risk Factors with the changed words marked, not a model summary.
 
 To check it, I took 25 figures the app shows across sectors and found every one in the text of the 10-Q it cites. The 30-case scorecard and that check are in the repo.
 
@@ -16,8 +20,6 @@ Try the demo (no sign-up): https://onfile-analyst.vercel.app
 Code: https://github.com/bpyman/onfile
 
 Feedback welcome, especially from anyone who reads filings for a living.
-
-Image: `images/social-preview.png`.
 
 ## Repository About
 
