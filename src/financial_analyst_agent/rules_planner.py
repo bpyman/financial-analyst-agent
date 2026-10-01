@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from financial_analyst_agent.contracts import ALLOWED_METRICS, Intent
 from financial_analyst_agent.filing_change import ACCESSION_PATTERN, requested_sections
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import (
@@ -29,7 +30,6 @@ from financial_analyst_agent.issuer_index import (
     normalize,
 )
 from financial_analyst_agent.services.metric_catalog import metric_phrases, resolve_metric_phrase
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
     ineligible_issuers,

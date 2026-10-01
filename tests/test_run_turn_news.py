@@ -3,16 +3,11 @@
 from datetime import date
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, NewsHit, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.runtime import recorded_runtime
-from financial_analyst_agent.turn import (
-    Intent,
-    NewsHit,
-    RendererKind,
-    Runtime,
-    run_turn,
-)
+from financial_analyst_agent.turn import run_turn
 
 NVIDIA_SUPPLY_QUERY = "What is going on with NVIDIA supply chain?"
 MICROSOFT_NEWS_QUERY = "What's going on with Microsoft?"

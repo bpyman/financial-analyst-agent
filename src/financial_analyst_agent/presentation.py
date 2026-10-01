@@ -9,10 +9,22 @@ from typing import Any
 from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import (
+    ALLOWED_METRICS,
+    EXPLORATORY_RESEARCH_BANNER,
+    FORMULA_METRICS,
+    MODEL_ANALYSIS_BANNER,
     MULTIPLE_FORMULAS,
+    NEWS_SUMMARY_BANNER,
     PER_SHARE_METRICS,
+    PERCENT_FORMULAS,
+    REPORTED_METRICS,
     SNAPSHOT_BANNER_PREFIX,
+    SNAPSHOT_METRICS,
     TRAILING_YEAR_FORMULAS,
+    Intent,
+    RendererKind,
+    TableRow,
+    TurnResult,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
 from financial_analyst_agent.guide import short_name
@@ -26,20 +38,6 @@ from financial_analyst_agent.services.fiscal_periods import (
     DEPRECIATION_AMORTIZATION_LABEL,
     GROSS_PROFIT_LABEL,
     REVENUE_FROM_COMPONENTS_LABEL,
-)
-from financial_analyst_agent.turn import (
-    ALLOWED_METRICS,
-    EXPLORATORY_RESEARCH_BANNER,
-    FORMULA_METRICS,
-    MODEL_ANALYSIS_BANNER,
-    NEWS_SUMMARY_BANNER,
-    PERCENT_FORMULAS,
-    REPORTED_METRICS,
-    SNAPSHOT_METRICS,
-    Intent,
-    RendererKind,
-    TableRow,
-    TurnResult,
 )
 
 _MONTHS = (

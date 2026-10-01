@@ -5,13 +5,13 @@ from typing import Any
 import httpx
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.domain.errors import ProviderError
-from financial_analyst_agent.turn import (
+from financial_analyst_agent.contracts import (
     SEARCH_NEWS_MAX_RESULTS,
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
     NewsHit,
 )
+from financial_analyst_agent.domain.errors import ProviderError
 
 FIXTURE_NEWS_HITS: tuple[NewsHit, ...] = (
     NewsHit(

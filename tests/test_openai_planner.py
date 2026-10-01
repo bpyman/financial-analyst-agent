@@ -7,9 +7,10 @@ import pytest
 from pydantic import ValidationError
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import Intent
 from financial_analyst_agent.planner import OpenAIStructuredCompleter, Plan
 from financial_analyst_agent.runtime import DemoCompleter, live_runtime, recorded_runtime
-from financial_analyst_agent.turn import Intent, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_lookup import GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY
 
 _MODEL = "gpt-5.6-terra"

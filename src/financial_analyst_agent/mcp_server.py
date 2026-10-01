@@ -2,14 +2,16 @@
 
 from fastmcp import FastMCP
 
-from financial_analyst_agent.contracts import unknown_metric_message
+from financial_analyst_agent.contracts import (
+    ALLOWED_METRICS,
+    MARKET_FORMULAS,
+    SNAPSHOT_METRICS,
+    unknown_metric_message,
+)
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.graph.analysis_spec import MAX_RANKED_COMPANIES
 from financial_analyst_agent.runtime import build_runtime
 from financial_analyst_agent.turn import (
-    ALLOWED_METRICS,
-    MARKET_FORMULAS,
-    SNAPSHOT_METRICS,
     _numeral_lock_extras,
     _numeral_lock_message,
     market_formula_rows,

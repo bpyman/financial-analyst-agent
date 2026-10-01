@@ -354,7 +354,7 @@ def bind_metrics_from_message(
         return patch.model_copy(update={"add_metrics": implied}), None
     if patch.ranked_request is not None and not patch.add_metrics:
         return patch, None
-    # Replace-mode metric question with an unknown phrase: refuse like execute_turn
+    # Replace-mode metric question with an unknown phrase: refuse with the full catalog
     # even when the planner guessed a catalog slug.
     term = "unknown"
     if patch.add_metrics:

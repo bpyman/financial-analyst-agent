@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import ALLOWED_METRICS, Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import AmbiguousFactError
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.ranking import SnapshotRanking
@@ -13,7 +14,7 @@ from financial_analyst_agent.runtime import (
     build_runtime,
     recorded_runtime,
 )
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 
 GOOGLE_LATEST_QUARTER_NET_INCOME_QUERY = (
     "What was Google's net income based on their latest quarterly report?"

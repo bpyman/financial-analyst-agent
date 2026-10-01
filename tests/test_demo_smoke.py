@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from financial_analyst_agent.contracts import Intent, RendererKind
 from financial_analyst_agent.conversation import run_conversation_turn
 from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.runtime import (
@@ -12,7 +13,7 @@ from financial_analyst_agent.runtime import (
 )
 from financial_analyst_agent.storefront import GUIDED_STORIES
 from financial_analyst_agent.thread_store import EphemeralThreadStore
-from financial_analyst_agent.turn import Intent, RendererKind, run_turn
+from financial_analyst_agent.turn import run_turn
 
 
 def test_first_guided_story_returns_a_table() -> None:

@@ -4,12 +4,13 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     UnsupportedQuarterlyFactError,
 )
 from financial_analyst_agent.ranking import SnapshotRanking
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 from test_run_turn_rank import (
     FIXTURE_SNAPSHOT_PATH,
     HEALTHCARE_TOP_10,

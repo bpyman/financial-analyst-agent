@@ -4,17 +4,12 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.sec_facts import SecFactLookup
-from financial_analyst_agent.turn import (
-    PERIODS_DIFFER_BANNER,
-    Intent,
-    RendererKind,
-    Runtime,
-    run_turn,
-)
+from financial_analyst_agent.turn import PERIODS_DIFFER_BANNER, run_turn
 
 MSFT_GOOG_OPERATING_MARGINS_QUERY = "compare Microsoft and Google operating margins"
 UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROA"

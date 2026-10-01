@@ -380,11 +380,8 @@ def run_conversation_turn(
                     analysis_spec = None
                     persist_spec = prior.analysis_spec
             else:
-                from financial_analyst_agent.turn import execute_turn
-
-                result = execute_turn(message, turn_runtime)
-                analysis_spec = prior.analysis_spec
-                persist_spec = prior.analysis_spec
+                # The three proposal kinds cover every closed intent.
+                raise ValueError(f"unsupported planner proposal: {proposal!r}")
 
         if discarded_clarification:
             result = with_banner(result, DISCARDED_CLARIFICATION_BANNER)

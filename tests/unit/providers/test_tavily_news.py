@@ -4,9 +4,9 @@ import httpx
 import pytest
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import SEARCH_NEWS_MAX_RESULTS
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.news import TavilyNewsSearch, hits_from_tavily_payload
-from financial_analyst_agent.turn import SEARCH_NEWS_MAX_RESULTS
 
 
 def test_hits_from_tavily_payload_keeps_title_url_and_drops_unusable() -> None:

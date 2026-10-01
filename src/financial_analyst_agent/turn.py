@@ -11,16 +11,13 @@ New multi-turn behaviour is asserted at ``run_conversation_turn``.
 import json
 import re
 from datetime import date, datetime
-from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.contracts import (
-    ALLOWED_METRICS,
     AMBIGUOUS_CONCEPT,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
-    FORMULA_METRICS,
     INSTANT_METRICS,
     LATEST_PERIOD_ONLY,
     MARKET_FORMULAS,
@@ -30,23 +27,17 @@ from financial_analyst_agent.contracts import (
     NOT_MEANINGFUL,
     NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
-    PERCENT_FORMULAS,
     PERIOD_MISMATCH,
-    REPORTED_METRICS,
     SEARCH_NEWS_MAX_RESULTS,
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
     SNAPSHOT_METRICS,
     SUM_FORMULAS,
     ZERO_DENOMINATOR,
-    Completer,
     ComponentProvenance,
-    DisclosureChange,
-    EssayCompleter,
     FactsPort,
     Intent,
     NewsHit,
-    NewsPort,
     RankingPort,
     RendererKind,
     Runtime,
@@ -54,7 +45,6 @@ from financial_analyst_agent.contracts import (
     TableRow,
     ToolTrace,
     TurnResult,
-    refuse_unknown_metric,
     snapshot_banner,
 )
 from financial_analyst_agent.domain.errors import (
@@ -70,7 +60,6 @@ from financial_analyst_agent.domain.errors import (
 from financial_analyst_agent.domain.models import DerivationPart, FinancialFact
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
-from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _LOOKUP_FAILURES = (
     AmbiguousFactError,
@@ -101,44 +90,12 @@ _DATE_TEXT = re.compile(
 )
 
 __all__ = [
-    "ALLOWED_METRICS",
-    "AMBIGUOUS_CONCEPT",
-    "EXPLORATORY_RESEARCH_BANNER",
-    "NEWS_SUMMARY_BANNER",
-    "FORMULA_COMPONENTS",
-    "FORMULA_METRICS",
-    "MARKET_FORMULAS",
-    "MISSING_FACT",
-    "MODEL_ANALYSIS_BANNER",
-    "PERCENT_FORMULAS",
-    "PERIOD_MISMATCH",
-    "REPORTED_METRICS",
-    "SEARCH_NEWS_MAX_RESULTS",
-    "SEARCH_NEWS_TIME_RANGE",
-    "SEARCH_NEWS_TOPIC",
-    "SNAPSHOT_METRICS",
-    "ZERO_DENOMINATOR",
-    "Completer",
-    "ComponentProvenance",
-    "DisclosureChange",
-    "EssayCompleter",
-    "FactsPort",
-    "Intent",
-    "NewsHit",
-    "NewsPort",
-    "RankingPort",
-    "RendererKind",
-    "Runtime",
-    "RuntimeKind",
-    "TableRow",
-    "ToolTrace",
-    "TurnResult",
     "compare_metrics",
-    "execute_turn",
     "market_formula_rows",
     "run_turn",
     "snapshot_compare_rows",
 ]
+
 
 def _strip_valid_citation_markers(essay: str, hit_count: int) -> str:
     def replace(match: re.Match[str]) -> str:
@@ -1047,68 +1004,6 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         renderer=RendererKind.TABLE,
         table_rows=[_table_row_from_fact(fact)],
     )
-
-
-def _plan_with_metric(plan: Any, metric: str) -> Any:
-    return SimpleNamespace(
-        intent=plan.intent,
-        company=getattr(plan, "company", None),
-        companies=list(getattr(plan, "companies", []) or []),
-        metric=metric,
-        industry=getattr(plan, "industry", None),
-        limit=getattr(plan, "limit", 10),
-        topic=getattr(plan, "topic", None),
-    )
-
-
-def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
-    return TurnResult(
-        intent=intent,
-        tool_traces=[],
-        renderer=RendererKind.CLARIFY,
-        candidates=candidates,
-        clarify_kind="ambiguous_metric",
-    )
-
-
-def _run_workflow(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
-    from financial_analyst_agent.graph import run_workflow_turn
-
-    return run_workflow_turn(plan, runtime, query=query)
-
-
-def execute_turn(query: str, runtime: Runtime) -> TurnResult:
-    """Plan and run one one-shot analysis. Run state is not returned or persisted."""
-    plan = runtime.completer.complete(query)
-    if plan.intent in (
-        Intent.EXPLAIN,
-        Intent.FILING_CHANGE,
-        Intent.NEWS_AND_EXPLAIN,
-        Intent.EXPLORATORY_RESEARCH,
-        Intent.RANK,
-    ):
-        return _run_workflow(plan, runtime, query=query)
-    resolved = resolve_metric_phrase(query)
-    if resolved.kind == "ambiguous":
-        return _clarify_metric(plan.intent, resolved.candidates)
-    if resolved.kind == "unknown":
-        fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
-        term = fallback if fallback not in ALLOWED_METRICS else "unknown"
-        return refuse_unknown_metric(plan.intent, term)
-    if resolved.kind == "unique" and len(resolved.metrics) > 1:
-        # One-shot execute_turn still clarifies; multi-metric composition runs
-        # through run_spec_turn on the conversation seam (ticket 09).
-        return _clarify_metric(plan.intent, resolved.metrics)
-    if resolved.kind == "unique" and resolved.metric is not None:
-        metric = resolved.metric
-    else:
-        metric = str(plan.metric or "")
-    plan = _plan_with_metric(plan, metric)
-    if plan.intent not in (Intent.COMPARE, Intent.RANK_AND_LOOKUP, Intent.LOOKUP):
-        raise ValueError(f"unsupported intent: {plan.intent!r}")
-    if metric not in ALLOWED_METRICS:
-        return refuse_unknown_metric(plan.intent, metric)
-    return _run_workflow(plan, runtime, query=query)
 
 
 def run_turn(query: str, runtime: Runtime) -> TurnResult:

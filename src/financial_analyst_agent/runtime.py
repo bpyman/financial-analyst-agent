@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
+from financial_analyst_agent.contracts import Runtime, RuntimeKind
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.facts import RecordedSECDataSource
@@ -41,7 +42,6 @@ from financial_analyst_agent.rules_planner import (
 from financial_analyst_agent.rules_planner import issuer_index, recorded_issuer_index
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.session import SessionBudget
-from financial_analyst_agent.turn import Runtime, RuntimeKind
 
 FIXTURE_EXPLAIN_ESSAY = (
     "AI can disrupt healthcare by automating imaging review, triage, and documentation. "

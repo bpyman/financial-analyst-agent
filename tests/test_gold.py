@@ -5,9 +5,10 @@ from decimal import Decimal
 
 import pytest
 
+from financial_analyst_agent.contracts import Intent, RendererKind
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.runtime import recorded_runtime
-from financial_analyst_agent.turn import Intent, RendererKind, run_turn
+from financial_analyst_agent.turn import run_turn
 
 pytestmark = pytest.mark.gold
 

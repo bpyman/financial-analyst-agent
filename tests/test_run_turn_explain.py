@@ -3,15 +3,15 @@
 from datetime import date
 from types import SimpleNamespace
 
-from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, recorded_runtime
-from financial_analyst_agent.turn import (
+from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
     EssayCompleter,
     Intent,
     RendererKind,
     Runtime,
-    run_turn,
 )
+from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY, recorded_runtime
+from financial_analyst_agent.turn import run_turn
 
 AI_HEALTHCARE_QUERY = "How can AI disrupt healthcare?"
 AI_MINING_QUERY = "How can AI disrupt mining?"

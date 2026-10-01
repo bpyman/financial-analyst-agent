@@ -4,6 +4,16 @@ from typing import Any
 
 import pytest
 
+from financial_analyst_agent.contracts import (
+    ComponentProvenance,
+    DisclosureChange,
+    Intent,
+    NewsHit,
+    RendererKind,
+    TableRow,
+    ToolTrace,
+    TurnResult,
+)
 from financial_analyst_agent.presentation import (
     format_chart_amount,
     format_date,
@@ -17,16 +27,6 @@ from financial_analyst_agent.presentation import (
     metric_legend,
     present_turn,
     try_parse_datetime,
-)
-from financial_analyst_agent.turn import (
-    ComponentProvenance,
-    DisclosureChange,
-    Intent,
-    NewsHit,
-    RendererKind,
-    TableRow,
-    ToolTrace,
-    TurnResult,
 )
 
 

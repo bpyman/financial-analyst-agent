@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from financial_analyst_agent.api import _Throttle
+from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
 from financial_analyst_agent.conversation import _match_clarification_answer
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
@@ -21,7 +22,6 @@ from financial_analyst_agent.graph.spec_turn import (
 )
 from financial_analyst_agent.presentation import format_usd, present_turn
 from financial_analyst_agent.thread_store import PendingClarification
-from financial_analyst_agent.turn import Intent, RendererKind, TableRow, TurnResult
 
 _MSFT = (date(2026, 3, 31), date(2025, 12, 31), date(2025, 9, 30))
 _AAPL = (date(2026, 6, 27), date(2026, 3, 28), date(2025, 12, 27))

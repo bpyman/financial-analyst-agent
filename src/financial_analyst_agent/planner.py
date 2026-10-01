@@ -6,7 +6,7 @@ import openai
 from pydantic import AfterValidator, BaseModel, model_validator
 
 from financial_analyst_agent.config import Settings
-from financial_analyst_agent.contracts import DEFAULT_RANK_LIMIT
+from financial_analyst_agent.contracts import ALLOWED_METRICS, DEFAULT_RANK_LIMIT, Intent
 from financial_analyst_agent.domain.errors import PlannerError
 from financial_analyst_agent.graph.analysis_spec import (
     MAX_QUARTERS_ASKED,
@@ -14,7 +14,6 @@ from financial_analyst_agent.graph.analysis_spec import (
     PeriodSelection,
     SpecPatch,
 )
-from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 
 _PLANNER_FAILED_MESSAGE = "LLM planner failed"
 _SYSTEM_PROMPT = (

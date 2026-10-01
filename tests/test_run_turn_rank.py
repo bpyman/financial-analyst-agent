@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from financial_analyst_agent.config import Settings
+from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH, DemoCompleter
@@ -20,7 +21,7 @@ from financial_analyst_agent.snapshot_builder import (
     fetch_fmp_rows,
     main,
 )
-from financial_analyst_agent.turn import Intent, RendererKind, Runtime, run_turn
+from financial_analyst_agent.turn import run_turn
 from financial_analyst_agent.universe import (
     INELIGIBLE_ISSUER_CIKS,
     UniverseCompany,
