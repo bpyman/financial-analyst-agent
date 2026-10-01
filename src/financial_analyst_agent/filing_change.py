@@ -935,8 +935,15 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             )
             extras = _numeral_lock_extras(essay, grounding)
             if extras:
-                # The summary is withheld; say why rather than label nothing.
+                # The summary is withheld; say why rather than label nothing. The
+                # turn itself succeeds, so the extras go on the trace, not the result
+                # (numeral-lock extras are empty on a successful turn).
                 essay = None
+                traces[0] = traces[0].model_copy(
+                    update={
+                        "provenance": {**traces[0].provenance, "summary_numeral_lock": extras}
+                    }
+                )
                 banners.append(
                     "The model's summary was withheld because it quoted numbers "
                     "that are not in these filings."
@@ -954,5 +961,4 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         disclosure_changes=changes,
         essay=essay,
         banners=banners,
-        numeral_lock_extras=extras,
     )

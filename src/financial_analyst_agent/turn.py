@@ -77,11 +77,26 @@ _LOOKUP_FAILURES = (
     CompanyNotFoundError,
 )
 _NUMERIC_TOKEN = re.compile(
-    r"\$?\d[\d,]*(?:\.\d+)?(?:\s*(?:[KMBTkmbt]|[Bb]illion|[Mm]illion|[Tt]rillion))?"
+    # A number never ends in its list comma ("29, then"), and a one-letter unit
+    # must end the word ("5B", not the "t" of "then").
+    r"\$?\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s*(?:[KMBTkmbt]\b|[Bb]illion|[Mm]illion|[Tt]rillion))?"
 )
 _CITE_MARKER = re.compile(r"\[([1-9]\d*)\]")
 # Grounding keys whose digits identify a document rather than state a figure.
 _IDENTIFIER_KEYS = frozenset({"url", "cik", "document", "primary_document", "anchor"})
+_MONTH = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?"
+    r"|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
+# Dates are when, not how much: "March 31, 2026" or "2026-03-31" in an essay is not a
+# figure, and a grounding date's "31" or "03" must not unlock "31%" elsewhere.
+_DATE_TEXT = re.compile(
+    rf"\b\d{{4}}-\d{{2}}-\d{{2}}(?:T[\d:.+-]+Z?)?\b"
+    rf"|\b{_MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+(?:19|20)\d{{2}})?\b"
+    rf"|\b{_MONTH}\.?\s+(?:19|20)\d{{2}}\b"
+    r"|(?<![$\d.,])\b(?:FY\s?)?(?:19|20)\d{2}\b(?!\s*%|[\d.,])",
+    re.IGNORECASE,
+)
 
 __all__ = [
     "ALLOWED_METRICS",
@@ -166,12 +181,15 @@ def _grounding_text(tool_json: str) -> str:
     return "\n".join(parts)
 
 
+def _figures(text: str) -> list[str]:
+    """Numeric tokens outside dates."""
+    return _NUMERIC_TOKEN.findall(_DATE_TEXT.sub(" ", text))
+
+
 def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
     scanned = _strip_valid_citation_markers(essay, hit_count)
-    allowed = set(_NUMERIC_TOKEN.findall(_grounding_text(tool_json)))
-    return list(
-        dict.fromkeys(token for token in _NUMERIC_TOKEN.findall(scanned) if token not in allowed)
-    )
+    allowed = set(_figures(_grounding_text(tool_json)))
+    return list(dict.fromkeys(token for token in _figures(scanned) if token not in allowed))
 
 
 def _numeral_lock_message(invented: str) -> str:
@@ -973,7 +991,13 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
             )
         return TurnResult(
             intent=Intent.LOOKUP,
-            tool_traces=[],
+            tool_traces=[
+                ToolTrace(
+                    tool="get_financials",
+                    args=args,
+                    provenance={"error": {"code": exc.code, "message": str(exc)}},
+                )
+            ],
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )

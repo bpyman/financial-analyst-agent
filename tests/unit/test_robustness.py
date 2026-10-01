@@ -134,14 +134,16 @@ def test_rate_limiter_spaces_concurrent_requests() -> None:
             stamps.append(time.monotonic())
 
     threads = [threading.Thread(target=hit) for _ in range(5)]
+    started = time.monotonic()
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
 
-    stamps.sort()
-    gaps = [later - earlier for earlier, later in zip(stamps, stamps[1:], strict=False)]
-    assert min(gaps) >= 0.04
+    # Slots are reserved 50 ms apart, so the fifth request goes at least 200 ms in.
+    # (Gaps between stamps taken after acquire() returns can shrink with scheduling.)
+    assert len(stamps) == 5
+    assert max(stamps) - started >= 0.19
 
 
 def test_dated_lookup_error_is_not_retried_as_latest_quarter() -> None:

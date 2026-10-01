@@ -470,7 +470,9 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
         _runtime(essay=_Essay()),
     )
     assert result.essay is None
-    assert result.numeral_lock_extras
+    # The table still answers, so extras stay off the result and go on the trace.
+    assert result.numeral_lock_extras == []
+    assert result.tool_traces[0].provenance["summary_numeral_lock"]
     # The model-analysis banner labels a summary; none is shown, so say why instead.
     assert MODEL_ANALYSIS_BANNER not in result.banners
     assert any("withheld" in banner for banner in result.banners)
@@ -750,6 +752,23 @@ def test_numeral_lock_does_not_ground_figures_on_links_or_accessions() -> None:
     assert _numeral_lock_extras("Revenue grew 12%.", grounding) == []
     assert _numeral_lock_extras("Revenue grew 25%.", grounding) == ["25"]
     assert _numeral_lock_extras("Margins hit 789019.", grounding) == ["789019"]
+
+
+def test_numeral_lock_treats_dates_as_dates_not_figures() -> None:
+    from financial_analyst_agent.turn import _numeral_lock_extras
+
+    grounding = json.dumps([{"value": "245122000000", "end_date": "2026-03-31"}])
+
+    # A date's parts do not unlock a figure...
+    assert _numeral_lock_extras("Revenue rose 31%.", grounding) == ["31"]
+    assert _numeral_lock_extras("Margins moved 03 points.", grounding) == ["03"]
+    # ...and a date written in the essay is not scanned as one.
+    assert _numeral_lock_extras(
+        "Revenue was 245122000000 in the quarter ended March 31, 2026.", grounding
+    ) == []
+    assert _numeral_lock_extras("In fiscal 2026 revenue rose.", grounding) == []
+    # A list comma and the next word are not part of a number.
+    assert _numeral_lock_extras("It grew 29, then 30.", grounding) == ["29", "30"]
 
 
 def test_table_cells_are_separated_in_filing_text() -> None:

@@ -395,7 +395,10 @@ def test_run_turn_refuses_conflicting_catalog_concepts() -> None:
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
-    assert result.tool_traces == []
+    # The refusal still shows the lookup it tried and why it stopped.
+    [trace] = result.tool_traces
+    assert trace.tool == "get_financials"
+    assert trace.provenance["error"]["code"] == "ambiguous_fact"
     assert result.message is not None
     assert "conflicting" in result.message.casefold()
 
@@ -409,7 +412,10 @@ def test_run_turn_refuses_ambiguous_company_prefix() -> None:
     assert result.intent is Intent.LOOKUP
     assert result.renderer is RendererKind.REFUSE
     assert result.table_rows == []
-    assert result.tool_traces == []
+    # The refusal still shows the lookup it tried and why it stopped.
+    [trace] = result.tool_traces
+    assert trace.tool == "get_financials"
+    assert trace.provenance["error"]["code"] == "ambiguous_company"
     assert result.message is not None
     assert "appl" in result.message.casefold() or "multiple" in result.message.casefold()
 
