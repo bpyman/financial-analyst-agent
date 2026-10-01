@@ -43,6 +43,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     CompiledTask,
     NamedPeriodSpec,
     PeriodSelection,
+    SpecDraft,
     SpecPatch,
     SpecRejection,
     apply_patch,
@@ -841,9 +842,16 @@ def is_structured_proposal(proposal: Any) -> bool:
     return intent in STRUCTURED_INTENTS
 
 
-def _rejection_result(rejection: SpecRejection) -> TurnResult:
+def _draft_intent(draft: SpecDraft) -> Intent:
+    """The closed intent a draft's shape asks for, when no planned intent came with it."""
+    if draft.ranked_request is not None:
+        return Intent.RANK_AND_LOOKUP if draft.metrics else Intent.RANK
+    return Intent.COMPARE if len(draft.company_queries) > 1 else Intent.LOOKUP
+
+
+def _rejection_result(rejection: SpecRejection, intent: Intent) -> TurnResult:
     return TurnResult(
-        intent=Intent.LOOKUP,
+        intent=intent,
         tool_traces=[],
         renderer=RendererKind.REFUSE,
         message=rejection.message,
@@ -1292,6 +1300,8 @@ def run_spec_turn_context(
         return early, current_spec, patch
 
     draft = apply_patch(current_spec, patch)
+    # A refusal names the analysis that was asked for, not a default lookup.
+    asked = intent or _draft_intent(draft)
     # Drop model-supplied metrics that are not in the catalog when wording did not
     # resolve a unique phrase (plan slug may still be present on replace).
     if draft.metrics and any(m not in ALLOWED_METRICS for m in draft.metrics):
@@ -1301,7 +1311,8 @@ def run_spec_turn_context(
                 SpecRejection(
                     code="invalid_metric",
                     message=unknown_metric_message(bad),
-                )
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1312,11 +1323,7 @@ def run_spec_turn_context(
     except UnknownIndustryError as exc:
         return (
             TurnResult(
-                intent=Intent.RANK
-                if draft.ranked_request is not None and not draft.metrics
-                else Intent.RANK_AND_LOOKUP
-                if draft.ranked_request is not None
-                else Intent.LOOKUP,
+                intent=asked,
                 tool_traces=[],
                 renderer=RendererKind.REFUSE,
                 message=str(exc),
@@ -1326,13 +1333,14 @@ def run_spec_turn_context(
         )
     outcome = validate_spec(spec)
     if outcome is not None:
-        return _rejection_result(outcome), None, patch
+        return _rejection_result(outcome, asked), None, patch
 
     spec, annual_filers = drop_annual_filers(spec, runtime)
     if annual_filers and not spec.companies and spec.constituents is None:
         return (
             _rejection_result(
-                SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers))
+                SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers)),
+                asked,
             ),
             None,
             patch,
@@ -1343,7 +1351,7 @@ def run_spec_turn_context(
     except (CompanyNotFoundError, ProviderError) as exc:
         return (
             TurnResult(
-                intent=Intent.LOOKUP,
+                intent=asked,
                 tool_traces=[],
                 renderer=RendererKind.REFUSE,
                 message=str(exc),
@@ -1365,7 +1373,8 @@ def run_spec_turn_context(
                         "years as each company names them; filings older than about "
                         "ten years may not be available."
                     ),
-                )
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1379,7 +1388,8 @@ def run_spec_turn_context(
                         "Could not determine quarterly report dates "
                         "for the requested window"
                     ),
-                )
+                ),
+                asked,
             ),
             None,
             patch,
@@ -1388,7 +1398,8 @@ def run_spec_turn_context(
     if not tasks:
         return (
             _rejection_result(
-                SpecRejection(code="empty_spec", message="Analysis compiled to no tasks")
+                SpecRejection(code="empty_spec", message="Analysis compiled to no tasks"),
+                asked,
             ),
             None,
             patch,
