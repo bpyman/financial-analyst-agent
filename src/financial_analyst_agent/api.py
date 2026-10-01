@@ -208,6 +208,13 @@ class ClientRateLimit:
             times.append(moment)
             return None
 
+    def refund(self, client: str) -> None:
+        """Take back the client's latest event: a request the server turned away."""
+        with self._guard:
+            times = self._events.get(client)
+            if times:
+                times.pop()
+
 
 def _normalized_message(value: object) -> object:
     """Drop invisible format and control characters (keeping line breaks), then trim.
@@ -612,6 +619,9 @@ def create_app(
             if prior is None:
                 raise HTTPException(status_code=404, detail=UNKNOWN_THREAD_MESSAGE)
             if not turn_slots.try_acquire():
+                # The window retries a busy turn on its own; waiting for a free
+                # slot does not use up the visitor's questions for the hour.
+                turn_limit.refund(client_key(request))
                 raise HTTPException(
                     status_code=429,
                     detail=BUSY_MESSAGE,

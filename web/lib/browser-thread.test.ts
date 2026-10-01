@@ -12,6 +12,7 @@ import {
   startThread,
   waitForTurn,
   type ThreadApi,
+  whenFree,
 } from "./browser-thread";
 import type { CreatedThread, RuntimeKind, ThreadView, TurnEvent } from "./types";
 
@@ -352,5 +353,49 @@ describe("memoryStore", () => {
     expect(store.getItem("k")).toBe("v");
     store.removeItem("k");
     expect(store.getItem("k")).toBeNull();
+  });
+});
+
+describe("whenFree", () => {
+  const done: TurnEvent = { event: "thread", data: {} as ThreadView };
+  const busy = () => new ApiError("busy", 429, 5);
+
+  async function collect(events: AsyncIterable<TurnEvent>): Promise<TurnEvent[]> {
+    const seen: TurnEvent[] = [];
+    for await (const event of events) seen.push(event);
+    return seen;
+  }
+
+  it("waits the seconds a busy server asks, then runs the turn", async () => {
+    let tries = 0;
+    const slept: number[] = [];
+    const onBusy = vi.fn();
+    const events = await collect(
+      whenFree(
+        async function* () {
+          tries += 1;
+          if (tries < 3) throw busy();
+          yield done;
+        },
+        { onBusy, sleep: async (ms) => void slept.push(ms) },
+      ),
+    );
+    expect(events).toEqual([done]);
+    expect(slept).toEqual([5000, 5000]);
+    expect(onBusy).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after a minute, and never waits out a visitor's hourly limit", async () => {
+    const always = async function* (): AsyncGenerator<TurnEvent> {
+      throw busy();
+    };
+    await expect(collect(whenFree(always, { sleep: async () => undefined }))).rejects.toThrow("busy");
+
+    const limited = async function* (): AsyncGenerator<TurnEvent> {
+      throw new ApiError("limit", 429, 900);
+    };
+    const sleep = vi.fn(async () => undefined);
+    await expect(collect(whenFree(limited, { sleep }))).rejects.toThrow("limit");
+    expect(sleep).not.toHaveBeenCalled();
   });
 });

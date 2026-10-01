@@ -20,6 +20,7 @@ import {
   startOverIfLocked,
   startThread,
   waitForTurn,
+  whenFree,
   type ThreadApi,
 } from "@/lib/browser-thread";
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
@@ -252,7 +253,7 @@ export function AnalystWindow() {
       const asked = askOnThread(
         threadApi,
         store,
-        runTurn,
+        (id, text) => whenFree(() => runTurn(id, text), { onBusy: () => dispatch({ type: "queued" }) }),
         threadId,
         message,
         view?.runtime ?? chosenRuntime ?? undefined,

@@ -5,9 +5,16 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Seconds the server asked to wait (Retry-After), when it said. */
+    readonly retryAfter: number | null = null,
   ) {
     super(message);
   }
+}
+
+function retryAfter(response: Response): number | null {
+  const seconds = Number(response.headers.get("retry-after"));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 async function detail(response: Response): Promise<string> {
@@ -73,7 +80,7 @@ export async function* runTurn(
     signal,
   });
   if (!response.ok || !response.body) {
-    throw new ApiError(await detail(response), response.status);
+    throw new ApiError(await detail(response), response.status, retryAfter(response));
   }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   const parse = createSseParser();

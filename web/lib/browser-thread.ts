@@ -170,6 +170,40 @@ export interface WaitOptions {
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** A busy server asks for seconds; a longer wait is the visitor's own hourly limit. */
+const BUSY_RETRY_MAX_SECONDS = 15;
+
+/**
+ * Run a turn, and while the server is busy (every turn slot taken) wait the
+ * seconds it asks and try again, up to ``maxWaitMs`` in all. A spike of
+ * visitors then queues for a slot instead of each seeing an error.
+ */
+export async function* whenFree(
+  run: () => AsyncIterable<TurnEvent>,
+  {
+    onBusy,
+    sleep = pause,
+    maxWaitMs = 60_000,
+  }: { onBusy?: () => void; sleep?: (ms: number) => Promise<void>; maxWaitMs?: number } = {},
+): AsyncGenerator<TurnEvent> {
+  let waited = 0;
+  for (;;) {
+    try {
+      // A busy answer comes before any event, so a retry never repeats one.
+      yield* run();
+      return;
+    } catch (error) {
+      const seconds = error instanceof ApiError && error.status === 429 ? error.retryAfter : null;
+      if (seconds === null || seconds > BUSY_RETRY_MAX_SECONDS || waited + seconds * 1000 > maxWaitMs) {
+        throw error;
+      }
+      onBusy?.();
+      await sleep(seconds * 1000);
+      waited += seconds * 1000;
+    }
+  }
+}
+
 /**
  * Poll a thread whose turn is in flight (a reload mid-turn) until it ends,
  * backing off from `firstDelayMs` by half again each time up to `maxDelayMs`.

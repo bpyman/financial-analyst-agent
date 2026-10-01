@@ -1,5 +1,6 @@
 """SEC fact lookup over an injectable live or recorded data source."""
 
+import threading
 from collections import Counter
 from collections.abc import Mapping
 from datetime import date
@@ -49,6 +50,7 @@ from financial_analyst_agent.services.fiscal_periods import (
 from financial_analyst_agent.services.metric_catalog import (
     GROSS_PROFIT_EXCLUDING_CONCEPTS,
     INSTANT_METRICS,
+    METRIC_CONCEPTS,
     TRAILING_YEAR_METRICS,
     metric_unit,
     parse_metric,
@@ -75,6 +77,15 @@ class SECDataSource(Protocol):
 
 # History the submissions list must span before company facts is asked for more.
 _FULL_HISTORY_DAYS = 3 * 365
+# Every concept a metric reads. A company's facts file holds a thousand concepts
+# and parses to about 40 MB for a bank; once its whole-file summaries are taken,
+# only these stay in memory (about 2 MB), so a ten-company ranking fits.
+_READ_CONCEPTS = frozenset(
+    concept for candidates in METRIC_CONCEPTS.values() for concept in candidates
+) | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
+# Facts files parsed at once across the process: a spike of rankings would
+# otherwise hold dozens of whole files in memory together.
+_FACTS_PARSE_SLOTS = threading.BoundedSemaphore(2)
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
 _THIN_HISTORY = 4
 
@@ -257,6 +268,7 @@ class SecFactLookup:
         self._resolved_by_query: dict[str, Company] = {}
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
+        self._facts_filings_by_cik: dict[str, list[Filing]] = {}
         self._fiscal_labels_by_cik: dict[str, dict[str, FiscalLabel]] = {}
         self._predecessor_ciks: dict[str, str | None] = {}
         if client is not None:
@@ -331,13 +343,13 @@ class SecFactLookup:
         if _periodic_history_days(filings) >= _FULL_HISTORY_DAYS:
             return filings
         try:
-            payload = self._cached_company_facts(cik)
+            self._cached_company_facts(cik)
         except ProviderError:
             return filings
         known = {filing.accession_number for filing in filings}
         extra = [
             filing
-            for filing in filings_from_company_facts(payload)
+            for filing in self._facts_filings_by_cik.get(cik, [])
             if filing.accession_number not in known
         ]
         if not extra:
@@ -396,12 +408,17 @@ class SecFactLookup:
                     details={"cik": cik, "status_code": 404},
                 )
             return payload
-        try:
-            payload = self._client.get_company_facts(cik)
-        except ProviderError as exc:
-            if exc.details.get("status_code") == 404:
-                self._company_facts_by_cik[cik] = None
-            raise
+        with _FACTS_PARSE_SLOTS:
+            try:
+                payload = self._client.get_company_facts(cik)
+            except ProviderError as exc:
+                if exc.details.get("status_code") == 404:
+                    self._company_facts_by_cik[cik] = None
+                raise
+            # The summaries read every concept; the rest of the turn reads only the catalog's.
+            self._fiscal_labels_by_cik.setdefault(cik, fiscal_labels(payload))
+            self._facts_filings_by_cik[cik] = filings_from_company_facts(payload)
+            payload = _read_concepts_only(payload)
         self._company_facts_by_cik[cik] = payload
         return payload
 
@@ -689,11 +706,10 @@ class SecFactLookup:
         return sum_of_components(Metric.DEPRECIATION_AMORTIZATION, parts)
 
     def _fiscal_labels(self, cik: str) -> dict[str, FiscalLabel]:
-        labels = self._fiscal_labels_by_cik.get(cik)
-        if labels is None:
-            labels = fiscal_labels(self._cached_company_facts(cik))
-            self._fiscal_labels_by_cik[cik] = labels
-        return labels
+        if cik not in self._fiscal_labels_by_cik:
+            # Reading the facts records their labels before trimming them.
+            self._cached_company_facts(cik)
+        return self._fiscal_labels_by_cik.get(cik, {})
 
     def _period_in_xbrl(self, cik: str, filings: list[Filing], period: date) -> bool:
         labels = self._fiscal_labels(cik)
@@ -732,6 +748,22 @@ class SecFactLookup:
         """Newest-first distinct quarterly report dates for a company."""
         resolved = self._resolve(company)
         return tuple(list_quarterly_report_dates(self._filings(resolved.cik), limit=limit))
+
+
+def _read_concepts_only(payload: dict[str, Any]) -> dict[str, Any]:
+    """Company facts with only the concepts a metric reads; other keys kept as they are."""
+    facts = payload.get("facts")
+    if not isinstance(facts, dict):
+        return payload
+    kept = {
+        taxonomy: {
+            name: body for name, body in concepts.items() if (taxonomy, name) in _READ_CONCEPTS
+        }
+        if isinstance(concepts, dict)
+        else concepts
+        for taxonomy, concepts in facts.items()
+    }
+    return {**payload, "facts": kept}
 
 
 def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:

@@ -36,7 +36,12 @@ COPY --from=build /app/.venv /app/.venv
 # HOST: listen on all interfaces. PORT: the host platform may override it.
 # APP_MODE: the recorded runtime unless the deployment sets APP_MODE=live.
 # The thread store is ./.cache/threads under /app, writable by the app user only.
+# MALLOC_ARENA_MAX: glibc gives each thread its own heap arena, which holds a
+# threaded API's memory well above what it uses. With company facts trimmed
+# (sec_facts.py), two arenas took a burst of eight cold rankings from a 904 MB
+# peak to 390 MB, inside the 512 MB instance.
 ENV PATH=/app/.venv/bin:$PATH \
+    MALLOC_ARENA_MAX=2 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
