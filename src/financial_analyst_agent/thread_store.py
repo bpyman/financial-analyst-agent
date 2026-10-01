@@ -22,7 +22,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import Intent, RuntimeKind, TurnResult
+from financial_analyst_agent.contracts import ClarifyKind, Intent, RuntimeKind, TurnResult
 from financial_analyst_agent.evidence_store import (
     EvidenceStore,
     InMemoryEvidenceStore,
@@ -39,7 +39,7 @@ class ThreadMessage(BaseModel):
 class PendingClarification(BaseModel):
     """Analysis held awaiting the analyst's answer. Nothing has been fetched."""
 
-    kind: Literal["ambiguous_metric", "ambiguous_mode"]
+    kind: ClarifyKind
     candidates: tuple[str, ...]
     patch: SpecPatch
     intent: Intent = Intent.LOOKUP

@@ -140,16 +140,13 @@ def _pending_from_clarify(
 ) -> PendingClarification | None:
     if result.renderer is not RendererKind.CLARIFY or not result.candidates:
         return None
-    kind: Literal["ambiguous_metric", "ambiguous_mode"] = (
-        "ambiguous_mode"
-        if result.candidates == ("extend", "replace")
-        else "ambiguous_metric"
-    )
+    if result.clarify_kind is None:
+        raise ValueError("clarify result is missing clarify_kind")
     metric_role: Literal["add", "remove"] = (
         "remove" if _REMOVE_METRIC_EDIT.match(message.strip()) else "add"
     )
     return PendingClarification(
-        kind=kind,
+        kind=result.clarify_kind,
         candidates=result.candidates,
         patch=patch,
         intent=result.intent,

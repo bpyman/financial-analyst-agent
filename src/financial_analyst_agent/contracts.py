@@ -302,6 +302,10 @@ class DisclosureChange(BaseModel):
     )
 
 
+# What a CLARIFY result asks: pick one metric, or extend vs replace the analysis.
+ClarifyKind = Literal["ambiguous_metric", "ambiguous_mode"]
+
+
 class TurnResult(BaseModel):
     intent: Intent
     tool_traces: list[ToolTrace]
@@ -313,6 +317,7 @@ class TurnResult(BaseModel):
     essay: str | None = None
     citations: list[NewsHit] = Field(default_factory=list)
     candidates: tuple[str, ...] = ()
+    clarify_kind: ClarifyKind | None = None
     disclosure_changes: list[DisclosureChange] = Field(default_factory=list)
     # Questions the window offers next, phrased so the planner reads them.
     suggestions: list[str] = Field(default_factory=list)

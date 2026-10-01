@@ -435,7 +435,6 @@ _BANNER_COPY = {
 }
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
 _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
-_SCOPE_CANDIDATES = ("extend", "replace")
 
 
 @dataclass(frozen=True)
@@ -1254,7 +1253,7 @@ def _friendly_message(message: str | None) -> str | None:
 def _clarify_prompt(result: TurnResult) -> str | None:
     if result.renderer is not RendererKind.CLARIFY or not result.candidates:
         return None
-    if tuple(result.candidates) == _SCOPE_CANDIDATES:
+    if result.clarify_kind == "ambiguous_mode":
         return _SCOPE_CLARIFY_PROMPT
     return _METRIC_CLARIFY_PROMPT
 

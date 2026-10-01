@@ -1009,6 +1009,7 @@ def _clarify_metric(intent: Intent, candidates: tuple[str, ...]) -> TurnResult:
         tool_traces=[],
         renderer=RendererKind.CLARIFY,
         candidates=candidates,
+        clarify_kind="ambiguous_metric",
     )
 
 

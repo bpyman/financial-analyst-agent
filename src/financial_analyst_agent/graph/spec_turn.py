@@ -332,6 +332,7 @@ def bind_metrics_from_message(
             tool_traces=[],
             renderer=RendererKind.CLARIFY,
             candidates=resolved.candidates,
+            clarify_kind="ambiguous_metric",
         )
     phrased = resolved.unique_metrics
     if phrased:
@@ -1281,6 +1282,7 @@ def run_spec_turn_context(
                     tool_traces=[],
                     renderer=RendererKind.CLARIFY,
                     candidates=("extend", "replace"),
+                    clarify_kind="ambiguous_mode",
                 ),
                 current_spec,
                 patch,

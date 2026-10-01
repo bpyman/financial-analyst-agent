@@ -713,6 +713,7 @@ def test_present_clarify_lists_humanized_candidates() -> None:
         intent=Intent.LOOKUP,
         renderer=RendererKind.CLARIFY,
         candidates=("gross_profit", "operating_income", "net_income"),
+        clarify_kind="ambiguous_metric",
         tool_traces=[],
     )
     presented = present_turn(result)
@@ -728,6 +729,7 @@ def test_present_scope_clarify_asks_extend_or_replace() -> None:
         intent=Intent.LOOKUP,
         renderer=RendererKind.CLARIFY,
         candidates=("extend", "replace"),
+        clarify_kind="ambiguous_mode",
         tool_traces=[],
     )
     presented = present_turn(result)

@@ -272,6 +272,7 @@ def test_ambiguous_mode_follow_up_clarifies_instead_of_guessing(tmp_path: Path) 
     assert turn.result.renderer is RendererKind.CLARIFY
     assert turn.result.tool_traces == []
     assert turn.result.candidates == ("extend", "replace")
+    assert turn.result.clarify_kind == "ambiguous_mode"
     state = store.load("t1")
     assert state is not None
     assert state.pending_clarification is not None
