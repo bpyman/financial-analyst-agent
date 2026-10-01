@@ -29,7 +29,7 @@ Image: `images/social-preview.png`.
 
 Captured from the Next.js window on the recorded runtime, default dark theme, by `web/scripts/capture-portfolio.ts` (`cd web && npm run build && npm run capture`). Re-run it whenever the window changes.
 
-1. GIF: [`docs/portfolio/images/demo-walkthrough.gif`](images/demo-walkthrough.gif) — Compare four quarters → `add Apple` → two-company chart → inspect the exact 10-Q source.
+1. GIF: [`docs/portfolio/images/demo-walkthrough.gif`](images/demo-walkthrough.gif) — Eli Lilly, Pfizer and Merck revenue → `show year-over-year` → growth chart → inspect the exact 10-Q source.
 2. Walkthrough: [`docs/portfolio/images/demo-walkthrough.mp4`](images/demo-walkthrough.mp4) — the same walkthrough as H.264.
 3. Screenshot: [`docs/portfolio/images/guided-first-run.png`](images/guided-first-run.png) — the landing page with the guided stories.
 4. Screenshot: [`docs/portfolio/images/compare-four-quarters.png`](images/compare-four-quarters.png).

@@ -58,7 +58,7 @@ export function mp4Args(source: string, target: string, options: ClipOptions): s
 
 /**
  * One 64-colour palette for the whole clip, no dithering (the window is flat colour),
- * only changed rectangles redrawn, looping forever. Keeps a 25s walkthrough near 4 MB.
+ * only changed rectangles redrawn, looping forever. Keeps a 34s walkthrough near 6.5 MB.
  */
 export function gifArgs(source: string, target: string, options: GifOptions): string[] {
   const filter =

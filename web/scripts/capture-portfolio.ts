@@ -8,9 +8,11 @@ import { SOCIAL_SIZE, socialCardHtml } from "./social-card";
 
 /**
  * Re-captures the README's portfolio media from the window (ADR 0006 cutover
- * criteria): compare four quarters, `add Apple`, then inspect the exact 10-Q source;
- * plus the showcase answers (Eli Lilly overtaking Pfizer, what changed in Microsoft's
- * latest 10-Q) and the social preview built from the first of them.
+ * criteria): the stills of compare four quarters, `add Apple`, and the exact 10-Q
+ * source; a walkthrough of Eli Lilly, Pfizer and Merck revenue, then `show
+ * year-over-year`, then the 10-Q source behind a Lilly value; the showcase answers
+ * (Eli Lilly overtaking Pfizer, what changed in Microsoft's latest 10-Q) and the
+ * social preview built from the first of them.
  *
  *   npm run build && npm run capture
  *
@@ -29,6 +31,8 @@ const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastA
 const LILLY_VS_PFIZER = "Compare Eli Lilly and Pfizer revenue over the last eight quarters";
 const MSFT_10Q_CHANGES = "What changed in Microsoft's latest 10-Q?";
 const NVIDIA_OVERVIEW = "How is Nvidia doing?";
+/** The walkthrough's question, before its `show year-over-year` follow-up. */
+const PHARMA_REVENUE = "Compare Eli Lilly, Pfizer and Merck revenue over the last eight quarters";
 
 const FILES = {
   landing: "guided-first-run.png",
@@ -73,7 +77,7 @@ async function captureStills(browser: Browser) {
   await analyst.ask("add Apple");
   await expect(analyst.charts()).toHaveCount(2);
 
-  const inspector = await chooseAppleEvidence(page);
+  const inspector = await chooseEvidence(page, "Apple");
   await frame(page, inspector);
   await shoot(page, FILES.inspect);
 
@@ -181,39 +185,32 @@ async function captureWalkthrough(browser: Browser, ffmpeg: string) {
   await cursor.moveTo(page.getByRole("textbox", { name: "Ask a question" }), 0.2);
   await page.waitForTimeout(1200);
 
-  // One click: the four-quarter compare, drawn as a trend with its table.
-  await cursor.moveTo(analyst.story("Compare four quarters"));
-  await page.waitForTimeout(400);
-  const before = await analyst.turnsUsed();
-  await cursor.click(analyst.story("Compare four quarters"));
-  await analyst.waitForTurn(before + 1);
-  await page.waitForTimeout(1200);
+  // A question in plain words: three companies' revenue as a trend with its table.
+  await ask(page, analyst, cursor, PHARMA_REVENUE, 40);
+  await centre(page, analyst.charts().last());
   await cursor.sweep(analyst.charts().last());
-  await scrollBy(page, 360);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(800);
 
-  // A follow-up patches the analysis instead of starting over.
-  const composer = page.getByRole("textbox", { name: "Ask a question" });
-  await cursor.click(composer);
-  await composer.pressSequentially("add Apple", { delay: 110 });
-  await page.waitForTimeout(500);
-  const asked = await analyst.turnsUsed();
-  await page.keyboard.press("Enter");
-  await composer.blur();
-  await analyst.waitForTurn(asked + 1);
-  await page.waitForTimeout(1200);
+  // A follow-up edits the analysis: the same three companies, as growth rates.
+  await ask(page, analyst, cursor, "show year-over-year", 90);
+  await centre(page, analyst.charts().last());
   await cursor.sweep(analyst.charts().last());
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(800);
 
-  // Inspect the exact 10-Q source behind one Apple value.
+  // The 10-Q source behind Eli Lilly's latest quarter: amount, accession, concept.
   const inspector = lastTurn(page).getByRole("region", { name: "Evidence inspector" });
   await smoothScrollTo(page, inspector);
   await page.waitForTimeout(700);
   await cursor.moveTo(inspector.getByRole("combobox", { name: "Evidence item" }));
   await page.waitForTimeout(300);
-  await chooseAppleEvidence(page);
-  await page.waitForTimeout(1600);
-  await cursor.moveTo(inspector.getByRole("link", { name: /filing/i }));
+  await chooseEvidence(page, "Eli Lilly");
+  await page.waitForTimeout(1000);
+  for (const field of ["Exact amount", "Accession number", "Concept"]) {
+    await cursor.moveTo(inspector.getByText(field, { exact: true }), 0.1);
+    await page.waitForTimeout(900);
+  }
+  // Rest in the margin, so the last frames show every field uncovered.
+  await page.mouse.move(VIEWPORT.width - 100, VIEWPORT.height / 2, { steps: 24 });
   await page.waitForTimeout(2200);
 
   const video = page.video();
@@ -226,23 +223,36 @@ async function captureWalkthrough(browser: Browser, ffmpeg: string) {
   rmSync(videoDir, { recursive: true, force: true });
 }
 
+/** Types `question` into the composer as a visitor would, sends it, and waits for the answer. */
+async function ask(page: Page, analyst: Analyst, cursor: Cursor, question: string, delay: number) {
+  const composer = page.getByRole("textbox", { name: "Ask a question" });
+  await cursor.click(composer);
+  await composer.pressSequentially(question, { delay });
+  await page.waitForTimeout(500);
+  const asked = await analyst.turnsUsed();
+  await page.keyboard.press("Enter");
+  await composer.blur();
+  await analyst.waitForTurn(asked + 1);
+  await page.waitForTimeout(1200);
+}
+
 function lastTurn(page: Page): Locator {
   return page.locator("[data-turn]:not([data-turn=pending])").last();
 }
 
-/** Picks the first standalone 10-Q Apple fact in the last answer's evidence inspector. */
-async function chooseAppleEvidence(page: Page): Promise<Locator> {
+/** Picks `company`'s first standalone 10-Q fact in the last answer's evidence inspector. */
+async function chooseEvidence(page: Page, company: string): Promise<Locator> {
   const inspector = lastTurn(page).getByRole("region", { name: "Evidence inspector" });
   const select = inspector.getByRole("combobox", { name: "Evidence item" });
   const labels = await select.locator("option").allTextContents();
   for (const [index, label] of labels.entries()) {
-    if (!label.includes("Apple")) continue;
+    if (!label.includes(company)) continue;
     await select.selectOption({ index });
     // Wait for the inspector to show this item before reading its selection rule.
     await expect(inspector.getByText(label.split(" · ").at(-1) ?? label, { exact: true })).toBeVisible();
     if ((await inspector.textContent())?.includes("Standalone 10-Q")) return inspector;
   }
-  throw new Error(`no standalone 10-Q Apple fact among: ${labels.join(" | ")}`);
+  throw new Error(`no standalone 10-Q ${company} fact among: ${labels.join(" | ")}`);
 }
 
 async function shoot(page: Page, name: string) {
@@ -283,6 +293,31 @@ async function frame(page: Page, target: Locator, gap?: number) {
 async function bringToTop(page: Page, target: Locator, gap?: number) {
   const distance = await offsetFromTop(target, gap);
   await page.evaluate((by) => window.scrollBy({ top: by, behavior: "instant" }), distance);
+}
+
+/**
+ * Scrolls so `target` sits in the middle of what the sticky header and the composer
+ * leave visible, or just under the header if it is taller than that.
+ */
+async function centre(page: Page, target: Locator) {
+  const distance = await target.evaluate((element) => {
+    let top = 0;
+    let bottom = window.innerHeight;
+    for (const node of document.body.querySelectorAll("*")) {
+      const { position } = getComputedStyle(node);
+      if (position !== "sticky" && position !== "fixed") continue;
+      const box = node.getBoundingClientRect();
+      if (box.height === 0) continue;
+      // The header and status line above, the composer below.
+      if (box.bottom < window.innerHeight / 3) top = Math.max(top, box.bottom);
+      else if (box.top > (window.innerHeight * 2) / 3) bottom = Math.min(bottom, box.top);
+    }
+    const box = element.getBoundingClientRect();
+    const room = bottom - top;
+    const want = box.height < room ? top + (room - box.height) / 2 : top + 16;
+    return box.top - want;
+  });
+  await scrollBy(page, distance);
 }
 
 async function smoothScrollTo(page: Page, target: Locator) {
