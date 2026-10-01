@@ -35,6 +35,7 @@ class _Facts:
             currency="USD",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 3, 31),
+            filed_date=date(2026, 3, 31),
             form="10-Q",
             accession_number="0001652044-26-000048",
             taxonomy="us-gaap",

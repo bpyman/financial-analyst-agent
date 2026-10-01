@@ -65,7 +65,7 @@ from financial_analyst_agent.domain.errors import (
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
-from financial_analyst_agent.domain.models import FinancialFact
+from financial_analyst_agent.domain.models import DerivationPart, FinancialFact
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
@@ -365,15 +365,15 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
 
 def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     """A derived quarter's label and the reported facts it came from (ADR 0007)."""
-    derivation = getattr(fact, "derivation", None)
+    derivation = fact.derivation
     if derivation is None:
         return {}
-    metric = fact.metric.value if hasattr(fact.metric, "value") else str(fact.metric)
+    metric = fact.metric.value
     source = _fact_source_kind(fact)
 
-    def provenance(part: Any, parent: str = metric) -> ComponentProvenance:
-        nested = getattr(part, "derivation", None)
-        own = getattr(part, "metric", None) or parent
+    def provenance(part: DerivationPart, parent: str = metric) -> ComponentProvenance:
+        nested = part.derivation
+        own = part.metric or parent
         return ComponentProvenance(
             metric=own,
             value=part.value,
@@ -396,13 +396,11 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
 
 
 def _table_row_from_fact(fact: FinancialFact) -> TableRow:
-    metric = fact.metric
-    metric_value = metric.value if hasattr(metric, "value") else metric
     return TableRow(
         company_name=fact.company_name,
         ticker=fact.ticker,
         cik=fact.cik,
-        metric=metric_value,
+        metric=fact.metric.value,
         value=fact.value,
         currency=fact.currency,
         start_date=fact.start_date,
@@ -412,18 +410,17 @@ def _table_row_from_fact(fact: FinancialFact) -> TableRow:
         taxonomy=fact.taxonomy,
         concept=fact.concept,
         source_url=fact.source_url,
-        newer_filing_end=getattr(fact, "newer_filing_end", None),
+        newer_filing_end=fact.newer_filing_end,
         **_derivation_fields(fact),
     )
 
 
 def _fact_source_kind(fact: FinancialFact) -> str:
-    source = getattr(fact, "source", None)
-    return str(source) if source else "sec_xbrl"
+    return str(fact.source)
 
 
 def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
-    derivation = getattr(fact, "derivation", None)
+    derivation = fact.derivation
     extra: dict[str, Any] = {}
     if derivation is not None:
         extra["derivation"] = derivation.model_dump(mode="json")
@@ -521,8 +518,7 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
 
 
 def _metric_name(fact: FinancialFact) -> str:
-    metric = fact.metric
-    return metric.value if hasattr(metric, "value") else str(metric)
+    return fact.metric.value
 
 
 def _aligned_period(facts: list[FinancialFact]) -> tuple[date, date] | None:
@@ -668,7 +664,7 @@ def compare_metrics(
                     (
                         pending
                         for fact in fetched
-                        if (pending := getattr(fact, "newer_filing_end", None))
+                        if (pending := fact.newer_filing_end)
                     ),
                     default=None,
                 ),

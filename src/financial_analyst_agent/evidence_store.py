@@ -13,7 +13,6 @@ import threading
 import uuid
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Literal, Protocol
 from urllib.parse import quote, unquote
 
@@ -24,6 +23,7 @@ from financial_analyst_agent.contracts import (
     NewsHit,
     TurnResult,
 )
+from financial_analyst_agent.domain.models import FinancialFact
 
 EvidenceKind = Literal["fact", "news", "result"]
 
@@ -52,46 +52,13 @@ def news_evidence_id(url: str) -> str:
 
 
 def _fact_to_payload(fact: Any) -> dict[str, Any]:
-    if hasattr(fact, "model_dump"):
-        dumped = fact.model_dump(mode="json")
-        return dict(dumped)
-    return {
-        key: getattr(fact, key)
-        for key in (
-            "company_name",
-            "ticker",
-            "cik",
-            "metric",
-            "value",
-            "currency",
-            "start_date",
-            "end_date",
-            "form",
-            "accession_number",
-            "taxonomy",
-            "concept",
-            "source_url",
-            "source",
-        )
-        if hasattr(fact, key)
-    }
+    # Validated on the way in, so a cache hit reads back as the same FinancialFact.
+    return FinancialFact.model_validate(fact, from_attributes=True).model_dump(mode="json")
 
 
-def _payload_to_fact(payload: dict[str, Any]) -> Any:
-    data = dict(payload)
-    for key in ("start_date", "end_date", "filed_date"):
-        raw = data.get(key)
-        if isinstance(raw, str):
-            data[key] = date.fromisoformat(raw)
-    if "value" in data and data["value"] is not None:
-        from decimal import Decimal
-
-        data["value"] = Decimal(str(data["value"]))
-    if isinstance(data.get("derivation"), dict):
-        from financial_analyst_agent.domain.models import Derivation
-
-        data["derivation"] = Derivation.model_validate(data["derivation"])
-    return SimpleNamespace(**data)
+def _payload_to_fact(payload: dict[str, Any]) -> FinancialFact:
+    # A cache hit is the same FinancialFact the facts port returned (ADR 0003).
+    return FinancialFact.model_validate(payload)
 
 
 class EvidenceStore(Protocol):
@@ -255,7 +222,9 @@ class EvidenceCachedFacts:
                 if evidence_id in self._prior_ids:
                     self.reused_ids.add(evidence_id)
                 return self._store.get_fact(evidence_id)
-        fact = self._inner.get_financials(company, metric, report_date=report_date)
+        fetched = self._inner.get_financials(company, metric, report_date=report_date)
+        # The port returns a FinancialFact (ADR 0003), fresh or cached alike.
+        fact = FinancialFact.model_validate(fetched, from_attributes=True)
         with self._lock:
             if not self._store.has(evidence_id):
                 self._store.put_fact(company, metric, fact, report_date=report_date)

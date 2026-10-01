@@ -241,6 +241,7 @@ def _component_fact(
         currency="USD",
         start_date=start_date,
         end_date=end_date,
+        filed_date=end_date,
         form=FORM,
         accession_number=accession_number,
         taxonomy=TAXONOMY,

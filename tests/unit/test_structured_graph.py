@@ -10,6 +10,8 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from financial_analyst_agent.domain.enums import DataSourceKind, Metric
+from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
@@ -17,31 +19,32 @@ from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 class _LookupFacts:
     def get_financials(
         self, company: str, metric: str, *, report_date: date | None = None
-    ) -> SimpleNamespace:
+    ) -> FinancialFact:
         assert company == "Google"
         assert metric == "net_income"
-        return SimpleNamespace(
+        return FinancialFact(
             company_name="Alphabet Inc.",
             ticker="GOOG",
             cik="0001652044",
-            metric="net_income",
+            metric=Metric.NET_INCOME,
             value=Decimal("62578000000"),
             currency="USD",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 3, 31),
+            filed_date=date(2026, 3, 31),
             form="10-Q",
             accession_number="0001652044-26-000048",
             taxonomy="us-gaap",
             concept="NetIncomeLoss",
             source_url="https://www.sec.gov/example.htm",
-            source="sec_xbrl",
+            source=DataSourceKind.SEC_XBRL,
         )
 
 
 class _CompareFacts:
     def get_financials(
         self, company: str, metric: str, *, report_date: date | None = None
-    ) -> SimpleNamespace:
+    ) -> FinancialFact:
         values = {
             ("Microsoft", "operating_income"): Decimal("100"),
             ("Microsoft", "revenue"): Decimal("400"),
@@ -49,21 +52,22 @@ class _CompareFacts:
             ("Google", "revenue"): Decimal("200"),
         }
         value = values[(company, metric)]
-        return SimpleNamespace(
+        return FinancialFact(
             company_name=company,
             ticker="MSFT" if company == "Microsoft" else "GOOG",
             cik="0000789019" if company == "Microsoft" else "0001652044",
-            metric=metric,
+            metric=Metric(metric),
             value=value,
             currency="USD",
             start_date=date(2026, 1, 1),
             end_date=date(2026, 3, 31),
+            filed_date=date(2026, 3, 31),
             form="10-Q",
             accession_number="acc",
             taxonomy="us-gaap",
             concept=metric,
             source_url="https://www.sec.gov/example.htm",
-            source="sec_xbrl",
+            source=DataSourceKind.SEC_XBRL,
         )
 
 

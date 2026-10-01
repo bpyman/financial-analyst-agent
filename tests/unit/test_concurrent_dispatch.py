@@ -76,6 +76,7 @@ class _SlowFacts:
                 if report_date.month > 2
                 else date(report_date.year - 1, 10, 1),
                 end_date=report_date,
+                filed_date=report_date,
                 form="10-Q",
                 accession_number=f"acc-{report_date.isoformat()}",
                 taxonomy="us-gaap",
