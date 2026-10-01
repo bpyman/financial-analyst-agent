@@ -343,6 +343,14 @@ _NOT_FOLLOWED_BY: dict[str, re.Pattern[str]] = {
 }
 
 
+def metric_phrases() -> tuple[str, ...]:
+    """Every phrase the catalog reads as a metric, unique or ambiguous, longest first."""
+    phrases = {phrase for phrase, _ in _UNIQUE_PHRASES} | {
+        phrase for phrase, _ in _AMBIGUOUS_PHRASES
+    }
+    return tuple(sorted(phrases, key=len, reverse=True))
+
+
 def _phrase_spans(query: str, phrase: str) -> list[tuple[int, int]]:
     return [
         (match.start(), match.end()) for match in re.finditer(rf"\b{re.escape(phrase)}\b", query)

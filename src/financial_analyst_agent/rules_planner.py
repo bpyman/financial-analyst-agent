@@ -28,7 +28,7 @@ from financial_analyst_agent.issuer_index import (
     expand_groups,
     normalize,
 )
-from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+from financial_analyst_agent.services.metric_catalog import metric_phrases, resolve_metric_phrase
 from financial_analyst_agent.turn import ALLOWED_METRICS, Intent
 from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
@@ -40,44 +40,6 @@ FIXTURE_UNIVERSE_SNAPSHOT_PATH = (
     Path(__file__).parent / "data" / "fixture_universe_snapshot.json"
 )
 
-_REPORTED_PHRASES: tuple[tuple[str, str], ...] = (
-    ("cost of revenue", "cost_of_revenue"),
-    ("operating expenses", "operating_expenses"),
-    ("operating income", "operating_income"),
-    ("gross profit", "gross_profit"),
-    ("research and development", "research_and_development"),
-    ("selling general and administrative", "selling_general_and_administrative"),
-    ("interest expense", "interest_expense"),
-    ("income tax", "income_tax_expense"),
-    ("pretax income", "pretax_income"),
-    ("pre-tax income", "pretax_income"),
-    ("r&d spend", "research_and_development"),
-    ("net income", "net_income"),
-    ("revenue", "revenue"),
-    ("income", "net_income"),
-)
-_FORMULA_PHRASES: tuple[tuple[str, str], ...] = (
-    ("operating margin", "operating_margin"),
-    ("gross margin", "gross_margin"),
-    ("net margin", "net_margin"),
-    ("r&d to sales", "rd_to_sales"),
-    ("sg&a ratio", "sga_ratio"),
-    ("effective tax rate", "effective_tax_rate"),
-    ("interest coverage", "interest_coverage"),
-    ("market cap", "market_cap"),
-)
-# Metrics added after the phrase tables above; the catalog reads their phrases.
-_ADDED_METRICS: tuple[str, ...] = (
-    "depreciation_amortization",
-    "dividends_paid",
-    "dividends_per_share",
-    "cash",
-    "shareholders_equity",
-    "ebitda",
-    "return_on_equity",
-    "pe_ratio",
-    "price",
-)
 _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("microsoft", "Microsoft"),
     ("msft", "Microsoft"),
@@ -169,11 +131,9 @@ def _companies_from_query(normalized: str) -> list[str]:
 
 
 def _issuer_from_lookup_query(normalized: str) -> str | None:
-    metric_phrases = "|".join(
-        re.escape(phrase) for phrase, _metric in (*_REPORTED_PHRASES, *_FORMULA_PHRASES)
-    )
+    phrases = "|".join(re.escape(phrase) for phrase in metric_phrases())
     match = re.search(
-        rf"\b(?:what (?:was|is|were)|whats)\s+(.+?)(?:'s)?\s+(?:{metric_phrases})\b",
+        rf"\b(?:what (?:was|is|were)|whats)\s+(.+?)(?:'s)?\s+(?:{phrases})\b",
         normalized,
     )
     if match is None:
@@ -208,26 +168,11 @@ def _industry_from_query(normalized: str) -> str:
 
 
 def _metric_from_query(normalized: str) -> str:
+    # The catalog owns metric phrases (ADR 0004, 0005): "income" and "profit" are
+    # ambiguous there, so the spec clarifies instead of the planner guessing.
     resolved = resolve_metric_phrase(normalized)
-    if resolved.kind == "unique" and resolved.metric in (
-        "eps_diluted",
-        "eps_basic",
-        "operating_cash_flow",
-        "capital_expenditure",
-        "free_cash_flow",
-        *_ADDED_METRICS,
-    ):
-        # Catalog phrases the older tables below predate ("EPS", "free cash flow").
-        return resolved.metric
-    if resolved.kind == "unique" and set(resolved.metrics) & set(_ADDED_METRICS):
-        # "Apple cash and EBITDA": the spec binds every metric named.
-        return resolved.metrics[0]
-    for phrase, metric in _REPORTED_PHRASES:
-        if phrase in normalized:
-            return metric
-    for phrase, metric in _FORMULA_PHRASES:
-        if phrase in normalized:
-            return metric
+    if resolved.unique_metrics:
+        return resolved.unique_metrics[0]
     if re.search(r"\brevs?\b", normalized):
         return "revenue"
     if "cost of revenue" not in normalized and re.search(r"\bcosts?\b", normalized):
@@ -350,11 +295,17 @@ _RANK_COUNT_WORD = re.compile(
     re.IGNORECASE,
 )
 _FOLLOW_UP_MAX_WORDS = 7
-_METRIC_WORDS = frozenset(
-    word
-    for phrase, _metric in (*_REPORTED_PHRASES, *_FORMULA_PHRASES)
-    for word in phrase.split()
-) | frozenset({"eps", "earnings", "share", "cash", "flow", "free", "capex", "capital", "spending"})
+_METRIC_WORDS = frozenset(word for phrase in metric_phrases() for word in phrase.split()) | {
+    "eps",
+    "earnings",
+    "share",
+    "cash",
+    "flow",
+    "free",
+    "capex",
+    "capital",
+    "spending",
+}
 
 
 @lru_cache(maxsize=4)

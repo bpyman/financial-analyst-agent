@@ -139,3 +139,17 @@ def test_news_off_does_not_claim_a_search_found_nothing() -> None:
     assert result.message is not None
     assert NO_NEWS_MESSAGE not in result.message
     assert "News search is off on this server" in result.message
+
+
+@pytest.mark.parametrize("question", ["What was Apple's income?", "What was Apple's profit?"])
+def test_an_ambiguous_metric_word_clarifies_on_the_rules_planner(
+    runtime: Runtime, question: str
+) -> None:
+    # ADR 0004: "income" and "profit" are ambiguous; the planner no longer maps
+    # "income" to net income with a phrase table of its own.
+    from financial_analyst_agent.rules_planner import _metric_from_query
+
+    assert _metric_from_query(question.casefold()) == "unknown"
+    result = run_turn(question, runtime)
+    assert result.renderer is RendererKind.CLARIFY
+    assert "net_income" in result.candidates
