@@ -559,6 +559,9 @@ class ChartSpec:
     period_labels: tuple[str, ...] = ()
     series: tuple[str, ...] = ()
     amounts: tuple[dict[str, str], ...] = ()
+    # The caption once the analyst re-sorts the table: bars then follow the
+    # table, so a caption saying how the server ordered them would be wrong.
+    resorted_caption: str = ""
 
 
 @dataclass(frozen=True)
@@ -737,6 +740,13 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
                 mixed_periods=mixed_periods,
                 ordered_by=result.ordered_by,
             ),
+            resorted_caption=_bar_caption(
+                ranked=rank_cross_section,
+                metric=metric,
+                mixed_periods=mixed_periods,
+                ordered_by=result.ordered_by,
+                resorted=True,
+            ),
             horizontal=rank_cross_section,
             value_kind=chart_value_kind(metric),
             metric_label=format_field_name(metric),
@@ -886,8 +896,16 @@ def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
 
 
 def _bar_caption(
-    *, ranked: bool, metric: str, mixed_periods: bool, ordered_by: str | None = None
+    *,
+    ranked: bool,
+    metric: str,
+    mixed_periods: bool,
+    ordered_by: str | None = None,
+    resorted: bool = False,
 ) -> str:
+    if ranked and metric != "market_cap" and resorted:
+        caption = f"Bar length is latest-quarter {format_field_name(metric)}."
+        return f"{caption} Periods differ by issuer." if mixed_periods else caption
     if ranked and metric != "market_cap":
         order = (
             f"Ordered by {format_field_name(ordered_by).lower()} among the largest by market cap"

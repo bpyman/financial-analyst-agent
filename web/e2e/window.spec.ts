@@ -332,3 +332,16 @@ test("the status line explains how the runtimes differ", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(guide).toBeHidden();
 });
+
+test("a re-sorted ranking stops calling its bars ordered by market cap", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Rank then inspect filings");
+  const chart = analyst.charts().last();
+  await expect(chart).toContainText("Ordered by market cap");
+
+  await analyst.tables().last().getByRole("columnheader", { name: /Research and development/ }).getByRole("button").click();
+
+  await expect(chart).toContainText("Ordered as the table: Research and development, largest first.");
+  await expect(chart).not.toContainText("Ordered by market cap");
+});

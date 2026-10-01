@@ -34,8 +34,9 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
 | Quarterly figures | revenue, net income, operating and gross margin, EPS, R&D, cash flow, cash, equity, dividends |
 | Derived figures | EBITDA, return on equity, P/E, share price ([ADR 0008](docs/adr/0008-balance-sheet-trailing-year-and-market-figures.md)) |
 | Comparisons and trends | `Compare Eli Lilly and Pfizer revenue over the last eight quarters` |
+| Growth and overviews | `Compare Microsoft and Apple revenue growth` charts the growth rates; `How is Nvidia doing?` answers in a sentence with recent quarters |
 | Rankings | `Top 10 technology companies by net margin`, over a dated snapshot of about 5,200 US operating companies |
-| Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors |
+| Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors with the changed words marked |
 | Context | recent news and a short explanation, kept apart from the numbers |
 
 <table>
@@ -44,8 +45,16 @@ Ask about a company and get the number and the filing behind it. Onfile is an ev
     <td width="50%"><img src="docs/portfolio/images/inspect-exact-source.png" alt="Evidence inspector with the exact amount, CIK, accession, concept, selection rule, and Open filing"></td>
   </tr>
   <tr>
-    <td><sub>What changed in the latest 10-Q: a deterministic paragraph diff, not a model summary.</sub></td>
+    <td><sub>What changed in the latest 10-Q: a deterministic paragraph diff, with the words that changed marked.</sub></td>
     <td><sub>Every value opens to its exact source: amount, CIK, accession, concept, and filing.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/portfolio/images/overview-trends.png" alt="How is Nvidia doing: a one-sentence answer, revenue and net-margin trends over five quarters, and the table"></td>
+    <td width="50%"><img src="docs/portfolio/images/sorted-ranking.png" alt="The top 10 tech companies re-sorted by R&amp;D in the table, with the chart's bars following the new order"></td>
+  </tr>
+  <tr>
+    <td><sub>A company overview answers in a sentence, then shows its recent quarters.</sub></td>
+    <td><sub>Sort any table column; the chart's bars follow the table.</sub></td>
   </tr>
 </table>
 

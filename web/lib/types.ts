@@ -46,6 +46,8 @@ interface ChartBase {
   value_kind: ValueKind;
   caption: string;
   horizontal: boolean;
+  /** The caption once the table is re-sorted, when the server's says how it ordered the bars. */
+  resorted_caption?: string;
 }
 
 export interface BarRecord {

@@ -1640,3 +1640,11 @@ def test_one_quarter_each_draws_a_growth_bar_per_company() -> None:
     assert chart.caption == (
         "YoY growth in revenue in each company's latest quarter; the table lists the amounts."
     )
+
+
+def test_a_ranking_chart_drops_its_order_from_the_caption_once_resorted() -> None:
+    chart = _answer("What are the top 10 tech companies and R&D spend for each?").chart
+
+    assert chart.caption.startswith("Ordered by market cap;")
+    assert chart.resorted_caption.startswith("Bar length is latest-quarter Research")
+    assert "Ordered" not in chart.resorted_caption

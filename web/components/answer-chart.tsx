@@ -56,6 +56,8 @@ export function AnswerChart({
 }) {
   const single =
     !compact && chart.kind === "line" && chart.series.length === 1 ? chart.series[0] : null;
+  // Bars that follow the table's sort are no longer in the server's order.
+  const caption = chart.kind === "bar" && order && chart.resorted_caption ? chart.resorted_caption : chart.caption;
   return (
     <figure
       aria-label={`${chart.title}: ${chart.metric_label}`}
@@ -87,9 +89,9 @@ export function AnswerChart({
           <ComparisonChart key={order?.join("|") ?? "server"} chart={chart} order={order} />
         )}
       </div>
-      {chart.caption && (
+      {caption && (
         <figcaption className="border-t border-border bg-surface-2/40 px-4 py-2.5 text-xs leading-relaxed text-muted sm:px-5">
-          {chart.caption}
+          {caption}
         </figcaption>
       )}
     </figure>
