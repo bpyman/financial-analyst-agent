@@ -4,16 +4,12 @@ import re
 from datetime import date
 from typing import Any
 
-from financial_analyst_agent.domain.enums import FormType
+from financial_analyst_agent.domain.enums import PERIODIC_FORMS
 from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.domain.models import Filing
 from financial_analyst_agent.providers.sec.identity import require_matching_payload_cik
 
 _ACCESSION_PATTERN = re.compile(r"^\d{10}-\d{2}-\d{6}$")
-# 10-Ks are kept for the fiscal fourth quarter they cover (ADR 0007).
-_PERIODIC_FORMS = frozenset(
-    {FormType.FORM_10_Q, FormType.FORM_10_Q_A, FormType.FORM_10_K, FormType.FORM_10_K_A}
-)
 _DOMESTIC_PERIODIC_FORMS = frozenset({"10-K", "10-KT", "10-Q", "10-QT"})
 _FOREIGN_ANNUAL_FORMS = frozenset({"20-F", "40-F"})
 # Only foreign private issuers furnish 6-Ks or register on a 20-F/40-F.
@@ -93,15 +89,21 @@ def files_quarterly_reports(payload: dict[str, Any]) -> bool:
     return domestic
 
 
-def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
-    """Parse 10-Q and 10-K filings from a SEC submissions response."""
-    filings_section = payload.get("filings")
+def require_recent_filings(payload: object) -> dict[str, Any]:
+    """Return the ``filings.recent`` object of a submissions payload."""
+    filings_section = payload.get("filings") if isinstance(payload, dict) else None
     if not isinstance(filings_section, dict):
         raise ProviderError("submissions payload missing filings object")
 
     recent = filings_section.get("recent")
     if not isinstance(recent, dict):
         raise ProviderError("submissions payload missing filings.recent object")
+    return recent
+
+
+def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
+    """Parse 10-Q and 10-K filings from a SEC submissions response."""
+    recent = require_recent_filings(payload)
 
     forms = recent.get("form")
     if not isinstance(forms, list):
@@ -118,7 +120,7 @@ def parse_submissions(payload: dict[str, Any]) -> list[Filing]:
         # Every provider-supplied field is type-checked before use, so malformed data
         # raises the sanitized provider boundary error instead of a built-in TypeError.
         form = _require_provider_string(raw_form, "form", index)
-        if form not in _PERIODIC_FORMS:
+        if form not in PERIODIC_FORMS:
             continue
         accession_number = _require_provider_string(
             accession_numbers[index], "accessionNumber", index

@@ -3,10 +3,15 @@
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from financial_analyst_agent.domain.enums import DataSourceKind, FormType, Metric
+from financial_analyst_agent.domain.enums import (
+    ANNUAL_FORMS,
+    QUARTERLY_FORMS,
+    DataSourceKind,
+    FormType,
+    Metric,
+)
 from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
-    FilingNotFoundError,
     PerShareNotDerivableError,
     UnsupportedQuarterlyFactError,
 )
@@ -23,7 +28,6 @@ from financial_analyst_agent.services.metric_catalog import (
     get_concept_candidates,
 )
 
-_QUARTERLY_FORMS = frozenset({FormType.FORM_10_Q, FormType.FORM_10_Q_A})
 _MIN_QUARTER_DAYS = 70
 _MAX_QUARTER_DAYS = 110
 
@@ -33,7 +37,7 @@ def _duration_days(start: date, end: date) -> int:
 
 
 def _is_quarterly_form(form: str, selected_form: str) -> bool:
-    if form not in _QUARTERLY_FORMS:
+    if form not in QUARTERLY_FORMS:
         return False
     return form == selected_form
 
@@ -208,10 +212,7 @@ def select_quarterly_fact_with_filing_fallback(
     fallback. A missing named report_date is a typed filing failure, not the
     nearest available period.
     """
-    try:
-        candidate_filings = get_candidate_filings(filings, report_date=report_date)
-    except FilingNotFoundError:
-        raise
+    candidate_filings = get_candidate_filings(filings, report_date=report_date)
 
     last_unsupported: UnsupportedQuarterlyFactError | None = None
     for filing in candidate_filings:
@@ -226,8 +227,6 @@ def select_quarterly_fact_with_filing_fallback(
                 cik,
                 source_url_for_filing(filing),
             )
-        except AmbiguousFactError:
-            raise
         except UnsupportedQuarterlyFactError as exc:
             last_unsupported = exc
 
@@ -290,7 +289,7 @@ def _one_quarter_shorter(concept_facts: list[FactRecord], longer: FactRecord) ->
         fact
         for fact in concept_facts
         if fact.start_date == longer.start_date
-        and fact.form in _QUARTERLY_FORMS
+        and fact.form in QUARTERLY_FORMS
         and fact.unit.upper() == longer.unit.upper()
         and low <= (longer.end_date - fact.end_date).days <= high
         and (_days_between(fact) or 0) >= _MIN_QUARTER_DAYS
@@ -441,7 +440,6 @@ def derive_quarter(
 # --- Balance-sheet amounts and trailing years (ADR 0008) ----------------------------
 
 _ONE_YEAR_TOLERANCE_DAYS = 7
-_ANNUAL_FORMS = frozenset({FormType.FORM_10_K, FormType.FORM_10_K_A})
 TRAILING_YEAR_LABEL = (
     "Last fiscal year (10-K) plus this year to date minus the same months "
     "a year earlier (10-Q)"
@@ -529,7 +527,7 @@ def derive_trailing_year(
     fiscal year plus this year to date minus the same months a year earlier;
     the 10-Q reports both year-to-date amounts and the 10-K the fiscal year.
     """
-    annual_form = filing.form in _ANNUAL_FORMS
+    annual_form = filing.form in ANNUAL_FORMS
     for taxonomy, concept in get_concept_candidates(metric):
         concept_facts = [
             fact
@@ -575,7 +573,7 @@ def derive_trailing_year(
         earlier = [
             fact
             for fact in concept_facts
-            if fact.form in _QUARTERLY_FORMS
+            if fact.form in QUARTERLY_FORMS
             and _near(fact.end_date, earlier_end)
             and abs((_days_between(fact) or 0) - longest) <= _ONE_YEAR_TOLERANCE_DAYS
         ]
@@ -583,7 +581,7 @@ def derive_trailing_year(
         last_year = [
             fact
             for fact in concept_facts
-            if fact.form in _ANNUAL_FORMS
+            if fact.form in ANNUAL_FORMS
             and _within(_days_between(fact), _ANNUAL_DAYS)
             and _near(fact.end_date, current.start_date - timedelta(days=1))
         ]

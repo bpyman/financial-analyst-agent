@@ -53,6 +53,8 @@ from financial_analyst_agent.contracts import (
     TableRow,
     ToolTrace,
     TurnResult,
+    refuse_unknown_metric,
+    snapshot_banner,
 )
 from financial_analyst_agent.domain.errors import (
     AmbiguousCompanyError,
@@ -419,57 +421,49 @@ def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
     }
 
 
-def _refuse_unknown_metric(intent: Intent, metric: str) -> TurnResult:
-    allowed = ", ".join(ALLOWED_METRICS)
-    return TurnResult(
-        intent=intent,
-        tool_traces=[],
-        renderer=RendererKind.REFUSE,
-        message=f"Unknown metric {metric!r}. Allowed: {allowed}",
-    )
-
-
-def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
+def _ranked_table(
+    plan: Any, runtime: Runtime, intent: Intent
+) -> tuple[Any, ToolTrace] | TurnResult:
+    """Rank the plan's industry, or a refusal when the industry is unknown."""
     if runtime.ranking is None:
-        raise RuntimeError("rank intent requires a ranking adapter")
+        raise RuntimeError(f"{intent.value} intent requires a ranking adapter")
     industry = plan.industry or ""
     try:
         table = runtime.ranking.rank_companies(industry, plan.limit)
     except UnknownIndustryError as exc:
         return TurnResult(
-            intent=Intent.RANK,
+            intent=intent,
             tool_traces=[],
             renderer=RendererKind.REFUSE,
             message=str(exc),
         )
+    trace = ToolTrace(
+        tool="rank_companies",
+        args={"industry": industry, "limit": plan.limit},
+        provenance={
+            "snapshot_as_of": table.as_of,
+            "source": table.source,
+            "sector": table.sector,
+        },
+    )
+    return table, trace
+
+
+def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
+    ranked = _ranked_table(plan, runtime, Intent.RANK)
+    if isinstance(ranked, TurnResult):
+        return ranked
+    table, trace = ranked
     rows = [
-        TableRow(
-            company_name=company.name,
-            ticker=company.ticker,
-            cik=company.cik,
-            metric="market_cap",
-            rank=index,
-            value=company.market_cap,
-            currency="USD",
-        )
+        _snapshot_row(company, "market_cap", rank=index)
         for index, company in enumerate(table.companies, start=1)
     ]
     return TurnResult(
         intent=Intent.RANK,
-        tool_traces=[
-            ToolTrace(
-                tool="rank_companies",
-                args={"industry": industry, "limit": plan.limit},
-                provenance={
-                    "snapshot_as_of": table.as_of,
-                    "source": table.source,
-                    "sector": table.sector,
-                },
-            )
-        ],
+        tool_traces=[trace],
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {table.as_of}"],
+        banners=[snapshot_banner(table.as_of)],
     )
 
 
@@ -788,30 +782,12 @@ def _with_rank_identity(row: TableRow, company: Any, index: int) -> TableRow:
 
 
 def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    if runtime.ranking is None:
-        raise RuntimeError("rank_and_lookup intent requires a ranking adapter")
+    ranked = _ranked_table(plan, runtime, Intent.RANK_AND_LOOKUP)
+    if isinstance(ranked, TurnResult):
+        return ranked
+    table, trace = ranked
     metric = plan.metric
-    industry = plan.industry or ""
-    try:
-        table = runtime.ranking.rank_companies(industry, plan.limit)
-    except UnknownIndustryError as exc:
-        return TurnResult(
-            intent=Intent.RANK_AND_LOOKUP,
-            tool_traces=[],
-            renderer=RendererKind.REFUSE,
-            message=str(exc),
-        )
-    traces = [
-        ToolTrace(
-            tool="rank_companies",
-            args={"industry": industry, "limit": plan.limit},
-            provenance={
-                "snapshot_as_of": table.as_of,
-                "source": table.source,
-                "sector": table.sector,
-            },
-        )
-    ]
+    traces = [trace]
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
         if metric in SNAPSHOT_METRICS:
@@ -842,7 +818,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         tool_traces=traces,
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {table.as_of}"],
+        banners=[snapshot_banner(table.as_of)],
     )
 
 
@@ -957,7 +933,7 @@ def _snapshot_metrics_turn(
         ],
         renderer=RendererKind.TABLE,
         table_rows=rows,
-        banners=[f"Universe snapshot as of {as_of}"],
+        banners=[snapshot_banner(as_of)],
     )
 
 
@@ -1069,7 +1045,7 @@ def execute_turn(query: str, runtime: Runtime) -> TurnResult:
     if resolved.kind == "unknown":
         fallback = plan.metric if isinstance(plan.metric, str) else "unknown"
         term = fallback if fallback not in ALLOWED_METRICS else "unknown"
-        return _refuse_unknown_metric(plan.intent, term)
+        return refuse_unknown_metric(plan.intent, term)
     if resolved.kind == "unique" and len(resolved.metrics) > 1:
         # One-shot execute_turn still clarifies; multi-metric composition runs
         # through run_spec_turn on the conversation seam (ticket 09).
@@ -1079,19 +1055,11 @@ def execute_turn(query: str, runtime: Runtime) -> TurnResult:
     else:
         metric = str(plan.metric or "")
     plan = _plan_with_metric(plan, metric)
-    if plan.intent is Intent.COMPARE:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.RANK_AND_LOOKUP:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    if plan.intent is Intent.LOOKUP:
-        if metric not in ALLOWED_METRICS:
-            return _refuse_unknown_metric(plan.intent, metric)
-        return _run_workflow(plan, runtime, query=query)
-    raise ValueError(f"unsupported intent: {plan.intent!r}")
+    if plan.intent not in (Intent.COMPARE, Intent.RANK_AND_LOOKUP, Intent.LOOKUP):
+        raise ValueError(f"unsupported intent: {plan.intent!r}")
+    if metric not in ALLOWED_METRICS:
+        return refuse_unknown_metric(plan.intent, metric)
+    return _run_workflow(plan, runtime, query=query)
 
 
 def run_turn(query: str, runtime: Runtime) -> TurnResult:

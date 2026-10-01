@@ -124,6 +124,20 @@ MARKET_FORMULAS: tuple[str, ...] = ("pe_ratio",)
 INSTANT_METRICS: tuple[str, ...] = ("cash", "shareholders_equity")
 PER_SHARE_METRICS: tuple[str, ...] = ("eps_diluted", "eps_basic", "dividends_per_share", "price")
 
+# A ranked list's length when the question names none.
+DEFAULT_RANK_LIMIT = 10
+SNAPSHOT_BANNER_PREFIX = "Universe snapshot as of "
+
+
+def snapshot_banner(as_of: str) -> str:
+    """Raw banner naming the ranking snapshot; presentation reformats the timestamp."""
+    return f"{SNAPSHOT_BANNER_PREFIX}{as_of}"
+
+
+def unknown_metric_message(term: str) -> str:
+    # presentation._UNKNOWN_METRIC parses this wording back out; keep the two in step.
+    return f"Unknown metric {term!r}. Allowed: {', '.join(ALLOWED_METRICS)}"
+
 PERIOD_MISMATCH = "period_mismatch"
 MISSING_FACT = "missing_fact"
 # The source (EDGAR) failed for this cell; the fact may well exist.
@@ -296,3 +310,12 @@ class TurnResult(BaseModel):
     ordered_by: str | None = None
     # A few quarters of revenue and net margin beside one company's overview.
     trend_rows: list[TableRow] = Field(default_factory=list)
+
+
+def refuse_unknown_metric(intent: Intent, term: str) -> TurnResult:
+    return TurnResult(
+        intent=intent,
+        tool_traces=[],
+        renderer=RendererKind.REFUSE,
+        message=unknown_metric_message(term),
+    )

@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from financial_analyst_agent.filing_change import requested_sections
+from financial_analyst_agent.filing_change import ACCESSION_PATTERN, requested_sections
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import (
     OVERVIEW_PLAN,
@@ -139,7 +139,6 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("pfe", "PFE"),
     ("danaher", "DHR"),
 )
-_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
 RECORDED_FILING_OLDER = "0000950170-25-061046"
 RECORDED_FILING_NEWER = "0001193125-26-191507"
 
@@ -276,12 +275,12 @@ def _is_filing_change_query(normalized: str) -> bool:
     )
     return asks_change is not None and (
         any(token in normalized for token in _FILING_WORDS)
-        or _ACCESSION_PATTERN.search(normalized) is not None
+        or ACCESSION_PATTERN.search(normalized) is not None
     )
 
 
 def _filing_change_plan(query: str, normalized: str) -> SimpleNamespace:
-    accessions = _ACCESSION_PATTERN.findall(query)
+    accessions = ACCESSION_PATTERN.findall(query)
     older = accessions[0] if len(accessions) >= 2 else ""
     newer = accessions[1] if len(accessions) >= 2 else ""
     # "What changed in Apple's 10-Q?" names no section: it asks about the filing.

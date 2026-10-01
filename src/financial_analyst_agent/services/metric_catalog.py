@@ -145,6 +145,11 @@ class MetricPhraseResolution:
     metrics: tuple[str, ...] = ()
     candidates: tuple[str, ...] = ()
 
+    @property
+    def unique_metrics(self) -> tuple[str, ...]:
+        """Metrics named by a unique resolution; empty for any other kind."""
+        return self.metrics if self.kind == "unique" else ()
+
 
 def get_concept_candidates(metric: Metric) -> list[tuple[str, str]]:
     """Return ordered (taxonomy, concept) candidates for a validated metric."""

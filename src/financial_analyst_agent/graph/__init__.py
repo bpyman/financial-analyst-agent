@@ -10,7 +10,7 @@ separate subgraphs behind small typed interfaces; the parent dispatches to them.
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
@@ -19,17 +19,6 @@ from financial_analyst_agent.graph.explain import run_qualitative_explanation
 from financial_analyst_agent.graph.exploratory import run_exploratory_research
 from financial_analyst_agent.graph.news import run_current_events
 
-ClosedWorkflow = Literal[
-    "lookup",
-    "compare",
-    "rank",
-    "rank_and_lookup",
-    "explain",
-    "news_and_explain",
-    "exploratory_research",
-    "filing_change",
-]
-
 
 class WorkflowRunState(TypedDict):
     plan: Any
@@ -37,25 +26,6 @@ class WorkflowRunState(TypedDict):
     query: str
     grounding_json: str
     result: TurnResult | None
-
-
-_CLOSED_ROUTE: dict[Intent, ClosedWorkflow] = {
-    Intent.LOOKUP: "lookup",
-    Intent.COMPARE: "compare",
-    Intent.RANK: "rank",
-    Intent.RANK_AND_LOOKUP: "rank_and_lookup",
-    Intent.EXPLAIN: "explain",
-    Intent.NEWS_AND_EXPLAIN: "news_and_explain",
-    Intent.EXPLORATORY_RESEARCH: "exploratory_research",
-    Intent.FILING_CHANGE: "filing_change",
-}
-
-
-def _route_closed(state: WorkflowRunState) -> ClosedWorkflow:
-    try:
-        return _CLOSED_ROUTE[state["plan"].intent]
-    except KeyError:
-        raise ValueError(f"unsupported closed intent: {state['plan'].intent!r}") from None
 
 
 def _lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
@@ -108,38 +78,34 @@ def _filing_change_node(state: WorkflowRunState) -> dict[str, TurnResult]:
     return {"result": run_filing_change(action, state["runtime"], query=state.get("query", ""))}
 
 
+# Each closed intent is one node named after its value.
+_NODES: dict[Intent, Any] = {
+    Intent.LOOKUP: _lookup_node,
+    Intent.COMPARE: _compare_node,
+    Intent.RANK: _rank_node,
+    Intent.RANK_AND_LOOKUP: _rank_and_lookup_node,
+    Intent.EXPLAIN: _explain_node,
+    Intent.NEWS_AND_EXPLAIN: _news_and_explain_node,
+    Intent.EXPLORATORY_RESEARCH: _exploratory_research_node,
+    Intent.FILING_CHANGE: _filing_change_node,
+}
+
+
+def _route_closed(state: WorkflowRunState) -> str:
+    intent = state["plan"].intent
+    if intent not in _NODES:
+        raise ValueError(f"unsupported closed intent: {intent!r}")
+    return str(intent)
+
+
 def _build_workflow_graph() -> Any:
     builder = StateGraph(WorkflowRunState)
-    builder.add_node("lookup", _lookup_node)
-    builder.add_node("compare", _compare_node)
-    builder.add_node("rank", _rank_node)
-    builder.add_node("rank_and_lookup", _rank_and_lookup_node)
-    builder.add_node("explain", _explain_node)
-    builder.add_node("news_and_explain", _news_and_explain_node)
-    builder.add_node("exploratory_research", _exploratory_research_node)
-    builder.add_node("filing_change", _filing_change_node)
+    for intent, node in _NODES.items():
+        builder.add_node(intent.value, node)
+        builder.add_edge(intent.value, END)
     builder.add_conditional_edges(
-        START,
-        _route_closed,
-        {
-            "lookup": "lookup",
-            "compare": "compare",
-            "rank": "rank",
-            "rank_and_lookup": "rank_and_lookup",
-            "explain": "explain",
-            "news_and_explain": "news_and_explain",
-            "exploratory_research": "exploratory_research",
-            "filing_change": "filing_change",
-        },
+        START, _route_closed, {intent.value: intent.value for intent in _NODES}
     )
-    builder.add_edge("lookup", END)
-    builder.add_edge("compare", END)
-    builder.add_edge("rank", END)
-    builder.add_edge("rank_and_lookup", END)
-    builder.add_edge("explain", END)
-    builder.add_edge("news_and_explain", END)
-    builder.add_edge("exploratory_research", END)
-    builder.add_edge("filing_change", END)
     return builder.compile()
 
 
@@ -171,8 +137,3 @@ def run_workflow_turn(
     if result is None:
         raise RuntimeError("workflow graph produced no result")
     return result
-
-
-def run_structured_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    """Execute one structured workflow via the parent graph; return TurnResult."""
-    return run_workflow_turn(plan, runtime)

@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from pydantic import BaseModel, Field
 
@@ -121,7 +121,55 @@ class EvidenceStore(Protocol):
     def known_ids(self) -> frozenset[str]: ...
 
 
-class InMemoryEvidenceStore:
+class _RecordStore:
+    """Typed evidence methods over a subclass's raw ``_write`` / ``_read``."""
+
+    def _write(self, record: EvidenceRecord) -> None:
+        raise NotImplementedError
+
+    def _read(self, evidence_id: str) -> EvidenceRecord:
+        """Return the record or raise ``KeyError``."""
+        raise NotImplementedError
+
+    def _put(self, evidence_id: str, kind: EvidenceKind, payload: dict[str, Any]) -> str:
+        self._write(EvidenceRecord(evidence_id=evidence_id, kind=kind, payload=payload))
+        return evidence_id
+
+    def _payload(self, evidence_id: str, kind: EvidenceKind) -> dict[str, Any]:
+        record = self._read(evidence_id)
+        if record.kind != kind:
+            raise KeyError(evidence_id)
+        return record.payload
+
+    def put_fact(
+        self,
+        company: str,
+        metric: str,
+        fact: Any,
+        *,
+        report_date: date | None = None,
+    ) -> str:
+        evidence_id = fact_evidence_id(company, metric, report_date)
+        return self._put(evidence_id, "fact", _fact_to_payload(fact))
+
+    def get_fact(self, evidence_id: str) -> Any:
+        return _payload_to_fact(self._payload(evidence_id, "fact"))
+
+    def put_news(self, hit: NewsHit) -> str:
+        return self._put(news_evidence_id(hit.url), "news", hit.model_dump(mode="json"))
+
+    def get_news(self, evidence_id: str) -> NewsHit:
+        return NewsHit.model_validate(self._payload(evidence_id, "news"))
+
+    def put_result(self, result: TurnResult) -> str:
+        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
+        return self._put(evidence_id, "result", result.model_dump(mode="json"))
+
+    def get_result(self, evidence_id: str) -> TurnResult:
+        return TurnResult.model_validate(self._payload(evidence_id, "result"))
+
+
+class InMemoryEvidenceStore(_RecordStore):
     """Process-local evidence for ephemeral conversation threads."""
 
     def __init__(self) -> None:
@@ -133,60 +181,14 @@ class InMemoryEvidenceStore:
     def known_ids(self) -> frozenset[str]:
         return frozenset(self._records)
 
-    def put_fact(
-        self,
-        company: str,
-        metric: str,
-        fact: Any,
-        *,
-        report_date: date | None = None,
-    ) -> str:
-        evidence_id = fact_evidence_id(company, metric, report_date)
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="fact",
-            payload=_fact_to_payload(fact),
-        )
-        return evidence_id
+    def _write(self, record: EvidenceRecord) -> None:
+        self._records[record.evidence_id] = record
 
-    def get_fact(self, evidence_id: str) -> Any:
-        record = self._records[evidence_id]
-        if record.kind != "fact":
-            raise KeyError(evidence_id)
-        return _payload_to_fact(record.payload)
-
-    def put_news(self, hit: NewsHit) -> str:
-        evidence_id = news_evidence_id(hit.url)
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="news",
-            payload=hit.model_dump(mode="json"),
-        )
-        return evidence_id
-
-    def get_news(self, evidence_id: str) -> NewsHit:
-        record = self._records[evidence_id]
-        if record.kind != "news":
-            raise KeyError(evidence_id)
-        return NewsHit.model_validate(record.payload)
-
-    def put_result(self, result: TurnResult) -> str:
-        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
-        self._records[evidence_id] = EvidenceRecord(
-            evidence_id=evidence_id,
-            kind="result",
-            payload=result.model_dump(mode="json"),
-        )
-        return evidence_id
-
-    def get_result(self, evidence_id: str) -> TurnResult:
-        record = self._records[evidence_id]
-        if record.kind != "result":
-            raise KeyError(evidence_id)
-        return TurnResult.model_validate(record.payload)
+    def _read(self, evidence_id: str) -> EvidenceRecord:
+        return self._records[evidence_id]
 
 
-class LocalEvidenceStore:
+class LocalEvidenceStore(_RecordStore):
     """JSON files under a directory, one record per evidence id."""
 
     def __init__(self, root: Path) -> None:
@@ -200,16 +202,8 @@ class LocalEvidenceStore:
         return self._path(evidence_id).is_file()
 
     def known_ids(self) -> frozenset[str]:
-        ids: set[str] = set()
-        for path in self._root.glob("*.json"):
-            try:
-                record = EvidenceRecord.model_validate_json(
-                    path.read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError):
-                continue
-            ids.add(record.evidence_id)
-        return frozenset(ids)
+        # The filename is the quoted id (temp files end in .tmp), so listing reads no files.
+        return frozenset(unquote(path.stem) for path in self._root.glob("*.json"))
 
     def _write(self, record: EvidenceRecord) -> None:
         """Write the whole record or nothing: a reader never sees a torn file."""
@@ -227,64 +221,6 @@ class LocalEvidenceStore:
         if not path.is_file():
             raise KeyError(evidence_id)
         return EvidenceRecord.model_validate_json(path.read_text(encoding="utf-8"))
-
-    def put_fact(
-        self,
-        company: str,
-        metric: str,
-        fact: Any,
-        *,
-        report_date: date | None = None,
-    ) -> str:
-        evidence_id = fact_evidence_id(company, metric, report_date)
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="fact",
-                payload=_fact_to_payload(fact),
-            )
-        )
-        return evidence_id
-
-    def get_fact(self, evidence_id: str) -> Any:
-        record = self._read(evidence_id)
-        if record.kind != "fact":
-            raise KeyError(evidence_id)
-        return _payload_to_fact(record.payload)
-
-    def put_news(self, hit: NewsHit) -> str:
-        evidence_id = news_evidence_id(hit.url)
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="news",
-                payload=hit.model_dump(mode="json"),
-            )
-        )
-        return evidence_id
-
-    def get_news(self, evidence_id: str) -> NewsHit:
-        record = self._read(evidence_id)
-        if record.kind != "news":
-            raise KeyError(evidence_id)
-        return NewsHit.model_validate(record.payload)
-
-    def put_result(self, result: TurnResult) -> str:
-        evidence_id = f"result-{uuid.uuid4().hex[:16]}"
-        self._write(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                kind="result",
-                payload=result.model_dump(mode="json"),
-            )
-        )
-        return evidence_id
-
-    def get_result(self, evidence_id: str) -> TurnResult:
-        record = self._read(evidence_id)
-        if record.kind != "result":
-            raise KeyError(evidence_id)
-        return TurnResult.model_validate(record.payload)
 
 
 def _accepts_report_date(func: Any) -> bool:
@@ -379,13 +315,15 @@ class EvidenceCachedFacts:
         return str(named(cik, fallback)) if callable(named) else fallback
 
 
-def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:
-    if not reused:
+def with_banner(result: TurnResult, banner: str) -> TurnResult:
+    """Append ``banner`` once."""
+    if banner in result.banners:
         return result
-    banners = list(result.banners)
-    if THREAD_EVIDENCE_BANNER not in banners:
-        banners.append(THREAD_EVIDENCE_BANNER)
-    return result.model_copy(update={"banners": banners})
+    return result.model_copy(update={"banners": [*result.banners, banner]})
+
+
+def label_reused_evidence(result: TurnResult, *, reused: bool) -> TurnResult:
+    return with_banner(result, THREAD_EVIDENCE_BANNER) if reused else result
 
 
 def retain_result_evidence(store: EvidenceStore, result: TurnResult) -> str:

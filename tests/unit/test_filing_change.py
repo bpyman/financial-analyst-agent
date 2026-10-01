@@ -569,14 +569,14 @@ def test_run_filing_change_ignores_planner_accessions_absent_from_query() -> Non
 def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     import financial_analyst_agent.filing_change as filing_change
 
-    original = filing_change.extract_section
+    original = filing_change._section_from_text
 
-    def missing_risk(html: str, section: str) -> str:
+    def missing_risk(text: str, section: str) -> str:
         if section == "risk_factors":
             return ""
-        return original(html, section)
+        return original(text, section)
 
-    monkeypatch.setattr(filing_change, "extract_section", missing_risk)
+    monkeypatch.setattr(filing_change, "_section_from_text", missing_risk)
     result = filing_change.run_filing_change(
         SimpleNamespace(
             company="Microsoft",
@@ -605,12 +605,12 @@ def _unchanged_facts(monkeypatch: pytest.MonkeyPatch) -> _Facts:
 def _without(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
     import financial_analyst_agent.filing_change as filing_change
 
-    original = filing_change.extract_section
+    original = filing_change._section_from_text
 
-    def extract(html: str, section: str) -> str:
-        return "" if section in missing else original(html, section)
+    def extract(text: str, section: str) -> str:
+        return "" if section in missing else original(text, section)
 
-    monkeypatch.setattr(filing_change, "extract_section", extract)
+    monkeypatch.setattr(filing_change, "_section_from_text", extract)
 
 
 def _both_sections(facts: _Facts) -> Any:

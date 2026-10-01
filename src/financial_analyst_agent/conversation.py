@@ -31,6 +31,7 @@ from financial_analyst_agent.evidence_store import (
     grounding_json_from_result,
     label_reused_evidence,
     retain_result_evidence,
+    with_banner,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.guide import (
@@ -133,13 +134,7 @@ def _match_clarification_answer(
         resolved = resolve_metric_phrase(message)
         if resolved.kind != "unique":
             return _candidate_named_by_word(pending.candidates, message)
-        metrics: tuple[str, ...]
-        if resolved.metrics:
-            metrics = resolved.metrics
-        elif resolved.metric is not None:
-            metrics = (resolved.metric,)
-        else:
-            return None
+        metrics = resolved.unique_metrics
         if len(metrics) != 1:
             return None
         chosen = metrics[0]
@@ -210,22 +205,13 @@ def _resume_pending(
                 patch = patch.model_copy(update={"mode": "replace", "remove_companies": ()})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
-        return run_spec_turn_context(
-            TurnContext(
-                message=message,
-                current_spec=current_spec,
-                proposal=patch,
-                on_progress=on_progress,
-                max_workers=max_workers,
-            ),
-            runtime,
-        )
-    # ambiguous_mode
-    mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
-    patch = pending.patch.model_copy(update={"mode": mode})
+    else:  # ambiguous_mode: the held question is what the chosen scope answers.
+        mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
+        patch = pending.patch.model_copy(update={"mode": mode})
+        message = pending.question or message
     return run_spec_turn_context(
         TurnContext(
-            message=pending.question or message,
+            message=message,
             current_spec=current_spec,
             proposal=patch,
             on_progress=on_progress,
@@ -398,9 +384,7 @@ def run_conversation_turn(
                     getattr(runtime.completer, "outside_index", None),
                 )
                 if left_out:
-                    result = result.model_copy(
-                        update={"banners": [*result.banners, not_recorded_banner(left_out)]}
-                    )
+                    result = with_banner(result, not_recorded_banner(left_out))
                 pending_from_result = _pending_from_clarify(
                     result, proposed_patch, message
                 )
@@ -422,10 +406,7 @@ def run_conversation_turn(
                 persist_spec = prior.analysis_spec
 
         if discarded_clarification:
-            banners = list(result.banners)
-            if DISCARDED_CLARIFICATION_BANNER not in banners:
-                banners.append(DISCARDED_CLARIFICATION_BANNER)
-            result = result.model_copy(update={"banners": banners})
+            result = with_banner(result, DISCARDED_CLARIFICATION_BANNER)
 
         result = label_reused_evidence(result, reused=bool(cached_facts.reused_ids))
         if not result.suggestions and guide is None:
@@ -459,16 +440,7 @@ def run_conversation_turn(
             updated_at=datetime.now(UTC),
         )
         store.save(state)
-        prior_results = store.resolve_results(
-            ThreadState(
-                thread_id=thread_id,
-                messages=prior.messages,
-                evidence_refs=prior.evidence_refs,
-                last_result_ref=prior.last_result_ref,
-                analysis_spec=prior.analysis_spec,
-                pending_clarification=prior.pending_clarification,
-            )
-        )
+        prior_results = store.resolve_results(prior)
         results = (*prior_results, result)
         finish(
             turn=state.turn_count,

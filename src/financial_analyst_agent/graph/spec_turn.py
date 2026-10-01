@@ -15,6 +15,7 @@ from typing import Any
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
+    DEFAULT_RANK_LIMIT,
     MISSING_FACT,
     QUALITATIVE_INTENTS,
     SOURCE_UNAVAILABLE,
@@ -26,6 +27,8 @@ from financial_analyst_agent.contracts import (
     TableRow,
     ToolTrace,
     TurnResult,
+    refuse_unknown_metric,
+    unknown_metric_message,
 )
 from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
@@ -330,12 +333,7 @@ def bind_metrics_from_message(
             renderer=RendererKind.CLARIFY,
             candidates=resolved.candidates,
         )
-    phrased: tuple[str, ...] = ()
-    if resolved.kind == "unique":
-        if resolved.metrics:
-            phrased = resolved.metrics
-        elif resolved.metric is not None:
-            phrased = (resolved.metric,)
+    phrased = resolved.unique_metrics
     if phrased:
         if patch.mode == "replace":
             return patch.model_copy(update={"add_metrics": phrased}), None
@@ -361,24 +359,11 @@ def bind_metrics_from_message(
         candidate = patch.add_metrics[0]
         if candidate not in ALLOWED_METRICS:
             term = candidate
-    allowed = ", ".join(ALLOWED_METRICS)
-    return patch, TurnResult(
-        intent=effective_intent,
-        tool_traces=[],
-        renderer=RendererKind.REFUSE,
-        message=f"Unknown metric {term!r}. Allowed: {allowed}",
-    )
+    return patch, refuse_unknown_metric(effective_intent, term)
 
 
 def _unique_metrics_from_phrase(text: str) -> tuple[str, ...]:
-    resolved = resolve_metric_phrase(text)
-    if resolved.kind != "unique":
-        return ()
-    if resolved.metrics:
-        return resolved.metrics
-    if resolved.metric is not None:
-        return (resolved.metric,)
-    return ()
+    return resolve_metric_phrase(text).unique_metrics
 
 
 def _companies_named_in(companies: tuple[str, ...], text: str) -> tuple[str, ...]:
@@ -872,53 +857,18 @@ def execute_compiled_task(
 ) -> TurnResult:
     from financial_analyst_agent.graph import run_workflow_turn
 
-    if task.kind == "lookup":
-        plan = SimpleNamespace(
-            intent=Intent.LOOKUP,
-            company=task.company_queries[0],
-            companies=[],
-            metric=task.metric,
-            industry=None,
-            limit=10,
-            topic=None,
-            report_date=task.report_date,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "compare":
-        plan = SimpleNamespace(
-            intent=Intent.COMPARE,
-            company=None,
-            companies=list(task.company_queries),
-            metric=task.metric,
-            industry=None,
-            limit=10,
-            topic=None,
-            report_date=task.report_date,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "rank":
-        plan = SimpleNamespace(
-            intent=Intent.RANK,
-            company=None,
-            companies=[],
-            metric=None,
-            industry=task.industry,
-            limit=task.limit or 10,
-            topic=None,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    if task.kind == "rank_and_lookup":
-        plan = SimpleNamespace(
-            intent=Intent.RANK_AND_LOOKUP,
-            company=None,
-            companies=[],
-            metric=task.metric,
-            industry=task.industry,
-            limit=task.limit or 10,
-            topic=None,
-        )
-        return run_workflow_turn(plan, runtime, query=query)
-    raise ValueError(f"unsupported compiled task: {task.kind!r}")
+    # CompiledTask kinds are Intent values; rank tasks carry no metric or period.
+    plan = SimpleNamespace(
+        intent=Intent(task.kind),
+        company=task.company_queries[0] if task.kind == "lookup" else None,
+        companies=list(task.company_queries) if task.kind == "compare" else [],
+        metric=task.metric,
+        industry=task.industry,
+        limit=task.limit or DEFAULT_RANK_LIMIT,
+        topic=None,
+        report_date=task.report_date,
+    )
+    return run_workflow_turn(plan, runtime, query=query)
 
 
 RANKED_LATEST_QUARTER_BANNER = (
@@ -936,6 +886,19 @@ CALENDARS_DIFFER_BANNER = (
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
 
 
+def _missing_cell(
+    company: str, metric: str, report_date: date | None, reason: str = MISSING_FACT
+) -> TableRow:
+    return TableRow(
+        company_name=company,
+        ticker="",
+        cik="",
+        metric=metric,
+        end_date=report_date,
+        reason=reason,
+    )
+
+
 def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
     """Isolate an unexpected cell failure as a typed partial or refuse.
 
@@ -944,37 +907,15 @@ def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
     never reaches the visitor.
     """
     reason = SOURCE_UNAVAILABLE if isinstance(exc, ProviderError) else MISSING_FACT
-    if task.kind == "lookup" and task.company_queries and task.metric:
+    if task.kind in ("lookup", "compare") and task.company_queries and task.metric:
+        companies = task.company_queries[:1] if task.kind == "lookup" else task.company_queries
         return TurnResult(
-            intent=Intent.LOOKUP,
+            intent=Intent(task.kind),
             tool_traces=[],
             renderer=RendererKind.TABLE,
             table_rows=[
-                TableRow(
-                    company_name=task.company_queries[0],
-                    ticker="",
-                    cik="",
-                    metric=task.metric,
-                    end_date=task.report_date,
-                    reason=reason,
-                )
-            ],
-        )
-    if task.kind == "compare" and task.company_queries and task.metric:
-        return TurnResult(
-            intent=Intent.COMPARE,
-            tool_traces=[],
-            renderer=RendererKind.TABLE,
-            table_rows=[
-                TableRow(
-                    company_name=company,
-                    ticker="",
-                    cik="",
-                    metric=task.metric,
-                    end_date=task.report_date,
-                    reason=reason,
-                )
-                for company in task.company_queries
+                _missing_cell(company, task.metric, task.report_date, reason)
+                for company in companies
             ],
         )
     return TurnResult(
@@ -1053,19 +994,10 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
         return list(result.table_rows)
     if task.kind != "lookup" or not task.company_queries or not task.metric:
         return list(result.table_rows)
-    return [
-        TableRow(
-            company_name=task.company_queries[0],
-            ticker="",
-            cik="",
-            metric=task.metric,
-            end_date=task.report_date,
-            reason=MISSING_FACT,
-        )
-    ]
+    return [_missing_cell(task.company_queries[0], task.metric, task.report_date)]
 
 
-def _provenance_from_level(row: TableRow) -> ComponentProvenance:
+def _subtracted_level_provenance(row: TableRow) -> ComponentProvenance:
     """The level a change row subtracts, with the facts it came from.
 
     A margin level keeps its formula inputs and a derived quarter its source
@@ -1103,7 +1035,7 @@ def _change_row(current: TableRow, prior: TableRow, *, comparison: str) -> Table
         currency=current.currency,
         start_date=prior.start_date,
         end_date=current.end_date,
-        components=[_provenance_from_level(prior), _provenance_from_level(current)],
+        components=[_subtracted_level_provenance(prior), _subtracted_level_provenance(current)],
         comparison=comparison,  # type: ignore[arg-type]
     )
 
@@ -1369,9 +1301,7 @@ def run_spec_turn_context(
             _rejection_result(
                 SpecRejection(
                     code="invalid_metric",
-                    message=(
-                        f"Unknown metric {bad!r}. Allowed: {', '.join(ALLOWED_METRICS)}"
-                    ),
+                    message=unknown_metric_message(bad),
                 )
             ),
             None,
@@ -1759,25 +1689,3 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         if 0 < shown < wanted:
             notes.append(f"The filings here hold only {shown} of the {wanted} quarters asked for.")
     return notes
-
-
-def run_spec_turn(
-    message: str,
-    runtime: Runtime,
-    *,
-    current_spec: AnalysisSpec | None,
-    proposal: Any,
-    on_progress: ProgressCallback | None = None,
-    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
-) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
-    """Compatibility wrapper: bundle args into TurnContext and delegate."""
-    return run_spec_turn_context(
-        TurnContext(
-            message=message,
-            current_spec=current_spec,
-            proposal=proposal,
-            on_progress=on_progress,
-            max_workers=max_workers,
-        ),
-        runtime,
-    )

@@ -2,6 +2,7 @@
 
 from fastmcp import FastMCP
 
+from financial_analyst_agent.contracts import unknown_metric_message
 from financial_analyst_agent.domain.errors import UnknownIndustryError
 from financial_analyst_agent.graph.analysis_spec import MAX_RANKED_COMPANIES
 from financial_analyst_agent.runtime import build_runtime
@@ -44,8 +45,7 @@ def get_financials(company: str, metric: str) -> dict[str, object]:
 def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
     """Compare a reported metric or allowed formula across issuers."""
     if metric not in ALLOWED_METRICS:
-        allowed = ", ".join(ALLOWED_METRICS)
-        raise ValueError(f"Unknown metric {metric!r}. Allowed: {allowed}")
+        raise ValueError(unknown_metric_message(metric))
     if not issuers or len(issuers) > MAX_ISSUERS:
         raise ValueError(f"issuers must name 1 to {MAX_ISSUERS} companies")
     for issuer in issuers:
