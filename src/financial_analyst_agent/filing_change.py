@@ -783,7 +783,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             message=str(exc),
         )
     cik = resolved.cik
-    if not sec_identity_is_operating(cik, resolved.name, resolved.tickers):
+    if not sec_identity_is_operating(cik, resolved.name):
         # The same membership rule lookups and rankings apply (ADR 0001, 0002).
         return TurnResult(
             intent=Intent.FILING_CHANGE,

@@ -17,6 +17,7 @@ from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     DEFAULT_RANK_LIMIT,
     MISSING_FACT,
+    NOT_OPERATING_COMPANY,
     QUALITATIVE_INTENTS,
     SOURCE_UNAVAILABLE,
     STRUCTURED_INTENTS,
@@ -32,6 +33,7 @@ from financial_analyst_agent.contracts import (
 )
 from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
+    IneligibleIssuerError,
     ProviderError,
     SessionQuotaError,
     UnknownIndustryError,
@@ -930,7 +932,14 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
         return list(result.table_rows)
     if task.kind != "lookup" or not task.company_queries or not task.metric:
         return list(result.table_rows)
-    return [_missing_cell(task.company_queries[0], task.metric, task.report_date)]
+    # A fund in a window of quarters says so, as it does in a comparison (ADR 0002).
+    codes = {
+        trace.provenance.get("error", {}).get("code")
+        for trace in result.tool_traces
+        if isinstance(trace.provenance.get("error"), dict)
+    }
+    reason = NOT_OPERATING_COMPANY if IneligibleIssuerError.code in codes else MISSING_FACT
+    return [_missing_cell(task.company_queries[0], task.metric, task.report_date, reason)]
 
 
 def _subtracted_level_provenance(row: TableRow) -> ComponentProvenance:

@@ -7,9 +7,9 @@ without loading those workflows.
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
@@ -333,6 +333,15 @@ class TurnResult(BaseModel):
     ordered_by: str | None = None
     # A few quarters of revenue and net margin beside one company's overview.
     trend_rows: list[TableRow] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _infer_clarify_kind(self) -> Self:
+        """A clarification saved before ``clarify_kind`` existed says its kind by its candidates."""
+        if self.renderer is RendererKind.CLARIFY and self.clarify_kind is None and self.candidates:
+            self.clarify_kind = (
+                "ambiguous_mode" if self.candidates == ("extend", "replace") else "ambiguous_metric"
+            )
+        return self
 
 
 def refuse_unknown_metric(intent: Intent, term: str) -> TurnResult:

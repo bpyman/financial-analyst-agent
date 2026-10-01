@@ -450,6 +450,11 @@ class DemoCompleter:
         if len(companies) < 2 and (_RANK_WORDS.search(normalized) or which is not None):
             industry = which.group("group") if which is not None else _ranked_industry(normalized)
             limit = _limit(normalized)
+            phrase = resolve_metric_phrase(normalized)
+            if metric not in ALLOWED_METRICS and phrase.kind == "ambiguous" and phrase.candidates:
+                # "highest income": still a ranked lookup ordered by the metric; the
+                # spec asks which metric before any provider call.
+                metric = phrase.candidates[0]
             if metric in ALLOWED_METRICS:
                 ordered = metric != "market_cap" and (
                     which is not None or bool(_ORDER_WORDING.search(normalized))

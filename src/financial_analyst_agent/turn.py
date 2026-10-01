@@ -79,15 +79,25 @@ _MONTH = (
     r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?"
     r"|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
 )
-# Dates are when, not how much: "March 31, 2026" or "2026-03-31" in an essay is not a
-# figure, and a grounding date's "31" or "03" must not unlock "31%" elsewhere.
+# What may follow a date and makes it an amount instead: "March 12%", "2050 million".
+_AMOUNT_AFTER = (
+    r"(?!\s*(?:%|percent\b|[KMBTkmbt]\b|thousand\b|million\b|billion\b|trillion\b"
+    r"|dollars?\b|shares\b)|[.,]?\d)"
+)
+# Dates are when, not how much: "March 31, 2026", "2026-03-31" or "in fiscal 2026" in
+# an essay is not a figure, and a grounding date's "31" or "03" must not unlock "31%"
+# elsewhere. A bare four-digit number is a year only beside a word that dates it;
+# "hire 2000 engineers" stays a figure.
 _DATE_TEXT = re.compile(
     rf"\b\d{{4}}-\d{{2}}-\d{{2}}(?:T[\d:.+-]+Z?)?\b"
-    rf"|\b{_MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+(?:19|20)\d{{2}})?\b"
-    rf"|\b{_MONTH}\.?\s+(?:19|20)\d{{2}}\b"
-    r"|(?<![$\d.,])\b(?:FY\s?)?(?:19|20)\d{2}\b(?!\s*%|[\d.,])",
+    rf"|\b{_MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+(?:19|20)\d{{2}})?\b{_AMOUNT_AFTER}"
+    rf"|\b{_MONTH}\.?\s+(?:19|20)\d{{2}}\b{_AMOUNT_AFTER}"
+    r"|\b(?:in|during|since|by|until|through|from|fiscal(?:\s+year)?|calendar(?:\s+year)?"
+    r"|FY|Q[1-4]|H[12]|early|mid|late|end\s+of)\s*'?(?:19|20)\d{2}\b"
+    rf"{_AMOUNT_AFTER}",
     re.IGNORECASE,
 )
+_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 
 __all__ = [
     "compare_metrics",
@@ -147,7 +157,12 @@ def _figures(text: str) -> list[str]:
 
 def _numeral_lock_extras(essay: str, tool_json: str, *, hit_count: int = 0) -> list[str]:
     scanned = _strip_valid_citation_markers(essay, hit_count)
-    allowed = set(_figures(_grounding_text(tool_json)))
+    grounding = _grounding_text(tool_json)
+    # A source's dates do not unlock their day or month, but their years may be quoted.
+    years = {
+        year for date in _DATE_TEXT.findall(grounding) for year in _YEAR.findall(date)
+    }
+    allowed = set(_figures(grounding)) | years
     return list(dict.fromkeys(token for token in _figures(scanned) if token not in allowed))
 
 

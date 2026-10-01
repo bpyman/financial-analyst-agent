@@ -769,6 +769,16 @@ def test_numeral_lock_treats_dates_as_dates_not_figures() -> None:
     assert _numeral_lock_extras("In fiscal 2026 revenue rose.", grounding) == []
     # A list comma and the next word are not part of a number.
     assert _numeral_lock_extras("It grew 29, then 30.", grounding) == ["29", "30"]
+    # A year is a date only beside a word that dates it; an amount stays an amount.
+    assert _numeral_lock_extras("Revenue was 2050 million dollars.", grounding) == [
+        "2050 million"
+    ]
+    assert _numeral_lock_extras("USD 1999 million on buybacks", grounding) == ["1999 million"]
+    assert _numeral_lock_extras("They plan to hire 2000 engineers.", grounding) == ["2000"]
+    assert _numeral_lock_extras("Sales rose in March 12% year over year.", grounding) == ["12"]
+    # The source's years may be quoted: its dates are 2026.
+    assert _numeral_lock_extras("2026 was a strong year.", grounding) == []
+    assert _numeral_lock_extras("In 2025, revenue rose.", grounding) == []
 
 
 def test_table_cells_are_separated_in_filing_text() -> None:

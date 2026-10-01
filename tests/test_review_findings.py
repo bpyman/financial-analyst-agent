@@ -63,21 +63,23 @@ def test_a_cached_fact_reads_back_as_the_same_financial_fact() -> None:
 
 
 @pytest.mark.parametrize(
-    ("title", "tickers", "operating"),
+    ("cik", "title", "operating"),
     [
-        ("MICROSOFT CORP", ["MSFT"], True),
-        ("CITIGROUP INC", ["C", "C-PN"], True),
-        ("ACME CAPITAL TRUST II 7.875% NOTES", ["ACMA"], False),
-        ("ACME FINANCE CO", ["ACM-PA", "ACM-PB"], False),
+        ("0009999999", "MICROSOFT CORP", True),
+        ("0009999999", "ACME CAPITAL TRUST II 7.875% NOTES", False),
+        # Only preferreds listed, but an operating utility that files 10-Qs.
+        ("0000092103", "SOUTHERN CALIFORNIA EDISON Co", True),
+        # Ares Capital, a BDC on the ineligible CIK list.
+        ("0001287750", "ARES CAPITAL CORP", False),
     ],
 )
 def test_a_name_outside_the_freeze_is_judged_by_its_sec_identity(
-    title: str, tickers: list[str], operating: bool
+    cik: str, title: str, operating: bool
 ) -> None:
-    # ADR 0002: ticker suffix and listing-title tokens, not only the CIK list.
+    # ADR 0002: listing-title tokens and the CIK list; lookups ignore ticker suffixes.
     from financial_analyst_agent.universe import sec_identity_is_operating
 
-    assert sec_identity_is_operating("0009999999", title, tickers) is operating
+    assert sec_identity_is_operating(cik, title) is operating
 
 
 def test_an_ineligible_issuer_is_a_typed_miss_in_a_comparison() -> None:
@@ -153,3 +155,105 @@ def test_an_ambiguous_metric_word_clarifies_on_the_rules_planner(
     result = run_turn(question, runtime)
     assert result.renderer is RendererKind.CLARIFY
     assert "net_income" in result.candidates
+
+
+def test_a_snapshot_member_listed_ineligible_later_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # AGENTS.md: a fund's CIK goes on the list; lookup refuses it before the
+    # snapshot is rebuilt, as ranking does.
+    from financial_analyst_agent import sec_facts
+    from financial_analyst_agent.domain.errors import IneligibleIssuerError
+    from financial_analyst_agent.runtime import recorded_runtime
+
+    monkeypatch.setattr(sec_facts, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000320193"}))
+
+    with pytest.raises(IneligibleIssuerError):
+        recorded_runtime().facts.get_financials("AAPL", "revenue")
+
+
+@pytest.mark.parametrize(
+    ("candidates", "prompt"),
+    [
+        (["extend", "replace"], "Add to the current analysis"),
+        (["net_income", "operating_income"], "metric"),
+    ],
+)
+def test_a_clarification_saved_before_its_kind_was_recorded_asks_the_same(
+    candidates: list[str], prompt: str
+) -> None:
+    # A thread saved by an earlier release has no clarify_kind on its result.
+    from financial_analyst_agent.contracts import TurnResult
+    from financial_analyst_agent.presentation import present_turn
+
+    saved = {
+        "intent": "lookup",
+        "tool_traces": [],
+        "renderer": "clarify",
+        "candidates": candidates,
+    }
+    shown = present_turn(TurnResult.model_validate(saved))
+
+    assert shown.clarify_prompt is not None
+    assert prompt.casefold() in shown.clarify_prompt.casefold()
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [("ineligible_issuer", "not_operating_company"), ("company_not_found", "missing_fact")],
+)
+def test_a_refused_cell_in_a_window_keeps_its_reason(code: str, reason: str) -> None:
+    # ADR 0002: a fund in a table of quarters is a typed miss, not a missing filing.
+    from datetime import date
+
+    from financial_analyst_agent.contracts import (
+        Intent,
+        RendererKind,
+        ToolTrace,
+        TurnResult,
+    )
+    from financial_analyst_agent.graph.analysis_spec import CompiledTask
+    from financial_analyst_agent.graph.spec_turn import _lookup_refuse_as_partial
+
+    task = CompiledTask(
+        kind="lookup", company_queries=("ARCC",), metric="revenue", report_date=date(2026, 6, 30)
+    )
+    refused = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.REFUSE,
+        tool_traces=[
+            ToolTrace(
+                tool="get_financials",
+                args={"company": "ARCC", "metric": "revenue"},
+                provenance={"error": {"code": code, "message": "..."}},
+            )
+        ],
+        message="...",
+    )
+
+    [cell] = _lookup_refuse_as_partial(task, refused)
+
+    assert cell.reason == reason
+
+
+def test_a_ranking_by_an_ambiguous_metric_keeps_its_order_after_the_answer() -> None:
+    # "highest income" asks which income, then ranks by the one chosen.
+    import uuid
+
+    from financial_analyst_agent.conversation import run_conversation_turn, start_thread
+    from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
+    from financial_analyst_agent.thread_store import EphemeralThreadStore
+
+    store = EphemeralThreadStore()
+    thread = uuid.uuid4().hex
+    start_thread(thread, RuntimeKind.RECORDED, store=store)
+    asked = run_conversation_turn(
+        thread, "Which tech company has the highest income?", recorded_runtime(), store=store
+    ).result
+    answered = run_conversation_turn(thread, "net income", recorded_runtime(), store=store).result
+
+    assert asked.renderer is RendererKind.CLARIFY
+    assert asked.intent is Intent.RANK_AND_LOOKUP
+    assert answered.ordered_by == "net_income"
+    incomes = [row.value for row in answered.table_rows if row.value is not None]
+    assert incomes == sorted(incomes, reverse=True)
