@@ -50,7 +50,7 @@ def trim(
     return {
         "ticker": ticker,
         "cik": cik,
-        "title": facts["entityName"],
+        "title": submissions["name"],
         "facts": {"cik": int(cik), "entityName": facts["entityName"], "facts": kept},
         "submissions": {
             "cik": cik,

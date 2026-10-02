@@ -20,11 +20,13 @@ from financial_analyst_agent.contracts import (
     REPORTED_METRICS,
     SNAPSHOT_BANNER_PREFIX,
     SNAPSHOT_METRICS,
+    SPLIT_RATIO,
     TRAILING_YEAR_FORMULAS,
     Intent,
     RendererKind,
     TableRow,
     TurnResult,
+    split_between,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
 from financial_analyst_agent.guide import short_name
@@ -291,6 +293,81 @@ def long_quarter_banner(rows: list[TableRow]) -> str:
     if not notes:
         return ""
     return "; ".join(notes) + ", longer than the usual 13 weeks, which lifts those amounts."
+
+
+def restated_banners(rows: list[TableRow]) -> list[str]:
+    """Say where the table's year-earlier levels differ from the base a change used.
+
+    A year-over-year change starts from the comparative the newer filing
+    reports; the table shows each quarter as first filed. After a share split
+    the two differ several times over, and the quarter-over-quarter change
+    across it is left out; after a restatement they differ a little.
+    """
+    levels = [row for row in rows if row.comparison is None and row.value is not None]
+    splits: dict[tuple[str, str], list[str]] = {}
+    restated: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        if row.comparison != "yoy" or len(row.components) != 2:
+            continue
+        before, after = row.components
+        if before.accession_number != after.accession_number:
+            continue
+        first = next(
+            (
+                level
+                for level in levels
+                if (level.cik or level.company_name) == (row.cik or row.company_name)
+                and level.metric == row.metric
+                and level.end_date is not None
+                and abs(level.end_date - before.end_date) <= FISCAL_WEEK_TOLERANCE
+            ),
+            None,
+        )
+        if first is None or first.value is None or first.value == before.value:
+            continue
+        key = (_owner(row), row.metric)
+        ratio = abs(first.value / before.value) if before.value else Decimal(0)
+        per_share = row.metric in PER_SHARE_METRICS
+        if per_share and (ratio >= SPLIT_RATIO or 0 < ratio <= 1 / SPLIT_RATIO):
+            splits.setdefault(key, []).append(format_date(before.end_date))
+        elif abs(first.value - before.value) > abs(before.value) / 200:
+            restated.setdefault(key, []).append(format_date(before.end_date))
+    by_series: dict[tuple[str, str], list[TableRow]] = {}
+    for level in levels:
+        if level.metric in PER_SHARE_METRICS and level.end_date is not None:
+            by_series.setdefault((_owner(level), level.metric), []).append(level)
+    for key, series in by_series.items():
+        ordered = sorted(series, key=lambda level: level.end_date or date.min, reverse=True)
+        for newer, older in zip(ordered, ordered[1:], strict=False):
+            if split_between(newer, older) and older.end_date is not None:
+                splits.setdefault(key, []).append(format_date(older.end_date))
+    notes = [
+        f"{owner} {_in_sentence(format_field_name(metric))} for the "
+        f"{_plural('quarter', ends)} ended {_join_words(list(dict.fromkeys(ends)))} "
+        f"{'is' if len(set(ends)) == 1 else 'are'} shown as first reported, before a share "
+        "split, so "
+        f"{'it does' if len(set(ends)) == 1 else 'they do'} not compare with later quarters: "
+        "year-over-year changes use the year-earlier figures as the later filings "
+        "restate them, and no quarter-over-quarter change crosses the split."
+        for (owner, metric), ends in splits.items()
+    ]
+    notes.extend(
+        f"{owner} {_in_sentence(format_field_name(metric))} for the "
+        f"{_plural('quarter', ends)} ended {_join_words(list(dict.fromkeys(ends)))} "
+        "is shown as first filed; a later filing restated it, and the year-over-year "
+        "change uses the restated figure that filing reports."
+        for (owner, metric), ends in restated.items()
+    )
+    return notes
+
+
+def _owner(row: TableRow) -> str:
+    name = short_name(row.company_name) or row.company_name
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+def _plural(word: str, items: list[str]) -> str:
+    return word if len(set(items)) == 1 else f"{word}s"
 
 
 def newer_filing_banner(rows: list[TableRow]) -> str:
@@ -1143,6 +1220,7 @@ def present_turn(result: TurnResult) -> Presentation:
     newer = newer_filing_banner(result.table_rows)
     if newer:
         banners.append(newer)
+    banners.extend(restated_banners(result.table_rows))
     if result.ordered_by:
         label = _in_sentence(format_field_name(result.ordered_by))
         amount = (

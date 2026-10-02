@@ -120,6 +120,8 @@ METRIC_CONCEPTS[Metric.NONINTEREST_INCOME] = [("us-gaap", "NoninterestIncome")]
 # expenses plus operating income add up to it (Verra Mobility tags one segment
 # as Revenues). Read with the catalog's own concepts.
 REVENUE_CHECK_CONCEPTS: tuple[tuple[str, str], ...] = (("us-gaap", "CostsAndExpenses"),)
+# Weighted diluted shares beside a per-share figure: a split shows as a jump.
+SHARE_COUNT_CONCEPT = ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding")
 
 # Costs that show "cost of revenue" is not all of a company's cost of revenue: an
 # insurer's benefits and claims (UnitedHealth's medical costs) sit beside the cost
@@ -135,6 +137,7 @@ READ_CONCEPTS: frozenset[tuple[str, str]] = (
     frozenset(concept for candidates in METRIC_CONCEPTS.values() for concept in candidates)
     | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
     | frozenset(REVENUE_CHECK_CONCEPTS)
+    | {SHARE_COUNT_CONCEPT}
 )
 
 # Per-share amounts are reported in USD per share and are never derived by

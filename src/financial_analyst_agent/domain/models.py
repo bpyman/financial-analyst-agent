@@ -99,3 +99,8 @@ class FinancialFact(BaseModel):
     source: DataSourceKind = DataSourceKind.SEC_XBRL
     # "Latest" stepped back: the end of a newer filed quarter SEC's companyfacts lacks.
     newer_filing_end: date | None = None
+    # The same amount a year earlier as this fact's own filing reports it (its
+    # comparative), on the same basis after a restatement or share split.
+    year_earlier: DerivationPart | None = None
+    # Weighted diluted shares the filing reports beside a per-share figure.
+    diluted_shares: DecimalStr | None = None

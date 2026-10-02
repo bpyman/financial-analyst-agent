@@ -56,8 +56,10 @@ from financial_analyst_agent.services.metric_catalog import (
     GROSS_PROFIT_EXCLUDING_CONCEPTS,
     INSTANT_METRICS,
     METRIC_CONCEPTS,
+    PER_SHARE_METRICS,
     READ_CONCEPTS,
     REVENUE_CHECK_CONCEPTS,
+    SHARE_COUNT_CONCEPT,
     TRAILING_YEAR_METRICS,
     metric_unit,
     parse_metric,
@@ -574,7 +576,8 @@ class SecFactLookup:
                 fact, payload, filings, unit, company_name, ticker, cik, filer_ciks=filer_ciks
             )
         try:
-            return select(records, metric)
+            fact = select(records, metric)
+            return _with_diluted_shares(fact, payload) if metric in PER_SHARE_METRICS else fact
         except UnsupportedQuarterlyFactError:
             if metric is Metric.DEPRECIATION_AMORTIZATION:
                 return self._depreciation_plus_amortization(
@@ -921,15 +924,7 @@ def _bank_revenue(
     # Fees are a part of noninterest income; a company's net interest expense is not a bank's.
     if interest.value <= 0 or noninterest.value < revenue.value:
         return revenue
-    total = sum_of_components(Metric.REVENUE, parts, label=BANK_REVENUE_LABEL)
-    assert total.derivation is not None
-    named = [
-        part.model_copy(update={"metric": fact.metric.value})
-        for part, fact in zip(total.derivation.parts, parts, strict=True)
-    ]
-    return total.model_copy(
-        update={"derivation": total.derivation.model_copy(update={"parts": named})}
-    )
+    return sum_of_components(Metric.REVENUE, parts, label=BANK_REVENUE_LABEL, name_parts=True)
 
 
 def _sales_revenue(
@@ -959,6 +954,14 @@ def _sales_revenue(
         return revenue
     same = (fact.start_date, fact.end_date) == (revenue.start_date, revenue.end_date)
     return fact if same else revenue
+
+
+def _with_diluted_shares(fact: FinancialFact, payload: dict[str, Any]) -> FinancialFact:
+    """A per-share figure with the weighted diluted shares its filing reports beside it."""
+    records, _ = parse_company_facts_for_concepts(payload, [SHARE_COUNT_CONCEPT], "shares")
+    shares = _reported(records, (fact.accession_number, fact.start_date, fact.end_date))
+    count = shares.get(SHARE_COUNT_CONCEPT[1])
+    return fact if count is None else fact.model_copy(update={"diluted_shares": count})
 
 
 def _periodic_history_days(filings: list[Filing]) -> int:

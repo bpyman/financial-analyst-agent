@@ -116,6 +116,8 @@ def _build_financial_fact(
     ticker: str,
     cik: str,
     source_url: str,
+    *,
+    year_earlier: DerivationPart | None = None,
 ) -> FinancialFact:
     if selected.start_date is None:
         raise UnsupportedQuarterlyFactError(
@@ -139,6 +141,7 @@ def _build_financial_fact(
         source_url=source_url,
         directly_reported=True,
         source=DataSourceKind.SEC_XBRL,
+        year_earlier=year_earlier,
     )
 
 
@@ -177,7 +180,14 @@ def select_quarterly_fact(
         selected = _resolve_same_concept_candidates(candidates)
         return (
             _build_financial_fact(
-                selected, metric, currency, company_name, ticker, cik, source_url
+                selected,
+                metric,
+                currency,
+                company_name,
+                ticker,
+                cik,
+                source_url,
+                year_earlier=comparative(concept_facts, selected, source_url),
             ),
         )
 
@@ -275,6 +285,41 @@ def _part(fact: FactRecord, source_url: str) -> DerivationPart:
     )
 
 
+def comparative(
+    concept_facts: list[FactRecord], current: FactRecord, source_url: str
+) -> DerivationPart | None:
+    """The same amount a year before ``current``, as ``current``'s own filing reports it.
+
+    A filing restates its comparatives on its own basis: NVIDIA's 10-Q for the
+    quarter after its ten-for-one split reports the year-earlier diluted EPS as
+    $0.60, not the $5.98 first filed, and Bank of America's restated revenue
+    differs from the figure its older 10-Q gave. A change over the year reads both
+    amounts from one filing; None when the filing reports no such comparative.
+    """
+    target = _one_year_earlier(current.end_date)
+    length = _days_between(current)
+    matches = [
+        fact
+        for fact in concept_facts
+        if fact.accession_number == current.accession_number
+        and fact.taxonomy == current.taxonomy
+        and fact.concept == current.concept
+        and fact.unit.upper() == current.unit.upper()
+        and _near(fact.end_date, target)
+        and (fact.start_date is None) == (length is None)
+        and (length is None or abs((_days_between(fact) or 0) - length) <= _ONE_YEAR_TOLERANCE_DAYS)
+    ]
+    if not matches:
+        return None
+    try:
+        before = _resolve_same_concept_candidates(matches)
+    except AmbiguousFactError:
+        return None
+    if before.start_date is None:
+        before = before.model_copy(update={"start_date": before.end_date})
+    return _part(before, source_url)
+
+
 def _one_quarter_shorter(concept_facts: list[FactRecord], longer: FactRecord) -> FactRecord | None:
     """The same-start cumulative amount ending one quarter before ``longer``, as then reported.
 
@@ -315,6 +360,7 @@ def _one_quarter_shorter(concept_facts: list[FactRecord], longer: FactRecord) ->
 def _derived_fact(
     longer: FactRecord,
     shorter: FactRecord,
+    concept_facts: list[FactRecord],
     *,
     method: str,
     label: str,
@@ -326,6 +372,22 @@ def _derived_fact(
     source_url: str,
     source_url_for_accession: Callable[[str], str],
 ) -> FinancialFact:
+    shorter_url = source_url_for_accession(shorter.accession_number)
+    longer_before = comparative(concept_facts, longer, source_url)
+    shorter_before = comparative(concept_facts, shorter, shorter_url)
+    year_earlier = None
+    if longer_before is not None and shorter_before is not None:
+        # The year-earlier quarter by the same subtraction, each part as its own filing
+        # restates it.
+        year_earlier = longer_before.model_copy(
+            update={
+                "value": longer_before.value - shorter_before.value,
+                "start_date": shorter_before.end_date + timedelta(days=1),
+                "derivation": Derivation(
+                    method=method, label=label, parts=[longer_before, shorter_before]
+                ),
+            }
+        )
     return FinancialFact(
         company_name=company_name,
         ticker=ticker,
@@ -345,12 +407,10 @@ def _derived_fact(
         derivation=Derivation(
             method=method,
             label=label,
-            parts=[
-                _part(longer, source_url),
-                _part(shorter, source_url_for_accession(shorter.accession_number)),
-            ],
+            parts=[_part(longer, source_url), _part(shorter, shorter_url)],
         ),
         source=DataSourceKind.SEC_XBRL,
+        year_earlier=year_earlier,
     )
 
 
@@ -395,14 +455,16 @@ def derive_quarter(
                 if _is_standalone_quarter_duration(fact.start_date, fact.end_date)
             ]
             if standalone:
+                selected = _resolve_same_concept_candidates(standalone)
                 return _build_financial_fact(
-                    _resolve_same_concept_candidates(standalone),
+                    selected,
                     metric,
                     currency,
                     company_name,
                     ticker,
                     cik,
                     source_url,
+                    year_earlier=comparative(concept_facts, selected, source_url),
                 )
         bounds = _ANNUAL_DAYS if annual else (_CUMULATIVE_MIN_DAYS, _NINE_MONTH_DAYS[1])
         longer_candidates = [fact for fact in in_filing if _within(_days_between(fact), bounds)]
@@ -420,6 +482,7 @@ def derive_quarter(
         return _derived_fact(
             longer,
             shorter,
+            concept_facts,
             method="annual_minus_nine_months" if annual else "year_to_date_difference",
             label=FOURTH_QUARTER_LABEL if annual else YEAR_TO_DATE_LABEL,
             metric=metric,
@@ -490,6 +553,9 @@ def select_instant_fact(
             ticker,
             cik,
             source_url,
+            year_earlier=comparative(
+                [fact for fact in facts if fact.concept == concept], selected, source_url
+            ),
         )
     raise UnsupportedQuarterlyFactError(
         "No balance-sheet amount is reported at the filing's report date",

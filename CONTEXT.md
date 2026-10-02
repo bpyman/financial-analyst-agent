@@ -36,6 +36,10 @@ _Avoid_: estimate, implied quarter, TTM
 The four quarters ending on a report date as one amount: the 10-K's fiscal year, or after a 10-Q the last fiscal year plus this year to date minus the same months a year earlier (ADR 0008). Return on equity and P/E use it.
 _Avoid_: annualised quarter, TTM sum of four rows
 
+**Comparative**:
+The same line a year earlier as a filing reports it beside the current period, on that filing's basis after a restatement or share split. A year-over-year change starts from it, not from the year-earlier quarter as first filed (ADR 0009).
+_Avoid_: prior-year value, restated row
+
 **Balance-sheet amount**:
 An amount a filing reports at its report date rather than over the quarter (cash, shareholders' equity), shown "At" that date.
 _Avoid_: quarterly cash, period balance
