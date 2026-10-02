@@ -53,7 +53,9 @@ export function turnReducer(state: TurnState, action: TurnAction): TurnState {
       if (event.event === "error") {
         return { status: "failed", message: state.message, error: event.data.message };
       }
-      return IDLE;
+      if (event.event === "thread") return IDLE;
+      // Anything else leaves the turn running; the stream's end decides how it went.
+      return state;
     }
     case "fail":
       if (state.status !== "running") return state;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IDLE, progressLabel, turnCounterLabel, turnReducer, type TurnState } from "./turn-state";
+import type { TurnEvent } from "./types";
 
 const run = (message = "What was Microsoft's latest quarterly pretax income?") =>
   turnReducer(IDLE, { type: "send", message });
@@ -38,6 +39,12 @@ describe("turnReducer", () => {
       },
     };
     expect(turnReducer(run(), { type: "event", event: thread })).toEqual(IDLE);
+  });
+
+  it("keeps a turn running through an event it does not know", () => {
+    const running = run();
+    const unknown = { event: "weird", data: {} } as unknown as TurnEvent;
+    expect(turnReducer(running, { type: "event", event: unknown })).toBe(running);
   });
 
   it("keeps the question and the public error message when a turn fails", () => {

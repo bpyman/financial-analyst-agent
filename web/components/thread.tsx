@@ -6,6 +6,7 @@ import { clarifyChoices, shownMessage } from "@/lib/clarify";
 import { progressLabel, type TurnState } from "@/lib/turn-state";
 import type { Turn } from "@/lib/types";
 import { Answer } from "./answer";
+import { AnswerBoundary } from "./answer-boundary";
 import { cn } from "@/lib/format";
 import { Button, Callout, LogoMark } from "./ui";
 
@@ -32,16 +33,18 @@ export function Thread({
           className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40"
         >
           <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message}>
-            <Answer
-              question={shownMessage(item, turns[index - 1])}
-              presentation={item.presentation}
-              onSuggest={index === turns.length - 1 && turn.status === "idle" ? onAsk : undefined}
-              clarify={{
-                choices: clarifyChoices(item, turns[index + 1]),
-                live: item.clarify_enabled && !running,
-                onChoose: onAsk,
-              }}
-            />
+            <AnswerBoundary>
+              <Answer
+                question={shownMessage(item, turns[index - 1])}
+                presentation={item.presentation}
+                onSuggest={index === turns.length - 1 && turn.status === "idle" ? onAsk : undefined}
+                clarify={{
+                  choices: clarifyChoices(item, turns[index + 1]),
+                  live: item.clarify_enabled && !running,
+                  onChoose: onAsk,
+                }}
+              />
+            </AnswerBoundary>
           </Exchange>
         </li>
       ))}
