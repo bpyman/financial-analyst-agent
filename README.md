@@ -7,7 +7,7 @@
 
 **Explore company financials, straight from SEC filings.**
 
-Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the filing it came from.
+Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure, in a table or on a chart, to see the exact amount, CIK, accession, XBRL concept, and a link to the filing it came from.
 
 <p align="center">
   <a href="https://onfile-analyst.vercel.app"><strong>Try the live demo</strong></a> ·
@@ -27,7 +27,9 @@ The model plans; code owns every number.
 1. **SEC quarterly facts, with provenance.** Standalone 10-Q amounts from companyfacts XBRL, each with its accession, period, concept, and an EDGAR filing link.
 2. **Constrained planning.** The model proposes a typed analysis-spec patch; code resolves CIKs, catalog metrics, and period windows. It does not chain tools or invent constituents.
 3. **Answers the model cannot rewrite.** Tables and charts render from tool output. Essays pass a numeral lock. Ambiguous metrics get a clarifying question; unknown scope is refused.
-4. **Follow-ups edit the analysis.** `add Apple` or `make that the last four quarters` patches the spec on screen instead of starting over.
+4. **Follow-ups edit the analysis.** `add Apple`, `show year-over-year` or `make that the last four quarters` patches the spec on screen instead of starting over; each chip above the conversation can be removed or added to.
+5. **Like-for-like comparisons.** Year-over-year change reads the prior quarter as the current filing restates it, so stock splits and restatements don't distort growth ([ADR 0009](docs/adr/0009-year-over-year-reads-the-comparative.md)). Ratios on a negative base (return on negative equity, a margin on negative revenue) say "Not meaningful" instead of printing a number.
+6. **Degrades instead of failing.** Every SEC request has a deadline and every turn a budget; a company whose data fails gets its own "Source unavailable" row while the rest of a ranking or comparison answers; bad documents are never cached; SEC's rate limits are honoured. The app was red-teamed across its API, planner, numbers, window and failure modes.
 
 ## What it can answer
 
@@ -40,6 +42,8 @@ The model plans; code owns every number.
 | Rankings | `Top 10 technology companies by net margin`, over a dated snapshot of about 5,200 US operating companies |
 | Filing changes | `What changed in Microsoft's latest 10-Q?`, a paragraph diff of MD&A and Risk Factors with the changed words marked |
 | Context | recent news and a short explanation, kept apart from the numbers |
+
+Every answer can be checked and taken away: click a figure for its source, sort any column (the chart follows), copy it as Markdown with its sources, download the table as CSV, or copy a link that asks the same question. Comparisons over time read as quarters × companies, and a fact card shows its year-over-year and quarter-over-quarter change. Press `/` to ask and ↑ to recall the last question.
 
 <table>
   <tr>
@@ -62,7 +66,7 @@ The model plans; code owns every number.
 
 ## Try it
 
-Hosted demo (opens on the live runtime, straight from SEC EDGAR; switch to Recorded for the captured filings): [onfile-analyst.vercel.app](https://onfile-analyst.vercel.app). The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
+Hosted demo (opens on the live runtime, straight from SEC EDGAR; switch to Recorded for the captured filings): [onfile-analyst.vercel.app](https://onfile-analyst.vercel.app). While the API wakes from sleep, the guided stories answer at once from the recorded runtime, marked "Demo data". The window also installs as a desktop app from the browser. Or [run it locally](#run-it-locally) in two commands.
 
 ![Compare Eli Lilly, Pfizer and Merck revenue, show it year over year, then inspect the exact 10-Q source](docs/portfolio/images/demo-walkthrough.gif)
 
@@ -215,8 +219,10 @@ It starts the recorded API and the built window itself, as the browser check doe
 ## Limitations
 
 - Ranking membership is a dated US operating-company snapshot, not a live screener.
-- Quarterly facts are directly reported standalone quarters; YTD subtraction is forbidden.
-- The metric catalog is closed. Unknown or ambiguous phrases do not guess.
+- Quarterly facts are directly reported standalone quarters. The one derivation is a fiscal fourth quarter (the 10-K's year minus the nine months), marked †; other year-to-date subtraction is not done.
+- The metric catalog is closed. Unknown or ambiguous phrases do not guess, and segment figures (AWS, iPhone) are not covered: the answer says so rather than showing the company total as the segment.
+- Foreign private issuers (20-F and 40-F filers) have no 10-Q facts, and subsidiaries that file jointly with their parent have no quarterly figures of their own in SEC's data.
+- Questions are read in English.
 - Public live SEC, if enabled, is quota-guarded. Unrestricted OpenAI/Tavily spend is not exposed to visitors.
 
 ## Author

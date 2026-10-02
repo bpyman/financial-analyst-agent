@@ -23,9 +23,10 @@ Feedback welcome, especially from anyone who reads filings for a living.
 
 ## Repository About
 
-- Description: Financial research from SEC filings. Ask about a public company, get the number and the filing behind it; the LLM plans, deterministic code owns every figure.
+- Description: Ask about a public company, get the number and the SEC filing behind it. An evidence-first research agent: the LLM plans, deterministic code owns every figure.
 - Website: https://onfile-analyst.vercel.app
-- Topics: sec, xbrl, edgar, financial-analysis, llm, ai-agent, langgraph, fastapi, nextjs, react, python, typescript, mcp, portfolio
+- Topics: ai-agent, edgar, sec-edgar, xbrl, financial-analysis, fastapi, langgraph-python, llm, mcp, nextjs, react, typescript, python3, portfolio-project
+- Social preview (Settings → General → Social preview, upload only): `images/social-preview.png`
 
 ## Visuals
 
@@ -40,6 +41,6 @@ Captured from the Next.js window on the recorded runtime, default dark theme, by
 7. Screenshot: [`docs/portfolio/images/filing-changes.png`](images/filing-changes.png): "What changed in Microsoft's latest 10-Q?", framed on the MD&A highlights.
 8. Screenshot: [`docs/portfolio/images/overview-trends.png`](images/overview-trends.png): "How is Nvidia doing?", a sentence, then revenue and net-margin trends over five quarters.
 9. Screenshot: [`docs/portfolio/images/sorted-ranking.png`](images/sorted-ranking.png): the top 10 tech companies re-sorted by R&D, the chart's bars following the table.
-10. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1280×640), the landing headline beside the Lilly vs Pfizer chart. Re-upload it in GitHub Settings → Social preview after a recapture.
+10. GitHub social preview still: [`docs/portfolio/images/social-preview.png`](images/social-preview.png) (1200×628), the landing headline beside the Lilly vs Pfizer chart, with each company's latest figure above it. Re-upload it in GitHub Settings → Social preview after a recapture.
 
 The recorded runtime includes Apple quarterly revenue for its 10-Q periods. After a Microsoft four-quarter compare, `add Apple` still has no 10-Q on 2024-09-30 (Apple's fiscal year-end is a 10-K), so that cell stays `missing_fact` and the chart bridges the gap with a dotted line.
