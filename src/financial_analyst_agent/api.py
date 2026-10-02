@@ -672,6 +672,7 @@ def create_app(
                     live_essays=live and openai_enabled(resolved),
                     recorded_news=FIXTURE_NEWS_QUERY,
                     recorded_essay=FIXTURE_EXPLAIN_QUERY,
+                    live=live,
                 )
             ],
             "metric_groups": [

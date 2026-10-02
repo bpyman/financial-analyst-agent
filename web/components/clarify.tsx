@@ -1,6 +1,7 @@
 import { Check, MessageCircleQuestion } from "lucide-react";
 import type { ClarifyChoice } from "@/lib/clarify";
 import { cn } from "@/lib/format";
+import { useRegionName } from "./answer-scope";
 
 const FALLBACK_PROMPT = "Which one do you mean?";
 
@@ -26,9 +27,10 @@ export function Clarify({
     : answered
       ? "Answered below."
       : "This question was set aside.";
+  const name = useRegionName("Clarify");
   return (
     <section
-      aria-label="Clarify"
+      aria-label={name}
       className={cn(
         "relative overflow-hidden rounded-xl border bg-surface",
         live ? "border-primary/30 shadow-[0_18px_40px_-30px_var(--primary)]" : "border-border",

@@ -11,6 +11,30 @@ export const LOCKED_LIVE_NOTICE =
 export const TURN_WAIT_TIMEOUT =
   "Your last question is taking too long to finish. Please try again shortly.";
 
+/** "in about 10 minutes": when a limit the server named lifts. */
+export function waitPhrase(seconds: number | null): string {
+  if (seconds === null) return "in a little while";
+  if (seconds < 45) return `in ${Math.max(1, Math.round(seconds))} seconds`;
+  if (seconds < 90) return "in about a minute";
+  if (seconds < 5400) return `in about ${Math.round(seconds / 60)} minutes`;
+  return `in about ${Math.round(seconds / 3600)} hours`;
+}
+
+export function threadLimitText(seconds: number | null): string {
+  return `You've started a lot of new conversations in the last hour, so another can't start yet. Try again ${waitPhrase(seconds)}.`;
+}
+
+export function questionLimitText(seconds: number | null): string {
+  return `You've asked a lot of questions in the last hour. You can ask again ${waitPhrase(seconds)}.`;
+}
+
+/** The thread this window asked on was replaced by another tab's Start over. */
+export class ThreadMovedError extends Error {
+  constructor(readonly threadId: string) {
+    super("This conversation changed in another tab.");
+  }
+}
+
 export interface KeyValueStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -60,6 +84,11 @@ export function isCurrentThread(store: KeyValueStore, threadId: string): boolean
   return store.getItem(THREAD_STORAGE_KEY) === threadId;
 }
 
+/** The server mints UUIDs; anything else in storage (a "/" included) cannot name a thread. */
+export function plausibleThreadId(threadId: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(threadId);
+}
+
 /**
  * The stored thread, if the server still has it. A thread that comes back
  * unknown or empty has expired (TTL or a restarted host): it is forgotten and
@@ -73,12 +102,13 @@ export async function resumeThread(
 ): Promise<ThreadOutcome<ThreadView | null> | null> {
   const threadId = store.getItem(THREAD_STORAGE_KEY);
   if (!threadId) return { view: null, notice: null };
+  if (!plausibleThreadId(threadId)) return forget(store);
   let view: ThreadView;
   try {
     view = await api.getThread(threadId);
   } catch (error) {
     if (!isCurrentThread(store, threadId)) return null;
-    if (error instanceof ApiError && [400, 404, 414, 431].includes(error.status)) return forget(store);
+    if (error instanceof ApiError && [400, 404, 405, 414, 431].includes(error.status)) return forget(store);
     throw error;
   }
   if (!isCurrentThread(store, threadId)) return null;
@@ -92,10 +122,11 @@ function forget(store: KeyValueStore): ThreadOutcome<null> {
 }
 
 /**
- * Start a new thread bound to `runtime`, clearing `previousId` first. Start
- * over is this on the same runtime; switching runtime is this on the other.
+ * Start a new thread bound to `runtime`, then clear `previousId`. Start over
+ * is this on the same runtime; switching runtime is this on the other.
  * `undefined` leaves the runtime to the deployment default (the analyst has
- * not chosen one).
+ * not chosen one). The new thread is made first, so a refusal (the hourly
+ * limit, an outage) leaves the current conversation where it was.
  */
 export async function startThread(
   api: ThreadApi,
@@ -103,17 +134,25 @@ export async function startThread(
   runtime: RuntimeKind | undefined,
   previousId?: string | null,
 ): Promise<ThreadOutcome<ThreadView>> {
-  if (previousId) {
+  let created: CreatedThread;
+  try {
+    created = await api.createThread(runtime);
+  } catch (error) {
+    // The server's limit copy is about questions; this one is about conversations.
+    if (error instanceof ApiError && error.status === 429) {
+      throw new ApiError(threadLimitText(error.retryAfter), 429, error.retryAfter);
+    }
+    throw error;
+  }
+  const view = await api.getThread(created.thread_id);
+  store.setItem(THREAD_STORAGE_KEY, created.thread_id);
+  if (previousId && previousId !== created.thread_id) {
     try {
       await api.deleteThread(previousId);
     } catch {
       // Best effort: the old thread expires on its own.
     }
   }
-  store.removeItem(THREAD_STORAGE_KEY);
-  const created = await api.createThread(runtime);
-  store.setItem(THREAD_STORAGE_KEY, created.thread_id);
-  const view = await api.getThread(created.thread_id);
   return { view, notice: created.notice };
 }
 
@@ -121,7 +160,9 @@ export async function startThread(
  * Ask `message` on `threadId`, yielding the turn's events. The server refuses
  * (404) a turn on a thread it no longer has, before anything runs: it expired,
  * or the host restarted, while the window sat open. Then start a fresh thread
- * on `runtime`, hand it to `onFresh`, and ask there instead, once.
+ * on `runtime`, hand it to `onFresh`, and ask there instead, once. When
+ * another tab's Start over is why, follow that tab's thread instead
+ * (`ThreadMovedError`) rather than start a third one over it.
  */
 export async function* askOnThread(
   api: ThreadApi,
@@ -138,6 +179,8 @@ export async function* askOnThread(
   } catch (error) {
     if (!(error instanceof ApiError && error.status === 404)) throw error;
   }
+  const stored = store.getItem(THREAD_STORAGE_KEY);
+  if (stored && stored !== threadId && plausibleThreadId(stored)) throw new ThreadMovedError(stored);
   const started = await startThread(api, store, runtime);
   onFresh({ view: started.view, notice: started.notice ?? EXPIRED_NOTICE });
   yield* runTurn(started.view.thread_id, message);
@@ -194,9 +237,10 @@ export async function* whenFree(
       return;
     } catch (error) {
       const seconds = error instanceof ApiError && error.status === 429 ? error.retryAfter : null;
-      if (seconds === null || seconds > BUSY_RETRY_MAX_SECONDS || waited + seconds * 1000 > maxWaitMs) {
-        throw error;
+      if (seconds !== null && seconds > BUSY_RETRY_MAX_SECONDS) {
+        throw new ApiError(questionLimitText(seconds), 429, seconds);
       }
+      if (seconds === null || waited + seconds * 1000 > maxWaitMs) throw error;
       onBusy?.();
       await sleep(seconds * 1000);
       waited += seconds * 1000;
