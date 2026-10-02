@@ -183,7 +183,7 @@ function SortButton({
     >
       <Header column={column} />
       <Icon
-        className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60")}
+        className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-40 group-hover:opacity-80 group-focus-visible:opacity-80")}
         aria-hidden
       />
     </button>

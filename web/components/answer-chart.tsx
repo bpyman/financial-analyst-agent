@@ -20,6 +20,7 @@ import type { DotItemDotProps } from "recharts/types/util/types";
 import {
   barDomain,
   barRows,
+  DENSE_PERIODS,
   orderedBars,
   calendarsDiffer,
   endLabelSides,
@@ -27,6 +28,7 @@ import {
   lineSeries,
   niceTicks,
   quarterTicks,
+  tickLine,
   valueDomain,
   type BarRow,
   type LineRow,
@@ -89,12 +91,39 @@ export function AnswerChart({
           <ComparisonChart key={order?.join("|") ?? "server"} chart={chart} order={order} />
         )}
       </div>
+      <ChartSummary chart={chart} />
       {caption && (
         <figcaption className="border-t border-border bg-surface-2/40 px-4 py-2.5 text-xs leading-relaxed text-muted sm:px-5">
           {caption}
         </figcaption>
       )}
     </figure>
+  );
+}
+
+/**
+ * The chart's points as text for a screen reader, in place of the plot: one
+ * line per bar, or per series with each period's amount.
+ */
+function ChartSummary({ chart }: { chart: ChartSpec }) {
+  if (chart.kind === "bar") {
+    return (
+      <ul className="sr-only">
+        {barRows(chart).map((row, index) => (
+          <li key={`${row.key}-${index}`}>{`${row.name}: ${row.missing ? row.label : row.amount || row.label}`}</li>
+        ))}
+      </ul>
+    );
+  }
+  const rows = lineRows(chart);
+  return (
+    <ul className="sr-only">
+      {lineSeries(chart).map(({ key, name }) => (
+        <li key={key}>
+          {`${name}: ${rows.map((row) => `${row.period} ${row.amounts[key] ?? "no value"}`).join("; ")}`}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -129,9 +158,14 @@ function TrendChart({ chart, height }: { chart: LineChartSpec; height: number })
   const lone = series.length === 1 ? series[0] : null;
   // Companies on different fiscal calendars: each quarter at its own date.
   const staggered = series.length > 1 && calendarsDiffer(rows);
+  // Many quarters on a phone collide: let the axis drop labels that do not fit,
+  // measured by the label's wider line and always keeping the newest.
+  const dense = rows.length > DENSE_PERIODS;
   return (
     <ComposedChart
       responsive
+      // The plot is drawn for the eye; ChartSummary reads it out, so no tab stops per point.
+      accessibilityLayer={false}
       data={rows}
       margin={{ top: 22, right: 20, bottom: 4, left: 4 }}
       style={{ width: "100%", height }}
@@ -155,7 +189,9 @@ function TrendChart({ chart, height }: { chart: LineChartSpec; height: number })
           tickLine={false}
           axisLine={{ stroke: GRID }}
           tick={<QuarterTick />}
-          interval={0}
+          tickFormatter={(time: number) => MONTHS[new Date(time).getUTCMonth()]}
+          interval={dense ? "preserveEnd" : 0}
+          minTickGap={6}
           height={40}
           padding={{ left: 24, right: 24 }}
         />
@@ -165,7 +201,9 @@ function TrendChart({ chart, height }: { chart: LineChartSpec; height: number })
           tickLine={false}
           axisLine={{ stroke: GRID }}
           tick={<PeriodTick />}
-          interval={0}
+          tickFormatter={(period: string) => tickLine(String(period))}
+          interval={dense ? "preserveEnd" : 0}
+          minTickGap={6}
           height={40}
           padding={{ left: 24, right: 24 }}
         />
@@ -403,6 +441,7 @@ function RankedBars({ rows, ticks, kind, metric }: BarsProps) {
   return (
     <BarChart
       responsive
+      accessibilityLayer={false}
       layout="vertical"
       data={rows}
       barCategoryGap={0}
@@ -450,6 +489,7 @@ function ColumnBars({ rows, ticks, kind, metric }: BarsProps) {
   return (
     <BarChart
       responsive
+      accessibilityLayer={false}
       data={rows}
       margin={{ top: 24, right: 12, bottom: 0, left: 4 }}
       style={{ width: "100%", height: 260 }}

@@ -112,12 +112,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
+        "inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
         TONES[tone],
         className,
       )}
     >
-      {children}
+      <span className="min-w-0 truncate">{children}</span>
     </span>
   );
 }
@@ -160,7 +160,7 @@ export function Callout({
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{children}</div>
     </div>
   );
 }

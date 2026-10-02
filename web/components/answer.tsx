@@ -65,7 +65,7 @@ export function Answer({
   const sortNote = table && sort ? sortDescription(table, sort) : null;
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
         <Badge tone="primary">{presentation.intent_label || presentation.intent}</Badge>
         {hasTakeaway(presentation) && (
           <AnswerActions
@@ -76,7 +76,7 @@ export function Answer({
         )}
       </div>
       {presentation.headline && (
-        <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
+        <p className="break-words text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
       )}
       <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
@@ -89,7 +89,7 @@ export function Answer({
       {table && table.rows.length > 0 && <DataTable table={table} sort={sort} onSort={setSort} />}
       {message &&
         (presentation.message_tone === "info" ? (
-          <p className="text-[15px] leading-relaxed text-fg">{message}</p>
+          <p className="break-words text-[15px] leading-relaxed text-fg">{message}</p>
         ) : (
           <Callout kind="warning">{message}</Callout>
         ))}
@@ -133,9 +133,9 @@ function Suggestions({
           key={item}
           type="button"
           onClick={() => onSuggest(item)}
-          className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
+          className="group inline-flex min-h-9 min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-left text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
         >
-          {item}
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item}</span>
           <ArrowRight className="size-3.5 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
         </button>
       ))}
@@ -391,7 +391,8 @@ function TraceGroup({ title, fields }: { title: string; fields: Pair[] }) {
       <div className="mb-2 text-[10.5px] font-medium uppercase tracking-[0.08em] text-subtle">
         {title}
       </div>
-      <dl className="grid grid-cols-[minmax(6.5rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+      {/* Label over value on a phone: side by side, the value column is a few characters wide. */}
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[12.5px] sm:grid-cols-[minmax(6.5rem,auto)_minmax(0,1fr)]">
         {fields.map(([label, value], index) => (
           <TraceRow key={`${label}-${index}`} label={label} value={value} />
         ))}
@@ -402,12 +403,12 @@ function TraceGroup({ title, fields }: { title: string; fields: Pair[] }) {
 
 function TraceRow({ label, value }: { label: string; value: string }) {
   if (!value) {
-    if (!label) return <div aria-hidden className="col-span-2 h-2" />;
-    return <dt className="col-span-2 mt-1 font-medium text-fg">{label}</dt>;
+    if (!label) return <div aria-hidden className="col-span-full h-2" />;
+    return <dt className="col-span-full mt-1 font-medium text-fg">{label}</dt>;
   }
   if (value.includes("\n")) {
     return (
-      <div className="col-span-2 min-w-0">
+      <div className="col-span-full min-w-0">
         {label && <dt className="mb-1 font-medium text-fg">{label}</dt>}
         <dd>
           <SafeMarkdown text={hardBreaks(value)} className="text-[12.5px] text-muted" />
@@ -418,7 +419,7 @@ function TraceRow({ label, value }: { label: string; value: string }) {
   const link = parseLink(value);
   return (
     <>
-      <dt className="text-subtle">{label}</dt>
+      <dt className="mt-1 text-subtle first:mt-0 sm:mt-0">{label}</dt>
       <dd className="min-w-0 break-words text-fg">
         {link ? (
           <ExternalLink href={link.href} className="break-all">

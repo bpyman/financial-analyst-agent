@@ -149,7 +149,7 @@ export function Landing({
                         type="button"
                         onClick={() => onDraft(example)}
                         title="Put this in the composer"
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-left text-xs text-muted transition-colors hover:border-border-strong hover:text-fg"
+                        className="max-w-full break-words rounded-md border border-border bg-surface-2 px-2 py-1 text-left text-xs text-muted transition-colors [overflow-wrap:anywhere] hover:border-border-strong hover:text-fg"
                       >
                         {example}
                       </button>
