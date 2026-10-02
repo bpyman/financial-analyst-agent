@@ -8,7 +8,7 @@ Every multi-quarter window skipped fiscal fourth quarters, because companies rep
 
 A **quarterly fact** is still preferred whenever the filing reports one. When it does not, deterministic code may derive a **derived quarter** by exactly one of two subtractions, both over directly reported XBRL facts in USD for the same concept:
 
-1. **Fiscal fourth quarter.** Fiscal-year amount from the 10-K (duration 350 to 380 days, ending on the 10-K report date) minus the nine-month amount (duration 250 to 290 days) with the same start date, reported in a 10-Q.
+1. **Fiscal fourth quarter.** Fiscal-year amount from the 10-K (duration 350 to 380 days, ending on the 10-K report date) minus the nine-month amount (duration 250 to 290 days) with the same start date, reported in a 10-Q. When the 10-K reports the nine months itself, its figure is used: the 10-K may have revised them, and its year is on the same basis (Rapid7, Corpay).
 2. **Year-to-date difference.** A cumulative amount from a 10-Q (duration over 110 days, ending on the 10-Q report date) minus the cumulative amount one quarter shorter with the same start date, reported in a 10-Q. This gives cash-flow quarters two and three.
 
 Rules that keep this honest:

@@ -278,22 +278,30 @@ def _part(fact: FactRecord, source_url: str) -> DerivationPart:
 def _one_quarter_shorter(concept_facts: list[FactRecord], longer: FactRecord) -> FactRecord | None:
     """The same-start cumulative amount ending one quarter before ``longer``, as then reported.
 
-    Only a copy filed no later than ``longer`` counts: a 10-Q filed afterwards may
+    A 10-K that reports the nine months itself is read first: it may have
+    revised them (Rapid7's 10-K cut nine months of net income from $27.0 million
+    to $23.4 million), and its year is on that same basis. Otherwise only a
+    copy filed no later than ``longer`` counts: a 10-Q filed afterwards may
     restate the nine months (a spin-off recast), and subtracting a restated
     part from an as-reported total mixes two bases (3M's fourth quarter of 2023
     read $14.07 billion against $8.01 billion reported). With no copy on file
     by then, the quarter is not derived.
     """
     low, high = _ONE_QUARTER_EARLIER_DAYS
-    shorter = [
+    same_start = [
         fact
         for fact in concept_facts
         if fact.start_date == longer.start_date
-        and fact.form in QUARTERLY_FORMS
         and fact.unit.upper() == longer.unit.upper()
         and low <= (longer.end_date - fact.end_date).days <= high
         and (_days_between(fact) or 0) >= _MIN_QUARTER_DAYS
-        and fact.filed_date <= longer.filed_date
+    ]
+    shorter = [
+        fact for fact in same_start if fact.accession_number == longer.accession_number
+    ] or [
+        fact
+        for fact in same_start
+        if fact.form in QUARTERLY_FORMS and fact.filed_date <= longer.filed_date
     ]
     if not shorter:
         return None
