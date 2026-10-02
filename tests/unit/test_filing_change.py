@@ -303,9 +303,11 @@ def test_diff_compares_body_changes_despite_identical_toc() -> None:
         newer_url="https://www.sec.gov/new.htm",
     )
 
-    assert len(changes) == 1
-    assert changes[0].before_text == "Regulatory change could affect our licenses."
-    assert changes[0].after_text == "AI product liability is an emerging risk."
+    # Unrelated paragraphs in one place are a risk removed and one added, not an edit.
+    assert [(item.change_kind, item.before_text or item.after_text) for item in changes] == [
+        ("removed", "Regulatory change could affect our licenses."),
+        ("added", "AI product liability is an emerging risk."),
+    ]
 
 
 def test_html_to_text_drops_tags() -> None:
@@ -871,7 +873,8 @@ def test_templated_sentences_that_repeat_are_still_compared() -> None:
     older = "\n\n".join(f"Revenue increased ${n}.1 billion or {n}0%." for n in (1, 2, 3))
     newer = "\n\n".join(f"Revenue increased ${n}.2 billion or {n}1%." for n in (1, 2, 3))
 
-    assert len(_diff(older, newer)) == 1
+    # Each sentence is paired with its own edit.
+    assert [item.change_kind for item in _diff(older, newer)] == ["changed"] * 3
 
 
 @pytest.mark.parametrize(
@@ -930,3 +933,126 @@ def test_a_change_names_the_heading_it_sits_under() -> None:
     (change,) = _diff(older, newer)
 
     assert change.subsection == "Liquidity and Capital Resources"
+
+
+def test_curly_quotes_and_renumbered_footnotes_are_not_changes() -> None:
+    older = "\n".join(
+        [
+            "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION",
+            "The company's results reflect the \"core\" business across every segment.",
+            "Net mortgage servicing revenue(c) rose on higher volumes this quarter.",
+        ]
+    )
+    newer = "\n".join(
+        [
+            "ITEM 2. MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION",
+            "The company’s results reflect the “core” business across every segment.",
+            "Net mortgage servicing revenue(d) rose on higher volumes this quarter.",
+        ]
+    )
+
+    assert _diff(older, newer) == []
+
+
+def test_a_page_number_and_company_name_footer_is_not_a_change() -> None:
+    prose = "Demand for industrial automation products was steady in the quarter."
+    older = "\n".join(
+        [f"{page} Honeywell International Inc." for page in (35, 36, 37)] + [prose]
+    )
+    newer = "\n".join(
+        [f"{page} Honeywell International Inc." for page in (38, 39, 40, 41)] + [prose]
+    )
+
+    assert _diff(older, newer) == []
+
+
+def test_a_long_replaced_run_is_split_into_paired_changes() -> None:
+    # One paragraph replaced by many is not one 55,000-character change.
+    older = "There have been no material changes to the risk factors in our annual report."
+    risks = [
+        f"Risk {name}: our business may suffer if {name} conditions deteriorate further."
+        for name in ("credit", "liquidity", "market", "operational", "regulatory", "cyber")
+    ]
+    newer = "\n".join(
+        [
+            "There have been no material changes to the risk factors in our annual report "
+            "other than those below.",
+            *risks,
+        ]
+    )
+
+    changes = _diff(older, newer)
+
+    assert [change.change_kind for change in changes] == ["changed"] + ["added"] * len(risks)
+    assert all(len(change.after_text) < 120 for change in changes)
+
+
+def test_an_edited_paragraph_that_moved_is_one_change_not_two() -> None:
+    edited = (
+        "If we do not successfully manage and develop our relationships with {who}, "
+        "it could harm us."
+    )
+    filler = [f"Paragraph {n} discusses an unchanged matter at some length here." for n in range(4)]
+    older = "\n".join([edited.format(who="key alliance partners"), *filler])
+    newer = "\n".join([*filler, edited.format(who="our ecosystem partners")])
+
+    (change,) = _diff(older, newer)
+
+    assert change.change_kind == "changed"
+
+
+@pytest.mark.parametrize("line", ["ROE 34%", "ROE NM NM 24 % 18 %", "Net revenue NA NA"])
+def test_a_table_row_is_not_a_heading(line: str) -> None:
+    older = "\n".join(
+        [
+            "EXECUTIVE OVERVIEW",
+            line,
+            "Average deposits were down 1% year over year on lower consumer balances.",
+        ]
+    )
+    newer = older.replace("down 1%", "up 3%").replace("lower", "higher")
+
+    (change,) = _diff(older, newer)
+
+    assert change.subsection == "Executive Overview"
+
+
+def test_each_section_keeps_a_share_of_the_changes_shown() -> None:
+    from financial_analyst_agent.filing_change import cap_changes
+
+    def changes(section: SectionId, count: int) -> list[Any]:
+        older = "\n".join(
+            f"Paragraph {n} says the old thing about {section}." for n in range(count)
+        )
+        newer = "\n".join(
+            f"Paragraph {n} says something new about the {section} topic." for n in range(count)
+        )
+        return diff_paragraphs(
+            older,
+            newer,
+            section=section,
+            older_accession="a",
+            newer_accession="b",
+            older_url="",
+            newer_url="",
+        )
+
+    shown, banner = cap_changes(changes("mda", 274) + changes("risk_factors", 12))
+
+    assert sum(change.section == "risk_factors" for change in shown) == 12
+    assert len(shown) <= 60
+    assert "Risk Factors" in banner and "Management's Discussion and Analysis" in banner
+
+
+def test_the_paragraph_after_a_forward_looking_note_is_not_under_its_heading() -> None:
+    lines = [
+        "Note About Forward-Looking Statements",
+        "This report includes forward-looking statements that involve risks and uncertainties.",
+        "The following discussion is intended to help the reader understand our results in {q}.",
+    ]
+    older = "\n".join(lines).format(q="the quarter")
+    newer = "\n".join(lines).format(q="the third quarter")
+
+    (change,) = _diff(older, newer)
+
+    assert change.subsection == ""

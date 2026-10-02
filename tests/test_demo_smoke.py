@@ -124,4 +124,6 @@ def test_filing_change_story_presents_each_changed_section() -> None:
     sections = [item.section_label for item in presented.disclosures]
     assert sections == sorted(sections, key=order.index)
     assert set(sections) == set(order)
-    assert {item.change_kind for item in presented.disclosures} == {"changed"}
+    # Unrelated paragraphs in one place are one removed and one added, not an edit.
+    kinds = {item.change_kind for item in presented.disclosures}
+    assert "changed" in kinds and kinds <= {"changed", "added", "removed"}

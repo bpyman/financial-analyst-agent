@@ -230,29 +230,26 @@ def test_run_turn_ranks_finance_alias_and_does_not_pad_short_sectors() -> None:
 
 TECHNOLOGY_TOP_10_QUERY = "What are the top 10 companies in technology?"
 TECHNOLOGY_TOP_10 = (
+    # The live snapshot's top ten: Alphabet is Communication Services there.
     ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
     ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),
-    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("4139313608328")),
     ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3832846143500")),
     ("Broadcom Inc.", "AVGO", "0001730168", Decimal("1678521799800")),
+    ("Micron Technology, Inc.", "MU", "0000723125", Decimal("1222316209200")),
     ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("1028305278000")),
+    ("Intel Corp.", "INTC", "0000050863", Decimal("620411968881")),
     ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("435495596900")),
     ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("420551078756")),
     ("Oracle Corporation", "ORCL", "0001341439", Decimal("394854827600")),
-    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("385070115000")),
 )
 
 
-def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
+def test_run_turn_ranks_technology_as_the_live_snapshot_does() -> None:
     result = run_turn(TECHNOLOGY_TOP_10_QUERY, _gold_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
     assert len(result.table_rows) == 10
-    ciks = [row.cik for row in result.table_rows]
-    assert ciks.count("0001652044") == 1
-    tickers = [row.ticker for row in result.table_rows]
-    assert "GOOGL" not in tickers
     for index, (name, ticker, cik, market_cap) in enumerate(TECHNOLOGY_TOP_10, start=1):
         row = result.table_rows[index - 1]
         assert row.rank == index
@@ -260,6 +257,14 @@ def test_run_turn_ranks_technology_and_consolidates_share_classes() -> None:
         assert row.ticker == ticker
         assert row.cik == cik
         assert row.value == market_cap
+
+
+def test_run_turn_consolidates_share_classes() -> None:
+    result = run_turn(
+        "What are the top 10 companies in communication services?", _gold_rank_runtime()
+    )
+
+    assert [(row.ticker, row.cik) for row in result.table_rows] == [("GOOG", "0001652044")]
 
 
 class _ExplodingFacts:

@@ -33,6 +33,7 @@ from financial_analyst_agent.contracts import (
     ToolTrace,
     TurnResult,
     refuse_unknown_metric,
+    split_between,
     unknown_metric_message,
 )
 from financial_analyst_agent.domain.errors import (
@@ -1124,10 +1125,10 @@ def _subtracted_level_provenance(row: TableRow) -> ComponentProvenance:
     )
 
 
-def _change_row(current: TableRow, prior: TableRow, *, comparison: str) -> TableRow:
-    from decimal import Decimal
-
-    assert current.value is not None and prior.value is not None
+def _change_row(
+    current: TableRow, prior: ComponentProvenance, *, comparison: str
+) -> TableRow:
+    assert current.value is not None
     return TableRow(
         company_name=current.company_name,
         ticker=current.ticker,
@@ -1137,9 +1138,28 @@ def _change_row(current: TableRow, prior: TableRow, *, comparison: str) -> Table
         currency=current.currency,
         start_date=prior.start_date,
         end_date=current.end_date,
-        components=[_subtracted_level_provenance(prior), _subtracted_level_provenance(current)],
+        components=[prior, _subtracted_level_provenance(current)],
         comparison=comparison,  # type: ignore[arg-type]
     )
+
+
+def _year_earlier_level(
+    row: TableRow, ordered: list[TableRow], *, comparatives_only: bool
+) -> ComponentProvenance | None:
+    """The level a year-over-year change starts from.
+
+    The comparative the row's own filing reports comes first: it is on the same
+    basis after a restatement (Bank of America's revenue) or a share split
+    (NVIDIA's diluted EPS of $0.60, first filed as $5.98). The year-earlier row
+    as first filed serves only when the filing reports no comparative, and only
+    when it is in the window unless the analyst asked for year over year alone.
+    """
+    prior = _yoy_prior(row, ordered)
+    if row.year_earlier is not None and (prior is not None or comparatives_only):
+        return row.year_earlier
+    if prior is None or split_between(row, prior):
+        return None
+    return _subtracted_level_provenance(prior)
 
 
 def _yoy_prior_date(end: date) -> date:
@@ -1196,14 +1216,22 @@ def across_period_change_rows(
         for newer, older in zip(ordered, ordered[1:], strict=False):
             assert newer.end_date is not None and older.end_date is not None
             # A missing quarter in the window must not turn into a two-quarter
-            # change labelled "sequential".
-            if sequential and _adjacent_quarters(newer.end_date, older.end_date):
-                changes.append(_change_row(newer, older, comparison="sequential"))
+            # change labelled "sequential"; per-share figures across a split
+            # count different shares.
+            if (
+                sequential
+                and _adjacent_quarters(newer.end_date, older.end_date)
+                and not split_between(newer, older)
+            ):
+                changes.append(
+                    _change_row(
+                        newer, _subtracted_level_provenance(older), comparison="sequential"
+                    )
+                )
         for row in ordered:
-            prior = _yoy_prior(row, ordered)
-            if prior is None:
-                continue
-            changes.append(_change_row(row, prior, comparison="yoy"))
+            prior = _year_earlier_level(row, ordered, comparatives_only=not sequential)
+            if prior is not None:
+                changes.append(_change_row(row, prior, comparison="yoy"))
     return changes
 
 

@@ -17,16 +17,17 @@ TSLA_GM_REVENUE_QUERY = "TSLA vs GM revenue"
 TECH_RD_QUERY = "Top 10 tech companies R&D spend"
 SNAPSHOT_AS_OF = "2026-09-27T22:43:45.015184+00:00"
 TECHNOLOGY_TOP_10 = (
+    # The live snapshot's top ten: Alphabet is Communication Services there.
     ("NVIDIA Corporation", "NVDA", "0001045810", Decimal("5451420470000")),
     ("Apple Inc.", "AAPL", "0000320193", Decimal("5009416510920")),
-    ("Alphabet Inc.", "GOOG", "0001652044", Decimal("4139313608328")),
     ("Microsoft Corporation", "MSFT", "0000789019", Decimal("3832846143500")),
     ("Broadcom Inc.", "AVGO", "0001730168", Decimal("1678521799800")),
+    ("Micron Technology, Inc.", "MU", "0000723125", Decimal("1222316209200")),
     ("Advanced Micro Devices, Inc.", "AMD", "0000002488", Decimal("1028305278000")),
+    ("Intel Corp.", "INTC", "0000050863", Decimal("620411968881")),
     ("Palantir Technologies Inc.", "PLTR", "0001321655", Decimal("435495596900")),
     ("Cisco Systems, Inc.", "CSCO", "0000858877", Decimal("420551078756")),
     ("Oracle Corporation", "ORCL", "0001341439", Decimal("394854827600")),
-    ("Applied Materials, Inc.", "AMAT", "0000006951", Decimal("385070115000")),
 )
 
 MICROSOFT_CIK = "0000789019"
@@ -52,25 +53,25 @@ GM_REVENUE = Decimal("48026000000")
 
 APPLE_RD = Decimal("11729000000")
 MICROSOFT_RD = Decimal("9997000000")
-ALPHABET_RD = Decimal("18219000000")
+MICRON_RD = Decimal("1316000000")
+INTEL_RD = Decimal("3368000000")
 NVIDIA_RD = Decimal("7054000000")
 BROADCOM_RD = Decimal("2895000000")
 ORACLE_RD = Decimal("2401000000")
 AMD_RD = Decimal("2528000000")
 CISCO_RD = Decimal("2431000000")
 PALANTIR_RD = Decimal("192513000")
-AMAT_RD = Decimal("1100000000")
 TECH_RD_VALUES = (
     NVIDIA_RD,
     APPLE_RD,
-    ALPHABET_RD,
     MICROSOFT_RD,
     BROADCOM_RD,
+    MICRON_RD,
     AMD_RD,
+    INTEL_RD,
     PALANTIR_RD,
     CISCO_RD,
     ORACLE_RD,
-    AMAT_RD,
 )
 
 
@@ -130,8 +131,6 @@ def test_gold_top_tech_rd_spend_through_recorded_runtime() -> None:
     assert [row.ticker for row in result.table_rows] == [
         ticker for _name, ticker, _cik, _cap in TECHNOLOGY_TOP_10
     ]
-    assert [row.cik for row in result.table_rows].count("0001652044") == 1
-    assert "GOOGL" not in [row.ticker for row in result.table_rows]
     caps = [cap for _name, _ticker, _cik, cap in TECHNOLOGY_TOP_10]
     assert caps == sorted(caps, reverse=True)
     lookup_ciks = [

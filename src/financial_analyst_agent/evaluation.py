@@ -89,7 +89,7 @@ def _cases() -> tuple[EvalCase, ...]:
             "Top 10 tech companies R&D spend",
             Intent.RANK_AND_LOOKUP,
             RendererKind.TABLE,
-            expect_tickers=("AAPL", "MSFT", "GOOG"),
+            expect_tickers=("AAPL", "MSFT", "NVDA"),
         ),
         EvalCase(
             "refuse_unknown_metric",
@@ -229,7 +229,7 @@ def _cases() -> tuple[EvalCase, ...]:
             "Top 5 semiconductor companies by revenue",
             Intent.RANK_AND_LOOKUP,
             RendererKind.TABLE,
-            expect_order=("NVDA", "AVGO", "AMD", "AMAT"),
+            expect_order=("NVDA", "MU", "AVGO", "INTC", "AMD"),
             expect_ordered_by="revenue",
         ),
         EvalCase(
