@@ -213,7 +213,10 @@ def _structured(state: AnalysisRun) -> StructuredRequest:
 
 
 def _resolve(state: AnalysisRun, runtime: GraphRuntime[TurnDeps]) -> dict[str, Any]:
-    """Patch → resolve → validate → compile; or one question; or a refusal. No fetch."""
+    """Patch → resolve → validate → compile; or one question; or a refusal.
+
+    No facts are fetched: resolution reads only filing lists, to date the periods.
+    """
     deps = runtime.context
     request = _structured(state)
     resolution = resolve_request(request, deps.active_spec, deps.runtime)

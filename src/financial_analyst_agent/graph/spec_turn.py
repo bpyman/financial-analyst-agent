@@ -1386,7 +1386,10 @@ class Resolution:
 def resolve_request(
     request: StructuredRequest, current_spec: AnalysisSpec | None, runtime: Runtime
 ) -> Resolution:
-    """Apply a structured request: patch → resolve → validate → compile. Nothing is fetched.
+    """Apply a structured request: patch → resolve → validate → compile.
+
+    No facts are fetched. Resolution reads the companies' SEC filing lists only, to
+    date a period window and to drop companies that file no 10-Qs.
 
     Only resolution decides identity (CIKs), catalog membership, and the period's
     report dates; the model's patch is never executed as given.
