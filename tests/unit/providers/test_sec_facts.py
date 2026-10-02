@@ -789,8 +789,9 @@ class _RecordingSource:
 
     def get_submissions(self, cik: str) -> dict[str, object]:
         self.calls.append(f"submissions:{cik}")
-        if self._failing == "submissions":
-            raise ProviderError("SEC server error", details={"status_code": 503})
+        if self._failing.startswith("submissions"):
+            status = 404 if self._failing.endswith("404") else 503
+            raise ProviderError("SEC error", details={"status_code": status})
         payload = _submissions(cik, ACCESSION)
         recent = payload["filings"]["recent"]  # type: ignore[index]
         # A bank's list: periodic reports among prospectuses, with extra columns.
@@ -821,7 +822,7 @@ class _RecordingSource:
         return None
 
 
-@pytest.mark.parametrize("failing", ["submissions", "facts"])
+@pytest.mark.parametrize("failing", ["submissions", "submissions-404", "facts"])
 def test_a_failed_sec_document_is_not_asked_for_again_in_the_turn(failing: str) -> None:
     source = _RecordingSource(failing=failing)
     lookup = SecFactLookup(client=source)
@@ -830,8 +831,9 @@ def test_a_failed_sec_document_is_not_asked_for_again_in_the_turn(failing: str) 
         with pytest.raises(ProviderError):
             lookup.get_financials("XOM", metric)
 
-    asked = [call for call in source.calls if call.startswith(f"{failing}:")]
-    assert asked == [f"{failing}:{SUCCESSOR_CIK}"]
+    document = failing.split("-")[0]
+    asked = [call for call in source.calls if call.startswith(f"{document}:")]
+    assert asked == [f"{document}:{SUCCESSOR_CIK}"]
 
 
 def test_company_facts_are_downloaded_before_a_parse_slot_is_taken() -> None:

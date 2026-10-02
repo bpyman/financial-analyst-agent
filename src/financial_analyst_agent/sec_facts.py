@@ -304,8 +304,7 @@ class SecFactLookup:
         try:
             return fetch()
         except SOURCE_FAILURES as exc:
-            if not (isinstance(exc, ProviderError) and exc.details.get("status_code") == 404):
-                self._failures[key] = exc
+            self._failures[key] = exc
             raise
 
     def _cached_company_tickers(self) -> dict[str, Any]:
