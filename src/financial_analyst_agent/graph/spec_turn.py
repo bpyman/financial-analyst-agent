@@ -16,6 +16,7 @@ from typing import Any
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
+    COMPANY_NOT_FOUND,
     DEFAULT_RANK_LIMIT,
     LOOKUP_FAILED,
     MISSING_FACT,
@@ -1088,7 +1089,13 @@ def _lookup_refuse_as_partial(task: CompiledTask, result: TurnResult) -> list[Ta
         for trace in result.tool_traces
         if isinstance(trace.provenance.get("error"), dict)
     }
-    reason = NOT_OPERATING_COMPANY if IneligibleIssuerError.code in codes else MISSING_FACT
+    if IneligibleIssuerError.code in codes:
+        reason = NOT_OPERATING_COMPANY
+    elif CompanyNotFoundError.code in codes:
+        # The same unknown company reads alike in every cell, lookup or formula.
+        reason = COMPANY_NOT_FOUND
+    else:
+        reason = MISSING_FACT
     return [_missing_cell(task.company_queries[0], task.metric, task.report_date, reason)]
 
 
