@@ -168,6 +168,14 @@ def parse_metric(term: str) -> Metric:
         ) from None
 
 
+# A phrase that names a set of metrics rather than one ("margins").
+ALL_MARGINS = "gross_margin+operating_margin+net_margin"
+
+
+def _named_metrics(slug: str) -> tuple[str, ...]:
+    return tuple(slug.split("+"))
+
+
 _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("cost of goods and services", "cost_of_revenue"),
     ("cost of goods sold", "cost_of_revenue"),
@@ -266,10 +274,23 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("revenue", "revenue"),
     ("rev", "revenue"),
     ("revs", "revenue"),
+    ("top line", "revenue"),
+    ("topline", "revenue"),
+    ("turnover", "revenue"),
+    # "How much did Apple earn?" asks for its profit after everything.
+    ("earn", "net_income"),
+    ("earned", "net_income"),
     ("depreciation and amortization", "depreciation_amortization"),
     ("depreciation & amortization", "depreciation_amortization"),
     ("depreciation_amortization", "depreciation_amortization"),
     ("d&a", "depreciation_amortization"),
+    ("depreciation", "depreciation_amortization"),
+    ("research spending", "research_and_development"),
+    ("research spend", "research_and_development"),
+    ("spend on research", "research_and_development"),
+    ("spending on research", "research_and_development"),
+    ("research costs", "research_and_development"),
+    ("research expenses", "research_and_development"),
     ("ebitda", "ebitda"),
     ("return on equity", "return_on_equity"),
     ("return on shareholders equity", "return_on_equity"),
@@ -283,6 +304,7 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("p/e ratio", "pe_ratio"),
     ("pe ratio", "pe_ratio"),
     ("p/e", "pe_ratio"),
+    ("pe", "pe_ratio"),
     ("pe_ratio", "pe_ratio"),
     ("earnings multiple", "pe_ratio"),
     ("stock price", "price"),
@@ -319,6 +341,14 @@ _UNIQUE_PHRASES: tuple[tuple[str, str], ...] = (
     ("market cap", "market_cap"),
     ("market_cap", "market_cap"),
     ("mkt cap", "market_cap"),
+    ("market value", "market_cap"),
+    ("valuation", "market_cap"),
+    ("valued", "market_cap"),
+    ("worth", "market_cap"),
+    ("net worth", "shareholders_equity"),
+    # Plural: "compare the margins" asks for all three.
+    ("profit margins", ALL_MARGINS),
+    ("margins", ALL_MARGINS),
 )
 
 _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -334,7 +364,34 @@ _AMBIGUOUS_PHRASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dividends", ("dividends_per_share", "dividends_paid")),
     ("dividend", ("dividends_per_share", "dividends_paid")),
     ("equity", ("shareholders_equity", "return_on_equity")),
+    # "How much money did Apple make?": the sales or what was left of them.
+    ("money", ("revenue", "net_income")),
+    # "Apple's biggest expense" ("costs" stays unknown, ADR 0004).
+    ("expenses", ("cost_of_revenue", "operating_expenses")),
+    ("expense", ("cost_of_revenue", "operating_expenses")),
 )
+# Parts of a company and operating figures the filings' structured data does
+# not break out: "AWS revenue" is Amazon's total, "deliveries" is not a figure.
+_SEGMENT_WORDS = re.compile(
+    r"\b(?:aws|amazon web services|azure|iphones?|ipads?|macs?|wearables|google cloud"
+    r"|youtube|instagram|whatsapp|xbox|data cent(?:er|re)s?|segments?|divisions?"
+    r"|business units?|same[- ]store sales|comparable sales|comps|per employee|per user"
+    r"|arpu|deliveries|subscribers|users|units sold|backlog|bookings|store count)\b",
+    re.IGNORECASE,
+)
+
+
+def segment_term(question: str) -> str | None:
+    """The segment or operating figure a question names ("iPhone", "per employee")."""
+    match = _SEGMENT_WORDS.search(question)
+    return match.group(0).casefold() if match is not None else None
+
+
+def segment_note(term: str) -> str:
+    return (
+        f"Filings' structured data reports company-wide totals, not segments or "
+        f"operating figures such as “{term}”, so this shows the company-wide figure."
+    )
 # A unique phrase that is part of a longer name it does not mean: the "cash"
 # in "cash flow" and "cash from operations", the "price" in "price target".
 _NOT_FOLLOWED_BY: dict[str, re.Pattern[str]] = {
@@ -412,7 +469,14 @@ def resolve_metric_phrases(query: str) -> tuple[MetricPhraseResolution, ...]:
     ambiguous_matches = _nonoverlapping_ambiguous_matches(normalized, occupied)
 
     ordered: list[tuple[int, MetricPhraseResolution]] = [
-        (start, MetricPhraseResolution(kind="unique", metric=metric, metrics=(metric,)))
+        (
+            start,
+            MetricPhraseResolution(
+                kind="unique",
+                metric=None if "+" in metric else metric,
+                metrics=_named_metrics(metric),
+            ),
+        )
         for start, _end, metric in unique_matches
     ]
     ordered.extend(
@@ -436,9 +500,7 @@ def resolve_metric_phrase(query: str) -> MetricPhraseResolution:
         return uniques[0]
     if len(uniques) > 1:
         # "Apple's revenue and Microsoft's revenue" names one metric twice.
-        metrics = tuple(
-            dict.fromkeys(phrase.metric for phrase in uniques if phrase.metric is not None)
-        )
+        metrics = tuple(dict.fromkeys(metric for phrase in uniques for metric in phrase.metrics))
         if len(metrics) == 1:
             return MetricPhraseResolution(kind="unique", metric=metrics[0], metrics=metrics)
         return MetricPhraseResolution(kind="unique", metrics=metrics)
@@ -458,10 +520,11 @@ def _with_prefixed_metric(
     occupied = [(start, end) for start, end, _metric in unique]
     ambiguous = _nonoverlapping_ambiguous_matches(normalized, occupied)
     prefixed = [
-        metric
+        named
         for _start, end, metric in unique
         for amb_start, _amb_end, _candidates in ambiguous
         if normalized[end:amb_start].strip() == ""
+        for named in _named_metrics(metric)
     ]
     if not prefixed:
         return phrase
