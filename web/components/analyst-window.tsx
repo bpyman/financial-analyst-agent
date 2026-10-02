@@ -24,8 +24,11 @@ import {
   whenFree,
   type ThreadApi,
 } from "@/lib/browser-thread";
+import { loadDemoAnswers } from "@/lib/demo-answers";
+import { parseShareLink } from "@/lib/share-link";
+import { shortcutFor } from "@/lib/shortcuts";
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
-import type { Meta, RuntimeKind, ThreadView } from "@/lib/types";
+import type { Meta, Presentation, RuntimeKind, ThreadView } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./composer";
 import type { ConfirmRequest } from "./confirm-panel";
 import { Header } from "./header";
@@ -89,6 +92,10 @@ export function AnalystWindow() {
   const shownTurns = useRef(0);
   // The API has answered this visit: a slow turn now is work, not a wake-up.
   const awake = useRef(false);
+  // A guided story's recorded answer, shown while a sleeping API wakes.
+  const [demo, setDemo] = useState<{ question: string; presentation: Presentation } | null>(null);
+  // A shared link's question is asked once per load, whatever re-renders follow.
+  const shared = useRef<ReturnType<typeof parseShareLink> | undefined>(undefined);
 
   // Read after hydration only, so the server render and the first client render agree.
   const storedThreadId = useSyncExternalStore(
@@ -164,6 +171,41 @@ export function AnalystWindow() {
       });
     return () => aborted.abort();
   }, [store, resumeAttempt]);
+
+  // A shared link (/?q=…&rt=…) asks its question in a new conversation once the
+  // saved one is back; the address is cleaned first, so a reload asks nothing.
+  useEffect(() => {
+    if (shared.current === undefined) {
+      shared.current = parseShareLink(window.location.search, MAX_MESSAGE_CHARS_BEFORE_META);
+      if (window.location.search) window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
+    const link = shared.current;
+    if (!link || resuming) return;
+    shared.current = null;
+    void startOver(link.runtime, { keepPrevious: true }).then((started) => {
+      if (started) void ask(link.question, started);
+    });
+    // startOver and ask read the latest state when they run; only the resume gates this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resuming]);
+
+  // "/" jumps to the question box from anywhere but another field.
+  useEffect(() => {
+    const jump = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const shortcut = shortcutFor({
+        key: event.key,
+        targetTag: target?.tagName ?? "",
+        editable: target?.isContentEditable ?? false,
+        modifier: event.ctrlKey || event.metaKey || event.altKey,
+      });
+      if (shortcut !== "focus-composer" || event.defaultPrevented) return;
+      event.preventDefault();
+      composer.current?.focus();
+    };
+    window.addEventListener("keydown", jump);
+    return () => window.removeEventListener("keydown", jump);
+  }, []);
 
   // A live thread on a deployment locked to the recorded runtime would refuse
   // every turn: Start over on the recorded runtime and say why.
@@ -451,6 +493,20 @@ export function AnalystWindow() {
     if (started) void ask(message, started);
   }
 
+  /**
+   * A guided story: asked as any question, and while the API is still waking,
+   * its recorded answer shows at once until the real one lands.
+   */
+  function askStory(question: string) {
+    if (!send(question) || awake.current) return;
+    void loadDemoAnswers()
+      .then((answers) => {
+        const presentation = answers.get(question);
+        if (presentation && !awake.current) setDemo({ question, presentation });
+      })
+      .catch(() => undefined);
+  }
+
   function draftQuestion(question: string) {
     composer.current?.fill(question);
   }
@@ -485,9 +541,14 @@ export function AnalystWindow() {
         guide={meta?.runtime_guide ?? null}
         snapshot={meta?.snapshot ?? null}
         chips={view?.spec_chips ?? []}
+        edits={view?.spec_chip_edits ?? []}
+        actions={view?.quick_actions ?? null}
+        editable={!busy && !full && !resumeFailed}
+        onEdit={send}
+        onDraft={draftQuestion}
         turns={view && view.turn_count > 0 ? { count: view.turn_count, max: view.max_turns } : null}
       />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-44 short:pb-24 sm:px-6">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-44 short:pb-24 sm:px-6 2xl:max-w-5xl min-[1920px]:max-w-6xl">
         {notice && (
           <Callout kind={notice.kind} className="mt-6 animate-fade-up">
             <div className="flex items-start justify-between gap-3">
@@ -536,6 +597,12 @@ export function AnalystWindow() {
             <Thread
               turns={view?.turns ?? []}
               turn={turn}
+              runtime={runtime}
+              demo={
+                demo && turn.status === "running" && turn.message === demo.question
+                  ? demo.presentation
+                  : null
+              }
               full={full}
               onRetry={send}
               onAsk={send}
@@ -554,6 +621,7 @@ export function AnalystWindow() {
             error={metaError}
             disabled={busy}
             onAsk={send}
+            onStory={askStory}
             onDraft={draftQuestion}
             onRetry={() => setMetaAttempt((attempt) => attempt + 1)}
           />
@@ -569,6 +637,7 @@ export function AnalystWindow() {
           placeholder={PLACEHOLDER}
           maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
           turnsLeft={view ? view.max_turns - view.turn_count : null}
+          lastQuestion={view?.turns.at(-1)?.message ?? ""}
         />
       </main>
     </div>

@@ -1,10 +1,13 @@
 /**
- * The GitHub social preview (`capture-portfolio.ts`): the landing page's headline on
- * the left, a chart from the window on the right. Pure, so the unit tests pin it;
- * the capture script supplies the headline, the card screenshot, and the fonts.
+ * The link preview (`capture-portfolio.ts`): the landing page's headline on the
+ * left, a chart from the window across about 60% of the right. LinkedIn shows
+ * it near 550 px wide, so the chart is large and its labels were enlarged at
+ * capture. Pure, so the unit tests pin it; the capture script supplies the
+ * headline, the chart screenshot, and the fonts.
  */
 
-export const SOCIAL_SIZE = { width: 1280, height: 640 } as const;
+/** LinkedIn's preferred 1.91:1 (GitHub and X crop it to fit). */
+export const SOCIAL_SIZE = { width: 1200, height: 628 } as const;
 
 export interface SocialCard {
   /** The landing headline's first sentence, in full-strength text. */
@@ -43,22 +46,20 @@ html,body{width:${width}px;height:${height}px;overflow:hidden}
 body{position:relative;font-family:Geist,sans-serif;color:#e8eaed;background:#07080a;
   background-image:linear-gradient(rgb(255 255 255/.035) 1px,transparent 1px),linear-gradient(90deg,rgb(255 255 255/.035) 1px,transparent 1px);
   background-size:32px 32px}
-.glow{position:absolute;width:520px;height:420px;right:40px;top:120px;border-radius:50%;filter:blur(90px);background:rgb(59 130 246/.28)}
-.brand{position:absolute;left:72px;top:64px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:20px}
-.rule{width:1px;height:20px;margin-left:4px;background:#2d323b}
-.tagline{font-weight:400;font-size:17px;color:#8a93a0}
-.logo{width:40px;height:40px;border-radius:10px;border:1px solid #2d323b;background:#14171c;display:grid;place-items:center}
-h1{position:absolute;left:72px;top:170px;width:520px;font-size:56px;font-weight:650;letter-spacing:-.035em;line-height:1.02}
+.glow{position:absolute;width:640px;height:460px;right:20px;top:90px;border-radius:50%;filter:blur(100px);background:rgb(59 130 246/.24)}
+.brand{position:absolute;left:56px;top:52px;display:flex;align-items:center;gap:12px;font-weight:600;font-size:24px}
+.logo{width:44px;height:44px;border-radius:11px;border:1px solid #2d323b;background:#14171c;display:grid;place-items:center}
+h1{position:absolute;left:56px;top:150px;width:420px;font-size:50px;font-weight:650;letter-spacing:-.035em;line-height:1.04}
 h1 span{color:#8a93a0}
-.chips{position:absolute;left:72px;top:452px;width:600px;display:flex;gap:10px}
-.pill{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:1px solid #2d323b;background:#0e1014;border-radius:999px;padding:7px 14px;font-size:15px;color:#c5cad3}
-.dot{width:8px;height:8px;border-radius:50%;background:#34d399}
-.card{position:absolute;width:560px;right:44px;top:148px;border-radius:16px;border:1px solid #2d323b;
-  box-shadow:0 30px 80px rgb(0 0 0/.6),0 0 0 1px rgb(255 255 255/.03);transform:perspective(1600px) rotateY(-6deg) rotateX(2deg)}
-.repo{position:absolute;left:72px;bottom:48px;font-family:GeistMono,monospace;font-size:15px;color:#69717e}
+.chips{position:absolute;left:56px;bottom:104px;width:420px;display:flex;flex-wrap:wrap;gap:10px}
+.pill{display:inline-flex;align-items:center;gap:9px;white-space:nowrap;border:1px solid #2d323b;background:#0e1014;border-radius:999px;padding:9px 16px;font-size:19px;color:#c5cad3}
+.dot{width:9px;height:9px;border-radius:50%;background:#34d399}
+.card{position:absolute;width:704px;right:28px;top:50%;transform:translateY(-50%);border-radius:18px;border:1px solid #2d323b;
+  box-shadow:0 30px 80px rgb(0 0 0/.6),0 0 0 1px rgb(255 255 255/.03)}
+.repo{position:absolute;left:56px;bottom:52px;font-family:GeistMono,monospace;font-size:18px;color:#69717e}
 </style></head><body>
 <div class="glow"></div>
-<div class="brand"><div class="logo">${TREND_ICON}</div>Onfile<span class="rule"></span><span class="tagline">Financial research from SEC filings</span></div>
+<div class="brand"><div class="logo">${TREND_ICON}</div>Onfile</div>
 <h1>${escape(card.lead)}<br><span>${escape(card.muted)}</span></h1>
 <div class="chips">${chips}</div>
 <img class="card" src="${card.card}" alt="">

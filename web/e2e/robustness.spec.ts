@@ -35,7 +35,7 @@ test("a saved answer missing fields still shows, with the rest of the thread", a
 
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
   await expect(page.getByText("This page couldn't be shown")).toBeHidden();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
 });
 
 test("a reply the window cannot read says so, rather than that the service is down", async ({ page }) => {
@@ -256,7 +256,7 @@ test("a slow live answer offers Recorded, and asks there", async ({ page }) => {
 
   await expect(page.getByRole("radio", { name: "Recorded" })).toBeChecked();
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
 });
 
 test.describe("the proxy", () => {

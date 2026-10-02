@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
@@ -541,6 +542,16 @@ _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
 
 
 @dataclass(frozen=True)
+class ChangeChip:
+    """A fact's change on its card: "▲17.7% YoY", and what it was measured against."""
+
+    label: str
+    # "up", "down" or "flat": the arrow's colour, never good or bad.
+    direction: str
+    title: str
+
+
+@dataclass(frozen=True)
 class QuarterlyFactCard:
     company_name: str
     ticker: str
@@ -551,6 +562,20 @@ class QuarterlyFactCard:
     accession_number: str
     concept: str
     source_url: str
+    # "Quarterly fact", "Calculated", "Derived quarter" or "Balance sheet".
+    kind_label: str = ""
+    # The concept cut to a few words; the full name is ``concept``.
+    concept_short: str = ""
+    changes: tuple[ChangeChip, ...] = ()
+
+
+@dataclass(frozen=True)
+class ChipEdit:
+    """An active-analysis chip and the follow-up its × sends, when it has one."""
+
+    label: str
+    kind: str
+    remove: str | None = None
 
 
 @dataclass(frozen=True)
@@ -563,6 +588,10 @@ class DisplayTable:
     # Each row's company key (ticker, else name): a bar chart's records carry the
     # same key, so the window can order bars as the table is sorted.
     row_keys: tuple[str, ...] = ()
+    # Each cell's index into the answer's evidence, so a click opens its source.
+    evidence: tuple[tuple[int | None, ...], ...] = ()
+    # Each cell exactly: amounts as unrounded decimals, dates as ISO days.
+    raw: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -666,6 +695,12 @@ class ChartSpec:
     # The caption once the analyst re-sorts the table: bars then follow the
     # table, so a caption saying how the server ordered them would be wrong.
     resorted_caption: str = ""
+    # A trend's short name per series (its ticker), for end labels and the legend.
+    series_labels: tuple[str, ...] = ()
+    # A trend's evidence index per record and series, as ``amounts`` is keyed.
+    evidence: tuple[dict[str, int], ...] = ()
+    # The series whose point in each record is derived (†): drawn hollow.
+    derived: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -727,9 +762,7 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     elif periods is not None:
         kind = getattr(periods, "kind", "")
         if kind == "last_n_quarters":
-            chips.append(
-                "Last quarter" if periods.count == 1 else f"Last {periods.count} quarters"
-            )
+            chips.append("Last quarter" if periods.count == 1 else f"Last {periods.count} quarters")
         elif kind == "named":
             chips.append(getattr(periods, "label", "") or "Named period")
         else:
@@ -739,6 +772,114 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
         if label:
             chips.append(label)
     return tuple(chips)
+
+
+def spec_chip_edits(spec: Any) -> tuple[ChipEdit, ...]:
+    """``spec_chips`` with what kind each is and the follow-up its × sends.
+
+    The follow-ups are the planner's own words ("remove Apple", "drop revenue").
+    The last company or metric has none: removing it would leave nothing to show.
+    """
+    companies = [
+        company
+        for company in getattr(spec, "companies", ())
+        if (company.ticker or company.name) and (company.ticker or company.name) != "unknown"
+    ]
+    metrics = [str(metric) for metric in getattr(spec, "metrics", ())]
+    kinds: list[str] = ["company"] * len(companies)
+    if getattr(spec, "constituents", None) is not None:
+        kinds.append("constituents")
+    kinds.extend(["metric"] * len(metrics))
+    removals: list[str | None] = [
+        f"remove {short_name(company.name) or company.query or company.ticker}"
+        if len(companies) > 1
+        else None
+        for company in companies
+    ]
+    if getattr(spec, "constituents", None) is not None:
+        removals.append(None)
+    removals.extend(
+        f"drop {_in_sentence(format_field_name(metric))}" if len(metrics) > 1 else None
+        for metric in metrics
+    )
+    edits: list[ChipEdit] = []
+    for index, label in enumerate(spec_chips(spec)):
+        kind = kinds[index] if index < len(kinds) else "period"
+        if kind == "period" and label in _OPERATION_CHIPS.values():
+            kind = "operation"
+        remove = removals[index] if index < len(removals) else None
+        edits.append(ChipEdit(label=label, kind=kind, remove=remove))
+    return tuple(edits)
+
+
+# Companies and metrics the "+" on the active analysis offers, in the planner's words.
+# The companies are ones the recorded runtime holds filings for.
+_QUICK_COMPANIES = ("Apple", "Microsoft", "Alphabet", "NVIDIA", "JPMorgan", "Eli Lilly")
+_QUICK_METRICS = ("revenue", "net_income", "operating_margin", "net_margin", "free_cash_flow")
+_QUICK_SHOWN = 4
+
+
+@dataclass(frozen=True)
+class QuickAction:
+    label: str
+    message: str
+
+
+def chip_quick_actions(spec: Any) -> dict[str, tuple[QuickAction, ...]]:
+    """Follow-ups the active analysis's "+" offers: a company, a metric, or a period.
+
+    Each is a message the planner already reads ("add Apple", "make that the last
+    four quarters"); a ranking's members come from the snapshot, so it takes none.
+    """
+    if spec is None:
+        return {}
+    ranked = getattr(spec, "constituents", None) is not None
+    held = {
+        name.casefold()
+        for company in getattr(spec, "companies", ())
+        for name in (company.query, company.ticker, short_name(company.name) or company.name)
+        if name
+    }
+    companies = (
+        ()
+        if ranked
+        else tuple(
+            QuickAction(label=name, message=f"add {name}")
+            for name in _QUICK_COMPANIES
+            if name.casefold() not in held
+        )[:_QUICK_SHOWN]
+    )
+    metrics = tuple(
+        QuickAction(
+            label=format_field_name(metric),
+            message=f"add {_in_sentence(format_field_name(metric))}",
+        )
+        for metric in _QUICK_METRICS
+        if metric not in {str(metric) for metric in getattr(spec, "metrics", ())}
+    )[:_QUICK_SHOWN]
+    periods: tuple[QuickAction, ...] = ()
+    if not ranked and getattr(spec, "as_of", None) is None:
+        kind = getattr(getattr(spec, "periods", None), "kind", "latest_quarter")
+        operations = {str(operation) for operation in getattr(spec, "operations", ())}
+        periods = tuple(
+            action
+            for action, offered in (
+                (
+                    QuickAction("Latest quarter", "just the latest quarter"),
+                    kind != "latest_quarter",
+                ),
+                (
+                    QuickAction("Last four quarters", "make that the last four quarters"),
+                    kind != "last_n_quarters" or getattr(spec.periods, "count", 0) != 4,
+                ),
+                (
+                    QuickAction("Year over year", "show year-over-year"),
+                    "year_over_year" not in operations,
+                ),
+            )
+            if offered
+        )
+    return {"company": companies, "metric": metrics, "period": periods}
 
 
 # Only operations the other chips do not already show: several companies are
@@ -764,13 +905,19 @@ def _fiscal_week_buckets(ends: set[date]) -> dict[date, date]:
     return buckets
 
 
-def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | None:
-    growth = _growth_chart(result)
+def _no_evidence(_row: TableRow) -> int | None:
+    return None
+
+
+def _chart_spec(
+    result: TurnResult,
+    table: DisplayTable | None,
+    locate: Callable[[TableRow], int | None] = _no_evidence,
+) -> ChartSpec | None:
+    growth = _growth_chart(result, locate)
     if growth is not None:
         return growth
-    comparison_free = [
-        row for row in result.table_rows if row.comparison is None
-    ]
+    comparison_free = [row for row in result.table_rows if row.comparison is None]
     rank_cross_section = result.intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
     rows = (
         comparison_free
@@ -787,9 +934,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
         if row.end_date is None:
             continue
         periods_by_company.setdefault(row.company_name, set()).add(row.end_date)
-    if not rank_cross_section and any(
-        len(periods) >= 2 for periods in periods_by_company.values()
-    ):
+    if not rank_cross_section and any(len(periods) >= 2 for periods in periods_by_company.values()):
         # Valued rows decide whether a trend is worth drawing; every dated row
         # keeps its quarter, so a missing one is a gap, not a skipped period.
         series_companies = {row.company_name for row in rows}
@@ -802,17 +947,18 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
         ]
         buckets = _fiscal_week_buckets({row.end_date for row in dated if row.end_date})
         merged: dict[date, dict[str, object]] = {}
+        sources: dict[date, dict[str, TableRow]] = {}
         for row in dated:
             if row.end_date is None:
                 continue
             period = buckets[row.end_date]
             bucket = merged.setdefault(period, {"Period": period.isoformat()})
-            bucket[row.company_name] = (
-                float(row.value) if row.value is not None else None
-            )
+            bucket[row.company_name] = float(row.value) if row.value is not None else None
+            sources.setdefault(period, {})[row.company_name] = row
         metric = rows[0].metric
         periods = sorted(merged)
         records = tuple(merged[period] for period in periods)
+        series = tuple(dict.fromkeys(row.company_name for row in rows))
         return ChartSpec(
             kind="line",
             title="Trend",
@@ -821,7 +967,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             value_kind=chart_value_kind(metric),
             metric_label=format_field_name(metric),
             period_labels=tuple(format_date(period) for period in periods),
-            series=tuple(dict.fromkeys(row.company_name for row in rows)),
+            series=series,
             amounts=tuple(
                 {
                     key: format_chart_amount(metric, value)
@@ -830,6 +976,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
                 }
                 for record in records
             ),
+            **_point_sources(series, [sources[period] for period in periods], rows, locate),
         )
     if len(companies) >= 2:
         ends = {row.end_date for row in rows if row.end_date is not None}
@@ -839,7 +986,7 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
             kind="bar",
             title="Comparison",
             records=tuple(
-                _bar_record(row, ranked=rank_cross_section) for row in rows
+                _bar_record(row, ranked=rank_cross_section, evidence=locate(row)) for row in rows
             ),
             metric=metric,
             caption=_bar_caption(
@@ -862,7 +1009,30 @@ def _chart_spec(result: TurnResult, table: DisplayTable | None) -> ChartSpec | N
     return None
 
 
-def _growth_chart(result: TurnResult) -> ChartSpec | None:
+def _point_sources(
+    series: tuple[str, ...],
+    by_period: list[dict[str, TableRow]],
+    rows: list[TableRow],
+    locate: Callable[[TableRow], int | None],
+) -> dict[str, Any]:
+    """A trend's tickers, each point's evidence index, and which points are derived."""
+    tickers = {row.company_name: row.ticker for row in rows if row.ticker}
+    evidence: list[dict[str, int]] = []
+    for points in by_period:
+        places = {name: locate(row) for name, row in points.items()}
+        evidence.append({name: place for name, place in places.items() if place is not None})
+    return {
+        "series_labels": tuple(tickers.get(name) or short_name(name) or name for name in series),
+        "evidence": tuple(evidence),
+        "derived": tuple(
+            tuple(name for name, row in points.items() if is_derived(row)) for points in by_period
+        ),
+    }
+
+
+def _growth_chart(
+    result: TurnResult, locate: Callable[[TableRow], int | None] = _no_evidence
+) -> ChartSpec | None:
     """Growth rates, not levels: what a year-over-year or sequential question asks.
 
     One company draws a bar per quarter; several companies at one quarter each, a
@@ -910,34 +1080,41 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
             kind="bar",
             title="Growth",
             records=tuple(
-                _growth_bar(row, name=_month_label(row.end_date), key=_dated_key(row))
+                _growth_bar(
+                    row, name=_month_label(row.end_date), key=_dated_key(row), evidence=locate(row)
+                )
                 for row in ordered
             ),
             caption=f"{label} growth in {_in_sentence(humanized)}, quarter by quarter; "
             f"the table lists the amounts{rest}.",
             metric=metric,
-        value_kind="percent",
-        metric_label=metric_label,
+            value_kind="percent",
+            metric_label=metric_label,
         )
     if all(count == 1 for count in quarters.values()):
         return ChartSpec(
             kind="bar",
             title="Growth",
-            records=tuple(_growth_bar(row, name=_row_key(row), key=_row_key(row)) for row in rows),
+            records=tuple(
+                _growth_bar(row, name=_row_key(row), key=_row_key(row), evidence=locate(row))
+                for row in rows
+            ),
             caption=f"{label} growth in {_in_sentence(humanized)} in each company's latest "
             "quarter; "
             f"the table lists the amounts{rest}.",
             metric=metric,
-        value_kind="percent",
-        metric_label=metric_label,
+            value_kind="percent",
+            metric_label=metric_label,
         )
     buckets = _fiscal_week_buckets({row.end_date for row in rows if row.end_date})
     merged: dict[date, dict[str, object]] = {}
     shown: dict[date, dict[str, str]] = {}
+    sources: dict[date, dict[str, TableRow]] = {}
     for row in rows:
         if row.end_date is None:
             continue
         period = buckets[row.end_date]
+        sources.setdefault(period, {})[row.company_name] = row
         percent = change_percent(row)
         merged.setdefault(period, {"Period": period.isoformat()})[row.company_name] = (
             float(percent) / 100 if percent is not None else None
@@ -945,6 +1122,7 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
         if percent is not None:
             shown.setdefault(period, {})[row.company_name] = _percent_label(percent)
     periods = sorted(merged)
+    series = tuple(dict.fromkeys(row.company_name for row in rows))
     return ChartSpec(
         kind="line",
         title="Growth",
@@ -952,15 +1130,18 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
         caption=f"{label} growth in {_in_sentence(humanized)}, quarter by quarter; "
         f"the table lists the amounts{rest}.",
         period_labels=tuple(format_date(period) for period in periods),
-        series=tuple(dict.fromkeys(row.company_name for row in rows)),
+        series=series,
         amounts=tuple(shown.get(period, {}) for period in periods),
+        **_point_sources(series, [sources[period] for period in periods], rows, locate),
         metric=metric,
         value_kind="percent",
         metric_label=metric_label,
     )
 
 
-def _growth_bar(row: TableRow, *, name: str, key: str) -> dict[str, object]:
+def _growth_bar(
+    row: TableRow, *, name: str, key: str, evidence: int | None = None
+) -> dict[str, object]:
     """A bar for one change row: its percent, or a gap when the base was zero or below."""
     percent = change_percent(row)
     amount = _percent_label(percent) if percent is not None else ""
@@ -972,6 +1153,8 @@ def _growth_bar(row: TableRow, *, name: str, key: str) -> dict[str, object]:
         "Label": amount or "No % change",
         "Missing": percent is None,
         "Period": _period_label(row.start_date, row.end_date),
+        "Evidence": evidence,
+        "Derived": is_derived(row),
     }
 
 
@@ -983,7 +1166,7 @@ def _percent_label(percent: Decimal) -> str:
     return f"{'+' if percent > 0 else ''}{percent:.1f}%"
 
 
-def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
+def _bar_record(row: TableRow, *, ranked: bool, evidence: int | None = None) -> dict[str, object]:
     ticker = row.ticker or row.company_name
     name = f"#{row.rank} {ticker}" if ranked and row.rank is not None else ticker
     missing = row.value is None
@@ -997,6 +1180,8 @@ def _bar_record(row: TableRow, *, ranked: bool) -> dict[str, object]:
         "Amount": amount,
         "Label": label,
         "Missing": missing,
+        "Evidence": evidence,
+        "Derived": is_derived(row),
     }
     period = _period_label(row.start_date, row.end_date)
     if period:
@@ -1060,10 +1245,7 @@ def _selection_rule(row: TableRow) -> str:
     if form and row.start_date is not None and row.start_date == row.end_date:
         return f"Balance-sheet amount the {form} reports at the stated date."
     if form:
-        return (
-            f"Standalone {form} fact for the stated period; "
-            "no year-to-date derivation."
-        )
+        return f"Standalone {form} fact for the stated period; no year-to-date derivation."
     return _LATEST_QUARTER_RULE
 
 
@@ -1099,9 +1281,7 @@ def _row_provenance(row: TableRow) -> tuple[str, str, str, str]:
     accession_number = row.accession_number or ""
     source_url = row.source_url or ""
     if row.components and not concept:
-        concept = " / ".join(
-            component.concept for component in row.components if component.concept
-        )
+        concept = " / ".join(component.concept for component in row.components if component.concept)
         # A snapshot component (P/E's market cap) has no filing to point at.
         filed = [component for component in row.components if component.accession_number]
         first = filed[0] if filed else row.components[0]
@@ -1132,9 +1312,7 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
         concept, form = after.concept, after.form
         accession_number, source_url = after.accession_number, after.source_url
     change = _COMPARISON_LABELS.get(row.comparison or "")
-    metric_label = _metric_heading(row.metric) + (
-        f" · {change.lower()} change" if change else ""
-    )
+    metric_label = _metric_heading(row.metric) + (f" · {change.lower()} change" if change else "")
     return EvidenceItem(
         label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
@@ -1207,12 +1385,49 @@ def _sources(components: Any) -> list[Any]:
     return flat
 
 
+def _evidence_key(item: EvidenceItem) -> tuple[str, str, str]:
+    return (item.label, item.raw_amount, item.accession_number)
+
+
+def _evidence_in_table_order(
+    rows: list[TableRow], cell_rows: list[list[TableRow | None]]
+) -> tuple[tuple[EvidenceItem, ...], Callable[[TableRow], int | None]]:
+    """The inspector's sources in the table's reading order, and each row's place among them.
+
+    A cell, bar, or point opens its row's own entry; the facts a derived or
+    calculated figure came from follow it.
+    """
+    ordered: dict[int, TableRow] = {}
+    for line in cell_rows:
+        for row in line:
+            if row is not None:
+                ordered.setdefault(id(row), row)
+    for row in rows:
+        ordered.setdefault(id(row), row)
+    items: list[EvidenceItem] = []
+    own: dict[int, tuple[str, str, str]] = {}
+    for row in ordered.values():
+        if not (row.cik or row.source_url or row.components):
+            continue
+        row_items = _evidence_items(row)
+        own[id(row)] = _evidence_key(row_items[0])
+        items.extend(row_items)
+    evidence = _dedupe_evidence(items)
+    places = {_evidence_key(item): index for index, item in enumerate(evidence)}
+
+    def locate(row: TableRow) -> int | None:
+        key = own.get(id(row))
+        return places.get(key) if key is not None else None
+
+    return evidence, locate
+
+
 def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
     """One inspector entry per fact: change rows repeat the levels they compare."""
     seen: set[tuple[str, str, str]] = set()
     unique: list[EvidenceItem] = []
     for item in items:
-        key = (item.label, item.raw_amount, item.accession_number)
+        key = _evidence_key(item)
         if key in seen:
             continue
         seen.add(key)
@@ -1223,6 +1438,8 @@ def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
 GUIDE_LABEL = "Guide"
 REFUSED_LABEL = "Not answered"
 CLARIFY_LABEL = "Question for you"
+# One company at a glance: "How is Nvidia doing?"
+OVERVIEW_LABEL = "Overview"
 
 
 def present_turn(result: TurnResult) -> Presentation:
@@ -1236,17 +1453,21 @@ def present_turn(result: TurnResult) -> Presentation:
         and result.table_rows[0].start_date is not None
         and result.table_rows[0].end_date is not None
     ):
-        fact_card = _fact_card(result.table_rows[0])
-    elif result.renderer is RendererKind.TABLE and result.table_rows:
-        table = _display_table(
+        fact_card = _fact_card(result.table_rows[0], result.prior_quarter_rows)
+    cell_rows: list[list[TableRow | None]] = []
+    if fact_card is None and result.renderer is RendererKind.TABLE and result.table_rows:
+        table, cell_rows = _display_table(
             result.table_rows, intent=result.intent, snapshot_day=_snapshot_day(result.banners)
         )
-    evidence = _dedupe_evidence(
-        item
-        for row in result.table_rows
-        if row.cik or row.source_url or row.components
-        for item in _evidence_items(row)
-    )
+    evidence, locate = _evidence_in_table_order(result.table_rows, cell_rows)
+    if table is not None:
+        table = replace(
+            table,
+            evidence=tuple(
+                tuple(locate(row) if row is not None else None for row in line)
+                for line in cell_rows
+            ),
+        )
     disclosures = tuple(
         DisplayDisclosure(
             section_label=item.section_label,
@@ -1296,6 +1517,8 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.renderer is RendererKind.REFUSE
             else CLARIFY_LABEL
             if result.renderer is RendererKind.CLARIFY
+            else OVERVIEW_LABEL
+            if result.trend_rows
             else intent_label(result.intent.value)
         ),
         banners=tuple(banners),
@@ -1308,7 +1531,7 @@ def present_turn(result: TurnResult) -> Presentation:
         ),
         fact_card=fact_card,
         table=table,
-        chart=_chart_spec(result, table),
+        chart=_chart_spec(result, table, locate),
         evidence=evidence,
         disclosures=disclosures,
         essay=result.essay,
@@ -1321,7 +1544,9 @@ def present_turn(result: TurnResult) -> Presentation:
         clarify_prompt=_clarify_prompt(result),
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
-        headline=growth_headline(result.table_rows) or overview_headline(result.table_rows),
+        headline=growth_headline(result.table_rows)
+        or overview_headline(result.table_rows)
+        or (comparison_headline(result.table_rows, result.intent) if table is not None else None),
         trends=overview_trends(result.trend_rows),
     )
 
@@ -1493,7 +1718,7 @@ def _metric_heading(metric: str) -> str:
     return f"{label} (trailing year)" if metric in TRAILING_YEAR_FORMULAS else label
 
 
-def _fact_card(row: TableRow) -> QuarterlyFactCard:
+def _fact_card(row: TableRow, prior_quarter: list[TableRow] | None = None) -> QuarterlyFactCard:
     assert row.start_date is not None
     assert row.end_date is not None
     concept, form, accession_number, source_url = _row_provenance(row)
@@ -1503,13 +1728,20 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
         lead = "Calculated" + DERIVED_MARK if is_derived(row) else "Calculated"
         span = "Trailing year · " if row.metric in TRAILING_YEAR_FORMULAS else ""
         concept, form = _formula_inputs(row), ""
+        kind = "Calculated"
     elif is_derived(row):
         lead = "Derived †"
+        kind = "Derived quarter"
     elif row.start_date == row.end_date:
         lead = "Balance sheet"
+        kind = "Balance sheet"
     else:
         lead = "Standalone quarter"
+        kind = "Quarterly fact"
     return QuarterlyFactCard(
+        kind_label=kind,
+        concept_short=_short_concept(concept),
+        changes=_change_chips(row, prior_quarter or []),
         company_name=row.company_name,
         ticker=row.ticker,
         metric_header=_metric_heading(row.metric),
@@ -1520,6 +1752,78 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
         concept=concept,
         source_url=source_url,
     )
+
+
+# A concept longer than this shows its first words on the card; the tooltip has it all.
+_SHORT_CONCEPT_CHARS = 26
+
+
+def _short_concept(concept: str) -> str:
+    """ "IncomeLossFromContinuing…" for a long XBRL concept; a short one stays whole."""
+    if len(concept) <= _SHORT_CONCEPT_CHARS:
+        return concept
+    words = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+|[^A-Za-z0-9]+", concept)
+    kept = ""
+    for word in words:
+        if len(kept) + len(word) > _SHORT_CONCEPT_CHARS - 1:
+            break
+        kept += word
+    return (kept or concept[: _SHORT_CONCEPT_CHARS - 1]).rstrip(" /") + "…"
+
+
+def _change_chips(row: TableRow, prior_quarter: list[TableRow]) -> tuple[ChangeChip, ...]:
+    """Year over year from the comparative the fact's own filing reports (ADR 0009),
+    then quarter over quarter from the quarter before. A trailing-year or snapshot
+    figure gets none, and neither does a base at or below zero."""
+    if row.value is None or row.metric in (*TRAILING_YEAR_FORMULAS, *SNAPSHOT_METRICS):
+        return ()
+    now = Decimal(str(row.value))
+    chips: list[ChangeChip | None] = []
+    before = row.year_earlier
+    if before is not None:
+        base = Decimal(str(before.value))
+        filing = f"{before.form} {before.accession_number}".strip()
+        chips.append(
+            _change_chip(
+                row.metric,
+                now,
+                base,
+                "YoY",
+                f"Against {format_metric_value(row.metric, base)} for "
+                f"{_period_label(before.start_date, before.end_date)}, as {filing} reports it",
+            )
+        )
+    earlier = prior_quarter[0] if len(prior_quarter) == 1 else None
+    if earlier is not None and earlier.value is not None:
+        source = f", from {earlier.form} {earlier.accession_number}" if earlier.form else ""
+        chips.append(
+            _change_chip(
+                row.metric,
+                now,
+                Decimal(str(earlier.value)),
+                "QoQ",
+                f"Against {_format_cell(earlier, 'value')} for "
+                f"{_period_label(earlier.start_date, earlier.end_date)}{source}",
+            )
+        )
+    return tuple(chip for chip in chips if chip is not None)
+
+
+def _change_chip(
+    metric: str, now: Decimal, base: Decimal, label: str, title: str
+) -> ChangeChip | None:
+    if metric in PERCENT_FORMULAS:
+        # A margin moves in percentage points, not a percent of itself.
+        change = ((now - base) * Decimal("100")).quantize(_TENTH, rounding=ROUND_HALF_UP)
+        shown = f"{abs(change):.1f} pts"
+    else:
+        if base <= 0:
+            return None
+        change = ((now - base) / base * Decimal("100")).quantize(_TENTH, rounding=ROUND_HALF_UP)
+        shown = f"{abs(change):.1f}%"
+    direction = "up" if change > 0 else "down" if change < 0 else "flat"
+    arrow = {"up": "▲", "down": "▼", "flat": "▬"}[direction]
+    return ChangeChip(label=f"{arrow}{shown} {label}", direction=direction, title=title)
 
 
 def _cell_empty(value: Any) -> bool:
@@ -1570,7 +1874,7 @@ def _change_key(metric: str, kind: str | None) -> str:
 
 def _wide_table(
     rows: list[TableRow], *, intent: Intent | None, snapshot_day: date | None = None
-) -> DisplayTable | None:
+) -> tuple[DisplayTable, list[list[TableRow | None]]] | None:
     """A row per company and quarter (and change), a column per metric.
 
     "How is Apple doing?" and "their operating margin" read across a row, not
@@ -1656,6 +1960,8 @@ def _wide_table(
     dated_snapshot = snapshot_day if any(m not in SNAPSHOT_METRICS for m in metrics) else None
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
+    raws: list[tuple[str, ...]] = []
+    sources: list[list[TableRow | None]] = []
     identities: list[TableRow] = []
     for group in ordered:
         by_metric = cells[group]
@@ -1664,7 +1970,15 @@ def _wide_table(
         ends = [row.end_date for row in by_metric.values() if row.end_date is not None]
         text: list[str] = []
         values: list[int | float | None] = []
+        cell_sources: list[TableRow | None] = []
         for key in keys:
+            cell_sources.append(
+                by_metric.get(key[len(WIDE_VALUE_PREFIX) :])
+                if key.startswith(WIDE_VALUE_PREFIX)
+                else by_metric.get(key)
+                if key.startswith(WIDE_CHANGE_PREFIX)
+                else None
+            )
             if key.startswith(WIDE_VALUE_PREFIX):
                 cell = by_metric.get(key[len(WIDE_VALUE_PREFIX) :])
                 if cell is None:
@@ -1705,18 +2019,47 @@ def _wide_table(
                 values.append(None)
         rendered.append(tuple(text))
         numbers.append(tuple(values))
+        sources.append(cell_sources)
+        raws.append(
+            tuple(
+                _raw_value(source)
+                if source is not None
+                else max(ends).isoformat()
+                if key == "end_date" and ends
+                else shown
+                for key, source, shown in zip(keys, cell_sources, text, strict=True)
+            )
+        )
         latest_end = max(ends) if ends else None
         identities.append(identity.model_copy(update={"end_date": latest_end}))
     amounts = [index for index, key in enumerate(keys) if key.startswith(WIDE_VALUE_PREFIX)]
     if not any(row[index] is not None for row in numbers for index in amounts):
         return None
-    return DisplayTable(
+    table = DisplayTable(
         headers=headers,
         keys=tuple(keys),
         rows=tuple(rendered),
         numbers=tuple(numbers),
         row_keys=_row_keys(identities),
+        raw=tuple(raws),
     )
+    return table, sources
+
+
+def _raw_value(row: TableRow) -> str:
+    """A cell's amount unrounded, for export; a failed cell has none."""
+    return str(row.value) if row.value is not None else ""
+
+
+def _raw_cell(row: TableRow, key: str, shown: str) -> str:
+    if key == "value":
+        return _raw_value(row)
+    if key == "market_cap":
+        return str(row.market_cap) if row.market_cap is not None else ""
+    if key in ("start_date", "end_date"):
+        day = getattr(row, key)
+        return day.isoformat() if day is not None else ""
+    return shown
 
 
 def _snapshot_day(banners: list[str]) -> date | None:
@@ -1730,15 +2073,12 @@ def _snapshot_day(banners: list[str]) -> date | None:
 
 def _display_table(
     rows: list[TableRow], *, intent: Intent | None = None, snapshot_day: date | None = None
-) -> DisplayTable:
+) -> tuple[DisplayTable, list[list[TableRow | None]]]:
+    """The answer table, and the row behind each cell whose source the inspector opens."""
     wide = _wide_table(rows, intent=intent, snapshot_day=snapshot_day)
     if wide is not None:
         return wide
-    allowed = (
-        _RANK_TABLE_KEYS
-        if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
-        else _TABLE_KEYS
-    )
+    allowed = _RANK_TABLE_KEYS if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP) else _TABLE_KEYS
     keys = [key for key in allowed if any(not _cell_empty(getattr(row, key)) for row in rows)]
     if len({row.cik or row.company_name for row in rows}) == 1:
         # One company's table: its CIK and currency are in the evidence, not columns.
@@ -1756,18 +2096,22 @@ def _display_table(
                     break
             keys.insert(insert_at, "value")
     headers = tuple(
-        value_header if key == "value" and value_header else format_field_name(key)
-        for key in keys
+        value_header if key == "value" and value_header else format_field_name(key) for key in keys
     )
     rendered = tuple(tuple(_format_cell(row, key) for key in keys) for row in rows)
     numbers = tuple(tuple(_numeric_cell(row, key) for key in keys) for row in rows)
-    return DisplayTable(
+    table = DisplayTable(
         headers=headers,
         keys=tuple(keys),
         rows=rendered,
         numbers=numbers,
         row_keys=_row_keys(rows),
+        raw=tuple(
+            tuple(_raw_cell(row, key, shown) for key, shown in zip(keys, text, strict=True))
+            for row, text in zip(rows, rendered, strict=True)
+        ),
     )
+    return table, [[row if key == "value" else None for key in keys] for row in rows]
 
 
 def _format_cell(row: TableRow, key: str) -> str:
@@ -1835,9 +2179,7 @@ def overview_trends(rows: list[TableRow]) -> tuple[ChartSpec, ...]:
                 metric_label=format_field_name(metric),
                 period_labels=tuple(format_date(row.end_date) for row in points if row.end_date),
                 series=(name,),
-                amounts=tuple(
-                    {name: format_chart_amount(metric, row.value)} for row in points
-                ),
+                amounts=tuple({name: format_chart_amount(metric, row.value)} for row in points),
             )
         )
     return tuple(charts)
@@ -1916,6 +2258,86 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     return f"Year over year, {joined}, each in its latest quarter."
 
 
+def comparison_headline(rows: list[TableRow], intent: Intent) -> str | None:
+    """ "Of these 10 companies, Apple reported the most research and development, …"
+
+    For a ranking or a comparison of one amount: who leads and who trails, in the
+    table's own formatted amounts; for one company over quarters, where it went.
+    None for changes (``growth_headline`` says those) and for several metrics.
+    """
+    if any(row.comparison is not None for row in rows):
+        return None
+    levels = [row for row in rows if row.value is not None and row.end_date is not None]
+    if len({row.metric for row in levels}) != 1:
+        return None
+    latest: dict[str, TableRow] = {}
+    for row in levels:
+        key = row.cik or row.company_name
+        if key not in latest or (row.end_date or date.min) > (latest[key].end_date or date.min):
+            latest[key] = row
+    if len(latest) == 1:
+        return _trend_headline(levels)
+    ordered = sorted(latest.values(), key=lambda row: Decimal(str(row.value)), reverse=True)
+    top, bottom = ordered[0], ordered[-1]
+    if top.value == bottom.value:
+        return None
+    metric = top.metric
+    label = _in_sentence(format_field_name(metric))
+
+    def amount(row: TableRow) -> str:
+        return _format_cell(row, "value")
+
+    def name(row: TableRow) -> str:
+        return short_name(row.company_name) or row.company_name
+
+    if metric == "market_cap":
+        second = ordered[1]
+        return (
+            f"{name(top)} is the largest by market cap, at {amount(top)}, "
+            f"followed by {name(second)} at {amount(second)}."
+        )
+    ends = {row.end_date for row in latest.values()}
+    period = (
+        f", in the quarter ended {format_date(top.end_date)}"
+        if len(ends) == 1 and top.end_date is not None
+        else ", each in its latest quarter"
+        if intent not in (Intent.RANK, Intent.RANK_AND_LOOKUP)
+        else ""
+    )
+    if len(ordered) == 2 and intent not in (Intent.RANK, Intent.RANK_AND_LOOKUP):
+        return (
+            f"{_owner(top)} {label} was {amount(top)}, ahead of "
+            f"{_owner(bottom)} {amount(bottom)}{period}."
+        )
+    ratio = metric in (*PERCENT_FORMULAS, *MULTIPLE_FORMULAS, *PER_SHARE_METRICS)
+    most, least = ("highest", "lowest") if ratio else ("most", "least")
+    companies = len({row.cik or row.company_name for row in rows})
+    return (
+        f"Of these {companies} companies, {name(top)} reported the {most} {label}, "
+        f"{amount(top)}, and {name(bottom)} the {least}, {amount(bottom)}{period}."
+    )
+
+
+def _trend_headline(levels: list[TableRow]) -> str | None:
+    """ "Microsoft's revenue rose from $77.67 B to $90.01 B † over 4 quarters to Jun 30, 2026."
+
+    One company over several quarters: where its amount started and ended.
+    """
+    ordered = sorted(levels, key=lambda row: row.end_date or date.min)
+    if len(ordered) < 3:
+        return None
+    first, last = ordered[0], ordered[-1]
+    if first.value == last.value or last.end_date is None:
+        return None
+    verb = "rose" if Decimal(str(last.value)) > Decimal(str(first.value)) else "fell"
+    label = _in_sentence(format_field_name(last.metric))
+    return (
+        f"{_owner(last)} {label} {verb} from {_format_cell(first, 'value')} to "
+        f"{_format_cell(last, 'value')} over {len(ordered)} quarters to "
+        f"{format_date(last.end_date)}."
+    )
+
+
 def change_percent(row: TableRow) -> Decimal | None:
     """A change row's change as a percent of the level it starts from, or None.
 
@@ -1976,9 +2398,7 @@ def _truncate_url(url: str, max_len: int = 48) -> str:
     return f"{url[:head]}…{url[-tail:]}"
 
 
-def _append_trace_field(
-    fields: list[tuple[str, str]], key: str, value: Any
-) -> None:
+def _append_trace_field(fields: list[tuple[str, str]], key: str, value: Any) -> None:
     label = format_field_name(str(key))
     if key == "components" and isinstance(value, list):
         _append_component_fields(fields, value)

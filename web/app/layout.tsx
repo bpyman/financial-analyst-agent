@@ -13,8 +13,8 @@ const DESCRIPTION =
 // scripts/capture-portfolio.ts writes to public/.
 const SHARE_IMAGE = {
   url: "/social-preview.png",
-  width: 1280,
-  height: 640,
+  width: 1200,
+  height: 628,
   alt: "Onfile: ask about a company, get the number and the filing behind it. Eli Lilly's quarterly revenue overtaking Pfizer's, from their SEC filings.",
 };
 

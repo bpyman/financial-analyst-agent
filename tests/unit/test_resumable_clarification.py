@@ -172,7 +172,8 @@ def test_answering_clarification_resumes_pending_analysis(tmp_path: Path) -> Non
 
     assert turn.result.renderer is RendererKind.TABLE
     assert turn.result.intent is Intent.LOOKUP
-    assert facts.calls == [("Google", "net_income")]
+    # The lone fact also reads the quarter before it, for its change chip.
+    assert set(facts.calls) == {("Google", "net_income")}
     assert turn.analysis_spec is not None
     assert turn.analysis_spec.metrics == ("net_income",)
     state = store.load("t1")
@@ -253,7 +254,8 @@ def test_ambiguous_mode_follow_up_clarifies_instead_of_guessing(tmp_path: Path) 
         _runtime(completer=_GuessNetIncome(), facts=facts),
         store=store,
     )
-    assert facts.calls == [("Google", "net_income")]
+    # The lone fact also reads the quarter before it, for its change chip.
+    assert set(facts.calls) == {("Google", "net_income")}
 
     class _AmbiguousMode:
         def complete(self, query: str, current_spec: object = None) -> SpecPatch:

@@ -25,6 +25,7 @@ from financial_analyst_agent.contracts import (
     SNAPSHOT_METRICS,
     SOURCE_UNAVAILABLE,
     STRUCTURED_INTENTS,
+    TRAILING_YEAR_FORMULAS,
     ComponentProvenance,
     Intent,
     RendererKind,
@@ -1572,6 +1573,14 @@ def run_spec_turn_context(
                 "tool_traces": [*merged.tool_traces, *trend.tool_traces],
             }
         )
+    prior = prior_quarter(spec, merged, runtime, query=message)
+    if prior is not None:
+        merged = merged.model_copy(
+            update={
+                "prior_quarter_rows": prior.table_rows,
+                "tool_traces": [*merged.tool_traces, *prior.tool_traces],
+            }
+        )
     # Planner notes first: a corrected company name explains the whole answer.
     planner_notes = [
         note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
@@ -1758,6 +1767,75 @@ def overview_trend(
     merged = merge_task_results(tasks, results, across_periods=False)
     levels = [row for row in merged.table_rows if row.comparison is None and row.value is not None]
     return merged.model_copy(update={"table_rows": levels})
+
+
+def prior_quarter(
+    spec: AnalysisSpec,
+    result: TurnResult,
+    runtime: Runtime,
+    *,
+    query: str = "",
+) -> TurnResult | None:
+    """The quarter before a lone latest-quarter fact, for its quarter-over-quarter chip.
+
+    Only a fact card gets it: one company, one filed metric, its latest quarter.
+    The year-over-year chip needs no fetch, since the fact's own filing reports
+    the comparative. A lookup that fails leaves the chip out and the answer as it was.
+    """
+    rows = result.table_rows
+    if (
+        len(spec.companies) != 1
+        or spec.constituents is not None
+        or spec.operations
+        or spec.periods.kind != "latest_quarter"
+        or len(spec.metrics) != 1
+        or spec.metrics[0] in (*SNAPSHOT_METRICS, *TRAILING_YEAR_FORMULAS)
+        or len(rows) != 1
+        or rows[0].value is None
+        or rows[0].end_date is None
+    ):
+        return None
+    current = rows[0]
+    assert current.end_date is not None
+    window = spec.model_copy(
+        update={"periods": PeriodSelection(kind="last_n_quarters", count=2)}
+    )
+    try:
+        window = materialize_period_dates(window, runtime)
+        dates = window.periods.report_dates
+        if len(dates) != 2 or not _adjacent_quarters(current.end_date, dates[1]):
+            return None
+        key = spec.companies[0].query.casefold()
+        window = window.model_copy(
+            update={
+                "periods": window.periods.model_copy(
+                    update={
+                        "count": 1,
+                        "report_dates": (dates[1],),
+                        "company_report_dates": ((key, (dates[1],)),),
+                    }
+                )
+            }
+        )
+        tasks = compile_tasks(window)
+        results = dispatch_compiled_tasks(tasks, runtime, query=query, max_workers=1)
+    except (CompanyNotFoundError, SessionQuotaError, *SOURCE_FAILURES):
+        return None
+    if not tasks:
+        return None
+    merged = merge_task_results(tasks, results, across_periods=False)
+    earlier = [
+        row
+        for row in merged.table_rows
+        if row.comparison is None
+        and row.value is not None
+        and row.end_date is not None
+        and _adjacent_quarters(current.end_date, row.end_date)
+        and not split_between(current, row)
+    ]
+    if len(earlier) != 1:
+        return None
+    return merged.model_copy(update={"table_rows": earlier})
 
 
 def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:

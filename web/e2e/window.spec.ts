@@ -54,6 +54,9 @@ test.describe("guided stories", () => {
 
     const changes = page.getByRole("region", { name: "Filing changes" });
     const kind = "(added|removed|changed)$";
+    // Changes that move a figure come first; the rest open with "Show more" and the wording row.
+    await changes.getByRole("button", { name: /^Show \d+ more changes?$/ }).click();
+    await changes.getByText(/^\d+ wording-only edits?/).click();
     // Recorded 10-Qs a year apart: each reviewed section has at least one change.
     for (const section of ["Management's Discussion and Analysis", "Risk Factors"]) {
       const name = new RegExp(`^${section}, ${kind}`);
@@ -73,7 +76,7 @@ test("compare four quarters, then add Apple", async ({ page }) => {
   const legend = analyst.charts().last().getByRole("list", { name: "Series" });
   await expect(legend.getByRole("listitem")).toHaveText([/Microsoft Corporation/, /Apple Inc\./]);
   await expect(analyst.activeAnalysis()).toContainText("AAPL");
-  await expect(analyst.counter()).toHaveText(/^2 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "2");
 });
 
 test("a clarify button answers the question and closes it", async ({ page }) => {
@@ -103,7 +106,7 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
 
   await page.reload();
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
 
   await analyst.startOver();
   await expect(analyst.counter()).toBeHidden();
@@ -124,7 +127,7 @@ test("Start over asks first, and keeps the conversation when declined", async ({
   await confirm.getByRole("button", { name: "Cancel" }).click();
 
   await expect(confirm).toBeHidden();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
 });
 
@@ -219,7 +222,7 @@ test("a reload keeps the window from starting another thread until the saved one
 
   releaseThread();
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Start over" })).toBeEnabled();
   expect(created).toEqual([]);
@@ -317,7 +320,7 @@ test("a reload while a turn runs picks the answer up when it lands", async ({ pa
   await expect(page.getByRole("button", { name: "Analysis running" })).toBeDisabled();
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
-  await expect(analyst.counter()).toHaveText(/^1 of /);
+  await expect(analyst.counter()).toHaveAttribute("data-turns", "1");
 });
 
 test("the window installs as an app with the project's icons", async ({ page, request }) => {

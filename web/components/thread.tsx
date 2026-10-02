@@ -4,7 +4,7 @@ import { Loader2, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { clarifyChoices, shownMessage } from "@/lib/clarify";
 import { progressLabel, type TurnState } from "@/lib/turn-state";
-import type { Turn } from "@/lib/types";
+import type { Presentation, RuntimeKind, Turn } from "@/lib/types";
 import { Answer } from "./answer";
 import { AnswerBoundary } from "./answer-boundary";
 import { AnswerScope } from "./answer-scope";
@@ -15,6 +15,8 @@ import { Button, Callout, LogoMark } from "./ui";
 export function Thread({
   turns,
   turn,
+  runtime = null,
+  demo = null,
   full = false,
   onRetry,
   onAsk,
@@ -23,6 +25,10 @@ export function Thread({
 }: {
   turns: Turn[];
   turn: TurnState;
+  /** The thread's runtime, for an answer's shared link. */
+  runtime?: RuntimeKind | null;
+  /** The running story's recorded answer, shown while the service wakes. */
+  demo?: Presentation | null;
   /** The conversation has used every turn: nothing can be asked on it. */
   full?: boolean;
   onRetry: (message: string) => void;
@@ -34,7 +40,11 @@ export function Thread({
 }) {
   const running = turn.status === "running";
   return (
-    <ol className="space-y-12 pt-8 sm:pt-10" aria-label="Conversation">
+    // Turns sit well apart, a rule between them, so each answer reads as its own.
+    <ol
+      className="space-y-14 pt-8 sm:space-y-16 sm:pt-10 [&>li+li]:border-t [&>li+li]:border-border/70 [&>li+li]:pt-12 sm:[&>li+li]:pt-14"
+      aria-label="Conversation"
+    >
       {turns.map((item, index) => (
         <li
           key={item.index}
@@ -47,6 +57,7 @@ export function Thread({
                 <Answer
                   question={shownMessage(item, turns[index - 1])}
                   presentation={item.presentation}
+                  runtime={runtime}
                   onSuggest={index === turns.length - 1 && turn.status === "idle" && !full ? onAsk : undefined}
                   clarify={{
                     choices: clarifyChoices(item, turns[index + 1]),
@@ -64,8 +75,16 @@ export function Thread({
           <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message} working>
             <Working
               state={turn}
+              slim={demo !== null}
               onTryRecorded={onTryRecorded && turn.message ? () => onTryRecorded(turn.message) : undefined}
             />
+            {demo && (
+              <div className="mt-4">
+                <AnswerBoundary>
+                  <Answer question={turn.message} presentation={demo} demo />
+                </AnswerBoundary>
+              </div>
+            )}
           </Exchange>
         </li>
       )}
@@ -141,9 +160,12 @@ const SLOW_AFTER_SECONDS = 15;
 
 function Working({
   state,
+  slim = false,
   onTryRecorded,
 }: {
   state: Extract<TurnState, { status: "running" }>;
+  /** A recorded answer shows below: the status and progress only, no placeholder. */
+  slim?: boolean;
   onTryRecorded?: () => void;
 }) {
   const { progress, waking } = state;
@@ -163,9 +185,10 @@ function Working({
             </span>
           )}
         </div>
-        {waking && (
+        {(waking || slim) && (
           <p className="mt-1 pl-6 text-xs text-muted">
             The hosted service sleeps when idle and can take about a minute to wake.
+            {slim && " Meanwhile, here is this story's recorded answer; the fresh one replaces it."}
           </p>
         )}
         {onTryRecorded && seconds >= SLOW_AFTER_SECONDS && (
@@ -192,11 +215,13 @@ function Working({
           />
         )}
       </div>
-      <div className="space-y-3 px-4 py-4" aria-hidden>
-        <div className="shimmer animate-shimmer h-3 w-24 rounded" />
-        <div className="shimmer animate-shimmer h-9 w-48 rounded-md" />
-        <div className="shimmer animate-shimmer h-3 w-64 max-w-full rounded" />
-      </div>
+      {!slim && (
+        <div className="space-y-3 px-4 py-4" aria-hidden>
+          <div className="shimmer animate-shimmer h-3 w-24 rounded" />
+          <div className="shimmer animate-shimmer h-9 w-48 rounded-md" />
+          <div className="shimmer animate-shimmer h-3 w-64 max-w-full rounded" />
+        </div>
+      )}
     </div>
   );
 }

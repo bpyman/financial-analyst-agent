@@ -24,9 +24,17 @@ import { SOCIAL_SIZE, socialCardHtml } from "./social-card";
 const OUT = process.env.PORTFOLIO_DIR ?? path.resolve(__dirname, "../../docs/portfolio/images");
 const VIEWPORT = { width: 1280, height: 800 };
 const STILL = { width: 1280, height: 1000 };
-const SOCIAL_WINDOW = { width: 840, height: 1000 };
+// Narrow enough that the chart, drawn at 2x and set 704 px wide on the card, keeps its text large.
+const SOCIAL_WINDOW = { width: 700, height: 1000 };
+// The card is read near 550 px wide in a feed: its chart's labels are drawn larger for it.
+const SOCIAL_CHART_STYLE = `
+  figure svg text.end-label { font-size: 21px !important; }
+  figure svg .recharts-cartesian-axis-tick text { font-size: 14px !important; }
+  figure header { font-size: 115%; }
+  figure figcaption { display: none; }
+`;
 const REPO = "github.com/bpyman/onfile";
-const CHIPS = ["SEC 10-Q facts", "Provenance on every number", "Next.js · FastAPI"];
+const CHIPS = ["Provenance on every number"];
 /** The showcase questions, both answerable on the recorded runtime. */
 const LILLY_VS_PFIZER = "Compare Eli Lilly and Pfizer revenue over the last eight quarters";
 const MSFT_10Q_CHANGES = "What changed in Microsoft's latest 10-Q?";
@@ -142,6 +150,7 @@ async function captureSocial(browser: Browser) {
   await analyst.ask(LILLY_VS_PFIZER);
   const chart = analyst.charts().last();
   await expect(chart).toBeVisible();
+  await page.addStyleTag({ content: SOCIAL_CHART_STYLE });
   await settle(page);
   await page.mouse.move(0, 0);
   const card = await chart.screenshot({ animations: "disabled" });

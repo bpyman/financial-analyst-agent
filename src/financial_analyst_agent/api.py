@@ -46,7 +46,13 @@ from financial_analyst_agent.domain.errors import (
 from financial_analyst_agent.evidence_store import EvidenceStore
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.observability import configure_logging
-from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
+from financial_analyst_agent.presentation import (
+    chip_quick_actions,
+    metric_groups,
+    present_turn,
+    spec_chip_edits,
+    spec_chips,
+)
 from financial_analyst_agent.providers.sec.client import sec_turn_budget
 from financial_analyst_agent.runtime import (
     FIXTURE_EXPLAIN_QUERY,
@@ -407,6 +413,8 @@ def thread_view(
     state = store.load(thread_id, ttl_seconds=ttl, keep=keep)
     turns: list[dict[str, Any]] = []
     chips: tuple[str, ...] = ()
+    edits: list[dict[str, Any]] = []
+    actions: dict[str, Any] = {}
     pending = False
     turn_count = 0
     if state is not None:
@@ -414,6 +422,11 @@ def thread_view(
         turn_count = state.turn_count
         if state.analysis_spec is not None:
             chips = spec_chips(state.analysis_spec)
+            edits = [asdict(edit) for edit in spec_chip_edits(state.analysis_spec)]
+            actions = {
+                group: [asdict(action) for action in items]
+                for group, items in chip_quick_actions(state.analysis_spec).items()
+            }
         results = store.resolve_results(state) if state.evidence_refs else ()
         last = min(len(state.messages), len(results)) - 1
         for index, (message, result) in enumerate(
@@ -433,6 +446,9 @@ def thread_view(
         "runtime": state.runtime.value if state is not None and state.runtime else None,
         "turns": turns,
         "spec_chips": list(chips),
+        # Each chip's kind and the follow-up its × sends; the "+" menu's follow-ups.
+        "spec_chip_edits": edits,
+        "quick_actions": actions,
         "pending_clarification": pending,
         "turn_count": turn_count,
         "max_turns": settings.max_turns_per_thread,

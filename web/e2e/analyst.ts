@@ -56,12 +56,11 @@ export class Analyst {
   /** Turns used on this thread, from the status line (0 before the first turn). */
   async turnsUsed(): Promise<number> {
     if ((await this.counter().count()) === 0) return 0;
-    const text = (await this.counter().textContent()) ?? "";
-    return Number(text.split(" ")[0]) || 0;
+    return Number(await this.counter().getAttribute("data-turns")) || 0;
   }
 
   async waitForTurn(count: number) {
-    await expect(this.counter()).toHaveText(new RegExp(`^${count} of \\d+ turns?$`));
+    await expect(this.counter()).toHaveAttribute("data-turns", String(count));
     await expect(this.page.getByRole("button", { name: "Send" })).toBeVisible();
   }
 
