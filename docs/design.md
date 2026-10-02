@@ -59,10 +59,12 @@ flowchart TB
    clarification, and evidence references. Follow-ups patch that spec instead of restarting.
 2. **Plan** — the planner proposes a typed spec patch or a closed qualitative intent. It never
    emits a resolved spec, CIKs, or numbers.
-3. **Guard** — metric phrases resolve against the closed catalog. Ambiguous input holds a
-   pending clarification; unsupported scope refuses before data access.
-4. **Execute** — code compiles the resolved spec into lookup, compare, rank, rank-and-lookup,
-   or filing-change tasks. Qualitative intents run their own subgraphs. Tool order is fixed.
+3. **Guard** — metric phrases resolve against the closed catalog. Ambiguous input pauses the
+   analysis graph on an `interrupt` (a pending clarification, resumed by the analyst's answer);
+   unsupported scope refuses before data access.
+4. **Execute** — code compiles the resolved spec into lookup, compare, rank, or rank-and-lookup
+   tasks for the structured-analysis subgraph. Filing comparison and the qualitative intents run
+   as their own graph nodes. Tool order is fixed.
 5. **Collect evidence** — tools return typed values with filing, period, identity, snapshot, or
    citation provenance. Filing-change diffs are deterministic text maps, not model rewrites.
 6. **Render** — a typed `TurnResult` becomes a chart and table, grounded essay, clarification, or

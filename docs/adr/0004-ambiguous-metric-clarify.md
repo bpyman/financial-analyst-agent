@@ -1,6 +1,6 @@
 # Ambiguous metric phrases clarify; they do not fetch
 
-> **Revised by [ADR 0005](0005-stateful-analysis-graph.md):** the candidate-set rule and the phrase table below stand unchanged. What changes is the mechanism — clarify is no longer a dead end. On a conversation thread it is an `interrupt` holding a pending analysis spec, so answering the one open question resumes the planned work instead of requiring a retype. The "hold a pending plan" option below was rejected on a one-shot premise that no longer holds.
+> **Revised by [ADR 0005](0005-stateful-analysis-graph.md):** the candidate-set rule and the phrase table below stand unchanged. What changes is the mechanism — clarify is no longer a dead end. On a conversation thread it is a LangGraph `interrupt` holding a pending analysis spec, checkpointed in the thread record, so answering the one open question resumes the planned work (`Command(resume=...)`) instead of requiring a retype. The "hold a pending plan" option below was rejected on a one-shot premise that no longer holds.
 >
 > **Revised again (chips accepted):** the audience window shows each candidate as a button. A button sends its catalog slug as the next analyst message ([ADR 0006](0006-react-audience-window.md)), so it is the same answer the analyst could type, matched against the same closed candidate set; only the latest clarification's candidates are live, and only while the thread holds a pending clarification. Typing the metric still works.
 
