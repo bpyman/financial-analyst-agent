@@ -180,6 +180,15 @@ uv run python -m financial_analyst_agent.evaluation
 uv run python scripts/check_against_filings.py   # live: reads about 25 filings from SEC
 ```
 
+The scorecard runs the rules planner, so it says nothing about the LLM. [Rules planner vs LLM planner](docs/evaluation/planner-comparison.md) runs both on the same 78 conversations end to end, with only the planner swapped: the scorecard's questions and 50 held-out paraphrases labelled before either planner saw them ([cases](docs/evaluation/planner-cases.json)). It reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM. The rules planner scores 96% on the scorecard questions and 88% on the held-out ones; the LLM run calls OpenAI, so it takes prices and a budget:
+
+```text
+uv run python -m financial_analyst_agent.planner_evaluation                       # rules planner, free
+uv run python -m financial_analyst_agent.planner_evaluation --estimate --runs 3   # tokens for an LLM run
+uv run python -m financial_analyst_agent.planner_evaluation --planners rules,llm --runs 3 \
+    --input-price <usd per 1M> --output-price <usd per 1M> --budget-usd <cap>
+```
+
 Rebuild the ranking freeze (not during a demo turn):
 
 ```text

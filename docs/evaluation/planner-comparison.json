@@ -1,0 +1,271 @@
+{
+  "generated_at": "2026-10-02T23:22:18.595855+00:00",
+  "case_count": 78,
+  "scorecard_count": 28,
+  "held_out_count": 50,
+  "planners": {
+    "rules": {
+      "label": "Rules planner",
+      "splits": {
+        "scorecard": {
+          "cases": 28,
+          "accuracy": 0.9642857142857143,
+          "accuracy_by_run": [
+            0.9642857142857143,
+            0.9642857142857143,
+            0.9642857142857143
+          ],
+          "accuracy_sd": 0.0,
+          "fields": {
+            "outcome": 1,
+            "intent": 1,
+            "tickers": 1,
+            "tickers_include": 1,
+            "metrics": 0.9333333333333333,
+            "periods": 1,
+            "operations_include": 1
+          },
+          "agreement": 1
+        },
+        "held_out": {
+          "cases": 50,
+          "accuracy": 0.88,
+          "accuracy_by_run": [
+            0.88,
+            0.88,
+            0.88
+          ],
+          "accuracy_sd": 0.0,
+          "fields": {
+            "outcome": 0.9574468085106383,
+            "intent": 0.9583333333333334,
+            "tickers": 0.9411764705882353,
+            "tickers_include": 0.8,
+            "metrics": 1,
+            "periods": 0.75,
+            "operations_include": 1
+          },
+          "agreement": 1
+        },
+        "all": {
+          "cases": 78,
+          "accuracy": 0.9102564102564102,
+          "accuracy_by_run": [
+            0.9102564102564102,
+            0.9102564102564102,
+            0.9102564102564102
+          ],
+          "accuracy_sd": 0.0,
+          "fields": {
+            "outcome": 0.972972972972973,
+            "intent": 0.9714285714285714,
+            "tickers": 0.9574468085106383,
+            "tickers_include": 0.8888888888888888,
+            "metrics": 0.9803921568627451,
+            "periods": 0.8333333333333334,
+            "operations_include": 1
+          },
+          "agreement": 1
+        }
+      },
+      "runs": 3,
+      "case_runs": 234,
+      "planner_calls": 258,
+      "planner_ms_p50": 1.716364000003523,
+      "planner_ms_p95": 3.804683999987901,
+      "turn_ms_p50": 8.119370000031267,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "reasoning_tokens": 0,
+      "cost_usd": null,
+      "cost_per_planner_call_usd": null,
+      "failures": [
+        {
+          "id": "follow_up_metric_and_company",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "metrics"
+          ]
+        },
+        {
+          "id": "ho_nvda_past_four",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_pfe_mrk_six_quarters",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_banks_market_cap",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "ho_follow_include_oracle",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_follow_swap_abbvie",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_msft_filing_paraphrase",
+          "run": 0,
+          "error": "",
+          "wrong": [
+            "intent"
+          ]
+        },
+        {
+          "id": "follow_up_metric_and_company",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "metrics"
+          ]
+        },
+        {
+          "id": "ho_nvda_past_four",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_pfe_mrk_six_quarters",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_banks_market_cap",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "ho_follow_include_oracle",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_follow_swap_abbvie",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_msft_filing_paraphrase",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "intent"
+          ]
+        },
+        {
+          "id": "follow_up_metric_and_company",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "metrics"
+          ]
+        },
+        {
+          "id": "ho_nvda_past_four",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_pfe_mrk_six_quarters",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "periods"
+          ]
+        },
+        {
+          "id": "ho_banks_market_cap",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "ho_follow_include_oracle",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_follow_swap_abbvie",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "outcome",
+            "tickers"
+          ]
+        },
+        {
+          "id": "ho_msft_filing_paraphrase",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "intent"
+          ]
+        }
+      ]
+    },
+    "llm": {
+      "label": "LLM planner",
+      "not_run": "Not run: it calls OpenAI on the configured key, and needs a budget."
+    }
+  },
+  "estimate": {
+    "planner_calls": 270,
+    "input_tokens": 321918,
+    "output_tokens": 32400,
+    "cost_usd": null,
+    "note": "Input from prompt and schema size at ~4 characters a token; output assumed 120 tokens a call. Reasoning tokens, if the model spends them, are billed as output and are not included: run a small pilot (--limit) to measure them."
+  }
+}
