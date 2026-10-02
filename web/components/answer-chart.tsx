@@ -257,7 +257,7 @@ function TrendChart({
   // A small trend needs only its floor, middle and top.
   const ticks = niceTicks(valueDomain(values, { zero: false }), compact ? 3 : 5);
   const domain: [number, number] = [ticks[0], ticks[ticks.length - 1]];
-  const endLabels = endLabelsFit(rows, shown, domain) ? endLabelSides(rows, shown) : null;
+  const endLabels = endLabelsFit(rows, shown, domain) ? endLabelSides(rows, shown, domain) : null;
   const lone = series.length === 1 ? series[0] : null;
   // Companies on different fiscal calendars: each quarter at its own date.
   const staggered = series.length > 1 && calendarsDiffer(rows);
@@ -487,7 +487,7 @@ function TrendDot({
       )}
       {isLast && endLabel && (
         <text
-          // The capture script enlarges these for the link preview (scripts/capture-portfolio.ts).
+          // The link preview reads these for its own large figures (scripts/capture-portfolio.ts).
           className="end-label"
           x={cx - 9}
           y={endLabel.side === "above" ? cy - 11 : cy + 19}

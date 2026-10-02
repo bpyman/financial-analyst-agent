@@ -141,10 +141,16 @@ describe("quarterTicks", () => {
 });
 
 describe("endLabelSides", () => {
-  it("labels the highest line above and the lowest below, whatever their slope", () => {
+  it("puts each label on the side its own last segment leaves open when the lines end far apart", () => {
     const rows = lineRows(TREND);
-    // Apple ends highest but fell; Microsoft ends lowest but rose.
-    expect(endLabelSides(rows, lineSeries(TREND))).toEqual({ s0: "below", s1: "above" });
+    // Microsoft rose into its last point, so below-left is its own line; Apple fell into it.
+    expect(endLabelSides(rows, lineSeries(TREND), [60e9, 130e9])).toEqual({ s0: "above", s1: "below" });
+  });
+
+  it("labels the highest line above and the lowest below when the lines end close together", () => {
+    const rows = lineRows(TREND);
+    // On a wide axis the two ends are close: keep both labels off the space between the lines.
+    expect(endLabelSides(rows, lineSeries(TREND), [0, 400e9])).toEqual({ s0: "below", s1: "above" });
   });
 });
 

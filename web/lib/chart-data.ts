@@ -137,11 +137,16 @@ export function quarterTicks(rows: LineRow[], max = 8): number[] {
 }
 
 /**
- * Which side of its last point each series' end label goes. The highest ending
- * series labels above and the lowest below, so two labels never sit between
- * the lines; any in between take the side their final segment leaves open.
+ * Which side of its last point each series' end label goes: the side its own
+ * last segment leaves open (above after a rise, below after a fall). When two
+ * lines end close together on the axis (`domain`), the highest labels above and
+ * the lowest below instead, so their labels never sit between the lines.
  */
-export function endLabelSides(rows: LineRow[], series: LineSeries[]): Record<string, "above" | "below"> {
+export function endLabelSides(
+  rows: LineRow[],
+  series: LineSeries[],
+  [low, high]: [number, number],
+): Record<string, "above" | "below"> {
   const sides: Record<string, "above" | "below"> = {};
   const ends: { key: string; value: number }[] = [];
   for (const { key } of series) {
@@ -150,13 +155,18 @@ export function endLabelSides(rows: LineRow[], series: LineSeries[]): Record<str
     sides[key] = values.length > 1 && last < previous ? "below" : "above";
     if (values.length > 0) ends.push({ key, value: values[values.length - 1] });
   }
-  if (ends.length > 1) {
-    ends.sort((a, b) => a.value - b.value);
+  ends.sort((a, b) => a.value - b.value);
+  const span = high - low || 1;
+  const close = ends.some((end, index) => index > 0 && (end.value - ends[index - 1].value) / span < CLOSE_ENDS);
+  if (ends.length > 1 && close) {
     sides[ends[0].key] = "below";
     sides[ends[ends.length - 1].key] = "above";
   }
   return sides;
 }
+
+/** Ends nearer than this share of the axis would put two labels in each other's way. */
+const CLOSE_ENDS = 0.3;
 
 export interface BarRow {
   /** The company key the answer table's row shares. */
