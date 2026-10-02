@@ -146,6 +146,8 @@ NOT_OPERATING_COMPANY = "not_operating_company"
 SOURCE_UNAVAILABLE = "source_unavailable"
 # The lookup itself failed (a fault of ours, not the filing's or EDGAR's).
 LOOKUP_FAILED = "lookup_failed"
+# A named company that neither the snapshot nor SEC's ticker list knows.
+COMPANY_NOT_FOUND = "company_not_found"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 ZERO_DENOMINATOR = "zero_denominator"
 # A per-share figure for a quarter the filings do not report on its own

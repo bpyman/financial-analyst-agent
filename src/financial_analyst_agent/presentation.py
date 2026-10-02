@@ -68,6 +68,7 @@ _REASON_LABELS = {
     "zero_denominator": "Zero denominator",
     "source_unavailable": "Source unavailable",
     "lookup_failed": "Lookup failed",
+    "company_not_found": "Company not found",
     "not_reported_for_quarter": "Reported for the year only",
     "not_meaningful": "Not meaningful (loss)",
     "latest_period_only": "Latest period only",

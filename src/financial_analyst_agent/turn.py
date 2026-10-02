@@ -15,6 +15,7 @@ from typing import Any
 
 from financial_analyst_agent.contracts import (
     AMBIGUOUS_CONCEPT,
+    COMPANY_NOT_FOUND,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_COMPONENTS,
@@ -583,6 +584,8 @@ def _partial_lookup_reason(exc: BaseException) -> str:
         return NOT_OPERATING_COMPANY
     if isinstance(exc, PerShareNotDerivableError):
         return NOT_REPORTED_FOR_QUARTER
+    if isinstance(exc, CompanyNotFoundError):
+        return COMPANY_NOT_FOUND
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
 
 
@@ -919,8 +922,8 @@ def snapshot_compare_rows(
     for issuer in issuers:
         try:
             member = ranking.lookup_member(issuer)
-        except (CompanyNotFoundError, AmbiguousCompanyError):
-            rows.append(_compare_unresolved_row(issuer, metric, MISSING_FACT))
+        except (CompanyNotFoundError, AmbiguousCompanyError) as exc:
+            rows.append(_compare_unresolved_row(issuer, metric, _partial_lookup_reason(exc)))
             continue
         if member.cik in seen_ciks:
             continue
