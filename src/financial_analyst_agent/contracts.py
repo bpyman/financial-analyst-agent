@@ -6,6 +6,7 @@ without loading those workflows.
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
@@ -96,6 +97,14 @@ PERCENT_FORMULAS: tuple[str, ...] = (
     "effective_tax_rate",
     "return_on_equity",
 )
+# Formulas whose denominator is revenue.
+MARGIN_FORMULAS: tuple[str, ...] = (
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "rd_to_sales",
+    "sga_ratio",
+)
 FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "gross_margin": ("gross_profit", "revenue"),
     "operating_margin": ("operating_income", "revenue"),
@@ -155,6 +164,13 @@ ZERO_DENOMINATOR = "zero_denominator"
 NOT_REPORTED_FOR_QUARTER = "not_reported_for_quarter"
 # A ratio that means nothing for these inputs: a P/E on a trailing-year loss.
 NOT_MEANINGFUL = "not_meaningful"
+# Ratios over a negative denominator, which would mislead: McDonald's
+# negative equity gives a return of -859%, a tax on a pretax loss a negative rate.
+NEGATIVE_EQUITY = "negative_equity"
+NEGATIVE_REVENUE = "negative_revenue"
+PRETAX_LOSS = "pretax_loss"
+# A margin beyond 1,000% of revenue either way: a sliver of revenue, not a business's margin.
+EXTREME_MARGIN = "extreme_margin"
 # A snapshot-based figure asked for a past period (ADR 0008).
 LATEST_PERIOD_ONLY = "latest_period_only"
 MODEL_ANALYSIS_BANNER = "model-analysis"
@@ -291,6 +307,25 @@ class TableRow(BaseModel):
     newer_filing_end: date | None = None
     # A ranked company's snapshot market cap: the order a ranking is drawn in.
     market_cap: DecimalStr | None = None
+    # The same figure a year earlier as this row's own filing reports it; a
+    # year-over-year change reads it before the year-earlier row (CONTEXT.md).
+    year_earlier: ComponentProvenance | None = None
+    # Weighted diluted shares behind a per-share figure, so a split between two
+    # quarters shows.
+    diluted_shares: DecimalStr | None = None
+
+
+# Weighted diluted shares moving by half again or more between quarters is a split,
+# not buybacks or issuance; so is a per-share figure restated by that much.
+SPLIT_RATIO = Decimal("1.5")
+
+
+def split_between(newer: TableRow, older: TableRow) -> bool:
+    """Whether a share split falls between two per-share rows, by their share counts."""
+    if newer.diluted_shares is None or older.diluted_shares is None:
+        return False
+    low, high = sorted((Decimal(str(newer.diluted_shares)), Decimal(str(older.diluted_shares))))
+    return low > 0 and high / low >= SPLIT_RATIO
 
 
 class DisclosureChange(BaseModel):

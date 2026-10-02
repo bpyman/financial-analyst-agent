@@ -11,6 +11,7 @@ New multi-turn behaviour is asserted at ``run_conversation_turn``.
 import json
 import re
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from financial_analyst_agent.contracts import (
@@ -18,17 +19,22 @@ from financial_analyst_agent.contracts import (
     COMPANY_NOT_FOUND,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
+    EXTREME_MARGIN,
     FORMULA_COMPONENTS,
     INSTANT_METRICS,
     LATEST_PERIOD_ONLY,
+    MARGIN_FORMULAS,
     MARKET_FORMULAS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NEGATIVE_EQUITY,
+    NEGATIVE_REVENUE,
     NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
     NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
     PERIOD_MISMATCH,
+    PRETAX_LOSS,
     SEARCH_NEWS_MAX_RESULTS,
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
@@ -378,6 +384,28 @@ def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
     )
 
 
+def _part_provenance(part: DerivationPart, parent: str, source: str) -> ComponentProvenance:
+    """A reported fact behind a derived amount, with the facts it came from in turn."""
+    nested = part.derivation
+    own = part.metric or parent
+    return ComponentProvenance(
+        metric=own,
+        value=part.value,
+        start_date=part.start_date,
+        end_date=part.end_date,
+        form=part.form,
+        accession_number=part.accession_number,
+        taxonomy=part.taxonomy,
+        concept=part.concept,
+        source_url=part.source_url,
+        source=source,
+        derivation=nested.label if nested is not None else None,
+        derived_from=(
+            [_part_provenance(inner, own, source) for inner in nested.parts] if nested else []
+        ),
+    )
+
+
 def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
     """A derived quarter's label and the reported facts it came from (ADR 0007)."""
     derivation = fact.derivation
@@ -385,29 +413,18 @@ def _derivation_fields(fact: FinancialFact) -> dict[str, Any]:
         return {}
     metric = fact.metric.value
     source = _fact_source_kind(fact)
-
-    def provenance(part: DerivationPart, parent: str = metric) -> ComponentProvenance:
-        nested = part.derivation
-        own = part.metric or parent
-        return ComponentProvenance(
-            metric=own,
-            value=part.value,
-            start_date=part.start_date,
-            end_date=part.end_date,
-            form=part.form,
-            accession_number=part.accession_number,
-            taxonomy=part.taxonomy,
-            concept=part.concept,
-            source_url=part.source_url,
-            source=source,
-            derivation=nested.label if nested is not None else None,
-            derived_from=[provenance(inner, own) for inner in nested.parts] if nested else [],
-        )
-
     return {
         "derivation": derivation.label,
-        "derived_from": [provenance(part) for part in derivation.parts],
+        "derived_from": [_part_provenance(part, metric, source) for part in derivation.parts],
     }
+
+
+def _year_earlier(fact: FinancialFact, metric: str | None = None) -> ComponentProvenance | None:
+    """The fact's year-earlier comparative, as its own filing reports it."""
+    before = getattr(fact, "year_earlier", None)
+    if before is None:
+        return None
+    return _part_provenance(before, metric or fact.metric.value, _fact_source_kind(fact))
 
 
 def _table_row_from_fact(fact: FinancialFact) -> TableRow:
@@ -426,6 +443,8 @@ def _table_row_from_fact(fact: FinancialFact) -> TableRow:
         concept=fact.concept,
         source_url=fact.source_url,
         newer_filing_end=fact.newer_filing_end,
+        year_earlier=_year_earlier(fact),
+        diluted_shares=fact.diluted_shares,
         **_derivation_fields(fact),
     )
 
@@ -530,6 +549,70 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
     if metric in SUM_FORMULAS:
         return first.value + second.value
     return first.value / second.value
+
+
+# A margin past this many times revenue says more about the revenue than the business.
+_EXTREME_MARGIN = Decimal(10)
+# Ratios that mean nothing when their denominator is negative, and why.
+_NEGATIVE_DENOMINATOR = {
+    **dict.fromkeys(MARGIN_FORMULAS, NEGATIVE_REVENUE),
+    "return_on_equity": NEGATIVE_EQUITY,
+    "effective_tax_rate": PRETAX_LOSS,
+}
+
+
+def _not_meaningful(metric: str, facts: list[FinancialFact]) -> str | None:
+    """Why a ratio's value would mislead, or None when it is sound to show."""
+    if (
+        metric not in FORMULA_COMPONENTS
+        or metric in DIFFERENCE_FORMULAS
+        or metric in SUM_FORMULAS
+    ):
+        return None
+    numerator, denominator = facts
+    if denominator.value == 0:
+        return ZERO_DENOMINATOR
+    reason = _NEGATIVE_DENOMINATOR.get(metric)
+    if reason is not None and denominator.value < 0:
+        return reason
+    if metric in MARGIN_FORMULAS and abs(numerator.value / denominator.value) > _EXTREME_MARGIN:
+        return EXTREME_MARGIN
+    return None
+
+
+def _formula_year_earlier(
+    metric: str, facts: list[FinancialFact], names: tuple[str, ...]
+) -> ComponentProvenance | None:
+    """The formula over each component's year-earlier comparative, when all have one."""
+    if metric not in FORMULA_COMPONENTS:
+        return _year_earlier(facts[0], metric)
+    befores = [_year_earlier(fact, name) for fact, name in zip(facts, names, strict=True)]
+    if any(before is None for before in befores):
+        return None
+    parts = [before for before in befores if before is not None]
+    if len({part.end_date for part in parts}) != 1:
+        return None
+    first = parts[0]
+    as_facts = [
+        fact.model_copy(update={"value": part.value})
+        for fact, part in zip(facts, parts, strict=True)
+    ]
+    if _not_meaningful(metric, as_facts) is not None:
+        return None
+    durations = [part for part in parts if part.metric not in INSTANT_METRICS] or parts
+    return ComponentProvenance(
+        metric=metric,
+        value=_formula_value(metric, as_facts),
+        start_date=durations[0].start_date,
+        end_date=first.end_date,
+        form=first.form,
+        accession_number=first.accession_number,
+        taxonomy="",
+        concept="",
+        source_url=first.source_url,
+        source=first.source,
+        derived_from=parts,
+    )
 
 
 def _metric_name(fact: FinancialFact) -> str:
@@ -657,24 +740,19 @@ def compare_metrics(
             )
             continue
         period_start, period_end = period
-        if (
-            metric in FORMULA_COMPONENTS
-            and metric not in DIFFERENCE_FORMULAS
-            and metric not in SUM_FORMULAS
-        ):
-            _numerator, denominator = fetched
-            if denominator.value == 0:
-                rows.append(
-                    _compare_row(
-                        identity,
-                        metric,
-                        start_date=period_start,
-                        end_date=period_end,
-                        components=components,
-                        reason=ZERO_DENOMINATOR,
-                    )
+        unusable = _not_meaningful(metric, fetched)
+        if unusable is not None:
+            rows.append(
+                _compare_row(
+                    identity,
+                    metric,
+                    start_date=period_start,
+                    end_date=period_end,
+                    components=components,
+                    reason=unusable,
                 )
-                continue
+            )
+            continue
         rows.append(
             _compare_row(
                 identity,
@@ -683,6 +761,8 @@ def compare_metrics(
                 start_date=period_start,
                 end_date=period_end,
                 components=components,
+                year_earlier=_formula_year_earlier(metric, fetched, component_names),
+                diluted_shares=getattr(identity, "diluted_shares", None),
                 newer_filing_end=max(
                     (
                         pending

@@ -57,10 +57,15 @@ describe("clientResponseHeaders", () => {
       "set-cookie": "a=b",
     });
     expect([...clientResponseHeaders(upstream).entries()]).toEqual([
-      ["cache-control", "no-cache, no-transform"],
+      ["cache-control", "private, no-store, no-transform"],
       ["content-type", "text/event-stream"],
       ["x-accel-buffering", "no"],
     ]);
+  });
+
+  it("never passes on upstream caching: a thread is one visitor's", () => {
+    const upstream = new Headers({ "content-type": "application/json", "cache-control": "public, s-maxage=600" });
+    expect(clientResponseHeaders(upstream).get("cache-control")).toBe("private, no-store");
   });
 
   it("passes on how long a busy API asks the caller to wait", () => {
@@ -75,12 +80,20 @@ describe("clientAddress", () => {
     expect(
       clientAddress(browserRequest({ headers: { "x-forwarded-for": "198.51.100.4, 10.0.0.1" } })),
     ).toBe("198.51.100.4");
+    expect(clientAddress(browserRequest({ headers: { "x-real-ip": "2001:db8::1" } }))).toBe("2001:db8::1");
     expect(clientAddress(browserRequest())).toBeNull();
   });
 
-  it("is forwarded to the API as its own header", () => {
-    const headers = upstreamRequestHeaders(browserRequest({ headers: { "x-real-ip": "203.0.113.9" } }), "t");
-    expect(headers.get(CLIENT_IP_HEADER)).toBe("203.0.113.9");
+  it("drops anything that is not an address", () => {
+    expect(clientAddress(browserRequest({ headers: { "x-real-ip": "visitor-" + "x".repeat(80) } }))).toBeNull();
+    expect(clientAddress(browserRequest({ headers: { "x-forwarded-for": "evil, 10.0.0.1" } }))).toBeNull();
+  });
+
+  it("is forwarded to the API as its own header, on the platform only", () => {
+    const request = browserRequest({ headers: { "x-real-ip": "203.0.113.9" } });
+    expect(upstreamRequestHeaders(request, "t", { onPlatform: true }).get(CLIENT_IP_HEADER)).toBe("203.0.113.9");
+    // Off Vercel the visitor wrote that header: trusting it would let them pick their own limit bucket.
+    expect(upstreamRequestHeaders(request, "t").has(CLIENT_IP_HEADER)).toBe(false);
   });
 });
 
@@ -91,6 +104,14 @@ describe("refusal", () => {
   it("refuses dot segments", () => {
     expect(refusal(browserRequest(), ["threads", ".."])?.status).toBe(404);
     expect(refusal(browserRequest(), ["threads", "."])?.status).toBe(404);
+    expect(refusal(browserRequest(), ["threads", "%2e%2e"])?.status).toBe(404);
+  });
+
+  it("refuses a segment holding a slash once decoded", () => {
+    expect(refusal(browserRequest(), ["threads", "a/b"])?.status).toBe(404);
+    expect(refusal(browserRequest(), ["threads", "a%2Fb"])?.status).toBe(404);
+    expect(refusal(browserRequest(), ["threads", "a%5Cb"])?.status).toBe(404);
+    expect(refusal(browserRequest(), ["threads", "3f2a-9c"])).toBeNull();
   });
 
   it("refuses changes sent from another site", () => {
@@ -119,6 +140,17 @@ describe("passesThrough", () => {
     expect(passesThrough(answer(204))).toBe(true);
     expect(passesThrough(answer(500, "text/html"))).toBe(false);
     expect(passesThrough(answer(502, "text/plain"))).toBe(false);
+  });
+
+  it("never passes a redirect on", () => {
+    const moved = new Response(null, { status: 307, headers: { location: "https://elsewhere.example/" } });
+    expect(passesThrough(moved)).toBe(false);
+    expect(passesThrough(moved, "HEAD")).toBe(false);
+  });
+
+  it("passes a HEAD answer, which has no body or type", () => {
+    expect(passesThrough(new Response(null, { status: 200 }), "HEAD")).toBe(true);
+    expect(passesThrough(new Response(null, { status: 503 }), "HEAD")).toBe(false);
   });
 });
 

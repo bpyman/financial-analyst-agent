@@ -2,6 +2,8 @@
 // Server-side only: the token comes from the route's environment and is never
 // sent back to the browser.
 
+import { isIP } from "node:net";
+
 /** The shared-secret header the Python API checks when API_PROXY_TOKEN is set. */
 export const PROXY_TOKEN_HEADER = "x-proxy-token";
 /** The visitor's address, for the API's per-visitor limits (trusted only with the token). */
@@ -12,7 +14,6 @@ export const MAX_BODY_BYTES = 16 * 1024;
 /** Response headers the browser needs; everything else from upstream is dropped. */
 const FORWARD_RESPONSE_HEADERS = [
   "content-type",
-  "cache-control",
   "x-accel-buffering",
   // How long a busy API (429) asks callers to wait.
   "retry-after",
@@ -23,31 +24,39 @@ const FORWARD_RESPONSE_HEADERS = [
  * browser sent (a forged proxy token included) reaches the API; the proxy token
  * is added only when one is configured.
  */
-export function upstreamRequestHeaders(request: Request, token: string | undefined): Headers {
+export function upstreamRequestHeaders(
+  request: Request,
+  token: string | undefined,
+  { onPlatform = false }: { onPlatform?: boolean } = {},
+): Headers {
   const headers = new Headers({ accept: request.headers.get("accept") ?? "application/json" });
   if (request.method !== "GET" && request.method !== "HEAD") {
     headers.set("content-type", request.headers.get("content-type") ?? "application/json");
   }
   if (token) headers.set(PROXY_TOKEN_HEADER, token);
-  const client = clientAddress(request);
+  const client = onPlatform ? clientAddress(request) : null;
   if (client) headers.set(CLIENT_IP_HEADER, client);
   return headers;
 }
 
 /**
  * The visitor's address as the hosting platform reports it: Vercel sets
- * x-real-ip and puts the client first in x-forwarded-for.
+ * x-real-ip and puts the client first in x-forwarded-for, overwriting what
+ * the browser sent. Elsewhere (a local run, another host) the visitor writes
+ * these headers, so the caller asks only on Vercel. Anything but an address
+ * is dropped.
  */
 export function clientAddress(request: Request): string | null {
   const real = request.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 64);
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded ? forwarded.slice(0, 64) : null;
+  const address = real || forwarded;
+  return address && isIP(address) ? address : null;
 }
 
 /** Why the proxy refuses a request before forwarding it, or null to forward it. */
 export function refusal(request: Request, path: string[]): { status: number; detail: string } | null {
-  if (path.some((segment) => segment === "." || segment === "..")) {
+  // An encoded slash would split into two segments upstream; no API path needs one.
+  if (path.map(decoded).some((segment) => segment === "." || segment === ".." || /[/\\]/.test(segment))) {
     return { status: 404, detail: "Not found." };
   }
   if (request.method === "GET" || request.method === "HEAD") return null;
@@ -67,22 +76,40 @@ export function refusal(request: Request, path: string[]): { status: number; det
   return null;
 }
 
+function decoded(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 /**
  * Whether an upstream answer may go to the browser as it is. Anything but JSON
- * or an event stream (an HTML error page, a traceback) is replaced.
+ * or an event stream (an HTML error page, a traceback) is replaced, and so is
+ * a redirect: the proxy never follows one, nor sends the browser to it.
  */
-export function passesThrough(upstream: Response): boolean {
+export function passesThrough(upstream: Response, method = "GET"): boolean {
+  if (upstream.status >= 300 && upstream.status < 400) return false;
+  // A HEAD answer has no body to check (an uptime probe of /api/health).
+  if (method === "HEAD") return upstream.status < 500;
   const kind = (upstream.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   return kind === "application/json" || kind === "text/event-stream" || upstream.status === 204;
 }
 
-/** Headers for the browser's response: only the allowlisted, stream-safe ones. */
+/**
+ * Headers for the browser's response: only the allowlisted, stream-safe ones.
+ * Threads are one visitor's, so nothing is cached on the way, whatever upstream
+ * said; a stream also asks proxies not to compress it.
+ */
 export function clientResponseHeaders(upstream: Headers): Headers {
   const headers = new Headers();
   for (const name of FORWARD_RESPONSE_HEADERS) {
     const value = upstream.get(name);
     if (value) headers.set(name, value);
   }
+  const stream = headers.get("content-type")?.startsWith("text/event-stream");
+  headers.set("cache-control", stream ? "private, no-store, no-transform" : "private, no-store");
   return headers;
 }
 

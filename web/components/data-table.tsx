@@ -6,6 +6,7 @@ import { cn, safeHref } from "@/lib/format";
 import { nextSort, sortedRowIndices, type TableSort } from "@/lib/table-sort";
 import { hasProvenance, soleCompany, tableColumns, type TableColumn, type TableMode } from "@/lib/table-view";
 import type { DisplayTable } from "@/lib/types";
+import { useRegionName } from "./answer-scope";
 import { CopyButton } from "./copy-button";
 import { Badge } from "./ui";
 
@@ -34,8 +35,9 @@ export function DataTable({
   const sortable = Boolean(onSort) && count > 1;
   const order = sortedRowIndices(table, sort);
   const sortedBy = sort ? columns.find((column) => column.key === sort.key)?.header : undefined;
+  const name = useRegionName("Answer table");
   return (
-    <section aria-label="Answer table" className="overflow-hidden rounded-xl border border-border bg-surface">
+    <section aria-label={name} className="overflow-hidden rounded-xl border border-border bg-surface">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
           <Table2 className="size-4 text-primary" aria-hidden />
@@ -183,7 +185,7 @@ function SortButton({
     >
       <Header column={column} />
       <Icon
-        className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60")}
+        className={cn("size-3 shrink-0", active ? "text-primary" : "opacity-40 group-hover:opacity-80 group-focus-visible:opacity-80")}
         aria-hidden
       />
     </button>

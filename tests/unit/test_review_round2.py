@@ -146,7 +146,7 @@ def test_trend_chart_puts_a_fiscal_week_apart_in_one_quarter() -> None:
 def test_usd_rounding_that_reaches_the_next_unit_uses_it() -> None:
     assert format_usd(Decimal("999996000")) == "$1.00 B"
     assert format_usd(Decimal("999999999999")) == "$1.00 T"
-    assert format_usd(Decimal("999994")) == "$999,994"
+    assert format_usd(Decimal("999994")) == "$999.99 K"
     assert format_usd(Decimal("-2500000000")) == "-$2.50 B"
 
 

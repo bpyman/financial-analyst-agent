@@ -8,7 +8,7 @@ Every multi-quarter window skipped fiscal fourth quarters, because companies rep
 
 A **quarterly fact** is still preferred whenever the filing reports one. When it does not, deterministic code may derive a **derived quarter** by exactly one of two subtractions, both over directly reported XBRL facts in USD for the same concept:
 
-1. **Fiscal fourth quarter.** Fiscal-year amount from the 10-K (duration 350 to 380 days, ending on the 10-K report date) minus the nine-month amount (duration 250 to 290 days) with the same start date, reported in a 10-Q.
+1. **Fiscal fourth quarter.** Fiscal-year amount from the 10-K (duration 350 to 380 days, ending on the 10-K report date) minus the nine-month amount (duration 250 to 290 days) with the same start date, reported in a 10-Q. When the 10-K reports the nine months itself, its figure is used: the 10-K may have revised them, and its year is on the same basis (Rapid7, Corpay).
 2. **Year-to-date difference.** A cumulative amount from a 10-Q (duration over 110 days, ending on the 10-Q report date) minus the cumulative amount one quarter shorter with the same start date, reported in a 10-Q. This gives cash-flow quarters two and three.
 
 Rules that keep this honest:
@@ -32,7 +32,7 @@ New catalog entries:
 
 **Latest quarter** now means the newest period any 10-Q or 10-K covers, so a question asked in the weeks after a 10-K is filed shows the fourth quarter instead of a quarter that is five months old. Windows list 10-K report dates beside 10-Q dates, so they no longer skip Q4.
 
-**Named periods** ("Q3 2024", "fiscal 2025") are fiscal: they use the fiscal year and period each filing declares in its XBRL (`fy`, `fp`), which is how companies and the press name quarters. "Calendar Q3 2024" picks the quarter whose middle falls in that calendar quarter. Each company gets its own dates, and a banner says when same-named fiscal quarters end on different dates.
+**Named periods** ("Q3 2024", "fiscal 2025") are fiscal: they use the fiscal year and period each filing declares in its XBRL (`fy`, `fp`), which is how companies and the press name quarters. Two periods declaring the same quarter mean one label is wrong (Salesforce, Blackstone, CrowdStrike); each then takes the label its position gives it, counted in quarters from a neighbour whose label is not repeated. "Calendar Q3 2024" picks the quarter whose middle falls in that calendar quarter. Each company gets its own dates, and a banner says when same-named fiscal quarters end on different dates.
 
 ## Considered options
 

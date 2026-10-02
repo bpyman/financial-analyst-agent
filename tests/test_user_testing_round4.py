@@ -68,7 +68,7 @@ def _tickers(answer: Presentation) -> set[str]:
 
 
 PHARMA = {"LLY", "JNJ", "ABBV", "MRK", "PFE", "AMGN", "GILD"}
-TECH = {"AAPL", "MSFT", "GOOGL", "GOOG", "NVDA", "AVGO", "ORCL", "AMD", "CSCO", "PLTR", "AMAT"}
+TECH = {"AAPL", "MSFT", "NVDA", "AVGO", "MU", "INTC", "ORCL", "AMD", "CSCO", "PLTR", "AMAT"}
 
 
 # Rankings

@@ -4,13 +4,16 @@ import {
   EXPIRED_NOTICE,
   LOCKED_LIVE_NOTICE,
   THREAD_STORAGE_KEY,
+  ThreadMovedError,
   askOnThread,
   isCurrentThread,
   memoryStore,
   resumeThread,
   startOverIfLocked,
   startThread,
+  threadLimitText,
   waitForTurn,
+  waitPhrase,
   type ThreadApi,
   whenFree,
 } from "./browser-thread";
@@ -86,12 +89,20 @@ describe("resumeThread", () => {
     expect(store.getItem(THREAD_STORAGE_KEY)).toBeNull();
   });
 
-  it.each([400, 414, 431])("forgets an unusable stored id after HTTP %s", async (status) => {
+  it.each([400, 405, 414, 431])("forgets an unusable stored id after HTTP %s", async (status) => {
     const store = memoryStore({ [THREAD_STORAGE_KEY]: "invalid" });
     const api = fakeApi({ invalid: new ApiError("Invalid thread id.", status) });
     expect(await resumeThread(api, store)).toEqual({ view: null, notice: EXPIRED_NOTICE });
     expect(store.getItem(THREAD_STORAGE_KEY)).toBeNull();
     expect(api.createThread).not.toHaveBeenCalled();
+  });
+
+  it("forgets a stored id that cannot name a thread, without asking the server", async () => {
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "../threads/x" });
+    const api = fakeApi();
+    expect(await resumeThread(api, store)).toEqual({ view: null, notice: EXPIRED_NOTICE });
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBeNull();
+    expect(api.getThread).not.toHaveBeenCalled();
   });
 
   it.each([new TypeError("Failed to fetch"), new ApiError("Unavailable", 503)])(
@@ -172,14 +183,30 @@ describe("startThread", () => {
     expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started.view.thread_id);
   });
 
-  it("clears the previous thread first (Start over)", async () => {
+  it("makes the new thread, then clears the previous one (Start over)", async () => {
     const api = fakeApi({ "t-1": view({ thread_id: "t-1", turn_count: 4 }) });
     const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
     const started = await startThread(api, store, "recorded", "t-1");
     expect(api.deleteThread).toHaveBeenCalledWith("t-1");
+    expect(api.createThread.mock.invocationCallOrder[0]).toBeLessThan(
+      api.deleteThread.mock.invocationCallOrder[0],
+    );
     expect(started.view.thread_id).not.toBe("t-1");
     expect(started.view.turn_count).toBe(0);
     expect(store.getItem(THREAD_STORAGE_KEY)).toBe(started.view.thread_id);
+  });
+
+  it("keeps the current thread when a new one cannot start, and says how long to wait", async () => {
+    const api = fakeApi({ "t-1": view({ thread_id: "t-1", turn_count: 4 }) });
+    api.createThread.mockRejectedValueOnce(new ApiError("You've asked a lot of questions.", 429, 600));
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-1" });
+
+    const refused = await startThread(api, store, "recorded", "t-1").catch((error: unknown) => error);
+
+    expect(refused).toMatchObject({ status: 429, message: threadLimitText(600) });
+    expect(threadLimitText(600)).toContain("in about 10 minutes");
+    expect(api.deleteThread).not.toHaveBeenCalled();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe("t-1");
   });
 
   it("still starts fresh when the old thread cannot be deleted", async () => {
@@ -291,6 +318,22 @@ describe("askOnThread", () => {
     });
   });
 
+  it("follows another tab's Start over instead of starting a third thread", async () => {
+    const api = fakeApi();
+    // The other tab replaced "t-1" with "t-2" while this one's question was on its way.
+    const store = memoryStore({ [THREAD_STORAGE_KEY]: "t-2" });
+    const runTurn = fakeTurns({ "t-1": new ApiError("Unknown thread.", 404) });
+
+    const moved = await collect(askOnThread(api, store, runTurn, "t-1", "hi", "recorded", vi.fn())).catch(
+      (error: unknown) => error,
+    );
+
+    expect(moved).toBeInstanceOf(ThreadMovedError);
+    expect(moved).toMatchObject({ threadId: "t-2" });
+    expect(api.createThread).not.toHaveBeenCalled();
+    expect(store.getItem(THREAD_STORAGE_KEY)).toBe("t-2");
+  });
+
   it("passes other refusals on, such as a busy service", async () => {
     const api = fakeApi();
     const busy = new ApiError("The analysis service is busy. Please try again in a moment.", 429);
@@ -395,7 +438,19 @@ describe("whenFree", () => {
       throw new ApiError("limit", 429, 900);
     };
     const sleep = vi.fn(async () => undefined);
-    await expect(collect(whenFree(limited, { sleep }))).rejects.toThrow("limit");
+    await expect(collect(whenFree(limited, { sleep }))).rejects.toThrow(
+      "You've asked a lot of questions in the last hour. You can ask again in about 15 minutes.",
+    );
     expect(sleep).not.toHaveBeenCalled();
+  });
+});
+
+describe("waitPhrase", () => {
+  it("names the wait in words", () => {
+    expect(waitPhrase(null)).toBe("in a little while");
+    expect(waitPhrase(20)).toBe("in 20 seconds");
+    expect(waitPhrase(70)).toBe("in about a minute");
+    expect(waitPhrase(3600)).toBe("in about 60 minutes");
+    expect(waitPhrase(7200)).toBe("in about 2 hours");
   });
 });

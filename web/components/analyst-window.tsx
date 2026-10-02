@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import {
   THREAD_STORAGE_KEY,
+  ThreadMovedError,
   askOnThread,
   browserStore,
   isCurrentThread,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/browser-thread";
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
 import type { Meta, RuntimeKind, ThreadView } from "@/lib/types";
-import { Composer } from "./composer";
+import { Composer, type ComposerHandle } from "./composer";
 import type { ConfirmRequest } from "./confirm-panel";
 import { Header } from "./header";
 import { Landing } from "./landing";
@@ -36,6 +37,7 @@ import { Callout } from "./ui";
 const threadApi: ThreadApi = { createThread, getThread, deleteThread };
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
 const OTHER_TAB_NOTICE = "This conversation changed in another tab, so this one follows it.";
+const MOVED_NOTICE = `${OTHER_TAB_NOTICE} Your question is back in the box to send again.`;
 const START_OVER_CONFIRM: ConfirmRequest = {
   title: "Start over?",
   body: "This clears the current conversation.",
@@ -46,8 +48,9 @@ const SWITCH_CONFIRM: ConfirmRequest = {
   body: "This starts a new conversation and clears the current one.",
   action: "Switch runtime",
 };
-const FALLBACK_PLACEHOLDER = "Ask about a company's latest quarterly results…";
+const PLACEHOLDER = "Ask about a company's filings…";
 const UNFINISHED = "Your last question could not be completed. Please ask it again.";
+const ANSWER_READY = "Answer ready.";
 /** The composer's limit until meta brings the server's `max_message_chars`. */
 const MAX_MESSAGE_CHARS_BEFORE_META = 2000;
 
@@ -74,15 +77,18 @@ export function AnalystWindow() {
   const [resumeAttempt, setResumeAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [turn, dispatch] = useReducer(turnReducer, IDLE);
-  const [draft, setDraft] = useState("");
   const [switching, setSwitching] = useState(false);
+  // Read out once an answer lands, for a screen reader left on the question box.
+  const [announcement, setAnnouncement] = useState("");
   // Start over or a runtime switch waiting on the analyst's answer.
   const [confirming, setConfirming] = useState<{ next: RuntimeKind | null; request: ConfirmRequest } | null>(null);
   const inFlight = useRef(false);
   // The running answer, or the reload's wait for one; Start over aborts it.
   const work = useRef<AbortController | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composer = useRef<ComposerHandle | null>(null);
   const shownTurns = useRef(0);
+  // The API has answered this visit: a slow turn now is work, not a wake-up.
+  const awake = useRef(false);
 
   // Read after hydration only, so the server render and the first client render agree.
   const storedThreadId = useSyncExternalStore(
@@ -98,11 +104,14 @@ export function AnalystWindow() {
   const runtime = view?.runtime ?? (resuming || resumeFailed ? null : chosenRuntime ?? meta?.runtime.default ?? null);
   const busy = turn.status === "running" || switching || resuming;
   const hasThread = (view?.turns.length ?? 0) > 0 || turn.status !== "idle";
+  const full = view ? view.turn_count >= view.max_turns : false;
 
   // Wake on visit, then resume the stored thread. A reload mid-turn finds the
   // turn still in flight: show it running and poll until the answer lands.
   useEffect(() => {
-    pingHealth();
+    void pingHealth().then((ok) => {
+      if (ok) awake.current = true;
+    });
     const aborted = new AbortController();
     const { signal } = aborted;
     // Start over aborts the reload too, so the saved thread cannot come back over the new one.
@@ -117,6 +126,8 @@ export function AnalystWindow() {
         dispatch({ type: "event", event: { event: "thread", data: finished } });
         if (finished.turns.length === resumed.turns.length) {
           setNotice({ kind: "error", text: UNFINISHED });
+        } else {
+          setAnnouncement(ANSWER_READY);
         }
       } catch (error) {
         if (signal.aborted) return;
@@ -182,6 +193,7 @@ export function AnalystWindow() {
     const waking = window.setTimeout(() => setMetaWaking(true), WAKE_AFTER_MS);
     getMeta(runtime ?? undefined)
       .then((loaded) => {
+        awake.current = true;
         if (cancelled) return;
         setMeta(loaded);
         setMetaError(null);
@@ -209,10 +221,18 @@ export function AnalystWindow() {
           ? document.querySelector(`[data-turn="${turnCount - 1}"]`)
           : null;
     shownTurns.current = turnCount;
-    target?.scrollIntoView({
+    if (!target) return;
+    target.scrollIntoView({
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "start",
     });
+    // Chrome starts Tab from what is in view; with nothing focused (a resumed
+    // thread), start it from the top, so the first Tab reaches the skip link.
+    if (document.activeElement === document.body) {
+      document.body.tabIndex = -1;
+      document.body.focus({ preventScroll: true });
+      document.body.removeAttribute("tabindex");
+    }
   }, [turn.status, turnCount]);
 
   // Another tab started over or switched runtime: follow it rather than keep
@@ -241,28 +261,41 @@ export function AnalystWindow() {
     return () => window.removeEventListener("storage", follow);
   }, [store, view?.thread_id]);
 
-  // Escape dismisses a notice, as its × does; a failed resume keeps its Try again.
+  // Escape dismisses a notice, as its × does; a failed resume keeps its buttons,
+  // and an open confirm panel takes Escape for itself (it marks the event).
   useEffect(() => {
     if (!notice || resumeFailed) return;
     const dismiss = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNotice(null);
+      if (event.key === "Escape" && !event.defaultPrevented) setNotice(null);
     };
     window.addEventListener("keydown", dismiss);
     return () => window.removeEventListener("keydown", dismiss);
   }, [notice, resumeFailed]);
 
-  async function send(text: string) {
+  /** Takes a question if the window can ask it now; false leaves it in the box. */
+  function send(text: string): boolean {
     const message = text.trim();
-    if (!message || inFlight.current || resuming || resumeFailed) return;
+    if (!message || inFlight.current || resuming || resumeFailed || full) return false;
+    void ask(message);
+    return true;
+  }
+
+  /** Asks `message` on the thread on screen, or on `fresh` when Start over just made one. */
+  async function ask(message: string, fresh?: ThreadView) {
     inFlight.current = true;
     const controller = new AbortController();
     work.current = controller;
     dispatch({ type: "send", message });
-    setDraft("");
     setNotice(null);
-    const waking = window.setTimeout(() => dispatch({ type: "wake" }), WAKE_AFTER_MS);
-    let threadId = view?.thread_id;
+    setAnnouncement("");
+    const waking = window.setTimeout(() => {
+      if (!awake.current) dispatch({ type: "wake" });
+    }, WAKE_AFTER_MS);
+    const shown = fresh ?? view;
+    let threadId = shown?.thread_id;
     let stale = false;
+    let answered = false;
+    let moved: string | null = null;
     try {
       if (!threadId) {
         // Before the analyst picks a runtime, the server applies its deployment default.
@@ -279,25 +312,34 @@ export function AnalystWindow() {
           whenFree(() => runTurn(id, text, controller.signal), { onBusy: () => dispatch({ type: "queued" }) }),
         threadId,
         message,
-        view?.runtime ?? chosenRuntime ?? undefined,
-        (fresh) => {
+        shown?.runtime ?? chosenRuntime ?? undefined,
+        (started) => {
           // The server lost the thread while the window sat open.
           shownTurns.current = 0;
-          setView(fresh.view);
-          threadId = fresh.view.thread_id;
-          if (fresh.notice) setNotice({ kind: "info", text: fresh.notice });
+          setView(started.view);
+          threadId = started.view.thread_id;
+          if (started.notice) setNotice({ kind: "info", text: started.notice });
         },
       );
       for await (const event of asked) {
         if (controller.signal.aborted) break;
-        if (event.event === "thread") setView(event.data);
+        awake.current = true;
+        if (event.event === "thread") {
+          setView(event.data);
+          answered = true;
+        }
         if (event.event === "error") stale = true;
         dispatch({ type: "event", event });
       }
     } catch (error) {
       if (!controller.signal.aborted) {
-        stale = true;
-        dispatch({ type: "fail", error: errorText(error) });
+        if (error instanceof ThreadMovedError) {
+          moved = error.threadId;
+          dispatch({ type: "reset" });
+        } else {
+          stale = true;
+          dispatch({ type: "fail", error: errorText(error) });
+        }
       }
     } finally {
       window.clearTimeout(waking);
@@ -308,17 +350,35 @@ export function AnalystWindow() {
       }
     }
     if (controller.signal.aborted) return;
-    if (stale && threadId) {
-      // A failed turn can still have changed the thread (its turn and budget
-      // counts); redraw from the server rather than keep the pre-turn view,
-      // unless the analyst has started over since.
-      const failedId = threadId;
-      getThread(failedId)
+    if (answered) setAnnouncement(ANSWER_READY);
+    if (moved) {
+      // Another tab's Start over replaced this thread: show that one, and hand the question back.
+      const movedId = moved;
+      getThread(movedId)
         .then((latest) => {
-          if (isCurrentThread(store, failedId)) setView(latest);
+          if (!isCurrentThread(store, movedId)) return;
+          shownTurns.current = 0;
+          setView(latest);
+          setNotice({ kind: "info", text: MOVED_NOTICE });
+          composer.current?.fill(message);
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => setNotice({ kind: "error", text: errorText(error) }));
+      return;
     }
+    if (stale && threadId) refresh(threadId);
+  }
+
+  /**
+   * A failed or dropped turn can still have changed the thread (its turn and
+   * budget counts); redraw from the server rather than keep the stale view,
+   * unless the analyst has started over since.
+   */
+  function refresh(threadId: string) {
+    getThread(threadId)
+      .then((latest) => {
+        if (isCurrentThread(store, threadId)) setView(latest);
+      })
+      .catch(() => undefined);
   }
 
   /**
@@ -327,7 +387,7 @@ export function AnalystWindow() {
    */
   function restart(next: RuntimeKind | null) {
     if (switching) return;
-    if (hasThread || resuming) {
+    if (hasThread || resuming || resumeFailed) {
       const changesRuntime = next !== null && next !== runtime;
       setConfirming({ next, request: changesRuntime ? SWITCH_CONFIRM : START_OVER_CONFIRM });
       return;
@@ -335,9 +395,21 @@ export function AnalystWindow() {
     void startOver(next);
   }
 
-  /** Drops a running answer or a reload still loading, then opens a new thread. */
-  async function startOver(next: RuntimeKind | null) {
+  /**
+   * Drops a running answer or a reload still loading, then opens a new thread.
+   * `keepPrevious` leaves the old thread to expire rather than deleting it (a
+   * saved conversation that could not be loaded). The new thread is made before
+   * anything is cleared, so a refusal keeps the conversation on screen. Returns
+   * the new thread, or null when none could start.
+   */
+  async function startOver(
+    next: RuntimeKind | null,
+    { keepPrevious = false }: { keepPrevious?: boolean } = {},
+  ): Promise<ThreadView | null> {
     setConfirming(null);
+    const wasResuming = resuming;
+    const hadResumeFailed = resumeFailed;
+    const dropped = turn.status === "running" ? view?.thread_id : undefined;
     work.current?.abort();
     work.current = null;
     inFlight.current = true;
@@ -345,33 +417,56 @@ export function AnalystWindow() {
     // A saved thread still loading is dropped: `resumeThread` sees the new id and ignores it.
     setBooted(true);
     setResumeFailed(false);
-    setDraft("");
     setNotice(null);
-    setChosenRuntime(next);
     dispatch({ type: "reset" });
-    window.scrollTo({ top: 0 });
     try {
-      const previous = view?.thread_id ?? store.getItem(THREAD_STORAGE_KEY);
+      const previous = keepPrevious ? null : (view?.thread_id ?? store.getItem(THREAD_STORAGE_KEY));
       const started = await startThread(threadApi, store, next ?? undefined, previous);
       shownTurns.current = 0;
+      setChosenRuntime(next);
       setView(started.view);
+      composer.current?.clear();
+      window.scrollTo({ top: 0 });
       if (started.notice) setNotice({ kind: "info", text: started.notice });
+      return started.view;
     } catch (error) {
-      setView(null);
+      // Nothing was cleared: keep the conversation and say why no new one started.
       setNotice({ kind: "error", text: errorText(error) });
+      if (hadResumeFailed) setResumeFailed(true);
+      else if (wasResuming) {
+        setBooted(false);
+        setResumeAttempt((attempt) => attempt + 1);
+      }
+      if (dropped) refresh(dropped);
+      return null;
     } finally {
       inFlight.current = false;
       setSwitching(false);
     }
   }
 
+  /** A slow live answer: ask the same question on a new recorded thread. */
+  async function tryRecorded(message: string) {
+    const started = await startOver("recorded");
+    if (started) void ask(message, started);
+  }
+
   function draftQuestion(question: string) {
-    setDraft(question);
-    inputRef.current?.focus();
+    composer.current?.fill(question);
   }
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <a
+        href="#composer"
+        onClick={(event) => {
+          event.preventDefault();
+          composer.current?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-lg focus:border focus:border-border-strong focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-fg focus:shadow-lg"
+      >
+        Skip to the question box
+      </a>
       <Header
         runtime={runtime}
         locked={locked}
@@ -390,7 +485,7 @@ export function AnalystWindow() {
         guide={meta?.runtime_guide ?? null}
         snapshot={meta?.snapshot ?? null}
         chips={view?.spec_chips ?? []}
-        turns={view ? { count: view.turn_count, max: view.max_turns } : null}
+        turns={view && view.turn_count > 0 ? { count: view.turn_count, max: view.max_turns } : null}
       />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-44 short:pb-24 sm:px-6">
         {notice && (
@@ -398,17 +493,28 @@ export function AnalystWindow() {
             <div className="flex items-start justify-between gap-3">
               <span>{notice.text}</span>
               {resumeFailed ? (
-                <button
-                  type="button"
-                  disabled={resuming}
-                  onClick={() => {
-                    setBooted(false);
-                    setResumeAttempt((attempt) => attempt + 1);
-                  }}
-                  className="shrink-0 rounded text-sm font-medium underline underline-offset-4 disabled:opacity-50"
-                >
-                  Try again
-                </button>
+                <span className="flex shrink-0 flex-wrap justify-end gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    disabled={resuming}
+                    onClick={() => {
+                      setBooted(false);
+                      setResumeAttempt((attempt) => attempt + 1);
+                    }}
+                    className="rounded text-sm font-medium underline underline-offset-4 disabled:opacity-50"
+                  >
+                    Try again
+                  </button>
+                  {/* The saved thread is left to expire, not deleted unseen. */}
+                  <button
+                    type="button"
+                    disabled={switching}
+                    onClick={() => void startOver(null, { keepPrevious: true })}
+                    className="rounded text-sm font-medium underline underline-offset-4 disabled:opacity-50"
+                  >
+                    Start a new conversation
+                  </button>
+                </span>
               ) : (
                 <button
                   type="button"
@@ -425,7 +531,22 @@ export function AnalystWindow() {
         {resuming ? (
           <ResumeSkeleton />
         ) : resumeFailed ? null : hasThread ? (
-          <Thread turns={view?.turns ?? []} turn={turn} onRetry={send} onAsk={send} />
+          <>
+            <h1 className="sr-only">Your conversation</h1>
+            <Thread
+              turns={view?.turns ?? []}
+              turn={turn}
+              full={full}
+              onRetry={send}
+              onAsk={send}
+              onStartOver={() => restart(runtime)}
+              onTryRecorded={
+                runtime === "live" && !locked && (view?.turns.length ?? 0) === 0
+                  ? (message) => void tryRecorded(message)
+                  : undefined
+              }
+            />
+          </>
         ) : (
           <Landing
             meta={meta}
@@ -437,18 +558,19 @@ export function AnalystWindow() {
             onRetry={() => setMetaAttempt((attempt) => attempt + 1)}
           />
         )}
+        <div className="sr-only" role="status" aria-live="polite">
+          {announcement}
+        </div>
+        <Composer
+          ref={composer}
+          onSend={send}
+          busy={busy || resumeFailed}
+          busyLabel={resuming ? "Loading your thread" : resumeFailed ? "Resume your thread to continue" : "Analysis running"}
+          placeholder={PLACEHOLDER}
+          maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
+          turnsLeft={view ? view.max_turns - view.turn_count : null}
+        />
       </main>
-      <Composer
-        value={draft}
-        onChange={setDraft}
-        onSend={send}
-        busy={busy || resumeFailed}
-        busyLabel={resuming ? "Loading your thread" : resumeFailed ? "Resume your thread to continue" : "Analysis running"}
-        // A real example question, marked as one so it does not read as typed text.
-        placeholder={meta?.example_query ? `e.g. ${meta.example_query}` : FALLBACK_PLACEHOLDER}
-        maxChars={meta?.max_message_chars ?? MAX_MESSAGE_CHARS_BEFORE_META}
-        inputRef={inputRef}
-      />
     </div>
   );
 }

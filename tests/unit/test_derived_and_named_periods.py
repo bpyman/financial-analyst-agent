@@ -111,6 +111,26 @@ def test_fourth_quarter_is_the_year_minus_nine_months() -> None:
     assert fact.derivation.parts[1].source_url == "https://www.sec.gov/q3.htm"
 
 
+def test_a_fourth_quarter_s_year_earlier_is_each_filing_s_own_comparative() -> None:
+    prior_start = date(2023, 10, 1)
+    facts = [
+        _fact(REVENUE, FY_START, Q3_END, "313695", "q3", "10-Q"),
+        _fact(REVENUE, prior_start, date(2024, 6, 29), "296105", "q3", "10-Q"),
+        _fact(REVENUE, FY_START, FY_END, "416161", "k", "10-K"),
+        _fact(REVENUE, prior_start, date(2024, 9, 28), "391035", "k", "10-K"),
+        # The year-earlier nine months as first filed, before the newer 10-Q restated them.
+        _fact(REVENUE, prior_start, date(2024, 6, 29), "290000", "q3-2024", "10-Q"),
+    ]
+
+    fact = _derive(facts, _filing("10-K", "k", FY_END), Metric.REVENUE)
+
+    assert fact.year_earlier is not None
+    assert fact.year_earlier.value == Decimal("94930")
+    assert fact.year_earlier.start_date == date(2024, 6, 30)
+    assert fact.year_earlier.derivation is not None
+    assert [part.accession_number for part in fact.year_earlier.derivation.parts] == ["k", "q3"]
+
+
 def test_a_fourth_quarter_subtracts_the_nine_months_as_then_reported() -> None:
     # 3M, 2023: a 10-Q filed after the 10-K recast the nine months for a spin-off.
     start, nine, year = date(2023, 1, 1), date(2023, 9, 30), date(2023, 12, 31)
@@ -213,9 +233,10 @@ def test_metric_phrases_name_eps_and_cash_flow() -> None:
     assert resolve_metric_phrase("Apple cash flow").kind == "ambiguous"
 
 
-def test_per_share_amounts_show_cents() -> None:
+def test_per_share_amounts_show_cents_or_the_fractions_filed() -> None:
     assert format_metric_value("eps_diluted", Decimal("2.02")) == "$2.02"
-    assert format_metric_value("eps_diluted", Decimal("-0.155")) == "-$0.16"
+    # A fraction of a cent the filing reports is kept, as a $0.2475 dividend is.
+    assert format_metric_value("eps_diluted", Decimal("-0.155")) == "-$0.155"
     assert format_metric_value("free_cash_flow", Decimal("19640000000")) == "$19.64 B"
 
 

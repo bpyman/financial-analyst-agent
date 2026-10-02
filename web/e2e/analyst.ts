@@ -4,10 +4,12 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export class Analyst {
   constructor(readonly page: Page) {}
 
-  /** Opens the window on an empty thread with the guided stories loaded. */
+  /** Opens the window on an empty thread, with the storefront loaded from the API. */
   async open() {
     await this.page.goto("/");
     await expect(this.story("Verify a quarterly fact")).toBeEnabled();
+    // The stories show before the API answers; the supported metrics come only from it.
+    await expect(this.page.getByRole("region", { name: "Supported metrics" })).toBeVisible();
   }
 
   story(label: string): Locator {

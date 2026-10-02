@@ -53,8 +53,13 @@ def test_pe_is_market_cap_over_trailing_net_income(runtime) -> None:  # type: ig
     (answer,) = _conversation(runtime, "Apple P/E")
     assert answer.fact_card is not None
     assert answer.fact_card.amount == "38.9x"
-    assert answer.fact_card.period_label == "Derived † · Jun 29, 2025 – Jun 27, 2026"
-    assert any("trailing-12-month net income" in banner for banner in answer.banners)
+    # Calculated over a trailing year, from the snapshot's market cap and a derived year.
+    assert answer.fact_card.period_label == (
+        "Calculated † · Trailing year · Jun 29, 2025 – Jun 27, 2026"
+    )
+    assert answer.fact_card.concept == "Market cap (Sep 27, 2026) ÷ trailing-year net income"
+    assert answer.fact_card.form == ""
+    assert any("trailing-year net income" in banner for banner in answer.banners)
     labels = [item.label for item in answer.evidence]
     assert "Apple Inc. · Market cap · At Sep 27, 2026" in labels
 
@@ -62,12 +67,17 @@ def test_pe_is_market_cap_over_trailing_net_income(runtime) -> None:  # type: ig
 def test_p_slash_e_is_not_read_as_two_tickers(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _conversation(runtime, "Compare Nvidia, AMD and Broadcom P/E")
     assert _column(answer, "Ticker") == ["NVDA", "AMD", "AVGO"]
-    assert _column(answer, "P/E ratio") == ["28.3x †", "159.8x †", "43.9x †"]
+    assert _column(answer, "P/E ratio (trailing year)") == ["28.3x †", "159.8x †", "43.9x †"]
 
 
 def test_return_on_equity_over_a_window(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _conversation(runtime, "JPMorgan return on equity last 4 quarters")
-    assert _column(answer, "Return on equity") == ["17.4% †", "16.2% †", "15.7%", "16.1% †"]
+    assert _column(answer, "Return on equity (trailing year)") == [
+        "17.4% †",
+        "16.2% †",
+        "15.7%",
+        "16.1% †",
+    ]
     # A trailing year is not a 52-week quarter.
     assert not any("weeks" in banner for banner in answer.banners)
 
