@@ -39,6 +39,7 @@ from financial_analyst_agent.services.fiscal_periods import (
     GROSS_PROFIT_LABEL,
     REVENUE_FROM_COMPONENTS_LABEL,
 )
+from financial_analyst_agent.services.metric_catalog import segment_term
 
 _MONTHS = (
     "Jan",
@@ -535,7 +536,7 @@ _INTENT_LABELS = {
 _LATEST_QUARTER_RULE = "Latest standalone quarterly 10-Q; no year-to-date derivation."
 _SNAPSHOT_RULE = "Universe snapshot market data; not a 10-Q filing fact."
 _FORMULA_RULE = "Calculated from the listed component facts; no LLM arithmetic."
-_MIXED_PERIOD_CAPTION = "Latest standalone quarter; periods differ by issuer."
+_MIXED_PERIOD_CAPTION = "Periods differ by issuer: each bar is the company's own quarter."
 
 
 @dataclass(frozen=True)
@@ -613,7 +614,11 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     for metric in getattr(spec, "metrics", ()):
         chips.append(format_field_name(str(metric)))
     periods = getattr(spec, "periods", None)
-    if constituents is not None:
+    as_of = getattr(spec, "as_of", None)
+    if isinstance(as_of, date):
+        # Market cap and price are the snapshot's, not a quarter's.
+        chips.append(f"As of {format_date(as_of)}")
+    elif constituents is not None:
         # A ranking shows each company's latest quarter whatever period was named.
         chips.append("Latest quarter")
     elif periods is not None:
@@ -805,7 +810,7 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
                 _growth_bar(row, name=_month_label(row.end_date), key=_dated_key(row))
                 for row in ordered
             ),
-            caption=f"{label} growth in {humanized.lower()}, quarter by quarter; "
+            caption=f"{label} growth in {_in_sentence(humanized)}, quarter by quarter; "
             f"the table lists the amounts{rest}.",
             metric=metric,
         value_kind="percent",
@@ -816,7 +821,8 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
             kind="bar",
             title="Growth",
             records=tuple(_growth_bar(row, name=_row_key(row), key=_row_key(row)) for row in rows),
-            caption=f"{label} growth in {humanized.lower()} in each company's latest quarter; "
+            caption=f"{label} growth in {_in_sentence(humanized)} in each company's latest "
+            "quarter; "
             f"the table lists the amounts{rest}.",
             metric=metric,
         value_kind="percent",
@@ -840,7 +846,7 @@ def _growth_chart(result: TurnResult) -> ChartSpec | None:
         kind="line",
         title="Growth",
         records=tuple(merged[period] for period in periods),
-        caption=f"{label} growth in {humanized.lower()}, quarter by quarter; "
+        caption=f"{label} growth in {_in_sentence(humanized)}, quarter by quarter; "
         f"the table lists the amounts{rest}.",
         period_labels=tuple(format_date(period) for period in periods),
         series=tuple(dict.fromkeys(row.company_name for row in rows)),
@@ -908,7 +914,8 @@ def _bar_caption(
         return f"{caption} Periods differ by issuer." if mixed_periods else caption
     if ranked and metric != "market_cap":
         order = (
-            f"Ordered by {format_field_name(ordered_by).lower()} among the largest by market cap"
+            f"Ordered by {_in_sentence(format_field_name(ordered_by))} among the largest by "
+            "market cap"
             if ordered_by
             else "Ordered by market cap"
         )
@@ -1183,6 +1190,23 @@ def present_turn(result: TurnResult) -> Presentation:
 
 
 _UNKNOWN_METRIC = re.compile(r"^Unknown metric '(?P<term>[^']*)'\. Allowed: .*$", re.DOTALL)
+# Themes people rank by that the snapshot does not group companies by.
+_THEME_HINT = (
+    "The snapshot groups companies by industry, and “{theme}” isn't one. Try {instead}, "
+    "for example “top 5 {example} companies by revenue”."
+)
+_THEME_HINTS = {
+    theme: _THEME_HINT.format(theme=label, instead=instead, example=example)
+    for theme, label, instead, example in (
+        ("ai", "AI", "semiconductors or software", "semiconductor"),
+        ("artificial intelligence", "artificial intelligence", "semiconductors or software",
+         "semiconductor"),
+        ("cloud", "cloud", "software", "software"),
+        ("cybersecurity", "cybersecurity", "software", "software"),
+        ("crypto", "crypto", "capital markets or software", "software"),
+        ("unicorn", "unicorn", "an industry such as software", "software"),
+    )
+}  # fmt: skip
 _UNKNOWN_INDUSTRY = re.compile(r"^Unknown industry '(?P<industry>.*)'\. Allowed: (?P<allowed>.*)$")
 _COMPANY_NOT_FOUND = re.compile(r"^Company not found for query '(?P<query>.*)'$")
 _METRIC_EXAMPLES = "revenue, net income, R&D, or operating margin"
@@ -1194,6 +1218,9 @@ _FRIENDLY_MESSAGES = {
     "Analysis has no companies or ranked constituents": (
         "I couldn't tell which company you mean. Name a company or ticker, "
         "for example “What was Apple's revenue?”"
+    ),
+    "Analysis has no metrics": (
+        "That leaves no metric to show. Name one, for example “Apple net income”."
     ),
     "No 10-Q or 10-Q/A filing found": (
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
@@ -1241,15 +1268,32 @@ def _friendly_message(message: str | None) -> str | None:
                 f"from SEC 10-Q facts such as {_METRIC_EXAMPLES}, for example "
                 "“What was Microsoft's latest quarterly revenue?”"
             )
-        supported = ", ".join(format_field_name(name) for name in ALLOWED_METRICS)
-        return f"“{term}” is not a metric I can look up yet. Supported metrics: {supported}."
+        if segment_term(term) is not None:
+            return (
+                "Filings' structured data reports company-wide figures, so segment and "
+                f"operating figures such as “{term}” aren't covered. Try revenue or "
+                "operating income instead."
+            )
+        return (
+            f"I can't look up “{term}” yet. I answer from 10-Q figures such as revenue, "
+            "net income, margins, EPS, free cash flow and P/E."
+        )
     industry = _UNKNOWN_INDUSTRY.match(message)
     if industry is not None:
+        named = industry.group("industry").strip()
+        theme = _THEME_HINTS.get(named.casefold())
+        if theme is not None:
+            return theme
+        if named.casefold() in ("", "unknown"):
+            return (
+                "Which industry should I rank? Name one, for example “top 5 banks” or "
+                "“top 10 semiconductor companies by revenue”."
+            )
         # Aliases ("finance") are lower case; the snapshot's sectors are titled.
         sectors = [name for name in industry.group("allowed").split(", ") if name[:1].isupper()]
         covers = f" It covers {_join_words(sectors)} companies." if sectors else ""
         return (
-            f"I couldn't find “{industry.group('industry')}” companies in this snapshot."
+            f"I couldn't find “{named}” companies in this snapshot."
             f"{covers} You can also name an industry within those, such as "
             "semiconductors, software, pharma or banks."
         )
@@ -1496,6 +1540,9 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
         else _TABLE_KEYS
     )
     keys = [key for key in allowed if any(not _cell_empty(getattr(row, key)) for row in rows)]
+    if len({row.cik or row.company_name for row in rows}) == 1:
+        # One company's table: its CIK and currency are in the evidence, not columns.
+        keys = [key for key in keys if key not in ("cik", "currency")]
     metrics = {row.metric for row in rows if row.metric}
     single_metric = len(metrics) == 1
     value_header = format_field_name(next(iter(metrics))) if single_metric else None
@@ -1618,6 +1665,10 @@ def overview_headline(rows: list[TableRow]) -> str | None:
     income = by_metric.get("net_income")
     if margin is not None:
         sentence += f", with a {_format_cell(margin, 'value')} net margin"
+    elif income is not None and income.value is not None and income.value < 0:
+        # "a net loss of $541.00 M" reads better than "net income of -$541.00 M".
+        loss = income.model_copy(update={"value": -income.value})
+        sentence += f", with a net loss of {_format_cell(loss, 'value')}"
     elif income is not None:
         sentence += f", with net income of {_format_cell(income, 'value')}"
     return sentence + "."
@@ -1645,7 +1696,7 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     ordered = sorted(
         latest.values(), key=lambda row: change_percent(row) or Decimal(0), reverse=True
     )
-    label = format_field_name(next(iter(metrics))).lower()
+    label = _in_sentence(format_field_name(next(iter(metrics))))
     parts: list[str] = []
     for index, row in enumerate(ordered):
         percent = change_percent(row) or Decimal(0)
