@@ -262,9 +262,12 @@ def revenue_from_components(
 
 
 DEPRECIATION_AMORTIZATION_LABEL = "Depreciation plus amortization of intangible assets"
+BANK_REVENUE_LABEL = "Net interest income plus noninterest income"
 
 
-def sum_of_components(metric: Metric, facts: list[FinancialFact]) -> FinancialFact:
+def sum_of_components(
+    metric: Metric, facts: list[FinancialFact], *, label: str = DEPRECIATION_AMORTIZATION_LABEL
+) -> FinancialFact:
     """One amount as the sum of reported parts that cover the same period."""
     first = facts[0]
     period = (first.start_date, first.end_date)
@@ -281,7 +284,7 @@ def sum_of_components(metric: Metric, facts: list[FinancialFact]) -> FinancialFa
             "directly_reported": False,
             "derivation": Derivation(
                 method="sum",
-                label=DEPRECIATION_AMORTIZATION_LABEL,
+                label=label,
                 parts=[_derivation_part(fact) for fact in facts],
             ),
         }

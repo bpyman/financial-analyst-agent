@@ -32,6 +32,9 @@ class Metric(StrEnum):
     # The two halves of D&A, for filers that tag no combined line (Microsoft).
     DEPRECIATION = "depreciation"
     AMORTIZATION_OF_INTANGIBLES = "amortization_of_intangibles"
+    # A bank's revenue, for banks that tag no total (M&T, Huntington).
+    NET_INTEREST_INCOME = "net_interest_income"
+    NONINTEREST_INCOME = "noninterest_income"
 
 
 class FormType(StrEnum):

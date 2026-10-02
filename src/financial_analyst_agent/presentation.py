@@ -35,6 +35,7 @@ from financial_analyst_agent.services.fact_selector import (
 )
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import (
+    BANK_REVENUE_LABEL,
     DEPRECIATION_AMORTIZATION_LABEL,
     GROSS_PROFIT_LABEL,
     REVENUE_FROM_COMPONENTS_LABEL,
@@ -112,6 +113,8 @@ _FIELD_LABELS = {
     "return_on_equity": "Return on equity",
     "pe_ratio": "P/E ratio",
     "price": "Share price",
+    "net_interest_income": "Net interest income",
+    "noninterest_income": "Noninterest income",
 }
 # Marks a derived value in a table cell; a banner says how it was derived.
 DERIVED_MARK = " †"
@@ -137,6 +140,10 @@ _DERIVED_NOTES = {
     ),
     DEPRECIATION_AMORTIZATION_LABEL: (
         "depreciation and amortization is depreciation plus amortization of intangibles"
+    ),
+    BANK_REVENUE_LABEL: (
+        "a bank's revenue is its net interest income plus noninterest income, "
+        "because it tags no total revenue"
     ),
 }
 
@@ -1206,8 +1213,8 @@ _FRIENDLY_MESSAGES = {
     ),
     "No reported or derivable quarter exists for metric": (
         "This company's filings do not report that metric for this quarter. Not every "
-        "company reports every line item: banks, for example, report neither revenue "
-        "nor capital spending the way operating companies do."
+        "company reports every line item: banks, for example, report no cost of "
+        "revenue or capital spending the way operating companies do."
     ),
     "SEC's structured data does not yet include this quarter's filing": (
         "This quarter's report is filed, but SEC's structured data, which the figures "
@@ -1217,7 +1224,7 @@ _FRIENDLY_MESSAGES = {
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
         "metric. Not every company reports every line item: banks, for example, "
-        "report neither revenue nor capital spending the way operating companies do."
+        "report no cost of revenue or capital spending the way operating companies do."
     ),
 }
 
