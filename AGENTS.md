@@ -4,15 +4,15 @@ This is a portfolio project with no deadline. Do not time-box or drop work.
 
 ### Issue tracker
 
-The product PRD is `prd.md` at the repo root. Tickets live under `.scratch/<feature>/issues/`. See `docs/agents/issue-tracker.md`.
+The product PRD is `docs/process/prd.md`. Tickets live under `docs/process/tickets/<feature>/issues/`. See `docs/process/agents/issue-tracker.md`. How the agent workflow fits together: `docs/process/README.md`.
 
 ### Triage labels
 
-Default role strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Default role strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/process/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/process/agents/domain.md`.
 
 ### Snapshot membership
 

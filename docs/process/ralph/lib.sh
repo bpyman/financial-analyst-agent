@@ -1,7 +1,7 @@
 # Shared helpers for once.sh and afk.sh. Sourced; not executed.
 
 ralph_cd_root() {
-  cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 }
 
 ralph_collect_issues() {
@@ -10,13 +10,13 @@ ralph_collect_issues() {
   local f status
 
   if [ -n "$feature" ]; then
-    if [ ! -d ".scratch/${feature}/issues" ]; then
-      echo "No issues found (.scratch/${feature}/issues missing)"
+    if [ ! -d "docs/process/tickets/${feature}/issues" ]; then
+      echo "No issues found (docs/process/tickets/${feature}/issues missing)"
       return 0
     fi
-    files=$(find ".scratch/${feature}/issues" -maxdepth 1 -type f -name '*.md' | sort)
-  elif [ -d .scratch ]; then
-    files=$(find .scratch -type f -name '*.md' -path '*/issues/*' ! -path '*/done/*' | sort)
+    files=$(find "docs/process/tickets/${feature}/issues" -maxdepth 1 -type f -name '*.md' | sort)
+  elif [ -d docs/process/tickets ]; then
+    files=$(find docs/process/tickets -type f -name '*.md' -path '*/issues/*' ! -path '*/done/*' | sort)
   fi
 
   if [ -z "$files" ]; then
@@ -39,13 +39,13 @@ ralph_recent_commits() {
 
 ralph_run_agent() {
   local payload="$1"
-  local prompt_file=".scratch/.ralph-run.md"
+  local prompt_file="docs/process/tickets/.ralph-run.md"
   local short
   local ps_agent="${CURSOR_AGENT:-}"
 
-  mkdir -p .scratch
+  mkdir -p docs/process/tickets
   printf '%s\n' "$payload" > "$prompt_file"
-  short="Read .scratch/.ralph-run.md from the workspace root and follow the Instructions section. The issue index and recent commits are in that file; open ticket files from disk."
+  short="Read docs/process/tickets/.ralph-run.md from the workspace root and follow the Instructions section. The issue index and recent commits are in that file; open ticket files from disk."
 
   if [ -z "$ps_agent" ] && [ -f "${HOME}/AppData/Local/cursor-agent/agent.ps1" ]; then
     ps_agent="${HOME}/AppData/Local/cursor-agent/agent.ps1"

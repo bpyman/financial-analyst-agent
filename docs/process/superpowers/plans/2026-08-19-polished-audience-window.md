@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, Streamlit ≥1.61, streamlit-shadcn-ui ≥1.0, pytest, mypy strict.
 
-**Spec:** `.scratch/audience-window/issues/01-polished-audience-window.md`
+**Spec:** `docs/process/tickets/audience-window/issues/01-polished-audience-window.md`
 
 ## Global Constraints
 

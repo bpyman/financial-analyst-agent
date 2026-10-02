@@ -43,7 +43,7 @@ selection into the model.
 The following local primary documents define v2 and were read before surveying
 external projects:
 
-- `prd.md`
+- `docs/process/prd.md`
 - `docs/design.md`
 - `CONTEXT.md`
 - `docs/research/2026-08-25-github-financial-analyst-bots.md`

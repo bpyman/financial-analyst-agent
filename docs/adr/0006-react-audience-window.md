@@ -36,7 +36,7 @@ Cutover needs all three: the hosted Next.js URL serves the recorded runtime; a P
 
 At cutover the Community Cloud app is repointed at a `streamlit-redirect` branch holding a single "This demo has moved" page with its own minimal requirements, so links already sent out keep working while `master` sheds every Streamlit dependency.
 
-Delivery is three PRs, tracked as tickets under `.scratch/react-audience-window/issues/`: parity locally (runtime binding, vocabulary, proxy token, the finished window, the Playwright check in CI); deploy (Dockerfile, `render.yaml`, Vercel config, deploy docs, and a wizard for the account steps only a human can do); cutover (recaptured images, README, redirect branch, Streamlit deletion).
+Delivery is three PRs, tracked as tickets under `docs/process/tickets/react-audience-window/issues/`: parity locally (runtime binding, vocabulary, proxy token, the finished window, the Playwright check in CI); deploy (Dockerfile, `render.yaml`, Vercel config, deploy docs, and a wizard for the account steps only a human can do); cutover (recaptured images, README, redirect branch, Streamlit deletion).
 
 Scope is parity with the Streamlit window plus three display-only additions: copy buttons on identifiers, a turn counter, and a compact/full column switch on tables. CSV export and shareable thread links are out: a share link would reintroduce cross-visitor thread access.
 

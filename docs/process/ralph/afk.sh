@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Repeat Ralph until NO MORE TASKS or the iteration cap.
-# Usage: bash ralph/afk.sh <iterations> [feature-slug]
+# Usage: bash docs/process/ralph/afk.sh <iterations> [feature-slug]
 set -eo pipefail
 
 # shellcheck source=lib.sh
@@ -39,7 +39,7 @@ for ((i=1; i<=iterations; i++)); do
 
   commits=$(ralph_recent_commits)
   issues=$(ralph_collect_issues "$feature")
-  prompt=$(cat ralph/prompt.md)
+  prompt=$(cat docs/process/ralph/prompt.md)
 
   ralph_run_agent "Previous commits:
 
