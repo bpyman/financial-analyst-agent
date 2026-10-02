@@ -1,6 +1,6 @@
 # ISSUES
 
-Read `prd.md`, `progress.txt`, and `CONTEXT.md`. Tracker conventions live in `docs/agents/issue-tracker.md`. An issue **index** (path, status, blockers) is provided above. Open the chosen ticket file on disk; do not expect full bodies in this prompt.
+Read `docs/process/prd.md`, `docs/process/progress.txt`, and `CONTEXT.md`. Tracker conventions live in `docs/process/agents/issue-tracker.md`. An issue **index** (path, status, blockers) is provided above. Open the chosen ticket file on disk; do not expect full bodies in this prompt.
 
 A ticket is **actionable** when all of these hold:
 
@@ -50,7 +50,7 @@ Commit this ticket's work. The message says why, then:
 
 # CLOSE THE TICKET
 
-Append a dated entry to `progress.txt`: ticket path, key decisions, files changed, blockers / next.
+Append a dated entry to `docs/process/progress.txt`: ticket path, key decisions, files changed, blockers / next.
 
 If the ticket is done: set `Status: resolved` and append `## Answer` with what shipped.
 

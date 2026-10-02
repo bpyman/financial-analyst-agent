@@ -9,7 +9,7 @@
 - [x] README shows a hosted demo link, a 30–60 second visual, two screenshots (multi-quarter comparison and exact filing provenance), architecture at a glance, evaluation results, setup, and honest limitations.
 - [x] GitHub social preview uses a still from the demo.
 - [x] A clip exists: one-click comparison, a follow-up that extends the analysis spec, a chart, then click-through to exact SEC evidence.
-- [x] LinkedIn-ready copy is written from the finished storefront, not from interview framing.
+- [x] LinkedIn-ready copy is written from the finished storefront, not from the original brief's framing.
 
 ## Answer
 

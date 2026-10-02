@@ -310,9 +310,9 @@ Files changed:
 Blockers / next:
 - Issue 09 (multi-metric composition) can consume ordered unique metrics once 08 lands; issue 04 remains the next unblocked structured-graph tracer.
 
-## 2026-08-25 — Interview done; no deadline
+## 2026-08-25 — Proof of concept complete; no deadline
 
-The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
+There is no remaining deadline. Continue as a portfolio project. Dated entries below are the proof-of-concept build log; “rebuild before the demo” on 2026-08-17 is historical (the freeze was already rebuilt for that demo).
 
 ## 2026-08-25 — 02 Split turn contracts
 
@@ -371,7 +371,7 @@ Files changed:
 
 Blockers / next:
 - Issue 04 (rank-and-lookup) is unblocked. Completer is still keyword `DemoCompleter` until 07.
-- Checked-in snapshot is a small fixture, not a full FMP universe. Rebuild before the interview with `FMP_API_KEY` (or `--input` stub): `uv run python scripts/build_universe_snapshot.py`.
+- Checked-in snapshot is a small fixture, not a full FMP universe. Rebuild before the demo with `FMP_API_KEY` (or `--input` stub): `uv run python scripts/build_universe_snapshot.py`.
 
 ## 2026-08-18 — 04 Rank-and-lookup E2E (PRD US 6, 17, 31–33, 45)
 
