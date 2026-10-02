@@ -19,7 +19,9 @@ On `master` at 2 October 2026 there are 335 commits:
 | Author | Commits | Of which |
 | --- | ---: | --- |
 | Claude (cloud sessions) | 194 | 12 merge commits |
-| Blake Pyman (`Blake Pyman` and `bpyman`) | 141 | 39 PR merge commits. Of the other 102, 24 carry a `Co-Authored-By: Claude` trailer from local Claude Code sessions. The Ralph loop committed under my name too, so the remaining 78 mix my own commits with agent runs. |
+| Blake Pyman (`Blake Pyman` and `bpyman`) | 141 | 39 PR merge commits. Of the other 102: 77 carry a `Co-authored-by: Cursor` trailer (the Ralph loop and Cursor sessions), 24 a `Co-Authored-By: Claude` trailer (local Claude Code sessions), and 1 neither. |
+
+So nearly every change on `master` was written by an agent. My part is in the decisions, the reviews and the merges.
 
 ## What I decided, how I caught mistakes, and how I review
 
