@@ -89,6 +89,41 @@ def files_quarterly_reports(payload: dict[str, Any]) -> bool:
     return domestic
 
 
+# What a lookup reads of a submissions list: the periodic reports, the foreign
+# forms that mark a 20-F filer, and the columns that describe a report.
+_KEPT_FORMS = (
+    PERIODIC_FORMS | _DOMESTIC_PERIODIC_FORMS | _FOREIGN_ANNUAL_FORMS | _FOREIGN_ONLY_FORMS
+)
+_KEPT_COLUMNS = ("form", "accessionNumber", "filingDate", "reportDate", "primaryDocument")
+
+
+def trim_submissions(payload: dict[str, Any]) -> dict[str, Any]:
+    """Submissions with only the rows and columns ``parse_submissions`` and
+    ``files_quarterly_reports`` read.
+
+    A bank's list holds thousands of prospectus rows in two dozen columns, and
+    a ranking keeps 25 lists for its whole turn. A list whose columns do not
+    line up is returned as it is, for the parser to report.
+    """
+    filings = payload.get("filings")
+    recent = filings.get("recent") if isinstance(filings, dict) else None
+    forms = recent.get("form") if isinstance(recent, dict) else None
+    if not isinstance(recent, dict) or not isinstance(forms, list):
+        return payload
+    columns = {name: recent.get(name) for name in _KEPT_COLUMNS}
+    if any(not isinstance(form, str) for form in forms) or any(
+        not isinstance(values, list) or len(values) != len(forms) for values in columns.values()
+    ):
+        return payload
+    keep = [index for index, form in enumerate(forms) if form in _KEPT_FORMS]
+    trimmed = {
+        name: [values[index] for index in keep]
+        for name, values in columns.items()
+        if isinstance(values, list)
+    }
+    return {"cik": payload.get("cik"), "filings": {"recent": trimmed}}
+
+
 def require_recent_filings(payload: object) -> dict[str, Any]:
     """Return the ``filings.recent`` object of a submissions payload."""
     filings_section = payload.get("filings") if isinstance(payload, dict) else None

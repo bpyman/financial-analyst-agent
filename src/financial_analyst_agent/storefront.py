@@ -90,6 +90,8 @@ def capabilities_for(
         for description, examples in CAPABILITIES
     )
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
+# The server lacks SEC_USER_AGENT; the visitor needs only to know live is off.
+LIVE_RUNTIME_UNCONFIGURED_NOTICE = "Live runtime is off on this server"
 RUNTIME_GUIDE_FOOTER = (
     "A conversation stays on the runtime it started on; switching starts a new one."
 )

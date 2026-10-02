@@ -50,9 +50,10 @@ class SessionBudget:
     def consume_live_sec(self) -> None:
         with self._lock:
             if self.live_sec_requests >= self.max_live_sec_requests:
+                # The thread's allowance never refills, so waiting would not help.
                 raise SessionQuotaError(
                     "This thread has reached its live SEC request limit. "
-                    "Retry later, or start over on the recorded runtime."
+                    "Start over to keep asking, or switch to the recorded runtime."
                 )
             self.live_sec_requests += 1
 
@@ -84,7 +85,11 @@ def snapshot_status(
 
 
 def persist_session_budget(store: ThreadStore, thread_id: str, budget: SessionBudget) -> None:
-    """Write turn and live-SEC counts to the thread so quotas survive reloads."""
+    """Write turn and live-SEC counts to the thread so quotas survive reloads.
+
+    The thread was just used, so its expiry clock restarts: a failed turn that
+    ran past the thread's remaining time must not get it deleted.
+    """
     saved = store.load(thread_id)
     if saved is None:
         store.save(
@@ -100,6 +105,7 @@ def persist_session_budget(store: ThreadStore, thread_id: str, budget: SessionBu
             update={
                 "turn_count": max(saved.turn_count, budget.turns),
                 "live_sec_requests": max(saved.live_sec_requests, budget.live_sec_requests),
+                "updated_at": datetime.now(UTC),
             }
         )
     )

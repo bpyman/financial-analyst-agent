@@ -81,7 +81,7 @@ look for instead. See [what was checked](#what-was-checked-against-current-docs)
 | Render (API) | `DEMO_LIVE_SEC` | `true` | `render.yaml` |
 | Render (API) | `ALLOW_PUBLIC_OPENAI` | `true` | `render.yaml` |
 | Render (API) | `ALLOW_PUBLIC_TAVILY` | `true` | `render.yaml` |
-| Render (API) | `SEC_USER_AGENT` | app name and contact email, e.g. `FinancialAnalystAgent (you@example.com)` | Render dashboard (`sync: false`). Live SEC requests fail without it. |
+| Render (API) | `SEC_USER_AGENT` | app name and contact email, e.g. `FinancialAnalystAgent (you@example.com)` | Render dashboard (`sync: false`). Without it the live runtime is locked: every thread runs on the recorded runtime, the window says "Live runtime is off on this server", and the API logs a warning at startup. |
 | Render (API) | `OPENAI_API_KEY` | an OpenAI key | Render dashboard (`sync: false`). Optional: without it the live runtime uses the rules planner and recorded essays. |
 | Render (API) | `TAVILY_API_KEY` | a Tavily key | Render dashboard (`sync: false`). Optional: without it the live runtime replays the recorded news. |
 | Render (API) | `API_PROXY_TOKEN` | a random secret (for example `openssl rand -hex 32`) | Render dashboard. `render.yaml` declares it with `sync: false`, so the Blueprint prompts for it on first sync and never stores it. |
@@ -98,6 +98,27 @@ per thread, 150 live SEC requests per thread, and per visitor 30 new threads and
 turns an hour). The public demo lands on the live
 runtime, and visitors can switch to the recorded runtime, which needs no keys. Nothing caps
 total OpenAI spend across threads, so set a monthly budget in the OpenAI dashboard.
+
+The live runtime bounds what a slow or failing SEC can cost, also with defaults in
+`config.py` (see `.env.example`):
+
+| Setting | Default | What it bounds |
+| --- | --- | --- |
+| `SEC_TIMEOUT_SECONDS` | 10 | One connect or read. A timed-out request is not retried. |
+| `SEC_REQUEST_DEADLINE_SECONDS` | 30 | One SEC request, body included, however slowly it arrives. A cache fill waits this long for another turn fetching the same file. |
+| `SEC_MAX_RESPONSE_BYTES` | 64 MiB | One response after decompression. |
+| `SEC_TURN_BUDGET_SECONDS` | 90 | A turn's SEC time in all. Companies not read by then show "Source unavailable" and the turn answers with the rest. |
+| `TURN_TIMEOUT_SECONDS` | 150 | A whole turn. Past it the API ends the turn with an error and frees its thread and slot. |
+| `SEC_BLOCK_PAUSE_SECONDS` | 600 | How long every SEC request waits after SEC's "Undeclared Automated Tool" page. A `Retry-After` pauses requests the same way. |
+| `SEC_CACHE_MAX_BYTES` | 1 GiB | The SEC disk cache, trimmed oldest files first. |
+
+**Who a visitor is.** The per-visitor limits count by client address. With
+`API_PROXY_TOKEN` set, the API answers only the proxy and reads the visitor's address
+from the proxy's `X-Client-IP` header. Without the token it trusts no header: uvicorn
+runs with `proxy_headers` off, so `X-Forwarded-For` is ignored and the client is the
+socket's peer. A local run is then counted per caller, but an API behind a proxy that
+does not send the token sees every visitor as the proxy, and they share one set of
+limits.
 
 Render prompts for `sync: false` values only when a Blueprint is first created. On an
 existing service, add `SEC_USER_AGENT` (and the optional keys) under the service's

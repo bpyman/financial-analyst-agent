@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -25,7 +26,7 @@ from financial_analyst_agent.contracts import Runtime, RuntimeKind
 from financial_analyst_agent.domain.errors import ConfigurationError
 from financial_analyst_agent.runtime import recorded_runtime, resolve_runtime_kind
 from financial_analyst_agent.storefront import EXAMPLE_QUERY, GUIDED_STORIES
-from financial_analyst_agent.thread_store import LocalThreadStore
+from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState
 
 # Keys the web client reads (web/lib/types.ts). Renaming one is a client break.
 PRESENTATION_KEYS = {
@@ -63,7 +64,12 @@ THREAD_VIEW_KEYS = {
 
 
 def _settings(**overrides: Any) -> Settings:
-    values: dict[str, Any] = {"app_mode": AppMode.RECORDED, "_env_file": None}
+    # A User-Agent, or the live runtime is locked (no live SEC without one).
+    values: dict[str, Any] = {
+        "app_mode": AppMode.RECORDED,
+        "_env_file": None,
+        "sec_user_agent": "OnfileTests (tests@example.com)",
+    }
     values.update(overrides)
     return Settings(**values)
 
@@ -952,9 +958,10 @@ def test_a_turn_must_be_sent_as_json(client: TestClient) -> None:
         "/api/threads", content="a=1", headers={"content-type": "application/x-www-form-urlencoded"}
     )
 
-    # FastAPI refuses a non-JSON body before the handler's own check can.
-    assert as_form.status_code in (415, 422)
-    assert create_as_form.status_code in (415, 422)
+    # Refused for its type before its body is validated.
+    assert as_form.status_code == 415
+    assert as_form.json() == {"detail": "Send the request as JSON."}
+    assert create_as_form.status_code == 415
 
 
 @pytest.mark.parametrize("message", ["   ", "​​", "‮⁦ ‍"])
@@ -985,7 +992,14 @@ def test_the_public_demo_does_not_publish_its_api_docs(tmp_path: Path) -> None:
 
 
 def test_health_answers_head_requests(client: TestClient) -> None:
-    assert client.head("/api/health").status_code == 200
+    head = client.head("/api/health")
+    get = client.get("/api/health")
+
+    assert head.status_code == 200
+    # A proxy passes a HEAD through only with the GET's headers.
+    assert head.headers["content-type"] == get.headers["content-type"] == "application/json"
+    assert head.headers["content-length"] == get.headers["content-length"]
+    assert head.content == b""
 
 
 def test_a_misconfigured_deployment_does_not_charge_the_turn(
@@ -1001,3 +1015,217 @@ def test_a_misconfigured_deployment_does_not_charge_the_turn(
 
     assert (kind, data) == ("error", {"message": PUBLIC_FAILURE_MESSAGE})
     assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 0
+
+
+def test_a_stuck_turn_ends_with_an_error_and_frees_its_thread_and_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = TestClient(
+        create_app(
+            _settings(turn_timeout_seconds=0.3, max_concurrent_turns=1),
+            store_root=tmp_path / "threads",
+        )
+    )
+    thread_id = _new_thread(client)
+    let_go = threading.Event()
+
+    def stuck(_thread_id: str, _message: str, _runtime: Any, *, store: Any, **_: Any) -> None:
+        let_go.wait(10)
+        # A late finish must not land on the thread the visitor has moved on with.
+        store.save(store.load(thread_id).model_copy(update={"turn_count": 99}))
+
+    monkeypatch.setattr(api, "run_conversation_turn", stuck)
+    started = time.monotonic()
+    events = _events(_post_turn_within(client, thread_id, "Apple revenue", seconds=5))
+
+    assert time.monotonic() - started < 3
+    assert events[-1] == ("error", {"message": api.TURN_TIMED_OUT_MESSAGE})
+    app: Any = client.app
+    assert len(app.state.turn_locks) == 0
+    assert len(app.state.turn_slots) == 0
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 1
+    let_go.set()
+    time.sleep(0.2)
+    assert client.get(f"/api/threads/{thread_id}").json()["turn_count"] == 1
+    assert client.delete(f"/api/threads/{thread_id}").status_code == 204
+
+
+def test_a_turn_runs_within_its_sec_time_budget(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
+
+    seen: list[float] = []
+
+    def note_budget(*_args: Any, **_kwargs: Any) -> None:
+        seen.append(sec_turn_seconds_left())
+
+    monkeypatch.setattr(api, "run_conversation_turn", note_budget)
+    _ask(client, _new_thread(client), "Apple revenue")
+
+    assert len(seen) == 1
+    assert 0 < seen[0] <= Settings().sec_turn_budget_seconds
+
+
+def test_a_failed_turn_restarts_its_threads_expiry_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "threads"
+    client = TestClient(create_app(_settings(thread_ttl_seconds=60), store_root=root))
+    thread_id = _new_thread(client)
+    store = LocalThreadStore(root)
+    state = store.load(thread_id)
+    assert state is not None
+    # Saved 59 s ago: the failed turn below outlives what was left of its hour.
+    almost = datetime.now(UTC) - timedelta(seconds=59)
+    store.save(state.model_copy(update={"updated_at": almost}))
+
+    def slow_failure(*_args: Any, **_kwargs: Any) -> None:
+        time.sleep(1.5)
+        raise RuntimeError("provider failed")
+
+    monkeypatch.setattr(api, "run_conversation_turn", slow_failure)
+    assert _events(_post_turn(client, thread_id, "Apple revenue"))[-1][0] == "error"
+
+    view = client.get(f"/api/threads/{thread_id}").json()
+    assert view["turn_count"] == 1
+
+
+def test_refused_turns_do_not_use_up_the_visitors_hour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "threads"
+    client = TestClient(
+        create_app(_settings(client_turns_per_hour=1, max_turns_per_thread=1), store_root=root)
+    )
+    _record_turns(monkeypatch)
+    full = _new_thread(client)
+    store = LocalThreadStore(root)
+    state = store.load(full)
+    assert state is not None
+    store.save(state.model_copy(update={"turn_count": 1}))
+    busy = _new_thread(client)
+    app: Any = client.app
+    assert app.state.turn_locks.try_acquire(busy)
+
+    assert _post_turn(client, str(uuid.uuid4()), "hi").status_code == 404
+    assert _post_turn(client, busy, "hi").status_code == 409
+    over_cap = _events(_post_turn(client, full, "hi"))
+    assert over_cap[-1][0] == "error"
+    assert "turn limit" in over_cap[-1][1]["message"]
+    app.state.turn_locks.release(busy)
+
+    assert _post_turn(client, busy, "hi").status_code == 200
+    assert len(app.state.turn_locks) == 0
+
+
+def test_a_quota_refusal_is_logged_without_a_traceback(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = TestClient(create_app(_settings(max_turns_per_thread=1), store_root=tmp_path))
+    thread_id = _new_thread(client)
+    _ask(client, thread_id, GUIDED_STORIES[0][1])
+
+    with caplog.at_level(logging.INFO, logger="financial_analyst_agent"):
+        assert _events(_post_turn(client, thread_id, "add Apple"))[-1][0] == "error"
+
+    refusals = [record for record in caplog.records if record.msg == "api_turn_over_cap"]
+    assert [record.levelno for record in refusals] == [logging.INFO]
+    assert not any(record.exc_info for record in caplog.records)
+
+
+def test_a_streamed_oversized_body_is_refused_in_our_words(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+
+    def chunks() -> Any:
+        yield b'{"message": "Apple revenue"'
+        for _ in range(40):
+            yield b" " * 1024
+        yield b"}"
+
+    response = client.post(
+        f"/api/threads/{thread_id}/turns",
+        content=chunks(),
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "That request is too large for the analysis service."}
+
+
+def test_a_body_that_cannot_be_read_is_refused_in_our_words(client: TestClient) -> None:
+    thread_id = _new_thread(client)
+
+    response = client.post(
+        f"/api/threads/{thread_id}/turns",
+        content=b'{"message": "\xff\xfe"}',
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code in (400, 422)
+    assert "error parsing the body" not in response.text
+
+
+def test_a_trailing_slash_is_not_redirected(client: TestClient) -> None:
+    response = client.get("/api/health/", follow_redirects=False)
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
+
+def test_the_new_conversation_limit_says_how_long_to_wait(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(_settings(client_threads_per_hour=1), store_root=tmp_path / "threads")
+    )
+    assert client.post("/api/threads", json={}).status_code == 201
+
+    refused = client.post("/api/threads", json={})
+
+    assert refused.status_code == 429
+    detail = refused.json()["detail"]
+    assert "conversations" in detail
+    assert "about 60 minutes" in detail
+
+
+def test_starting_a_thread_also_purges_expired_ones(tmp_path: Path) -> None:
+    root = tmp_path / "threads"
+    store = LocalThreadStore(root)
+    old = "11111111-1111-4111-8111-111111111111"
+    store.save(ThreadState(thread_id=old, updated_at=datetime(2020, 1, 1, tzinfo=UTC)))
+    client = TestClient(create_app(_settings(), store_root=root))
+
+    _new_thread(client)
+
+    deadline = time.monotonic() + 5
+    while (root / f"{old}.json").exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not (root / f"{old}.json").exists()
+
+
+def test_uvicorn_does_not_trust_forwarded_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uvicorn
+
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(uvicorn, "run", lambda *_args, **kwargs: seen.update(kwargs))
+
+    api.main()
+
+    assert seen["proxy_headers"] is False
+
+
+def test_without_a_sec_user_agent_the_live_runtime_is_locked_and_says_so(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="financial_analyst_agent"):
+        client = TestClient(
+            create_app(
+                _settings(app_mode=AppMode.LIVE, sec_user_agent=""), store_root=tmp_path
+            )
+        )
+    meta = client.get("/api/meta").json()
+    created = client.post("/api/threads", json={"runtime": "live"}).json()
+
+    assert meta["runtime"] == {"default": "recorded", "locked": True}
+    assert created["runtime"] == "recorded"
+    assert created["notice"] == "Live runtime is off on this server"
+    assert any("SEC_USER_AGENT is not set" in record.getMessage() for record in caplog.records)

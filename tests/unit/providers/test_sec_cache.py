@@ -14,6 +14,9 @@ from financial_analyst_agent.domain.errors import SessionQuotaError
 from financial_analyst_agent.providers.sec.cache import CachingSECDataSource
 from financial_analyst_agent.session import SessionBudget
 
+# Long enough to be a filing: the cache keeps nothing shorter.
+FILING = "<html><body>" + "Item 2. Management's Discussion and Analysis. " * 300 + "</body></html>"
+
 
 class _CountingSource:
     def __init__(
@@ -147,17 +150,17 @@ def test_accession_pinned_html_does_not_expire(
 
     def fetch(cik: str, accession: str, document: str) -> str:
         attempts.append((cik, accession, document))
-        return "<html>filing</html>"
+        return FILING
 
     monkeypatch.setattr(inner, "get_filing_document", fetch, raising=False)
     budget = SessionBudget(max_turns=10, max_live_sec_requests=1)
     cached = CachingSECDataSource(inner, tmp_path, budget=budget)
     args = ("0000789019", "0000789019-26-000001", "report.htm")
-    assert cached.get_filing_document(*args) == "<html>filing</html>"
+    assert cached.get_filing_document(*args) == FILING
     path = next(tmp_path.iterdir())
     os.utime(path, (0, 0))
     second = CachingSECDataSource(inner, tmp_path, budget=budget)
-    assert second.get_filing_document(*args) == "<html>filing</html>"
+    assert second.get_filing_document(*args) == FILING
     assert budget.live_sec_requests == 1
     assert attempts == [args]
 
@@ -317,3 +320,118 @@ def test_a_damaged_cache_file_is_refetched(tmp_path: Path, damage: str) -> None:
     assert payload == {"cik": 789019}
     assert inner.calls == ["submissions:0000789019"]
     assert json.loads(path.read_text(encoding="utf-8")) == {"cik": 789019}
+
+
+class _FilingSource(_CountingSource):
+    def __init__(self, document: str) -> None:
+        super().__init__({}, {}, {})
+        self.document = document
+
+    def get_filing_document(self, cik: str, accession: str, document: str) -> str:
+        self.calls.append(f"html:{document}")
+        return self.document
+
+
+FILING_ARGS = ("0000789019", "0000789019-26-000001", "report.htm")
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["", "<html><body>Service Unavailable</body></html>", "x" * 20_000],
+    ids=["empty", "error page", "not html"],
+)
+def test_an_empty_or_error_page_is_never_cached_as_a_filing(tmp_path: Path, reply: str) -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+
+    inner = _FilingSource(reply)
+    cached = CachingSECDataSource(inner, tmp_path)
+    for _ in range(2):
+        with pytest.raises(ProviderError, match="no usable filing document"):
+            cached.get_filing_document(*FILING_ARGS)
+
+    assert inner.calls == ["html:report.htm"] * 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_tiny_cached_filing_is_fetched_again(tmp_path: Path) -> None:
+    path = tmp_path / "html-0000789019-0000789019-26-000001-report.htm"
+    path.write_text("<html><body>Maintenance</body></html>", encoding="utf-8")
+    inner = _FilingSource(FILING)
+
+    assert CachingSECDataSource(inner, tmp_path).get_filing_document(*FILING_ARGS) == FILING
+    assert inner.calls == ["html:report.htm"]
+    assert path.read_text(encoding="utf-8") == FILING
+
+
+def test_a_cached_json_of_the_wrong_shape_is_fetched_again(tmp_path: Path) -> None:
+    (tmp_path / "tickers.json").write_text("[1, 2, 3]", encoding="utf-8")
+    inner = _CountingSource({"ok": True}, {}, {})
+
+    assert CachingSECDataSource(inner, tmp_path).get_company_tickers() == {"ok": True}
+    assert inner.calls == ["tickers"]
+
+
+def test_a_full_disk_costs_the_cache_not_the_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from financial_analyst_agent.providers.sec import cache
+
+    def full(*_args: Any) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(cache.os, "replace", full)
+    inner = _CountingSource({"ok": True}, {}, {"cik": 789019, "facts": {}})
+    cached = CachingSECDataSource(inner, tmp_path)
+
+    assert cached.get_company_tickers() == {"ok": True}
+    assert cached.get_company_facts("0000789019") == {"cik": 789019, "facts": {}}
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_cache_directory_that_cannot_be_made_still_answers(tmp_path: Path) -> None:
+    blocked = tmp_path / "file"
+    blocked.write_text("", encoding="utf-8")
+    inner = _CountingSource({"ok": True}, {}, {})
+
+    assert CachingSECDataSource(inner, blocked / "sec").get_company_tickers() == {"ok": True}
+
+
+def test_a_fill_does_not_wait_forever_for_another_fetch(tmp_path: Path) -> None:
+    from financial_analyst_agent.domain.errors import ProviderError
+    from financial_analyst_agent.providers.sec.cache import _lock_for
+
+    lock = _lock_for(tmp_path / "tickers.json")
+    lock.acquire()
+    try:
+        cached = CachingSECDataSource(
+            _CountingSource({"ok": True}, {}, {}), tmp_path, fill_wait_seconds=0.05
+        )
+        started = time.monotonic()
+        with pytest.raises(ProviderError, match="still fetching"):
+            cached.get_company_tickers()
+        assert time.monotonic() - started < 1
+    finally:
+        lock.release()
+
+
+def test_a_sweep_removes_the_oldest_files_past_the_budget(tmp_path: Path) -> None:
+    from financial_analyst_agent.providers.sec.cache import sweep_cache
+
+    now = time.time()
+    for index in range(5):
+        path = tmp_path / f"html-{index}"
+        path.write_bytes(b"x" * 1024 * 1024)
+        os.utime(path, (now - 1000 + index, now - 1000 + index))
+    stale = tmp_path / ".tickers.json.abc.tmp"
+    stale.write_bytes(b"{")
+    os.utime(stale, (now - 7200, now - 7200))
+    (tmp_path / ".tickers.json.def.tmp").write_bytes(b"{")
+
+    removed = sweep_cache(tmp_path, 3 * 1024 * 1024, now=now)
+
+    assert removed == 4
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        ".tickers.json.def.tmp",
+        "html-3",
+        "html-4",
+    ]

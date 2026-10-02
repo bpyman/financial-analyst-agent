@@ -13,6 +13,7 @@ import asyncio
 import hmac
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -25,12 +26,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from financial_analyst_agent.config import Settings, get_settings
 from financial_analyst_agent.contracts import RuntimeKind, TurnResult
@@ -40,14 +43,17 @@ from financial_analyst_agent.domain.errors import (
     RuntimeMismatchError,
     SessionQuotaError,
 )
+from financial_analyst_agent.evidence_store import EvidenceStore
 from financial_analyst_agent.news import FIXTURE_NEWS_QUERY
 from financial_analyst_agent.observability import configure_logging
 from financial_analyst_agent.presentation import metric_groups, present_turn, spec_chips
+from financial_analyst_agent.providers.sec.client import sec_turn_budget
 from financial_analyst_agent.runtime import (
     FIXTURE_EXPLAIN_QUERY,
     FIXTURE_UNIVERSE_SNAPSHOT_PATH,
     _snapshot_ranking,
     default_runtime_kind,
+    live_sec_configured,
     openai_enabled,
     resolve_runtime_kind,
     runtime_for,
@@ -65,12 +71,13 @@ from financial_analyst_agent.storefront import (
     GUIDED_STORIES,
     LIVE_RUNTIME_CAPTION,
     LIVE_RUNTIME_LOCKED_NOTICE,
+    LIVE_RUNTIME_UNCONFIGURED_NOTICE,
     RECORDED_BANNER,
     RUNTIME_GUIDE_FOOTER,
     capabilities_for,
     runtime_guide,
 )
-from financial_analyst_agent.thread_store import LocalThreadStore
+from financial_analyst_agent.thread_store import LocalThreadStore, ThreadState, ThreadStore
 
 _LOGGER = logging.getLogger("financial_analyst_agent")
 PUBLIC_FAILURE_MESSAGE = "The analysis could not be completed. Please try again."
@@ -92,6 +99,23 @@ MAX_BODY_BYTES = 16 * 1024
 RATE_LIMITED_MESSAGE = (
     "You've asked a lot of questions in the last hour. Please wait a little and try again."
 )
+TURN_TIMED_OUT_MESSAGE = (
+    "That question took too long to answer, so it was stopped. "
+    "Try again, or ask about fewer companies."
+)
+# FastAPI's words when it cannot read a body; the window gets ours.
+_FASTAPI_BODY_ERROR = "There was an error parsing the body"
+BODY_UNREADABLE_MESSAGE = "The request could not be read. Send it again."
+
+
+def threads_limited_message(wait_seconds: float) -> str:
+    """The new-conversation limit's own copy, with the wait in whole minutes."""
+    minutes = max(1, math.ceil(wait_seconds / 60))
+    unit = "minute" if minutes == 1 else "minutes"
+    return (
+        "You've started a lot of conversations in the last hour. You can start "
+        f"another in about {minutes} {unit}, or keep asking in this one."
+    )
 
 
 def public_error_message(exc: BaseException) -> str:
@@ -137,7 +161,11 @@ class ProxyTokenGuard:
 
 
 class BodySizeLimit:
-    """Refuse a request body larger than ``limit`` bytes with 413, declared or streamed."""
+    """Refuse a request body larger than ``limit`` bytes with 413, declared or streamed.
+
+    A streamed body is read whole here before the app sees it: FastAPI turns
+    any error raised while it reads a body into its own 400.
+    """
 
     def __init__(self, app: ASGIApp, *, limit: int) -> None:
         self._app = app
@@ -151,25 +179,29 @@ class BodySizeLimit:
             if name == b"content-length" and value.isdigit() and int(value) > self._limit:
                 await _too_large(scope, receive, send)
                 return
-        received = 0
-
-        async def limited() -> Any:
-            nonlocal received
+        body = bytearray()
+        while True:
             message = await receive()
-            if message["type"] == "http.request":
-                received += len(message.get("body", b""))
-                if received > self._limit:
-                    raise _BodyTooLarge
-            return message
+            if message["type"] != "http.request":
+                first: Message = message
+                break
+            body.extend(message.get("body", b""))
+            if len(body) > self._limit:
+                await _too_large(scope, receive, send)
+                return
+            if not message.get("more_body", False):
+                first = {"type": "http.request", "body": bytes(body), "more_body": False}
+                break
+        replayed = False
 
-        try:
-            await self._app(scope, limited, send)
-        except _BodyTooLarge:
-            await _too_large(scope, receive, send)
+        async def replay() -> Message:
+            nonlocal replayed
+            if replayed:
+                return await receive()
+            replayed = True
+            return first
 
-
-class _BodyTooLarge(Exception):
-    pass
+        await self._app(scope, replay, send)
 
 
 async def _too_large(scope: Scope, receive: Receive, send: Send) -> None:
@@ -421,6 +453,58 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
 
+async def _refusal_stream(message: str) -> AsyncIterator[str]:
+    """A turn refused before it ran, in the same shape as one that ran."""
+    yield _sse("progress", {"done": 0, "total": 0})
+    yield _sse("error", {"message": message})
+
+
+class _TurnStore:
+    """The thread store as one turn writes to it.
+
+    A turn the watchdog gave up on may still be running (a thread cannot be
+    stopped); once it is abandoned its writes are dropped, so a late finish
+    never overwrites the turns that came after it.
+    """
+
+    def __init__(self, inner: LocalThreadStore) -> None:
+        self._inner = inner
+        self._lock = threading.Lock()
+        self._abandoned = False
+
+    def abandon(self) -> None:
+        with self._lock:
+            self._abandoned = True
+
+    def evidence_for(self, thread_id: str) -> EvidenceStore:
+        return self._inner.evidence_for(thread_id)
+
+    def load(
+        self,
+        thread_id: str,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: int | None = None,
+    ) -> ThreadState | None:
+        return self._inner.load(thread_id, now=now, ttl_seconds=ttl_seconds)
+
+    def save(self, state: ThreadState) -> None:
+        with self._lock:
+            if not self._abandoned:
+                self._inner.save(state)
+
+    def resolve_results(self, state: ThreadState) -> tuple[TurnResult, ...]:
+        return self._inner.resolve_results(state)
+
+    def resolve_last_result(self, state: ThreadState) -> TurnResult | None:
+        return self._inner.resolve_last_result(state)
+
+    def clear(self, thread_id: str) -> None:
+        with self._lock:
+            if not self._abandoned:
+                self._inner.clear(thread_id)
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -441,28 +525,48 @@ def create_app(
         docs_url="/api/docs" if private else None,
         openapi_url="/api/openapi.json" if private else None,
         redoc_url=None,
+        # A redirect would echo the request's Host header back to the caller.
+        redirect_slashes=False,
     )
     app.state.turn_locks = turn_locks
     app.state.turn_slots = turn_slots
     thread_limit = ClientRateLimit(resolved.client_threads_per_hour)
     turn_limit = ClientRateLimit(resolved.client_turns_per_hour)
     trust_client_header = bool(resolved.api_proxy_token.get_secret_value())
+    locked_notice = (
+        LIVE_RUNTIME_LOCKED_NOTICE
+        if live_sec_configured(resolved)
+        else LIVE_RUNTIME_UNCONFIGURED_NOTICE
+    )
+    if not live_sec_configured(resolved):
+        _LOGGER.warning(
+            "SEC_USER_AGENT is not set, so the live runtime is locked: every thread runs "
+            "on the recorded runtime. Set SEC_USER_AGENT to an app name and contact email, "
+            "e.g. 'FinancialAnalystAgent (you@example.com)'."
+        )
 
     def client_key(request: Request) -> str:
         # Behind the token-checked proxy every call comes from the proxy, which
-        # names the visitor; without a token, the socket's peer is the client.
+        # names the visitor. Without a token the header could be anyone's, so
+        # the socket's peer is the client: uvicorn does not read X-Forwarded-For
+        # (see ``main``), and behind a proxy without the token every visitor
+        # shares the proxy's address and its limits.
         if trust_client_header:
             named = request.headers.get(CLIENT_IP_HEADER, "").strip()
             if named:
                 return named[:64]
         return request.client.host if request.client else "unknown"
 
-    def admit(limit: ClientRateLimit, request: Request) -> None:
+    def admit(
+        limit: ClientRateLimit,
+        request: Request,
+        detail: Callable[[float], str] = lambda _wait: RATE_LIMITED_MESSAGE,
+    ) -> None:
         wait = limit.try_acquire(client_key(request))
         if wait is not None:
             raise HTTPException(
                 status_code=429,
-                detail=RATE_LIMITED_MESSAGE,
+                detail=detail(wait),
                 headers={"Retry-After": str(max(1, int(wait) + 1))},
             )
 
@@ -470,12 +574,25 @@ def create_app(
         # A cross-site form can POST text/plain or form data without a CORS
         # preflight; only this app's own fetches send JSON. An empty body needs
         # no type. (The web proxy also refuses cross-site requests outright.)
+        # A route dependency, so it answers before the body is validated.
         kind = request.headers.get("content-type", "").split(";")[0].strip().lower()
         empty = request.headers.get("content-length", "0") == "0" and (
             "transfer-encoding" not in request.headers
         )
         if kind != "application/json" and not (empty and not kind):
             raise HTTPException(status_code=415, detail="Send the request as JSON.")
+
+    def purge_soon() -> None:
+        now = datetime.now(UTC)
+        if purge.due(now):
+            # The scan grows with the number of threads, so it runs beside
+            # the request, never in it.
+            threading.Thread(
+                target=_purge_quietly,
+                args=(store, now, resolved.thread_ttl_seconds, turn_locks.held),
+                name="thread-purge",
+                daemon=True,
+            ).start()
 
     @app.exception_handler(RequestValidationError)
     async def plain_validation_error(
@@ -493,6 +610,13 @@ def create_app(
         else:
             detail = "The request was not in the form the analysis service expects."
         return JSONResponse(status_code=422, content={"detail": detail})
+
+    @app.exception_handler(StarletteHTTPException)
+    async def plain_http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        if exc.status_code == 400 and exc.detail == _FASTAPI_BODY_ERROR:
+            exc = StarletteHTTPException(status_code=400, detail=BODY_UNREADABLE_MESSAGE)
+        return await http_exception_handler(request, exc)
+
     app.add_middleware(BodySizeLimit, limit=MAX_BODY_BYTES)
     proxy_token = resolved.api_proxy_token.get_secret_value()
     if proxy_token:
@@ -508,9 +632,9 @@ def create_app(
         return {"status": "ok"}
 
     @app.head("/api/health", include_in_schema=False)
-    def health_head() -> Response:
-        # Uptime monitors often probe with HEAD.
-        return Response(status_code=200)
+    def health_head() -> JSONResponse:
+        # Uptime monitors often probe with HEAD: the GET's headers, no body.
+        return JSONResponse({"status": "ok"})
 
     @app.get("/api/meta")
     def meta(runtime: RuntimeKind | None = None) -> dict[str, Any]:
@@ -528,7 +652,7 @@ def create_app(
             "runtime_copy": {
                 "recorded": RECORDED_BANNER,
                 "live": LIVE_RUNTIME_CAPTION,
-                "locked": LIVE_RUNTIME_LOCKED_NOTICE,
+                "locked": locked_notice,
             },
             "runtime_guide": {
                 "runtimes": runtime_guide(
@@ -556,35 +680,27 @@ def create_app(
             "max_message_chars": MAX_MESSAGE_CHARS,
         }
 
-    @app.post("/api/threads", status_code=201)
+    @app.post("/api/threads", status_code=201, dependencies=[Depends(require_json)])
     def create_thread(
         request: Request,
         body: CreateThreadRequest | None = None,
     ) -> dict[str, str | None]:
-        require_json(request)
-        admit(thread_limit, request)
+        admit(thread_limit, request, threads_limited_message)
+        # A visitor who never reloads an old thread still lets it expire.
+        purge_soon()
         requested = (body.runtime if body else None) or default_runtime_kind(resolved)
         kind = resolve_runtime_kind(requested, resolved)
         state = start_thread(new_thread_id(), kind, store=store)
         return {
             "thread_id": state.thread_id,
             "runtime": kind.value,
-            "notice": LIVE_RUNTIME_LOCKED_NOTICE if kind != requested else None,
+            "notice": locked_notice if kind != requested else None,
         }
 
     @app.get("/api/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
         valid = _valid_thread_id(thread_id)
-        now = datetime.now(UTC)
-        if purge.due(now):
-            # Every open window polls this route; the scan grows with the number
-            # of threads, so it runs beside the request, never in it.
-            threading.Thread(
-                target=_purge_quietly,
-                args=(store, now, resolved.thread_ttl_seconds, turn_locks.held),
-                name="thread-purge",
-                daemon=True,
-            ).start()
+        purge_soon()
         return thread_view(
             store,
             valid,
@@ -604,14 +720,21 @@ def create_app(
             turn_locks.release(valid)
         return Response(status_code=204)
 
-    @app.post("/api/threads/{thread_id}/turns")
+    def budget_for(prior: ThreadState) -> SessionBudget:
+        return SessionBudget.from_counts(
+            turns=prior.turn_count,
+            live_sec_requests=prior.live_sec_requests,
+            max_turns=resolved.max_turns_per_thread,
+            max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
+        )
+
+    @app.post("/api/threads/{thread_id}/turns", dependencies=[Depends(require_json)])
     async def post_turn(thread_id: str, body: TurnRequest, request: Request) -> StreamingResponse:
         valid = _valid_thread_id(thread_id)
-        require_json(request)
         message = body.message
-        admit(turn_limit, request)
         if not turn_locks.try_acquire(valid):
             raise HTTPException(status_code=409, detail=TURN_IN_FLIGHT_MESSAGE)
+        over_cap: SessionQuotaError | None = None
         try:
             # Only a thread this API created takes turns: a made-up id would
             # otherwise start a fresh thread, with a fresh quota, on every call.
@@ -621,51 +744,88 @@ def create_app(
             )
             if prior is None:
                 raise HTTPException(status_code=404, detail=UNKNOWN_THREAD_MESSAGE)
-            if not turn_slots.try_acquire():
-                # The window retries a busy turn on its own; waiting for a free
-                # slot does not use up the visitor's questions for the hour.
-                turn_limit.refund(client_key(request))
-                raise HTTPException(
-                    status_code=429,
-                    detail=BUSY_MESSAGE,
-                    headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
-                )
+            try:
+                budget_for(prior).consume_turn()
+            except SessionQuotaError as exc:
+                over_cap = exc
+            if over_cap is None:
+                # Counted only now: an unknown thread, a busy one or a full one
+                # does not use up the visitor's questions for the hour.
+                admit(turn_limit, request)
+                if not turn_slots.try_acquire():
+                    # The window retries a busy turn on its own; waiting for a
+                    # free slot does not use up the visitor's hour either.
+                    turn_limit.refund(client_key(request))
+                    raise HTTPException(
+                        status_code=429,
+                        detail=BUSY_MESSAGE,
+                        headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
+                    )
         except BaseException:
             turn_locks.release(valid)
             raise
+        if over_cap is not None:
+            turn_locks.release(valid)
+            _LOGGER.info("api_turn_over_cap")
+            return StreamingResponse(
+                _refusal_stream(public_error_message(over_cap)),
+                media_type="text/event-stream",
+                headers=_SSE_HEADERS,
+            )
 
         loop = asyncio.get_running_loop()
         events: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
+        turn_store = _TurnStore(store)
+        # The budget once its turn is reserved: saved even when the turn fails.
+        reserved: list[SessionBudget] = []
+        ending = threading.Lock()
+        ended = False
 
         def emit(event: str, data: dict[str, Any]) -> None:
             loop.call_soon_threadsafe(events.put_nowait, (event, data))
 
+        def claim_end() -> bool:
+            """Whether this caller ends the turn: the worker or the watchdog, once."""
+            nonlocal ended
+            with ending:
+                if ended:
+                    return False
+                ended = True
+                return True
+
+        def end(event: str, data: dict[str, Any]) -> None:
+            # The lock and the slot first, so the analyst's next turn is never refused.
+            turn_locks.release(valid)
+            turn_slots.release()
+            emit(event, data)
+
+        def save_reserved(target: ThreadStore) -> None:
+            if reserved:
+                try:
+                    persist_session_budget(target, valid, reserved[0])
+                except Exception:
+                    _LOGGER.exception("api_turn_budget_not_saved")
+
         def run_turn() -> tuple[str, dict[str, Any]]:
             """The turn's terminal event: the thread view, or a public error."""
-            # The budget once its turn is reserved: saved even when the turn fails.
-            reserved: SessionBudget | None = None
             try:
-                budget = SessionBudget.from_counts(
-                    turns=prior.turn_count,
-                    live_sec_requests=prior.live_sec_requests,
-                    max_turns=resolved.max_turns_per_thread,
-                    max_live_sec_requests=resolved.max_live_sec_requests_per_thread,
-                )
+                budget = budget_for(prior)
                 budget.consume_turn()
-                reserved = budget
-                run_conversation_turn(
-                    valid,
-                    message,
-                    runtime_for(
-                        prior.runtime or default_runtime_kind(resolved),
-                        settings=resolved,
-                        budget=budget,
-                    ),
-                    store=store,
-                    on_progress=lambda done, total: emit(
-                        "progress", {"done": done, "total": total}
-                    ),
-                )
+                reserved.append(budget)
+                with sec_turn_budget(resolved.sec_turn_budget_seconds):
+                    run_conversation_turn(
+                        valid,
+                        message,
+                        runtime_for(
+                            prior.runtime or default_runtime_kind(resolved),
+                            settings=resolved,
+                            budget=budget,
+                        ),
+                        store=turn_store,
+                        on_progress=lambda completed, total: emit(
+                            "progress", {"done": completed, "total": total}
+                        ),
+                    )
             except RuntimeMismatchError as exc:
                 # Refused before anything ran: the turn does not count against the quota.
                 _LOGGER.warning("api_turn_runtime_mismatch", extra={"details": exc.details})
@@ -674,23 +834,35 @@ def create_app(
                 # The deployment's fault, not the visitor's: not charged as a turn.
                 _LOGGER.exception("api_turn_misconfigured")
                 return "error", {"message": PUBLIC_FAILURE_MESSAGE}
+            except SessionQuotaError as exc:
+                # A limit the visitor reached, not a fault: no traceback.
+                _LOGGER.info("api_turn_quota_reached")
+                save_reserved(turn_store)
+                return "error", {"message": public_error_message(exc)}
             except Exception as exc:
                 _LOGGER.exception("api_turn_failed")
-                failed = {"message": public_error_message(exc)}
-                if reserved is not None:
-                    try:
-                        persist_session_budget(store, valid, reserved)
-                    except Exception:
-                        _LOGGER.exception("api_turn_budget_not_saved")
-                return "error", failed
-            persist_session_budget(store, valid, budget)
+                save_reserved(turn_store)
+                return "error", {"message": public_error_message(exc)}
+            persist_session_budget(turn_store, valid, budget)
             return "thread", thread_view(store, valid, resolved)
 
+        def time_out() -> None:
+            if not claim_end():
+                return
+            # The worker cannot be stopped: fence it off from the thread, so
+            # nothing it writes from now on lands, then answer the visitor.
+            turn_store.abandon()
+            save_reserved(store)
+            _LOGGER.warning("api_turn_timed_out")
+            end("error", {"message": TURN_TIMED_OUT_MESSAGE})
+
+        watchdog = threading.Timer(resolved.turn_timeout_seconds, time_out)
+        watchdog.daemon = True
+
         def work() -> None:
-            # Exactly one terminal event per turn, whatever raises; the lock and
-            # the slot are released first so the analyst's next turn is never
-            # refused. A turn runs to its end even if its reader has gone, and
-            # only then frees its slot.
+            # Exactly one terminal event per turn, whatever raises. A turn runs
+            # to its end even if its reader has gone, and only then frees its
+            # slot, unless the watchdog has ended it first.
             terminal: tuple[str, dict[str, Any]] = (
                 "error",
                 {"message": public_error_message(Exception())},
@@ -700,16 +872,19 @@ def create_app(
             except Exception:
                 _LOGGER.exception("api_turn_failed_after_run")
             finally:
-                turn_locks.release(valid)
-                turn_slots.release()
-                emit(*terminal)
+                watchdog.cancel()
+                if claim_end():
+                    end(*terminal)
 
         worker = threading.Thread(target=work, name=f"turn-{valid}", daemon=True)
         try:
+            watchdog.start()
             worker.start()
         except BaseException:
-            turn_slots.release()
-            turn_locks.release(valid)
+            watchdog.cancel()
+            if claim_end():
+                turn_slots.release()
+                turn_locks.release(valid)
             raise
 
         async def stream() -> AsyncIterator[str]:
@@ -733,5 +908,8 @@ def main() -> None:
         factory=True,
         host=os.environ.get("HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", "8000")),
-        proxy_headers=True,
+        # X-Forwarded-For is the caller's to write: trusting it would let anyone
+        # pick the address the per-visitor limits count against. The proxy names
+        # the visitor in X-Client-IP, read only with its token (``client_key``).
+        proxy_headers=False,
     )

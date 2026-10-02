@@ -2,13 +2,15 @@
 
 import threading
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.enums import PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import (
+    SOURCE_FAILURES,
+    DataIntegrityError,
     FilingNotFoundError,
     IneligibleIssuerError,
     PerShareNotDerivableError,
@@ -22,6 +24,7 @@ from financial_analyst_agent.providers.sec.company_resolver import resolve_compa
 from financial_analyst_agent.providers.sec.submissions import (
     files_quarterly_reports,
     parse_submissions,
+    trim_submissions,
 )
 from financial_analyst_agent.providers.sec.tickers import parse_cik
 from financial_analyst_agent.providers.sec.urls import build_filing_source_url
@@ -84,7 +87,8 @@ _READ_CONCEPTS = frozenset(
     concept for candidates in METRIC_CONCEPTS.values() for concept in candidates
 ) | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
 # Facts files parsed at once across the process: a spike of rankings would
-# otherwise hold dozens of whole files in memory together.
+# otherwise hold dozens of whole files in memory together. Only the parse holds
+# a slot; the download happens before it, so a slow SEC holds none.
 _FACTS_PARSE_SLOTS = threading.BoundedSemaphore(2)
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
 _THIN_HISTORY = 4
@@ -92,6 +96,8 @@ _THIN_HISTORY = 4
 
 # A quarter whose filing SEC lists but whose facts its structured data lacks yet.
 PENDING_IN_XBRL_MESSAGE = "SEC's structured data does not yet include this quarter's filing"
+# Every entry SEC holds for the metric is malformed: not the same as not reported.
+UNREADABLE_FACTS_MESSAGE = "SEC's structured data for this metric could not be read"
 
 
 def _related_lookup_ciks(resolved_cik: str, predecessor: str | None) -> tuple[str, ...]:
@@ -265,6 +271,9 @@ class SecFactLookup:
         # GOOG), so a table row and the ranking name it alike. Keyed by CIK.
         self._listed_tickers: Mapping[str, str] = listed_tickers or {}
         self._tickers: dict[str, Any] | None = None
+        # A document that failed once this turn fails again without asking SEC:
+        # a ranking's metrics and periods would otherwise ask six times each.
+        self._failures: dict[str, BaseException] = {}
         self._resolved_by_query: dict[str, Company] = {}
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
@@ -288,9 +297,19 @@ class SecFactLookup:
         if self._owns_client:
             self._client.close()
 
+    def _remembering_failure[T](self, key: str, fetch: Callable[[], T]) -> T:
+        failed = self._failures.get(key)
+        if failed is not None:
+            raise failed
+        try:
+            return fetch()
+        except SOURCE_FAILURES as exc:
+            self._failures[key] = exc
+            raise
+
     def _cached_company_tickers(self) -> dict[str, Any]:
         if self._tickers is None:
-            self._tickers = self._client.get_company_tickers()
+            self._tickers = self._remembering_failure("tickers", self._client.get_company_tickers)
         return self._tickers
 
     def _resolve(self, company: str) -> Company:
@@ -305,7 +324,11 @@ class SecFactLookup:
     def _cached_submissions(self, cik: str) -> dict[str, Any]:
         payload = self._submissions_by_cik.get(cik)
         if payload is None:
-            payload = self._client.get_submissions(cik)
+            payload = trim_submissions(
+                self._remembering_failure(
+                    f"submissions:{cik}", lambda: self._client.get_submissions(cik)
+                )
+            )
             self._submissions_by_cik[cik] = payload
         return payload
 
@@ -408,19 +431,25 @@ class SecFactLookup:
                     details={"cik": cik, "status_code": 404},
                 )
             return payload
+        try:
+            payload = self._remembering_failure(f"facts:{cik}", lambda: self._parsed_facts(cik))
+        except ProviderError as exc:
+            if exc.details.get("status_code") == 404:
+                self._company_facts_by_cik[cik] = None
+            raise
+        self._company_facts_by_cik[cik] = payload
+        return payload
+
+    def _parsed_facts(self, cik: str) -> dict[str, Any]:
+        prefetch = getattr(self._client, "prefetch_company_facts", None)
+        if callable(prefetch):
+            prefetch(cik)
         with _FACTS_PARSE_SLOTS:
-            try:
-                payload = self._client.get_company_facts(cik)
-            except ProviderError as exc:
-                if exc.details.get("status_code") == 404:
-                    self._company_facts_by_cik[cik] = None
-                raise
+            payload = self._client.get_company_facts(cik)
             # The summaries read every concept; the rest of the turn reads only the catalog's.
             self._fiscal_labels_by_cik.setdefault(cik, fiscal_labels(payload))
             self._facts_filings_by_cik[cik] = filings_from_company_facts(payload)
-            payload = _read_concepts_only(payload)
-        self._company_facts_by_cik[cik] = payload
-        return payload
+            return _read_concepts_only(payload)
 
     def get_financials(
         self,
@@ -458,6 +487,7 @@ class SecFactLookup:
         target = report_date if report_date is not None else latest_period_end(filings)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
+        unreadable = False
         related = _related_lookup_ciks(resolved.cik, self._predecessor_ciks.get(resolved.cik))
         for cik in related:
             try:
@@ -467,7 +497,8 @@ class SecFactLookup:
                     raise
                 last_missing = exc
                 continue
-            records, _rejections = parse_company_facts(company_facts_payload, parsed_metric, unit)
+            records, rejections = parse_company_facts(company_facts_payload, parsed_metric, unit)
+            unreadable = unreadable or (not records and bool(rejections))
             filer_ciks: dict[str, str] = {}
             predecessor = self._predecessor_ciks.get(resolved.cik)
             if cik == resolved.cik and predecessor is not None:
@@ -517,6 +548,10 @@ class SecFactLookup:
                 if period is not None and period != targets[0]:
                     fact = fact.model_copy(update={"newer_filing_end": targets[0]})
                 return fact
+        if unreadable:
+            raise DataIntegrityError(
+                UNREADABLE_FACTS_MESSAGE, details={"metric": parsed_metric.value}
+            ) from last_unsupported
         if isinstance(last_unsupported, FilingNotFoundError):
             raise UnsupportedQuarterlyFactError(
                 str(last_unsupported),

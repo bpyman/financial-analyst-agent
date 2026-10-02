@@ -64,6 +64,13 @@ def test_only_a_public_demo_without_live_sec_is_locked(
     assert runtime_locked(settings) is locked
 
 
+def test_a_deployment_without_a_sec_user_agent_serves_only_recorded() -> None:
+    settings = _settings(sec_user_agent="", public_demo=True, demo_live_sec=True)
+
+    assert runtime_locked(settings) is True
+    assert runtime_for(RuntimeKind.LIVE, settings=settings).kind is RuntimeKind.RECORDED
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

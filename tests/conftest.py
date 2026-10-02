@@ -1,5 +1,7 @@
 """Shared pytest helpers."""
 
+from collections.abc import Iterator
+
 import pytest
 
 
@@ -16,3 +18,14 @@ def _keep_non_network_tests_offline(
     monkeypatch.setenv("FMP_API_KEY", "")
     monkeypatch.setenv("TAVILY_API_KEY", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+
+
+@pytest.fixture(autouse=True)
+def _sec_not_paused() -> Iterator[None]:
+    """A Retry-After or block page in one test must not pause SEC for the next."""
+    # Looked up each time: a test may reload the package's modules.
+    from financial_analyst_agent.providers.sec import client
+
+    client.SEC_PAUSE.clear()
+    yield
+    client.SEC_PAUSE.clear()
