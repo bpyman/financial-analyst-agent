@@ -32,7 +32,7 @@ New catalog entries:
 
 **Latest quarter** now means the newest period any 10-Q or 10-K covers, so a question asked in the weeks after a 10-K is filed shows the fourth quarter instead of a quarter that is five months old. Windows list 10-K report dates beside 10-Q dates, so they no longer skip Q4.
 
-**Named periods** ("Q3 2024", "fiscal 2025") are fiscal: they use the fiscal year and period each filing declares in its XBRL (`fy`, `fp`), which is how companies and the press name quarters. "Calendar Q3 2024" picks the quarter whose middle falls in that calendar quarter. Each company gets its own dates, and a banner says when same-named fiscal quarters end on different dates.
+**Named periods** ("Q3 2024", "fiscal 2025") are fiscal: they use the fiscal year and period each filing declares in its XBRL (`fy`, `fp`), which is how companies and the press name quarters. Two periods declaring the same quarter mean one label is wrong (Salesforce, Blackstone, CrowdStrike); each then takes the label its position gives it, counted in quarters from a neighbour whose label is not repeated. "Calendar Q3 2024" picks the quarter whose middle falls in that calendar quarter. Each company gets its own dates, and a banner says when same-named fiscal quarters end on different dates.
 
 ## Considered options
 

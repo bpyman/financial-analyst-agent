@@ -8,6 +8,7 @@ quarters (ADR 0007).
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -97,7 +98,75 @@ def periods_from_filings(
             quarter=quarter,
             form=filing.form,
         )
-    return _sequenced(tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True)))
+    newest_first = tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True))
+    return _without_repeats(_sequenced(newest_first))
+
+
+Label = tuple[int, int]
+# A quarter is 13 weeks: how many lie between two period ends.
+_QUARTER_DAYS = 91.3
+
+
+def _label(period: FiscalPeriod) -> Label | None:
+    if period.fiscal_year is None or period.quarter is None:
+        return None
+    return period.fiscal_year, period.quarter
+
+
+def _without_repeats(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
+    """Newest-first periods, where two that declare one quarter are told apart.
+
+    One of two periods declaring the same fiscal quarter is mislabelled
+    (Salesforce's 10-K for the year ended January 2026 declares fiscal 2025,
+    as did the one before; Blackstone's second 10-Q of 2024 declares Q1).
+    Each takes the label its position gives it: the quarters elapsed since
+    the period before it, or until the one after, from that period's own label,
+    when that label is not repeated. The one whose label its position confirms
+    keeps it; a repair can expose the next (CrowdStrike's 10-Ks each declare
+    the year before), so this runs until no label repeats or nothing changes.
+    """
+    ordered = list(reversed(periods))
+    for _ in ordered:
+        counts = Counter(label for period in ordered if (label := _label(period)) is not None)
+        repeated = {label for label, count in counts.items() if count > 1}
+        if not repeated:
+            break
+        fixes = {
+            index: expected
+            for index, period in enumerate(ordered)
+            if _label(period) in repeated
+            and (expected := _positional_label(ordered, index, repeated)) is not None
+            and expected != _label(period)
+        }
+        if not fixes:
+            break
+        for index, (year, quarter) in fixes.items():
+            ordered[index] = replace(ordered[index], fiscal_year=year, quarter=quarter)
+    return tuple(reversed(ordered))
+
+
+def _positional_label(
+    ordered: list[FiscalPeriod], index: int, repeated: set[Label]
+) -> Label | None:
+    """The label a period's neighbours give it, when those that are trusted agree."""
+    period = ordered[index]
+    found: set[Label] = set()
+    for step in (-1, 1):
+        other = index + step
+        if not 0 <= other < len(ordered):
+            continue
+        label = _label(ordered[other])
+        if label is None or label in repeated:
+            continue
+        quarters = round(abs((period.end - ordered[other].end).days) / _QUARTER_DAYS)
+        if quarters < 1:
+            continue
+        position = label[0] * 4 + label[1] - 1 - step * quarters
+        year, quarter = divmod(position, 4)
+        # A 10-K closes a fiscal year; a 10-Q never does.
+        if (quarter + 1 == 4) == (period.form in ANNUAL_FORMS):
+            found.add((year, quarter + 1))
+    return found.pop() if len(found) == 1 else None
 
 
 def _sequenced(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
