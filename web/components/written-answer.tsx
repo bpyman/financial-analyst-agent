@@ -2,6 +2,7 @@ import { ArrowUpRight, Sparkles } from "lucide-react";
 import { sourceHost } from "@/lib/essay";
 import { safeHref } from "@/lib/format";
 import type { DisplayCitation } from "@/lib/types";
+import { useRegionName } from "./answer-scope";
 import { SafeMarkdown } from "./markdown";
 import { SectionLabel } from "./ui";
 
@@ -18,8 +19,9 @@ export function WrittenAnswer({
   citations: DisplayCitation[];
   title: string;
 }) {
+  const name = useRegionName(title);
   return (
-    <section aria-label={title} className="overflow-hidden rounded-xl border border-border bg-surface">
+    <section aria-label={name} className="overflow-hidden rounded-xl border border-border bg-surface">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
           <Sparkles className="size-4 text-primary" aria-hidden />

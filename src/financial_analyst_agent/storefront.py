@@ -72,22 +72,39 @@ RECORDED_BANNER = (
 LIVE_RUNTIME_CAPTION = "Live runtime — figures pulled from SEC EDGAR as you ask."
 
 
+_NEWS_EXAMPLE = "What's going on with Eli Lilly's obesity drugs?"
+_ESSAY_EXAMPLE = "How could AI change bank underwriting?"
+
+
 def capabilities_for(
-    *, live_news: bool, live_essays: bool, recorded_news: str, recorded_essay: str
+    *,
+    live_news: bool,
+    live_essays: bool,
+    recorded_news: str,
+    recorded_essay: str,
+    live: bool = False,
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     """The capability list with examples this runtime can answer.
 
-    Without live news search or a model, the news and qualitative examples are
-    the questions the recorded replay holds, so every example answers.
+    On the recorded runtime, the news and qualitative examples are the
+    questions its replay holds, so every example answers. On the live runtime
+    without news search or a model those would replay saved stand-ins, so the
+    capability is left out rather than advertised.
     """
     swaps = {}
+    dropped = set()
     if not live_news:
-        swaps["What's going on with Eli Lilly's obesity drugs?"] = recorded_news
+        swaps[_NEWS_EXAMPLE] = recorded_news
+        if live:
+            dropped.add(_NEWS_EXAMPLE)
     if not live_essays:
-        swaps["How could AI change bank underwriting?"] = recorded_essay
+        swaps[_ESSAY_EXAMPLE] = recorded_essay
+        if live:
+            dropped.add(_ESSAY_EXAMPLE)
     return tuple(
         (description, tuple(swaps.get(example, example) for example in examples))
         for description, examples in CAPABILITIES
+        if not dropped.intersection(examples)
     )
 LIVE_RUNTIME_LOCKED_NOTICE = "Live runtime is off on the public demo"
 # The server lacks SEC_USER_AGENT; the visitor needs only to know live is off.

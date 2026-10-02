@@ -15,16 +15,20 @@
   --border-strong: #cfd3da;
   --fg: #0d1117;
   --muted: #56606e;
-  /* --subtle contrast: 4.55:1 on --bg, 4.92:1 on --surface. */
-  --subtle: #69717e;
-  --primary: #2563eb;
+  /* --subtle contrast: 5.28:1 on --bg, 5.71:1 on --surface, 5.10:1 on --surface-2. */
+  --subtle: #5f6774;
+  /* --primary as text: 5.93:1 on its own soft tint over --surface ("Open filing"). */
+  --primary: #1d4ed8;
+  /* A filled button's colour: 6.70:1 under --primary-fg. */
+  --primary-solid: #1d4ed8;
   --primary-fg: #ffffff;
-  --primary-soft: rgb(37 99 235 / 0.08);
+  --primary-soft: rgb(29 78 216 / 0.08);
   --positive: #047857;
   --positive-soft: rgb(4 120 87 / 0.08);
   --negative: #be123c;
   --negative-soft: rgb(190 18 60 / 0.07);
-  --warning: #a16207;
+  /* 5.43:1 on --warning-soft over --surface (the "changed" badge). */
+  --warning: #8f5606;
   --warning-soft: rgb(202 138 4 / 0.1);
   --grid: rgb(13 17 23 / 0.045);
   --glow: rgb(37 99 235 / 0.1);
@@ -49,11 +53,14 @@
   --border-strong: #2d323b;
   --fg: #e8eaed;
   --muted: #9aa2ae;
-  /* --subtle contrast: 5.30:1 on --bg, 5.04:1 on --surface. */
-  --subtle: #7b8492;
-  --primary: #3b82f6;
+  /* --subtle contrast: 5.98:1 on --bg, 5.68:1 on --surface, 4.93:1 on --surface-3. */
+  --subtle: #848d9b;
+  /* --primary as text: 5.18:1 on its own soft tint over --surface ("Open filing"). */
+  --primary: #4c8ff7;
+  /* White on the lighter text blue is 3.7:1, so filled buttons take a deeper one: 5.17:1. */
+  --primary-solid: #2563eb;
   --primary-fg: #ffffff;
-  --primary-soft: rgb(59 130 246 / 0.12);
+  --primary-soft: rgb(76 143 247 / 0.12);
   --positive: #34d399;
   --positive-soft: rgb(52 211 153 / 0.1);
   --negative: #fb7185;
@@ -84,6 +91,7 @@
   --color-muted: var(--muted);
   --color-subtle: var(--subtle);
   --color-primary: var(--primary);
+  --color-primary-solid: var(--primary-solid);
   --color-primary-fg: var(--primary-fg);
   --color-primary-soft: var(--primary-soft);
   --color-positive: var(--positive);

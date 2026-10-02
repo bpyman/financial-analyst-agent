@@ -9,6 +9,7 @@ import {
   lineRows,
   niceTicks,
   quarterTicks,
+  tickLine,
   valueDomain,
   SERIES_COLORS,
 } from "./chart-data";
@@ -155,6 +156,28 @@ describe("barRows", () => {
       },
       { key: "#2 GOOG", name: "#2 GOOG", value: 0, amount: "", label: "Missing fact", missing: true, period: "" },
     ]);
+  });
+
+  it("keeps a bar with no finite value in its row, as missing with a dash", () => {
+    const [first] = RANKED.records;
+    const spec = {
+      ...RANKED,
+      records: [
+        { ...first, Value: null as unknown as number },
+        { ...first, Value: Infinity },
+      ],
+    };
+    expect(barRows(spec).map(({ value, label, missing }) => ({ value, label, missing }))).toEqual([
+      { value: 0, label: "—", missing: true },
+      { value: 0, label: "—", missing: true },
+    ]);
+  });
+});
+
+describe("tickLine", () => {
+  it("measures a period tick by its wider line", () => {
+    expect(tickLine("Mar 31, 2026")).toBe("Mar 31");
+    expect(tickLine("FY2025")).toBe("FY2025");
   });
 });
 

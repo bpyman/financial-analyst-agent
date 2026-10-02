@@ -67,10 +67,16 @@ export function Header({
           <ThemeToggle />
           <button
             type="button"
-            onClick={onStartOver}
-            disabled={restarting}
+            onClick={() => {
+              if (!restarting) onStartOver();
+            }}
+            // Not `disabled`: the confirm panel hands focus back here once it starts.
+            aria-disabled={restarting}
             title="Start over"
-            className={cn(GHOST_BUTTON, "gap-1.5 px-2 sm:px-2.5")}
+            className={cn(
+              GHOST_BUTTON,
+              "gap-1.5 px-2 sm:px-2.5 aria-disabled:cursor-not-allowed aria-disabled:opacity-50",
+            )}
           >
             <RotateCcw className="size-3.5" aria-hidden />
             <span className="sr-only sm:not-sr-only">Start over</span>

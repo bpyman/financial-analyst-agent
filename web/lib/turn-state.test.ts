@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { IDLE, progressLabel, turnCounterLabel, turnReducer, type TurnState } from "./turn-state";
+import type { TurnEvent } from "./types";
 
 const run = (message = "What was Microsoft's latest quarterly pretax income?") =>
   turnReducer(IDLE, { type: "send", message });
@@ -38,6 +39,12 @@ describe("turnReducer", () => {
       },
     };
     expect(turnReducer(run(), { type: "event", event: thread })).toEqual(IDLE);
+  });
+
+  it("keeps a turn running through an event it does not know", () => {
+    const running = run();
+    const unknown = { event: "weird", data: {} } as unknown as TurnEvent;
+    expect(turnReducer(running, { type: "event", event: unknown })).toBe(running);
   });
 
   it("keeps the question and the public error message when a turn fails", () => {
@@ -82,10 +89,10 @@ describe("progressLabel", () => {
       "Planning the analysis…",
     );
     expect(progressLabel(running({ progress: { done: 1, total: 1 } }))).toBe(
-      "Fetched 1 of 1 cell",
+      "Fetched 1 of 1 figure",
     );
     expect(progressLabel(running({ progress: { done: 3, total: 10 } }))).toBe(
-      "Fetched 3 of 10 cells",
+      "Fetched 3 of 10 figures",
     );
   });
 });
@@ -105,6 +112,6 @@ describe("a turn waiting for a free slot", () => {
       "Busy right now, waiting for a free slot…",
     );
     const moving = turnReducer(queued, { type: "event", event: { event: "progress", data: { done: 1, total: 2 } } });
-    expect(moving.status === "running" && progressLabel(moving)).toBe("Fetched 1 of 2 cells");
+    expect(moving.status === "running" && progressLabel(moving)).toBe("Fetched 1 of 2 figures");
   });
 });

@@ -113,6 +113,87 @@ describe("answerMarkdown", () => {
   });
 });
 
+describe("answerMarkdown keeps text as text", () => {
+  const disclosure = {
+    section_label: "Risk Factors",
+    change_kind: "changed",
+    before_text: "Old.",
+    after_text: "New.",
+    older_accession: "A-1",
+    newer_accession: "A-2",
+    older_url: "https://www.sec.gov/a1",
+    newer_url: "https://www.sec.gov/a2",
+  };
+
+  it("keeps a citation URL from closing its link early", () => {
+    const text = answerMarkdown("", {
+      ...EMPTY,
+      citations: [
+        {
+          index: 1,
+          title: "Reuters] (https://evil.example) [x",
+          url: "https://ok.example/a) [Claim your refund](https://evil.example/steal",
+          published: null,
+        },
+      ],
+    });
+    expect(text).toContain(
+      "1. [Reuters\\] (https://evil.example) \\[x](https://ok.example/a%29%20[Claim%20your%20refund]%28https://evil.example/steal)",
+    );
+    expect(text).not.toMatch(/\]\(https:\/\/evil/);
+  });
+
+  it("drops a filing link that is not http(s), and one that tries to break out", () => {
+    const text = answerMarkdown("", {
+      ...EMPTY,
+      disclosures: [
+        { ...disclosure, older_url: "javascript:alert(1)", newer_url: "https://www.sec.gov/x)](javascript:alert(1)" },
+      ],
+    });
+    expect(text).not.toContain("](javascript:");
+    expect(text).not.toContain("Older filing");
+    expect(text).toContain("- [Newer filing A-2](https://www.sec.gov/x%29]%28javascript:alert%281%29)");
+  });
+
+  it("copies the essay as the window shows it: cited links only, no HTML or images", () => {
+    const text = answerMarkdown("", {
+      ...EMPTY,
+      essay:
+        "The CEO said [click here](https://evil.example/phish), per [Reuters](https://ok.example/a).\n\n" +
+        '<img src=x onerror=alert(1)>\n\n![chart](https://evil.example/c.png) <b>bold</b> [1]',
+      citations: [{ index: 1, title: "Reuters", url: "https://ok.example/a", published: null }],
+    });
+    expect(text).toContain("The CEO said click here, per [Reuters](https://ok.example/a).");
+    expect(text).toContain("chart bold [1]");
+    expect(text).not.toMatch(/<img|<b>|evil\.example/);
+  });
+
+  it("escapes a headline and question that would read as markup", () => {
+    const text = answerMarkdown("# Heading\n<x>", {
+      ...EMPTY,
+      headline: "# Heading injected\n\n---\n<script>alert(1)</script>",
+      message: "- not a list",
+    });
+    expect(text).toContain("## \\# Heading \\<x\\>");
+    expect(text).toContain("\\# Heading injected --- \\<script\\>alert(1)\\</script\\>");
+    expect(text).toContain("\\- not a list");
+    expect(text).not.toContain("<script>");
+  });
+
+  it("lists a filing once however many passages of it are linked", () => {
+    const filing = "https://www.sec.gov/Archives/edgar/data/789019/msft-20260331.htm";
+    const text = answerMarkdown("", {
+      ...EMPTY,
+      disclosures: [
+        { ...disclosure, older_url: `${filing}#:~:text=One`, newer_url: `${filing}#:~:text=Two` },
+        { ...disclosure, older_url: `${filing}#:~:text=Three`, newer_url: "https://www.sec.gov/a2#:~:text=x" },
+      ],
+    });
+    expect(text.match(/msft-20260331\.htm/g)).toHaveLength(1);
+    expect(text).toContain(`- [Older filing A-1](${filing})\n- [Newer filing A-2](https://www.sec.gov/a2)`);
+  });
+});
+
 describe("answerFileName", () => {
   it("names the file after the question", () => {
     expect(answerFileName("How is NVIDIA doing?")).toBe("how-is-nvidia-doing.md");

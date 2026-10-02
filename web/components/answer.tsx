@@ -8,6 +8,7 @@ import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerActions, hasTakeaway } from "./answer-actions";
 import { AnswerChart } from "./answer-chart";
+import { useRegionName } from "./answer-scope";
 import { Clarify } from "./clarify";
 import { CopyButton } from "./copy-button";
 import { DataTable } from "./data-table";
@@ -63,9 +64,10 @@ export function Answer({
   const [sort, setSort] = useState<TableSort | null>(null);
   const order = table ? sortedRowKeys(table, sort) : null;
   const sortNote = table && sort ? sortDescription(table, sort) : null;
+  const trendsName = useRegionName("Recent quarters");
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
         <Badge tone="primary">{presentation.intent_label || presentation.intent}</Badge>
         {hasTakeaway(presentation) && (
           <AnswerActions
@@ -76,20 +78,20 @@ export function Answer({
         )}
       </div>
       {presentation.headline && (
-        <p className="text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
+        <p className="break-words text-[15px] leading-relaxed text-fg">{presentation.headline}</p>
       )}
       <Notes banners={fact_card ? banners.filter((banner) => !isFootnote(banner)) : banners} />
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
       {chart && <AnswerChart chart={chart} order={order} sortNote={sortNote} />}
       {(presentation.trends?.length ?? 0) > 0 && (
-        <section aria-label="Recent quarters" className="grid gap-3 sm:grid-cols-2">
+        <section aria-label={trendsName} className="grid gap-3 sm:grid-cols-2">
           {presentation.trends?.map((trend) => <AnswerChart key={trend.metric} chart={trend} compact />)}
         </section>
       )}
       {table && table.rows.length > 0 && <DataTable table={table} sort={sort} onSort={setSort} />}
       {message &&
         (presentation.message_tone === "info" ? (
-          <p className="text-[15px] leading-relaxed text-fg">{message}</p>
+          <p className="break-words text-[15px] leading-relaxed text-fg">{message}</p>
         ) : (
           <Callout kind="warning">{message}</Callout>
         ))}
@@ -133,9 +135,9 @@ function Suggestions({
           key={item}
           type="button"
           onClick={() => onSuggest(item)}
-          className="group inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
+          className="group inline-flex min-h-9 min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border-strong bg-surface-2/60 px-3.5 py-1.5 text-left text-[13px] text-fg transition-[background,border,color] hover:border-primary/60 hover:bg-primary-soft hover:text-primary"
         >
-          {item}
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item}</span>
           <ArrowRight className="size-3.5 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
         </button>
       ))}
@@ -152,9 +154,10 @@ export function FactCard({ card, footnotes = [] }: { card: QuarterlyFactCard; fo
   // A derived quarter's form is the filings it came from (a 10-K less a 10-Q),
   // not the quarter's own report; say "Derived" and keep the forms in the title.
   const derived = card.period_label.startsWith("Derived");
+  const name = useRegionName(`${card.metric_header}, ${card.company_name}`);
   return (
     <section
-      aria-label={`${card.metric_header}, ${card.company_name}`}
+      aria-label={name}
       className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_24px_48px_-32px_rgb(0_0_0/0.55)]"
     >
       <span
@@ -186,7 +189,7 @@ export function FactCard({ card, footnotes = [] }: { card: QuarterlyFactCard; fo
         </div>
         <div className="mt-7">
           <SectionLabel>{card.metric_header}</SectionLabel>
-          <div className="figure mt-2 text-[44px] font-semibold leading-none text-fg sm:text-[60px]">
+          <div className="figure mt-2 text-[44px] font-semibold leading-none text-fg [overflow-wrap:anywhere] sm:text-[60px]">
             {card.amount}
           </div>
           <div className="mt-3 text-[13px] text-muted">{card.period_label}</div>
@@ -235,9 +238,10 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
   const selectId = useId();
   const item = items[Math.min(chosen, items.length - 1)];
   const company = [item.company_name, item.ticker].filter(Boolean).join(" · ");
+  const name = useRegionName("Evidence inspector");
   return (
     <section
-      aria-label="Evidence inspector"
+      aria-label={name}
       className="overflow-hidden rounded-xl border border-border bg-surface"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
@@ -306,7 +310,7 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
           <span className="num break-all">{item.concept}</span>
         </EvidenceField>
         <EvidenceField label="Selection rule" hidden={!item.selection_rule} wide>
-          <span className="text-muted">{item.selection_rule}</span>
+          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">{item.selection_rule}</span>
         </EvidenceField>
       </dl>
       {safeHref(item.source_url) && (
@@ -348,8 +352,9 @@ export function Traces({ traces }: { traces: DisplayTrace[] }) {
   // A window over several quarters makes a step per cell; show the first few.
   const [all, setAll] = useState(false);
   const shown = all ? traces : traces.slice(0, TRACES_SHOWN);
+  const name = useRegionName("How this answer was fetched");
   return (
-    <section aria-label="How this answer was fetched">
+    <section aria-label={name}>
       <SectionLabel className="mb-2">How this answer was fetched</SectionLabel>
       <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
         {shown.map((trace, index) => (
@@ -391,7 +396,8 @@ function TraceGroup({ title, fields }: { title: string; fields: Pair[] }) {
       <div className="mb-2 text-[10.5px] font-medium uppercase tracking-[0.08em] text-subtle">
         {title}
       </div>
-      <dl className="grid grid-cols-[minmax(6.5rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+      {/* Label over value on a phone: side by side, the value column is a few characters wide. */}
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[12.5px] sm:grid-cols-[minmax(6.5rem,auto)_minmax(0,1fr)]">
         {fields.map(([label, value], index) => (
           <TraceRow key={`${label}-${index}`} label={label} value={value} />
         ))}
@@ -402,12 +408,12 @@ function TraceGroup({ title, fields }: { title: string; fields: Pair[] }) {
 
 function TraceRow({ label, value }: { label: string; value: string }) {
   if (!value) {
-    if (!label) return <div aria-hidden className="col-span-2 h-2" />;
-    return <dt className="col-span-2 mt-1 font-medium text-fg">{label}</dt>;
+    if (!label) return <div aria-hidden className="col-span-full h-2" />;
+    return <dt className="col-span-full mt-1 font-medium text-fg">{label}</dt>;
   }
   if (value.includes("\n")) {
     return (
-      <div className="col-span-2 min-w-0">
+      <div className="col-span-full min-w-0">
         {label && <dt className="mb-1 font-medium text-fg">{label}</dt>}
         <dd>
           <SafeMarkdown text={hardBreaks(value)} className="text-[12.5px] text-muted" />
@@ -418,7 +424,7 @@ function TraceRow({ label, value }: { label: string; value: string }) {
   const link = parseLink(value);
   return (
     <>
-      <dt className="text-subtle">{label}</dt>
+      <dt className="mt-1 text-subtle first:mt-0 sm:mt-0">{label}</dt>
       <dd className="min-w-0 break-words text-fg">
         {link ? (
           <ExternalLink href={link.href} className="break-all">
