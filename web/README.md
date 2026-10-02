@@ -23,11 +23,21 @@ quarterly fact" for the Microsoft pretax-income fact card.
 
 - One thread per browser. Its id is kept in `localStorage`, so a reload resumes
   it; an expired thread is dropped with a quiet notice.
-- Start over clears the thread and starts a new one on the same runtime. Flipping
+- Start over starts a new thread on the same runtime, then clears the old one; it
+  asks first in the page (in-app browsers never show `window.confirm`) and works
+  while an answer is still running or a saved thread is still loading. Flipping
   the Recorded / Live switch is Start over on the other runtime. On a locked
   public demo the switch is disabled and its tooltip says why.
-- The landing page pings `/api/health` on load, and a turn that shows no progress
-  after about 3 seconds says "Waking the analysis service…".
+- The landing page renders its guided stories without the API, pings
+  `/api/health` on load, and a turn that shows no progress after about 3 seconds
+  says "Waking the analysis service…". While the API wakes, a guided story shows
+  its recorded answer at once (`lib/demo-answers.json`, written by
+  `scripts/record_demo_answers.py`), marked "Demo data".
+- One malformed answer is contained to its own card (an error boundary per
+  answer, and `app/error.tsx` for the page), and replies are validated in
+  `lib/api.ts` before they render.
+- `/?q=<question>&rt=recorded|live` asks the question once on load in a new
+  thread; Copy link writes that URL for the answer on screen.
 - Every amount shown as text comes from the API's presentation mapping; the
   browser formats nothing but chart axis ticks.
 
