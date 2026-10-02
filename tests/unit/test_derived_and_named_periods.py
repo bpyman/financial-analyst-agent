@@ -233,9 +233,10 @@ def test_metric_phrases_name_eps_and_cash_flow() -> None:
     assert resolve_metric_phrase("Apple cash flow").kind == "ambiguous"
 
 
-def test_per_share_amounts_show_cents() -> None:
+def test_per_share_amounts_show_cents_or_the_fractions_filed() -> None:
     assert format_metric_value("eps_diluted", Decimal("2.02")) == "$2.02"
-    assert format_metric_value("eps_diluted", Decimal("-0.155")) == "-$0.16"
+    # A fraction of a cent the filing reports is kept, as a $0.2475 dividend is.
+    assert format_metric_value("eps_diluted", Decimal("-0.155")) == "-$0.155"
     assert format_metric_value("free_cash_flow", Decimal("19640000000")) == "$19.64 B"
 
 

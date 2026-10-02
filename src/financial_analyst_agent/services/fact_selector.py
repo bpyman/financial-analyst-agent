@@ -511,6 +511,7 @@ def derive_quarter(
 # --- Balance-sheet amounts and trailing years (ADR 0008) ----------------------------
 
 _ONE_YEAR_TOLERANCE_DAYS = 7
+_TRAILING_PARTS = {Metric.NET_INCOME_TTM: Metric.NET_INCOME}
 TRAILING_YEAR_LABEL = (
     "Last fiscal year (10-K) plus this year to date minus the same months "
     "a year earlier (10-Q)"
@@ -686,10 +687,14 @@ def derive_trailing_year(
             derivation=Derivation(
                 method="trailing_twelve_months",
                 label=TRAILING_YEAR_LABEL,
+                # Each part is net income for its own months, not a trailing year.
                 parts=[
-                    _part(year, source_url_for_accession(year.accession_number)),
-                    _part(current, source_url),
-                    _part(prior, source_url_for_accession(prior.accession_number)),
+                    part.model_copy(update={"metric": _TRAILING_PARTS.get(metric, metric).value})
+                    for part in (
+                        _part(year, source_url_for_accession(year.accession_number)),
+                        _part(current, source_url),
+                        _part(prior, source_url_for_accession(prior.accession_number)),
+                    )
                 ],
             ),
             source=DataSourceKind.SEC_XBRL,

@@ -47,8 +47,10 @@ def test_format_usd_exact_hundreds_of_billions() -> None:
     assert format_usd(Decimal("800000000000")) == "$800.00 B"
 
 
-def test_format_usd_under_one_million_is_grouped() -> None:
-    assert format_usd(Decimal("500000")) == "$500,000"
+def test_format_usd_under_one_million_uses_thousands() -> None:
+    # One scale for every amount: "$500.00 K" beside "$1.00 M", not "$500,000".
+    assert format_usd(Decimal("500000")) == "$500.00 K"
+    assert format_usd(Decimal("950")) == "$950"
 
 
 def test_format_usd_one_million_uses_suffix() -> None:
@@ -276,9 +278,11 @@ def test_present_lookup_formula_uses_percent_and_component_provenance() -> None:
     assert card is not None
     assert card.metric_header == "Net margin"
     assert card.amount == "10.0%"
-    assert card.form == "10-Q"
+    # A calculated card names its inputs; each one's concept and form are in the evidence.
+    assert card.period_label.startswith("Calculated · ")
+    assert card.form == ""
     assert card.accession_number == "0001594805-26-000012"
-    assert card.concept == "NetIncomeLoss / RevenueFromContractWithCustomerExcludingAssessedTax"
+    assert card.concept == "Net income ÷ revenue"
     assert card.source_url.endswith("shop.htm")
     evidence = presented.evidence
     assert len(evidence) == 3
