@@ -372,6 +372,8 @@ class TurnResult(BaseModel):
     ordered_by: str | None = None
     # A few quarters of revenue and net margin beside one company's overview.
     trend_rows: list[TableRow] = Field(default_factory=list)
+    # The quarter before a lone fact, for its quarter-over-quarter change.
+    prior_quarter_rows: list[TableRow] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _infer_clarify_kind(self) -> Self:

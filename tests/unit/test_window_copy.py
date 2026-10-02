@@ -90,7 +90,8 @@ def test_change_rows_say_what_they_are_and_carry_a_sign() -> None:
     # The change's two components are the levels already listed: one entry each.
     labels = [item.label for item in presented.evidence]
     assert len(labels) == len(set(labels)) == 3
-    assert "quarter over quarter change" in labels[2]
+    # In the table's reading order: the newer quarter, its change, then the older.
+    assert "quarter over quarter change" in labels[1]
 
 
 def test_refusals_use_the_windows_words() -> None:

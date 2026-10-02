@@ -56,6 +56,8 @@ THREAD_VIEW_KEYS = {
     "runtime",
     "turns",
     "spec_chips",
+    "spec_chip_edits",
+    "quick_actions",
     "pending_clarification",
     "turn_count",
     "max_turns",
