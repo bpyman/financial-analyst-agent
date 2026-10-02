@@ -35,7 +35,14 @@ export default defineConfig({
           command: "uv run serve-api",
           cwd: "..",
           // Explicit values beat a developer's .env: recorded runtime, no proxy token.
-          env: { APP_MODE: "recorded", PUBLIC_DEMO: "false", API_PROXY_TOKEN: "", PORT: String(API_PORT) },
+          // A declared SEC user agent keeps the live runtime unlocked (the recorded runs never call SEC).
+          env: {
+            APP_MODE: "recorded",
+            PUBLIC_DEMO: "false",
+            API_PROXY_TOKEN: "",
+            PORT: String(API_PORT),
+            SEC_USER_AGENT: process.env.SEC_USER_AGENT || "OnfileBrowserCheck (onfile-ci@example.com)",
+          },
           url: `http://127.0.0.1:${API_PORT}/api/health`,
           reuseExistingServer: !ci,
           timeout: 120_000,
