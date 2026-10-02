@@ -1,9 +1,9 @@
 "use client";
 
-import { Lock, Monitor, Moon, RotateCcw, Sun } from "lucide-react";
+import { Ellipsis, Lock, Monitor, Moon, RotateCcw, Sun } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { useId, useSyncExternalStore } from "react";
+import { useId, useRef, useSyncExternalStore, type ToggleEvent } from "react";
 import { cn } from "@/lib/format";
 import type { RuntimeKind } from "@/lib/types";
 import { ConfirmPanel, type ConfirmRequest } from "./confirm-panel";
@@ -41,7 +41,7 @@ export function Header({
 }) {
   return (
     <header className="z-30 border-b border-border bg-bg tall:sticky tall:top-0">
-      <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 sm:px-6 2xl:max-w-5xl min-[1920px]:max-w-6xl">
         <Link
           href="/"
           className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -55,7 +55,16 @@ export function Header({
             Financial research from SEC filings
           </span>
         </Link>
-        <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
+        <PhoneMenu
+          runtime={runtime}
+          locked={locked}
+          busy={busy || runtime === null}
+          restarting={restarting}
+          onSwitchRuntime={onSwitchRuntime}
+          onStartOver={onStartOver}
+        />
+        {/* A phone keeps these in the ⋯ menu: the header stays the name and one button. */}
+        <div className="ml-auto hidden items-center gap-1.5 sm:flex">
           <RuntimeSwitch
             runtime={runtime}
             locked={locked}
@@ -63,7 +72,7 @@ export function Header({
             disabled={busy || runtime === null}
             onChange={onSwitchRuntime}
           />
-          <span aria-hidden className="mx-1 hidden h-5 w-px bg-border sm:block" />
+          <span aria-hidden className="mx-1 h-5 w-px bg-border" />
           <ThemeToggle />
           <button
             type="button"
@@ -79,12 +88,129 @@ export function Header({
             )}
           >
             <RotateCcw className="size-3.5" aria-hidden />
-            <span className="sr-only sm:not-sr-only">Start over</span>
+            <span>Start over</span>
           </button>
         </div>
       </div>
       {confirm && <ConfirmPanel request={confirm} onConfirm={onConfirm} onCancel={onCancel} />}
     </header>
+  );
+}
+
+/**
+ * A phone's header controls behind "⋯": Start over, the theme, and the other
+ * runtime. A native popover, so Escape and a click elsewhere close it.
+ */
+function PhoneMenu({
+  runtime,
+  locked,
+  busy,
+  restarting,
+  onSwitchRuntime,
+  onStartOver,
+}: {
+  runtime: RuntimeKind | null;
+  locked: boolean;
+  busy: boolean;
+  restarting: boolean;
+  onSwitchRuntime: (runtime: RuntimeKind) => void;
+  onStartOver: () => void;
+}) {
+  const id = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const other = RUNTIMES.find(({ kind }) => kind !== runtime);
+
+  function place(event: ToggleEvent<HTMLDivElement>) {
+    if (event.newState !== "open" || !button.current) return;
+    const anchor = button.current.getBoundingClientRect();
+    event.currentTarget.style.top = `${anchor.bottom + 6}px`;
+    event.currentTarget.style.right = `${Math.max(12, window.innerWidth - anchor.right)}px`;
+  }
+
+  function run(action: () => void) {
+    panel.current?.hidePopover();
+    action();
+  }
+
+  return (
+    <div className="ml-auto sm:hidden">
+      <button
+        ref={button}
+        type="button"
+        popoverTarget={id}
+        aria-label="Menu"
+        className={cn(GHOST_BUTTON, "w-9 border border-border")}
+      >
+        <Ellipsis className="size-4" aria-hidden />
+      </button>
+      <div
+        ref={panel}
+        id={id}
+        popover="auto"
+        role="menu"
+        aria-label="Menu"
+        onBeforeToggle={place}
+        className="fixed inset-auto m-0 w-60 rounded-xl border border-border-strong bg-surface p-1.5 text-[13px] text-fg shadow-xl shadow-black/25"
+      >
+        <button
+          type="button"
+          role="menuitem"
+          aria-disabled={restarting}
+          onClick={() => run(() => !restarting && onStartOver())}
+          className={MENU_ITEM}
+        >
+          <RotateCcw className="size-4 text-muted" aria-hidden />
+          Start over
+        </button>
+        <PhoneTheme onDone={() => panel.current?.hidePopover()} />
+        {other && runtime && (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={locked || busy}
+            onClick={() => run(() => onSwitchRuntime(other.kind))}
+            className={cn(MENU_ITEM, "border-t border-border")}
+          >
+            {locked ? <Lock className="size-4 text-subtle" aria-hidden /> : <span aria-hidden className="size-4" />}
+            <span className="min-w-0">
+              Switch to {other.label}
+              <span className="block text-[11.5px] text-subtle">
+                {locked ? "Off on the public demo" : "Starts a new conversation"}
+              </span>
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MENU_ITEM =
+  "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-surface-2 focus-visible:bg-surface-2 " +
+  "focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:opacity-50";
+
+function PhoneTheme({ onDone }: { onDone: () => void }) {
+  const { theme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(subscribeNothing, () => true, () => false);
+  const shown = mounted ? (theme ?? "dark") : "dark";
+  const index = Math.max(0, THEMES.findIndex(({ value }) => value === shown));
+  const next = THEMES[(index + 1) % THEMES.length];
+  const Current = THEMES[index].Icon;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={() => {
+        setTheme(next.value);
+        onDone();
+      }}
+      className={MENU_ITEM}
+    >
+      <Current className="size-4 text-muted" aria-hidden />
+      Theme: {THEMES[index].label}
+      <span className="ml-auto text-[11.5px] text-subtle">{next.label} next</span>
+    </button>
   );
 }
 

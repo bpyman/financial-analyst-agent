@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp, Database, Radio } from "lucide-react";
+import { CalendarClock, CircleHelp, Database, Info, Radio } from "lucide-react";
 import { useId, useRef, type ToggleEvent } from "react";
 import { cn } from "@/lib/format";
 import type { RuntimeGuide as Guide, RuntimeKind } from "@/lib/types";
@@ -12,7 +12,19 @@ const GUTTER = 12;
  * "How runtimes differ": what Recorded and Live each answer from. A native
  * popover, so Escape and a click elsewhere close it; it opens under its button.
  */
-export function RuntimeGuide({ guide, runtime }: { guide: Guide; runtime: RuntimeKind | null }) {
+export function RuntimeGuide({
+  guide,
+  runtime,
+  compact = false,
+  note = null,
+}: {
+  guide: Guide;
+  runtime: RuntimeKind | null;
+  /** A phone's status row: the button is an ⓘ alone. */
+  compact?: boolean;
+  /** A line the panel ends with: the ranking snapshot's date, when the row has no room for it. */
+  note?: string | null;
+}) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
 
@@ -33,10 +45,14 @@ export function RuntimeGuide({ guide, runtime }: { guide: Guide; runtime: Runtim
         ref={button}
         type="button"
         popoverTarget={id}
-        className="inline-flex shrink-0 items-center gap-1 rounded-md px-1 text-subtle underline-offset-2 transition-colors hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label={compact ? "How runtimes differ" : undefined}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1 rounded-md text-subtle underline-offset-2 transition-colors hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          compact ? "size-6 justify-center" : "px-1",
+        )}
       >
-        <CircleHelp className="size-3.5" aria-hidden />
-        <span>How runtimes differ</span>
+        {compact ? <Info className="size-4" aria-hidden /> : <CircleHelp className="size-3.5" aria-hidden />}
+        {!compact && <span>How runtimes differ</span>}
       </button>
       <div
         id={id}
@@ -73,6 +89,12 @@ export function RuntimeGuide({ guide, runtime }: { guide: Guide; runtime: Runtim
             );
           })}
           {guide.footer && <p className="border-t border-border pt-3 text-subtle">{guide.footer}</p>}
+          {note && (
+            <p className="flex items-start gap-1.5 text-subtle" title="Rankings read this dated list of US-listed operating companies; lookups do not need it.">
+              <CalendarClock className="mt-[3px] size-3.5 shrink-0" aria-hidden />
+              {note}
+            </p>
+          )}
         </div>
       </div>
     </>

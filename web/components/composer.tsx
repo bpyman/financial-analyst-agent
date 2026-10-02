@@ -35,6 +35,7 @@ export function Composer({
   placeholder,
   maxChars,
   turnsLeft = null,
+  lastQuestion = "",
 }: {
   ref?: Ref<ComposerHandle>;
   /** Sends a question; false when the window could not take it, so the draft stays. */
@@ -46,6 +47,8 @@ export function Composer({
   maxChars: number;
   /** Questions this conversation can still take; null before it has a thread. */
   turnsLeft?: number | null;
+  /** The thread's last question: ↑ in an empty box brings it back to edit. */
+  lastQuestion?: string;
 }) {
   const [value, setValue] = useState("");
   const input = useRef<HTMLTextAreaElement | null>(null);
@@ -84,12 +87,18 @@ export function Composer({
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       submit();
+      return;
+    }
+    // Only an empty box: in a draft, ↑ moves the caret as usual.
+    if (event.key === "ArrowUp" && !value && lastQuestion && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      setValue(lastQuestion);
     }
   }
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg from-55% to-transparent pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-10 short:pb-2 short:pt-3">
-      <form onSubmit={submit} className="pointer-events-auto mx-auto max-w-4xl px-4 sm:px-6">
+      <form onSubmit={submit} className="pointer-events-auto mx-auto max-w-4xl px-4 sm:px-6 2xl:max-w-5xl min-[1920px]:max-w-6xl">
         <div
           className={cn(
             "flex items-end gap-2 rounded-2xl border border-border-strong bg-surface py-2 pl-4 pr-2 shadow-[0_16px_40px_-20px_rgb(0_0_0/0.5)] transition-[border-color,box-shadow]",
@@ -139,7 +148,8 @@ export function Composer({
           ) : (
             <>
               <span className="hidden sm:inline">
-                <Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd> for a new line
+                <Kbd>Enter</Kbd> to send · <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd> for a new line ·{" "}
+                <Kbd>/</Kbd> to ask{lastQuestion ? <> · <Kbd>↑</Kbd> last question</> : null}
               </span>
               <span className="sm:hidden">Answers cite the SEC filing they come from.</span>
             </>
