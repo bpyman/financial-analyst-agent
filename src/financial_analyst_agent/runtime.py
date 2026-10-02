@@ -287,13 +287,20 @@ def live_runtime(
     )
 
 
+def live_sec_configured(settings: Settings) -> bool:
+    """Whether live SEC requests can be made: SEC asks for a User-Agent naming a contact."""
+    return bool(settings.sec_user_agent.strip())
+
+
 def runtime_locked(settings: Settings | None = None) -> bool:
     """Whether this deployment serves only the recorded runtime.
 
-    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked.
+    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked, and
+    so is any deployment without ``SEC_USER_AGENT``: its live turns could only fail.
     """
     resolved = settings or get_settings()
-    return bool(resolved.public_demo) and not resolved.demo_live_sec
+    demo_off = bool(resolved.public_demo) and not resolved.demo_live_sec
+    return demo_off or not live_sec_configured(resolved)
 
 
 def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:
