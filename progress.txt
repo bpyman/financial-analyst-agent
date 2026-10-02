@@ -310,9 +310,9 @@ Files changed:
 Blockers / next:
 - Issue 09 (multi-metric composition) can consume ordered unique metrics once 08 lands; issue 04 remains the next unblocked structured-graph tracer.
 
-## 2026-08-25 — Interview done; no deadline
+## 2026-08-25 — Proof of concept complete; no deadline
 
-The 20 August 2026 interview went well. There is no remaining deadline. Continue as a portfolio project. Dated entries below are the interview-POC build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
+There is no remaining deadline. Continue as a portfolio project. Dated entries below are the proof-of-concept build log; “rebuild before the interview” on 2026-08-17 is historical (the freeze was already rebuilt for that session).
 
 ## 2026-08-25 — 02 Split turn contracts
 

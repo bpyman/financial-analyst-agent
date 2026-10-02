@@ -1,4 +1,4 @@
-The 20 August 2026 interview is done and went well. There is no deadline. Continue this as a portfolio project; do not time-box or drop work for Thursday.
+This is a portfolio project with no deadline. Do not time-box or drop work.
 
 ## Agent skills
 

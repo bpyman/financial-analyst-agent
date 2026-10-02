@@ -2,13 +2,13 @@ Status: ready-for-agent
 
 # Financial analyst agent
 
-The 20 August 2026 interview is done and went well. There is no remaining deadline. This repo continues as a portfolio project (fun, not time-boxed). The stories and decisions below are the interview POC that shipped; interview-only kill-order and “before Thursday” language is historical. Architectural locks (no LLM math, closed intents, XBRL as quarterly truth) still stand unless a later ADR replaces them. [ADR 0007](docs/adr/0007-derived-quarters-and-per-share.md) replaced the YTD-subtraction lock with two labelled derivations.
+This repo is a portfolio project with no deadline. The stories and decisions below are the proof of concept that shipped; deadline and kill-order language is historical. Architectural locks (no LLM math, closed intents, XBRL as quarterly truth) still stand unless a later ADR replaces them. [ADR 0007](docs/adr/0007-derived-quarters-and-per-share.md) replaced the YTD-subtraction lock with two labelled derivations.
 
 ## Problem Statement
 
-The original brief was a one-hour technical interview on Thursday 20 August 2026: a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
+The original brief was a technical-interview exercise: a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
 
-The demo still needs to look like a well-designed agent (typed graph, MCP tools, visible traces), while remaining reliable: numbers must come from real filings and a real ranking snapshot, not from the model. A prior attempt (v1) proved the XBRL fact path but was too narrow (toy universe, no UI, no graph/MCP, no comparisons or news). This repo is the v2 POC locked in grilling.
+The agent should be a well-structured system with a visible process (typed graph, MCP tools, traces), while remaining reliable: numbers must come from real filings and a real ranking snapshot, not from the model. A prior attempt (v1) proved the XBRL fact path but was too narrow (toy universe, no UI, no graph/MCP, no comparisons or news). This repo is the v2 POC locked in grilling.
 
 ## Solution
 
@@ -22,7 +22,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 
 1. As Blake, I want a working POC I can demo in 25 minutes, so that Rohit can see the solution instead of only hearing about it.
 2. As Blake, I want a short system-design document with one diagram, so that I can walk the architecture before the live prompts.
-3. As Blake, I want the demo to look like a well-designed agent (intent, tool traces, MCP tools), so that the session matches “impressive agent system” without sacrificing reliability.
+3. As Blake, I want the agent's process to be visible (intent, tool traces, MCP tools), so that a reviewer can see how each answer was produced without sacrificing reliability.
 4. As Rohit, I want to ask “What was Google’s net income based on their latest quarterly report?”, so that I can see a real 10-Q fact with provenance.
 5. As Rohit, I want to ask for the top 10 companies in healthcare, so that ranking looks like a real industry sort, not four hand-picked names.
 6. As Rohit, I want to ask for the top 10 healthcare companies and the net income for each, so that I can see multi-tool composition that does not mistype tickers.
@@ -138,7 +138,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 
 ## Further Notes
 
-- Interview: completed Thursday 20 August 2026, 5 p.m. ET; went well. Original session was ~25 minutes on the solution, then Q&A. There is no remaining deadline; this is a portfolio project. Live script from that session: Microsoft pre-tax income → TSLA vs GM revenue → top 10 tech R&D spend. Hormuz/Exxon news was backup only if refreshed the same day. Disruption essay remains a backup. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
+- Origin: a technical-interview proof of concept (August 2026). There is no remaining deadline; this is a portfolio project. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
 - v2 folder is the presentation repo; v1 remains the fact-engine donor. Do not require v1 to stay running as an HTTP backend.
 - Glossary is `CONTEXT.md`; ADRs are under `docs/adr/`. This PRD remains the product spec for the shipped POC.
 - The test seam was proposed as a single `run_turn` interface (snapshot builder not a second feature seam). Publishing proceeds on that basis after skills setup; implementation should not add HTTP/MCP/UI seams as the gold-test surface.

@@ -231,4 +231,4 @@ It starts the recorded API and the built window itself, as the browser check doe
 
 ## Origin
 
-This repo began as a 20 August 2026 interview POC. That session is over; the product continues here. Historical interview notes live under [`docs/archive/interview/`](docs/archive/interview/).
+This repo began in August 2026 as a proof of concept for a technical-interview brief and continues as a portfolio project.
