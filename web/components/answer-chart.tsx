@@ -487,6 +487,8 @@ function TrendDot({
       )}
       {isLast && endLabel && (
         <text
+          // The capture script enlarges these for the link preview (scripts/capture-portfolio.ts).
+          className="end-label"
           x={cx - 9}
           y={endLabel.side === "above" ? cy - 11 : cy + 19}
           textAnchor="end"

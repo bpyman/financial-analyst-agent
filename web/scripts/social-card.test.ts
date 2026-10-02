@@ -11,10 +11,16 @@ const card: SocialCard = {
 };
 
 describe("socialCardHtml", () => {
-  it("renders at GitHub's 1280×640 social preview size", () => {
-    expect(SOCIAL_SIZE).toEqual({ width: 1280, height: 640 });
+  it("renders at LinkedIn's 1.91:1 link preview size", () => {
+    expect(SOCIAL_SIZE).toEqual({ width: 1200, height: 628 });
     const html = socialCardHtml(card);
-    expect(html).toContain("width:1280px;height:640px");
+    expect(html).toContain("width:1200px;height:628px");
+  });
+
+  it("gives the chart about 60% of the width", () => {
+    const width = Number(/\.card\{[^}]*width:(\d+)px/.exec(socialCardHtml(card))?.[1]);
+    expect(width / SOCIAL_SIZE.width).toBeGreaterThanOrEqual(0.55);
+    expect(width / SOCIAL_SIZE.width).toBeLessThanOrEqual(0.65);
   });
 
   it("sets the landing headline with its muted second sentence", () => {
@@ -30,9 +36,9 @@ describe("socialCardHtml", () => {
     expect(html).toContain("github.com/bpyman/onfile");
   });
 
-  it("pairs the name with its short tagline", () => {
+  it("names the project beside its mark", () => {
     const html = socialCardHtml(card);
-    expect(html).toContain('Onfile<span class="rule"></span><span class="tagline">Financial research from SEC filings</span>');
+    expect(html).toMatch(/<div class="brand"><div class="logo">.*<\/div>Onfile<\/div>/);
   });
 
   it("embeds its fonts so the page needs no network", () => {
