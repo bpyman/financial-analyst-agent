@@ -277,7 +277,12 @@ def _with_peers(proposal: Any, ranking: Any) -> Any:
     except Exception:
         return proposal
     found = peers(member.cik, limit=_PEER_COUNT)
-    proposal.companies = [*proposal.companies, *(peer.ticker for peer in found)]
+    companies = [*proposal.companies, *(peer.ticker for peer in found)]
+    # The model planner's plan is immutable; the rules planner's is a namespace.
+    with_companies = getattr(proposal, "with_companies", None)
+    if callable(with_companies):
+        return with_companies(companies)
+    proposal.companies = companies
     return proposal
 
 
