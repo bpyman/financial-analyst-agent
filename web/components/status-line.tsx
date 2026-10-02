@@ -20,13 +20,15 @@ export function StatusLine({
   guide?: Guide | null;
   snapshot: { banner: string; stale: boolean } | null;
   chips: string[];
+  /** null hides the counter: no thread yet, or nothing asked on it. */
   turns: { count: number; max: number } | null;
 }) {
   const RuntimeIcon = runtime === "live" ? Radio : Database;
   // "Live runtime — figures pulled …": the name leads, the detail recedes.
   const [runtimeName, runtimeDetail] = splitBanner(runtimeBanner ?? "");
   return (
-    <div className="border-b border-border bg-surface sm:tall:sticky sm:top-14 sm:z-20">
+    // A landmark of its own, so the runtime and snapshot lines are not stray page content.
+    <section aria-label="Conversation status" className="border-b border-border bg-surface sm:tall:sticky sm:top-14 sm:z-20">
       <div className="mx-auto flex max-w-4xl flex-col gap-1 px-4 py-1.5 text-[11.5px] leading-5 text-subtle sm:flex-row sm:items-center sm:gap-5 sm:px-6">
         {runtimeBanner === null ? (
           <span className="shimmer animate-shimmer h-4 w-72 max-w-full rounded" aria-hidden />
@@ -62,6 +64,7 @@ export function StatusLine({
         )}
         {turns && (
           <span
+            role="group"
             className="num shrink-0 text-subtle sm:ml-auto"
             aria-label="Turns used"
             title={`A conversation holds up to ${turns.max} questions and follow-ups. Start over for a fresh one.`}
@@ -89,6 +92,6 @@ export function StatusLine({
         </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

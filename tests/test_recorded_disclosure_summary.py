@@ -153,3 +153,21 @@ def test_capability_examples_are_ones_the_runtime_can_answer() -> None:
     examples = [example for _, group in recorded for example in group]
     assert "NEWS?" in examples and "ESSAY?" in examples
     assert live == CAPABILITIES
+
+
+def test_live_without_news_or_a_model_does_not_advertise_them() -> None:
+    from financial_analyst_agent.storefront import CAPABILITIES, capabilities_for
+
+    keyless = capabilities_for(
+        live_news=False,
+        live_essays=False,
+        recorded_news="NEWS?",
+        recorded_essay="ESSAY?",
+        live=True,
+    )
+
+    descriptions = [description for description, _ in keyless]
+    examples = [example for _, group in keyless for example in group]
+    assert len(keyless) == len(CAPABILITIES) - 2
+    assert not any("news" in description.lower() for description in descriptions)
+    assert "NEWS?" not in examples and "ESSAY?" not in examples

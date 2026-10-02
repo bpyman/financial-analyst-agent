@@ -15,7 +15,8 @@ export const maxDuration = 300;
 
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 // How long the API may take to start answering; a turn's stream then runs on.
-const UPSTREAM_HEADERS_TIMEOUT_MS = 60_000;
+// Render's free tier takes about a minute to wake, so this leaves it room.
+const UPSTREAM_HEADERS_TIMEOUT_MS = 100_000;
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
 const UPSTREAM_FAILED = "The analysis service had a problem. Please try again.";
 
@@ -45,9 +46,14 @@ async function forward(
   try {
     upstream = await fetch(target, {
       method: request.method,
-      headers: upstreamRequestHeaders(request, process.env.API_PROXY_TOKEN),
+      // Only Vercel overwrites the visitor's address headers; elsewhere they are the visitor's own.
+      headers: upstreamRequestHeaders(request, process.env.API_PROXY_TOKEN, {
+        onPlatform: Boolean(process.env.VERCEL),
+      }),
       body,
       cache: "no-store",
+      // A redirect would carry the proxy token and the body to wherever it points.
+      redirect: "manual",
       signal: controller.signal,
     });
   } catch {
@@ -55,17 +61,17 @@ async function forward(
   } finally {
     clearTimeout(timer);
   }
-  if (!passesThrough(upstream)) {
+  if (!passesThrough(upstream, request.method)) {
     await upstream.body?.cancel();
     return Response.json(
       { detail: UPSTREAM_FAILED },
-      { status: upstream.status >= 400 ? upstream.status : 502 },
+      { status: upstream.status >= 400 ? upstream.status : 502, headers: { "cache-control": "private, no-store" } },
     );
   }
-  return new Response(upstream.body, {
+  return new Response(request.method === "HEAD" ? null : upstream.body, {
     status: upstream.status,
     headers: clientResponseHeaders(upstream.headers),
   });
 }
 
-export { forward as GET, forward as POST, forward as DELETE };
+export { forward as GET, forward as HEAD, forward as POST, forward as DELETE };

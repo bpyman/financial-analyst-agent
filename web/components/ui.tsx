@@ -6,7 +6,7 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
 
 const BUTTON: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-primary-fg shadow-sm shadow-primary/20 hover:brightness-110 disabled:opacity-40",
+    "bg-primary-solid text-primary-fg shadow-sm shadow-primary/20 hover:brightness-110 disabled:opacity-40",
   secondary: "bg-surface-2 text-fg hover:bg-surface-3 disabled:opacity-50",
   outline:
     "border border-border bg-surface text-fg hover:border-border-strong hover:bg-surface-2 disabled:opacity-50",
@@ -112,12 +112,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
+        "inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4",
         TONES[tone],
         className,
       )}
     >
-      {children}
+      <span className="min-w-0 truncate">{children}</span>
     </span>
   );
 }
@@ -160,7 +160,7 @@ export function Callout({
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{children}</div>
     </div>
   );
 }

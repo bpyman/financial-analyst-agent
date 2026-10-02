@@ -156,16 +156,29 @@ export interface BarRow {
   period: string;
 }
 
+/** A bar without a finite value keeps its row, drawn as missing with "—". */
 export function barRows(spec: BarChartSpec): BarRow[] {
-  return spec.records.map((record) => ({
-    key: record.Key ?? record.Company,
-    name: record.Company,
-    value: record.Missing ? 0 : record.Value,
-    amount: record.Amount,
-    label: record.Label,
-    missing: record.Missing,
-    period: record.Period ?? "",
-  }));
+  return spec.records.map((record) => {
+    const missing = record.Missing || typeof record.Value !== "number" || !Number.isFinite(record.Value);
+    return {
+      key: record.Key ?? record.Company,
+      name: record.Company,
+      value: missing ? 0 : record.Value,
+      amount: record.Amount,
+      label: record.Missing ? record.Label : missing ? "—" : record.Label,
+      missing,
+      period: record.Period ?? "",
+    };
+  });
+}
+
+/** More periods than this and a narrow axis shows every other label (newest kept). */
+export const DENSE_PERIODS = 5;
+
+/** The longer line of a two-line period tick ("Mar 31" of "Mar 31, 2026"), to measure its width. */
+export function tickLine(period: string): string {
+  const split = period.lastIndexOf(", ");
+  return split > 0 ? period.slice(0, split) : period;
 }
 
 /**

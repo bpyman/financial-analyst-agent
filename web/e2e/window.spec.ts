@@ -106,7 +106,7 @@ test("a reload resumes the thread and Start over clears it", async ({ page }) =>
   await expect(analyst.counter()).toHaveText(/^1 of /);
 
   await analyst.startOver();
-  await expect(analyst.counter()).toHaveText(/^0 of /);
+  await expect(analyst.counter()).toBeHidden();
 
   await page.reload();
   await expect(analyst.story("Verify a quarterly fact")).toBeEnabled();
@@ -143,7 +143,7 @@ test("Start over works where the browser's own dialogs never show", async ({ pag
   await analyst.tell("Verify a quarterly fact");
 
   await analyst.startOver();
-  await expect(analyst.counter()).toHaveText(/^0 of /);
+  await expect(analyst.counter()).toBeHidden();
   expect(dialogs).toEqual([]);
 });
 
@@ -163,7 +163,7 @@ test("Start over drops an answer that is still running", async ({ page }) => {
 
   await analyst.startOver();
   await expect(page.locator('[data-turn="pending"]')).toBeHidden();
-  await expect(analyst.counter()).toHaveText(/^0 of /);
+  await expect(analyst.counter()).toBeHidden();
 
   // The dropped answer finishing later does not come back into the new conversation.
   releaseTurn();
@@ -242,7 +242,7 @@ test("Start over works while a saved thread is slow to come back", async ({ page
   await expect(page.getByRole("button", { name: "Loading your thread" })).toBeDisabled();
 
   await analyst.startOver();
-  await expect(analyst.counter()).toHaveText(/^0 of /);
+  await expect(analyst.counter()).toBeHidden();
   const freshId = await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"));
   expect(freshId).not.toBe(savedId);
 
@@ -272,6 +272,8 @@ test("the composer takes its message limit from the server", async ({ page }) =>
   await new Analyst(page).open();
 
   await expect(page.getByRole("textbox", { name: "Ask a question" })).toHaveAttribute("maxlength", "50");
+  // The storefront asks again once it knows the runtime; that read may still be in the route.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("a question sent before the storefront loads leaves the runtime to the deployment", async ({ page }) => {
@@ -332,6 +334,14 @@ test("the window installs as an app with the project's icons", async ({ page, re
     expect(response.ok(), icon.src).toBe(true);
     expect(response.headers()["content-type"]).toBe("image/png");
   }
+});
+
+test("the site answers favicon.ico and robots.txt", async ({ request }) => {
+  const favicon = await request.get("/favicon.ico");
+  expect(favicon.ok()).toBe(true);
+  expect(favicon.headers()["content-type"]).toContain("image/");
+  const robots = await request.get("/robots.txt");
+  expect(await robots.text()).toContain("Disallow: /api/");
 });
 
 test("a company on its own gets an overview, and a suggestion extends it", async ({ page }) => {

@@ -176,12 +176,14 @@ export interface Meta {
   runtime_copy: { recorded: string; live: string; locked: string };
   /** Absent from an older API. */
   runtime_guide?: RuntimeGuide;
-  snapshot: { banner: string; stale: boolean };
+  /** null when the API sent no banner. */
+  snapshot: { banner: string; stale: boolean } | null;
   example_query: string;
   guided_stories: { label: string; question: string }[];
   capabilities: { description: string; examples: string[] }[];
   metric_groups: { title: string; names: string[] }[];
-  max_message_chars: number;
+  /** null when the API sent no usable limit; the window keeps its own. */
+  max_message_chars: number | null;
 }
 
 export type TurnEvent =
