@@ -8,6 +8,8 @@ import type {
   Meta,
   Pair,
   Presentation,
+  QuarterlyFactCard,
+  QuickActions,
   RuntimeGuide,
   RuntimeKind,
   ThreadView,
@@ -229,11 +231,28 @@ export function readThreadView(raw: unknown): ThreadView {
     runtime: runtimeKind(body.runtime),
     turns,
     spec_chips: [...new Set(texts(body.spec_chips))],
+    spec_chip_edits: list(body.spec_chip_edits, (item) => {
+      const label = text(item.label);
+      const kind = CHIP_KINDS.find((each) => each === item.kind) ?? "period";
+      return label ? { label, kind, remove: textOrNull(item.remove) || null } : null;
+    }),
+    quick_actions: readQuickActions(record(body.quick_actions)),
     pending_clarification: body.pending_clarification === true,
     turn_count: count(body.turn_count) ?? turns.length,
     max_turns: count(body.max_turns) || 25,
     turn_in_flight: body.turn_in_flight === true,
   };
+}
+
+const CHIP_KINDS = ["company", "constituents", "metric", "period", "operation"] as const;
+
+function readQuickActions(raw: Raw): QuickActions {
+  const actions = (value: unknown) =>
+    list(value, (item) => {
+      const action = { label: text(item.label), message: text(item.message) };
+      return action.label && action.message ? action : null;
+    });
+  return { company: actions(raw.company), metric: actions(raw.metric), period: actions(raw.period) };
 }
 
 function readTurn(raw: Raw, position: number): Turn {
@@ -257,6 +276,21 @@ const FACT_CARD_KEYS = [
   "concept",
   "source_url",
 ] as const;
+const DIRECTIONS = ["up", "down", "flat"] as const;
+
+function readFactCard(raw: Raw): QuarterlyFactCard {
+  return {
+    ...strings(raw, FACT_CARD_KEYS),
+    kind_label: text(raw.kind_label),
+    concept_short: text(raw.concept_short),
+    changes: list(raw.changes, (item) => {
+      const label = text(item.label);
+      const direction = DIRECTIONS.find((each) => each === item.direction) ?? "flat";
+      return label ? { label, direction, title: text(item.title) } : null;
+    }),
+  };
+}
+
 const EVIDENCE_KEYS = [
   "label",
   "amount",
@@ -294,7 +328,7 @@ export function readPresentation(raw: Raw): Presentation {
       url: text(item.url),
       published: textOrNull(item.published),
     })),
-    fact_card: isRecord(raw.fact_card) ? strings(raw.fact_card, FACT_CARD_KEYS) : null,
+    fact_card: isRecord(raw.fact_card) ? readFactCard(raw.fact_card) : null,
     table: isRecord(raw.table) ? readTable(raw.table) : null,
     chart: isRecord(raw.chart) ? readChart(raw.chart) : null,
     evidence: list(raw.evidence, (item) => ({
@@ -342,7 +376,18 @@ function readTable(raw: Raw): DisplayTable {
     rows,
     numbers,
     ...(Array.isArray(raw.row_keys) ? { row_keys: texts(raw.row_keys) } : {}),
+    ...(Array.isArray(raw.evidence) ? { evidence: raw.evidence.map(indices) } : {}),
+    ...(Array.isArray(raw.raw) ? { raw: raw.raw.map((row) => (Array.isArray(row) ? row.map(text) : [])) } : {}),
   };
+}
+
+/** A row of evidence indices: whole numbers at least zero, else null. */
+function indices(row: unknown): (number | null)[] {
+  return Array.isArray(row) ? row.map((n) => (isIndex(n) ? n : null)) : [];
+}
+
+function isIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 const VALUE_KINDS = ["usd", "percent", "multiple", "per_share"] as const;
@@ -370,6 +415,8 @@ function readChart(raw: Raw): ChartSpec | null {
         Label: text(item.Label),
         Missing: item.Missing === true,
         ...(typeof item.Period === "string" ? { Period: item.Period } : {}),
+        ...(isIndex(item.Evidence) ? { Evidence: item.Evidence } : {}),
+        Derived: item.Derived === true,
       })),
     };
   }
@@ -387,6 +434,17 @@ function readChart(raw: Raw): ChartSpec | null {
             ),
           )
         : [],
+      ...(Array.isArray(raw.series_labels) ? { series_labels: raw.series_labels.map(text) } : {}),
+      ...(Array.isArray(raw.evidence)
+        ? {
+            evidence: raw.evidence.map((item) =>
+              Object.fromEntries(
+                Object.entries(record(item)).filter((entry): entry is [string, number] => isIndex(entry[1])),
+              ),
+            ),
+          }
+        : {}),
+      ...(Array.isArray(raw.derived) ? { derived: raw.derived.map(texts) } : {}),
     };
     return line;
   }

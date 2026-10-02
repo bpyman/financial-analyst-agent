@@ -987,6 +987,34 @@ def test_a_long_replaced_run_is_split_into_paired_changes() -> None:
     assert all(len(change.after_text) < 120 for change in changes)
 
 
+def test_a_bullet_shortened_to_its_headline_figure_is_one_change() -> None:
+    # Microsoft's 10-Q: the new bullet keeps the old one's words, less the "driven by" detail.
+    older = "\n".join(
+        [
+            "Microsoft Cloud revenue increased 20% to $42.4 billion.",
+            "Microsoft 365 Commercial products and cloud services revenue increased 11% "
+            "driven by Microsoft 365 Commercial cloud revenue growth of 12%.",
+            "LinkedIn revenue increased 7%.",
+        ]
+    )
+    newer = "\n".join(
+        [
+            "Microsoft Cloud revenue increased 29% to $54.5 billion.",
+            "Commercial remaining performance obligation increased 99% to $627 billion.",
+            "Microsoft 365 Commercial cloud revenue increased 19%.",
+            "LinkedIn revenue increased 12%.",
+        ]
+    )
+
+    changes = _diff(older, newer)
+
+    headline = "Commercial cloud revenue increased 19%"
+    shortened = next(change for change in changes if headline in change.after_text)
+    assert shortened.change_kind == "changed"
+    assert "growth of 12%" in shortened.before_text
+    assert [change.change_kind for change in changes].count("added") == 1
+
+
 def test_an_edited_paragraph_that_moved_is_one_change_not_two() -> None:
     edited = (
         "If we do not successfully manage and develop our relationships with {who}, "

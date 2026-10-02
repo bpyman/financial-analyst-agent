@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  barDomain,
   orderedBars,
   barRows,
   calendarsDiffer,
@@ -64,13 +63,18 @@ const RANKED: BarChartSpec = {
 describe("lineSeries", () => {
   it("keys series by position, since names like 'Apple Inc.' are not safe data keys", () => {
     expect(lineSeries(TREND)).toEqual([
-      { key: "s0", name: "Microsoft Corporation", color: SERIES_COLORS[0] },
-      { key: "s1", name: "Apple Inc.", color: SERIES_COLORS[1] },
+      { key: "s0", name: "Microsoft Corporation", label: "Microsoft Corporation", color: SERIES_COLORS[0] },
+      { key: "s1", name: "Apple Inc.", label: "Apple Inc.", color: SERIES_COLORS[1] },
     ]);
   });
 
+  it("labels each series by its ticker when the server sends one", () => {
+    const labels = lineSeries({ ...TREND, series_labels: ["MSFT", "AAPL"] }).map((series) => series.label);
+    expect(labels).toEqual(["MSFT", "AAPL"]);
+  });
+
   it("assigns colours in a fixed order and never cycles", () => {
-    const many = { ...TREND, series: Array.from({ length: 8 }, (_, i) => `Co ${i}`) };
+    const many = { ...TREND, series: Array.from({ length: 10 }, (_, i) => `Co ${i}`) };
     const colors = lineSeries(many).map((series) => series.color);
     expect(colors.slice(0, SERIES_COLORS.length)).toEqual([...SERIES_COLORS]);
     expect(new Set(colors.slice(SERIES_COLORS.length))).toEqual(new Set(["var(--chart-muted)"]));
@@ -86,6 +90,8 @@ describe("lineRows", () => {
       s0: 64727000000,
       s1: 85777000000,
       amounts: { s0: "$64.73 B", s1: "$85.78 B" },
+      evidence: {},
+      derived: [],
     });
     expect(rows[1]).toMatchObject({ period: "Sep 30, 2024", s1: null, amounts: { s0: "$65.59 B" } });
   });
@@ -135,10 +141,16 @@ describe("quarterTicks", () => {
 });
 
 describe("endLabelSides", () => {
-  it("labels the highest line above and the lowest below, whatever their slope", () => {
+  it("puts each label on the side its own last segment leaves open when the lines end far apart", () => {
     const rows = lineRows(TREND);
-    // Apple ends highest but fell; Microsoft ends lowest but rose.
-    expect(endLabelSides(rows, lineSeries(TREND))).toEqual({ s0: "below", s1: "above" });
+    // Microsoft rose into its last point, so below-left is its own line; Apple fell into it.
+    expect(endLabelSides(rows, lineSeries(TREND), [60e9, 130e9])).toEqual({ s0: "above", s1: "below" });
+  });
+
+  it("labels the highest line above and the lowest below when the lines end close together", () => {
+    const rows = lineRows(TREND);
+    // On a wide axis the two ends are close: keep both labels off the space between the lines.
+    expect(endLabelSides(rows, lineSeries(TREND), [0, 400e9])).toEqual({ s0: "below", s1: "above" });
   });
 });
 
@@ -153,8 +165,20 @@ describe("barRows", () => {
         label: "$8.04 B",
         missing: false,
         period: "Jan 1, 2026 – Mar 31, 2026",
+        evidence: null,
+        derived: false,
       },
-      { key: "#2 GOOG", name: "#2 GOOG", value: 0, amount: "", label: "Missing fact", missing: true, period: "" },
+      {
+        key: "#2 GOOG",
+        name: "#2 GOOG",
+        value: 0,
+        amount: "",
+        label: "Missing fact",
+        missing: true,
+        period: "",
+        evidence: null,
+        derived: false,
+      },
     ]);
   });
 
@@ -222,32 +246,18 @@ describe("niceTicks", () => {
   });
 });
 
-describe("barDomain", () => {
-  it.each([[[-8, 12]], [[-10, -8]], [[3, 10]]])("leaves room beyond nonzero bar ends: %j", (values) => {
-    const [low, high] = barDomain(values);
-    const min = Math.min(0, ...values);
-    const max = Math.max(0, ...values);
-    if (min < 0) expect((min - low) / (high - low)).toBeGreaterThanOrEqual(0.14);
-    else expect(low).toBe(0);
-    if (max > 0) expect((high - max) / (high - low)).toBeGreaterThanOrEqual(0.14);
-    else expect(high).toBe(0);
-    const ticks = niceTicks([low, high]);
-    expect(ticks[0]).toBeLessThanOrEqual(low);
-    expect(ticks[ticks.length - 1]).toBeGreaterThanOrEqual(high);
-  });
-
-  it("ignores missing and nonfinite values and handles zero or empty data", () => {
-    expect(barDomain([null, undefined, NaN, Infinity, -8])).toEqual(barDomain([-8]));
-    for (const values of [[], [0, 0], [null]]) {
-      const [low, high] = barDomain(values);
-      expect(low).toBe(0);
-      expect(high).toBeGreaterThan(low);
-    }
-  });
-});
-
 describe("orderedBars", () => {
-  const bar = (key: string) => ({ key, name: key, value: 1, amount: "", label: "", missing: false, period: "" });
+  const bar = (key: string) => ({
+    key,
+    name: key,
+    value: 1,
+    amount: "",
+    label: "",
+    missing: false,
+    period: "",
+    evidence: null,
+    derived: false,
+  });
 
   it("puts bars in the table's sorted order, keeping unnamed bars after", () => {
     const rows = [bar("MSFT"), bar("AAPL"), bar("NVDA")];

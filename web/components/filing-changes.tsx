@@ -1,8 +1,9 @@
-import { ArrowRight, ChevronDown, FileDiff } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronDown, FileDiff } from "lucide-react";
 import { useMemo, useState } from "react";
-import { cn } from "@/lib/format";
+import { changedSentences, isWordingOnly, orderChanges } from "@/lib/diff-view";
+import { cn, safeHref } from "@/lib/format";
 import type { DisplayDisclosure } from "@/lib/types";
-import { wordDiff, type DiffPiece } from "@/lib/word-diff";
+import { wordDiff, type DiffPiece, type UnifiedPiece } from "@/lib/word-diff";
 import { useRegionName } from "./answer-scope";
 import { Badge, FilingButton, SectionLabel, type Tone } from "./ui";
 
@@ -12,21 +13,30 @@ const KIND_TONE: Record<string, Tone> = {
   changed: "warning",
 };
 
-// Changes shown per section before "Show more": a 10-Q pair can differ in a hundred paragraphs.
-const FIRST_CHANGES = 3;
+// Changes shown before "Show more": a 10-Q pair can differ in a hundred paragraphs.
+const FIRST_CHANGES = 4;
 
-/** Each changed 10-Q section, previous and current text side by side (stacked on phones). */
+/**
+ * Each changed 10-Q paragraph: those that move a figure first, larger before
+ * smaller, and edits that only reword folded into one row. Side by side on a
+ * wide screen; one merged paragraph, cut to the changed sentences, on a phone.
+ */
 export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
   const { older_accession: older, newer_accession: newer } = items[0];
-  // Each item is one changed paragraph; several can sit in one section.
-  const sections = groupBySection(items);
+  const ordered = useMemo(() => orderChanges(items), [items]);
+  const substantive = ordered.filter((item) => !isWordingOnly(item));
+  const wording = ordered.filter(isWordingOnly);
+  const sections = new Set(items.map((item) => item.section_label)).size;
+  const [open, setOpen] = useState(false);
+  const shown = open ? substantive : substantive.slice(0, FIRST_CHANGES);
+  const hidden = substantive.length - shown.length;
   const name = useRegionName("Filing changes");
   return (
     <section aria-label={name} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <SectionLabel>
-          {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections.length} ${
-            sections.length === 1 ? "section" : "sections"
+          {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections} ${
+            sections === 1 ? "section" : "sections"
           }`}
         </SectionLabel>
         {older && newer && (
@@ -37,27 +47,6 @@ export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
           </div>
         )}
       </div>
-      {sections.map(([label, changes]) => (
-        <FilingSection key={label} label={label} changes={changes} />
-      ))}
-    </section>
-  );
-}
-
-function groupBySection(items: DisplayDisclosure[]): [string, DisplayDisclosure[]][] {
-  const sections = new Map<string, DisplayDisclosure[]>();
-  for (const item of items) {
-    sections.set(item.section_label, [...(sections.get(item.section_label) ?? []), item]);
-  }
-  return [...sections];
-}
-
-function FilingSection({ label, changes }: { label: string; changes: DisplayDisclosure[] }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? changes : changes.slice(0, FIRST_CHANGES);
-  const hidden = changes.length - shown.length;
-  return (
-    <div className="space-y-3">
       {shown.map((item, index) => (
         <FilingChange key={index} item={item} />
       ))}
@@ -68,10 +57,30 @@ function FilingSection({ label, changes }: { label: string; changes: DisplayDisc
           className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border-strong px-4 py-2.5 text-xs font-medium text-muted transition-colors hover:border-primary/50 hover:bg-primary-soft hover:text-fg"
         >
           <ChevronDown className="size-3.5" aria-hidden />
-          {`Show ${hidden} more ${hidden === 1 ? "change" : "changes"} in ${label}`}
+          {`Show ${hidden} more ${hidden === 1 ? "change" : "changes"}`}
         </button>
       )}
-    </div>
+      {wording.length > 0 && <WordingEdits items={wording} />}
+    </section>
+  );
+}
+
+/** Rewordings with no figure changed: one row that opens to the edits. */
+function WordingEdits({ items }: { items: DisplayDisclosure[] }) {
+  return (
+    <details className="group/wording overflow-hidden rounded-xl border border-border bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] text-fg transition-colors hover:bg-surface-2/60 sm:px-5 [&::-webkit-details-marker]:hidden">
+        <FileDiff className="size-4 shrink-0 text-subtle" aria-hidden />
+        {`${items.length} wording-only ${items.length === 1 ? "edit" : "edits"}`}
+        <span className="hidden text-[12px] text-subtle sm:inline">· no figure changed</span>
+        <ChevronDown className="ml-auto size-4 shrink-0 text-subtle transition-transform group-open/wording:rotate-180" aria-hidden />
+      </summary>
+      <div className="space-y-3 border-t border-border bg-surface-2/30 p-3">
+        {items.map((item, index) => (
+          <FilingChange key={index} item={item} />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -109,7 +118,8 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
           {item.change_kind}
         </Badge>
       </header>
-      <div className="grid md:grid-cols-2">
+      <Unified item={item} pieces={diff?.unified ?? null} />
+      <div className="hidden md:grid md:grid-cols-2">
         <FilingSide
           label="Previous filing"
           text={item.before_text}
@@ -133,13 +143,110 @@ function FilingChange({ item }: { item: DisplayDisclosure }) {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((open) => !open)}
-          className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+          className="hidden w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg md:flex"
         >
           <ChevronDown className={cn("size-3.5 transition-transform", expanded && "rotate-180")} aria-hidden />
           {expanded ? "Show less" : "Show full text"}
         </button>
       )}
     </article>
+  );
+}
+
+/**
+ * A phone's view: one paragraph with the old words struck in red and the new
+ * in green, cut to the sentences that changed until the reader asks for all.
+ */
+function Unified({ item, pieces }: { item: DisplayDisclosure; pieces: UnifiedPiece[] | null }) {
+  const [full, setFull] = useState(false);
+  const text = item.change_kind === "removed" ? item.before_text : item.after_text;
+  const kind = item.change_kind;
+  const whole: UnifiedPiece[] = useMemo(
+    () => pieces ?? (text ? [{ text, kind: kind === "removed" ? "removed" : kind === "added" ? "added" : "same" }] : []),
+    [pieces, text, kind],
+  );
+  const { sentences, omitted } = useMemo(() => changedSentences(whole), [whole]);
+  // An added or removed paragraph is all change: clamp it by length instead.
+  const allChanged = !pieces;
+  const cut = !full && (allChanged ? text.length > 420 : omitted && sentences.length > 0);
+  return (
+    <div className="md:hidden">
+      <div className="px-4 py-3">
+        <p
+          className={cn(
+            "whitespace-pre-wrap break-words text-[14px] leading-[1.7] text-fg",
+            cut && allChanged && "line-clamp-6",
+          )}
+        >
+          {cut && !allChanged
+            ? sentences.map((sentence, index) => (
+                <span key={index}>
+                  <span className="text-subtle">… </span>
+                  <Runs pieces={sentence} strike />
+                </span>
+              ))
+            : <Runs pieces={whole} strike={!allChanged} />}
+          {cut && !allChanged && <span className="text-subtle"> …</span>}
+        </p>
+        {(cut || full) && (
+          <button
+            type="button"
+            aria-expanded={full}
+            onClick={() => setFull((open) => !open)}
+            className="mt-2 inline-flex items-center gap-1 rounded text-xs font-medium text-primary underline-offset-4 hover:underline"
+          >
+            <ChevronDown className={cn("size-3.5 transition-transform", full && "rotate-180")} aria-hidden />
+            {full ? "Show only what changed" : "Show full paragraph"}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border bg-surface-2/35 px-4 py-2.5 text-xs">
+        <FilingLink href={item.older_url} label="Previous filing" />
+        <FilingLink href={item.newer_url} label="Current filing" />
+      </div>
+    </div>
+  );
+}
+
+function FilingLink({ href, label }: { href: string; label: string }) {
+  if (!safeHref(href)) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="inline-flex items-center gap-0.5 font-medium text-primary underline-offset-4 hover:underline"
+    >
+      {label}
+      <ArrowUpRight className="size-3.5" aria-hidden />
+    </a>
+  );
+}
+
+/** `strike`: words gone from a paragraph that stays; a paragraph gone whole is tinted, not struck, to stay readable. */
+function Runs({ pieces, strike = false }: { pieces: UnifiedPiece[]; strike?: boolean }) {
+  return (
+    <>
+      {pieces.map((piece, index) =>
+        piece.kind === "same" ? (
+          <span key={index}>{piece.text}</span>
+        ) : piece.kind === "added" ? (
+          <ins key={index} className="rounded-[3px] bg-positive-soft text-fg no-underline ring-1 ring-positive/25">
+            {piece.text}
+          </ins>
+        ) : (
+          <del
+            key={index}
+            className={cn(
+              "rounded-[3px] bg-negative-soft ring-1 ring-negative/25",
+              strike ? "text-muted decoration-negative/60" : "text-fg no-underline",
+            )}
+          >
+            {piece.text}
+          </del>
+        ),
+      )}
+    </>
   );
 }
 

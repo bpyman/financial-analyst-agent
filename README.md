@@ -7,7 +7,7 @@
 
 **Explore company financials, straight from SEC filings.**
 
-Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the 10-Q it came from.
+Ask about a company and get the number and the filing behind it. Onfile is an evidence-first research agent. A language model reads the question; deterministic code owns every number: the quarterly facts, the arithmetic, the rankings, and the values on screen. Click any figure to see the exact amount, CIK, accession, XBRL concept, and a link to the filing it came from.
 
 <p align="center">
   <a href="https://onfile-analyst.vercel.app"><strong>Try the live demo</strong></a> ·
@@ -202,7 +202,7 @@ uv run python -m financial_analyst_agent.mcp_server
 
 ## Portfolio images
 
-`web/scripts/capture-portfolio.ts` drives the window the way a visitor would: for the walkthrough, Eli Lilly, Pfizer and Merck revenue, then `show year-over-year`, then the exact 10-Q source; for the stills, compare four quarters, then `add Apple`, then the inspector. It also asks the showcase questions (Eli Lilly vs Pfizer revenue, what changed in Microsoft's latest 10-Q, an overview and a sorted ranking) and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1280×640 social preview (the landing headline beside the Lilly vs Pfizer chart, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
+`web/scripts/capture-portfolio.ts` drives the window the way a visitor would: for the walkthrough, Eli Lilly, Pfizer and Merck revenue, then `show year-over-year`, then the exact 10-Q source; for the stills, compare four quarters, then `add Apple`, then the inspector. It also asks the showcase questions (Eli Lilly vs Pfizer revenue, what changed in Microsoft's latest 10-Q, an overview and a sorted ranking) and rewrites every image in [`docs/portfolio/images/`](docs/portfolio/images/): the stills at 2x, the 1200×628 link preview (the landing headline beside the Lilly vs Pfizer chart, composed by `web/scripts/social-card.ts`), and the walkthrough as MP4 and GIF. It uses the recorded runtime and the default dark theme, and needs ffmpeg on `PATH` or in `$FFMPEG`.
 
 ```text
 cd web

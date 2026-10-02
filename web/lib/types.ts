@@ -3,6 +3,14 @@
 
 export type Pair = [label: string, value: string];
 
+/** A fact's change on its card ("▲17.7% YoY"); `direction` colours the arrow only. */
+export interface ChangeChip {
+  label: string;
+  direction: "up" | "down" | "flat";
+  /** What the change was measured against. */
+  title: string;
+}
+
 export interface QuarterlyFactCard {
   company_name: string;
   ticker: string;
@@ -13,6 +21,11 @@ export interface QuarterlyFactCard {
   accession_number: string;
   concept: string;
   source_url: string;
+  /** "Quarterly fact", "Calculated", "Derived quarter" or "Balance sheet"; empty in older answers. */
+  kind_label: string;
+  /** The concept cut to a few words; empty in older answers. */
+  concept_short: string;
+  changes: ChangeChip[];
 }
 
 export interface DisplayTable {
@@ -22,6 +35,10 @@ export interface DisplayTable {
   numbers: (number | null)[][];
   /** Each row's company key; bar records carry the same key. Absent in older answers. */
   row_keys?: string[];
+  /** Each cell's index into the answer's evidence, or null; absent in older answers. */
+  evidence?: (number | null)[][];
+  /** Each cell exactly (unrounded amounts, ISO dates), for CSV; absent in older answers. */
+  raw?: string[][];
 }
 
 export interface DisplayTrace {
@@ -59,6 +76,10 @@ export interface BarRecord {
   Label: string;
   Missing: boolean;
   Period?: string;
+  /** Index into the answer's evidence; absent in older answers. */
+  Evidence?: number | null;
+  /** A derived (†) figure. */
+  Derived?: boolean;
 }
 
 export interface BarChartSpec extends ChartBase {
@@ -72,6 +93,12 @@ export interface LineChartSpec extends ChartBase {
   period_labels: string[];
   series: string[];
   amounts: Record<string, string>[];
+  /** Each series' short name (ticker); absent in older answers. */
+  series_labels?: string[];
+  /** Each record's evidence index per series name; absent in older answers. */
+  evidence?: Record<string, number>[];
+  /** The series whose point in each record is derived (†). */
+  derived?: string[][];
 }
 
 export type ChartSpec = BarChartSpec | LineChartSpec;
@@ -150,12 +177,34 @@ export interface CreatedThread {
   notice: string | null;
 }
 
+/** An active-analysis chip, and the follow-up its × sends (null: no ×). */
+export interface ChipEdit {
+  label: string;
+  kind: "company" | "constituents" | "metric" | "period" | "operation";
+  remove: string | null;
+}
+
+/** A follow-up the active analysis's "+" offers. */
+export interface QuickAction {
+  label: string;
+  message: string;
+}
+
+export interface QuickActions {
+  company: QuickAction[];
+  metric: QuickAction[];
+  period: QuickAction[];
+}
+
 export interface ThreadView {
   thread_id: string;
   /** null until the thread is bound (a thread saved before binding existed). */
   runtime: RuntimeKind | null;
   turns: Turn[];
   spec_chips: string[];
+  /** The chips with their kinds and × follow-ups; empty from an older API. */
+  spec_chip_edits?: ChipEdit[];
+  quick_actions?: QuickActions;
   pending_clarification: boolean;
   turn_count: number;
   max_turns: number;

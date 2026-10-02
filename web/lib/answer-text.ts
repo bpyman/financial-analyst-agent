@@ -13,6 +13,8 @@ export function answerMarkdown(
   presentation: Presentation,
   /** The table's rows in the order on screen; the server's order when absent. */
   rowOrder?: number[] | null,
+  /** The table as on screen (several companies' quarters turned to read across). */
+  shown?: DisplayTable | null,
 ): string {
   const blocks: string[] = [];
   if (question.trim()) blocks.push(`## ${plain(question)}`);
@@ -34,7 +36,7 @@ export function answerMarkdown(
     blocks.push(`**${plain(trend.metric_label)}, recent quarters:** ${plain(points.join(" · "))}`);
   }
 
-  const table = presentation.table;
+  const table = shown ?? presentation.table;
   if (table && table.rows.length > 0) blocks.push(markdownTable(table, rowOrder));
   if (presentation.chart?.caption) blocks.push(`_${plain(presentation.chart.caption)}_`);
   if (presentation.message) blocks.push(plain(presentation.message));

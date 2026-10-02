@@ -22,7 +22,8 @@
   /* A filled button's colour: 6.70:1 under --primary-fg. */
   --primary-solid: #1d4ed8;
   --primary-fg: #ffffff;
-  --primary-soft: rgb(29 78 216 / 0.08);
+  /* Soft enough that an info note reads as a note, not a banner. */
+  --primary-soft: rgb(29 78 216 / 0.06);
   --positive: #047857;
   --positive-soft: rgb(4 120 87 / 0.08);
   --negative: #be123c;
@@ -30,16 +31,21 @@
   /* 5.43:1 on --warning-soft over --surface (the "changed" badge). */
   --warning: #8f5606;
   --warning-soft: rgb(202 138 4 / 0.1);
-  --grid: rgb(13 17 23 / 0.045);
+  /* About a third of the dark theme's weight: on white the grid reads as ruled paper otherwise. */
+  --grid: rgb(13 17 23 / 0.016);
   --glow: rgb(37 99 235 / 0.1);
-  /* Categorical slots, in an order validated for colour-vision deficiency on
-     --surface (adjacent pairs, both themes). Keep the order when changing a hue. */
+  /* Eight categorical slots, in an order validated (dataviz validate_palette.js)
+     for colour-vision deficiency on --surface: worst adjacent CVD ΔE 10.2 light,
+     10.3 dark; normal vision 24.3; every slot at least 3:1. Keep the order when
+     changing a hue, and re-run the validator. */
   --chart-1: #2563eb;
   --chart-2: #d97706;
   --chart-3: #0d9488;
   --chart-4: #e11d48;
   --chart-5: #7c3aed;
   --chart-6: #65a30d;
+  --chart-7: #c026d3;
+  --chart-8: #b45309;
   --chart-muted: #9ca3af;
   color-scheme: light;
 }
@@ -76,6 +82,8 @@
   --chart-4: #f43f5e;
   --chart-5: #8b5cf6;
   --chart-6: #65a30d;
+  --chart-7: #d946ef;
+  --chart-8: #b45309;
   --chart-muted: #4b5563;
   color-scheme: dark;
 }

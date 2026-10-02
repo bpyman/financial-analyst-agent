@@ -1,0 +1,2465 @@
+{
+ "source": "scripts/record_demo_answers.py (recorded runtime)",
+ "stories": [
+  {
+   "label": "Verify a quarterly fact",
+   "question": "What was Microsoft's latest quarterly pretax income?",
+   "presentation": {
+    "intent": "lookup",
+    "banners": [
+     "† Derived from reported figures because the filings do not report it on its own: a fiscal fourth quarter is the 10-K's full year minus the 10-Q's nine months. The source facts are in the evidence."
+    ],
+    "traces": [
+     {
+      "header": "Looked up Microsoft · Pretax income in SEC filings (Apr 1, 2026 – Jun 30, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Pretax income"
+       ]
+      ],
+      "outputs": [
+       [
+        "Derived",
+        "Fiscal year (10-K) minus nine months (10-Q)"
+       ],
+       [
+        "10-K Jul 1, 2025 – Jun 30, 2026",
+        "$165.93 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ],
+       [
+        "Minus 10-Q Jul 1, 2025 – Mar 31, 2026",
+        "$121.89 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260331.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm)"
+       ],
+       [
+        "Form",
+        "10-K"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-323660"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
+       ],
+       [
+        "Start date",
+        "Apr 1, 2026"
+       ],
+       [
+        "End date",
+        "Jun 30, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Microsoft · Pretax income in SEC filings (Jan 1, 2026 – Mar 31, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Pretax income"
+       ],
+       [
+        "Report Date",
+        "Mar 31, 2026"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-191507"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
+       ],
+       [
+        "Start date",
+        "Jan 1, 2026"
+       ],
+       [
+        "End date",
+        "Mar 31, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260331.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm)"
+       ]
+      ]
+     }
+    ],
+    "citations": [],
+    "fact_card": {
+     "company_name": "Microsoft Corporation",
+     "ticker": "MSFT",
+     "metric_header": "Pretax income",
+     "amount": "$44.05 B",
+     "period_label": "Derived † · Apr 1, 2026 – Jun 30, 2026",
+     "form": "10-K",
+     "accession_number": "0001193125-26-323660",
+     "concept": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+     "kind_label": "Derived quarter",
+     "concept_short": "IncomeLossFromContinuing…",
+     "changes": [
+      {
+       "label": "▲35.0% YoY",
+       "direction": "up",
+       "title": "Against $32.62 B for Apr 1, 2025 – Jun 30, 2025, as 10-K 0001193125-26-323660 reports it"
+      },
+      {
+       "label": "▲12.0% QoQ",
+       "direction": "up",
+       "title": "Against $39.34 B for Jan 1, 2026 – Mar 31, 2026, from 10-Q 0001193125-26-191507"
+      }
+     ]
+    },
+    "table": null,
+    "essay": null,
+    "message": null,
+    "candidates": [],
+    "intent_label": "Quarterly lookup",
+    "chart": null,
+    "evidence": [
+     {
+      "label": "Microsoft Corporation · Pretax income · Apr 1, 2026 – Jun 30, 2026",
+      "amount": "$44.05 B",
+      "raw_amount": "44047000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+      "period_label": "Apr 1, 2026 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Derived quarter: Fiscal year (10-K) minus nine months (10-Q). The reported facts are listed.",
+      "exact_amount": "44,047,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Pretax income · Jul 1, 2025 – Jun 30, 2026",
+      "amount": "$165.93 B",
+      "raw_amount": "165934000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+      "period_label": "Jul 1, 2025 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Reported 10-K amount for the stated period.",
+      "exact_amount": "165,934,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Pretax income · Jul 1, 2025 – Mar 31, 2026",
+      "amount": "$121.89 B",
+      "raw_amount": "121887000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+      "period_label": "Jul 1, 2025 – Mar 31, 2026",
+      "accession_number": "0001193125-26-191507",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "selection_rule": "Reported 10-Q amount for the stated period.",
+      "exact_amount": "121,887,000,000"
+     }
+    ],
+    "disclosures": [],
+    "clarify_prompt": null,
+    "suggestions": [
+     "show year-over-year",
+     "add Palantir Technologies",
+     "add net margin"
+    ],
+    "message_tone": "warning",
+    "headline": null,
+    "trends": []
+   }
+  },
+  {
+   "label": "Compare four quarters",
+   "question": "What was Microsoft's quarterly revenue over the last four quarters?",
+   "presentation": {
+    "intent": "lookup",
+    "banners": [
+     "† Derived from reported figures because the filings do not report it on its own: a fiscal fourth quarter is the 10-K's full year minus the 10-Q's nine months. The source facts are in the evidence."
+    ],
+    "traces": [
+     {
+      "header": "Looked up Microsoft · Revenue in SEC filings (Apr 1, 2026 – Jun 30, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Revenue"
+       ],
+       [
+        "Report Date",
+        "Jun 30, 2026"
+       ]
+      ],
+      "outputs": [
+       [
+        "Derived",
+        "Fiscal year (10-K) minus nine months (10-Q)"
+       ],
+       [
+        "10-K Jul 1, 2025 – Jun 30, 2026",
+        "$331.84 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ],
+       [
+        "Minus 10-Q Jul 1, 2025 – Mar 31, 2026",
+        "$241.83 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260331.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm)"
+       ],
+       [
+        "Form",
+        "10-K"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-323660"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+       ],
+       [
+        "Start date",
+        "Apr 1, 2026"
+       ],
+       [
+        "End date",
+        "Jun 30, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Microsoft · Revenue in SEC filings (Jan 1, 2026 – Mar 31, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Revenue"
+       ],
+       [
+        "Report Date",
+        "Mar 31, 2026"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-191507"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+       ],
+       [
+        "Start date",
+        "Jan 1, 2026"
+       ],
+       [
+        "End date",
+        "Mar 31, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260331.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Microsoft · Revenue in SEC filings (Oct 1, 2025 – Dec 31, 2025)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Revenue"
+       ],
+       [
+        "Report Date",
+        "Dec 31, 2025"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-027207"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+       ],
+       [
+        "Start date",
+        "Oct 1, 2025"
+       ],
+       [
+        "End date",
+        "Dec 31, 2025"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20251231.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526027207/msft-20251231.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Microsoft · Revenue in SEC filings (Jul 1, 2025 – Sep 30, 2025)",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Metric",
+        "Revenue"
+       ],
+       [
+        "Report Date",
+        "Sep 30, 2025"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001193125-25-256321"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+       ],
+       [
+        "Start date",
+        "Jul 1, 2025"
+       ],
+       [
+        "End date",
+        "Sep 30, 2025"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20250930.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312525256321/msft-20250930.htm)"
+       ]
+      ]
+     }
+    ],
+    "citations": [],
+    "fact_card": null,
+    "table": {
+     "headers": [
+      "Company",
+      "Ticker",
+      "Revenue",
+      "Quarter ended"
+     ],
+     "keys": [
+      "company_name",
+      "ticker",
+      "value:revenue",
+      "end_date"
+     ],
+     "rows": [
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "$90.01 B †",
+       "Jun 30, 2026"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "$82.89 B",
+       "Mar 31, 2026"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "$81.27 B",
+       "Dec 31, 2025"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "$77.67 B",
+       "Sep 30, 2025"
+      ]
+     ],
+     "numbers": [
+      [
+       null,
+       null,
+       90007000000.0,
+       739797
+      ],
+      [
+       null,
+       null,
+       82886000000.0,
+       739706
+      ],
+      [
+       null,
+       null,
+       81273000000.0,
+       739616
+      ],
+      [
+       null,
+       null,
+       77673000000.0,
+       739524
+      ]
+     ],
+     "row_keys": [
+      "MSFT@2026-06-30",
+      "MSFT@2026-03-31",
+      "MSFT@2025-12-31",
+      "MSFT@2025-09-30"
+     ],
+     "evidence": [
+      [
+       null,
+       null,
+       0,
+       null
+      ],
+      [
+       null,
+       null,
+       3,
+       null
+      ],
+      [
+       null,
+       null,
+       4,
+       null
+      ],
+      [
+       null,
+       null,
+       5,
+       null
+      ]
+     ],
+     "raw": [
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "90007000000",
+       "2026-06-30"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "82886000000",
+       "2026-03-31"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "81273000000",
+       "2025-12-31"
+      ],
+      [
+       "Microsoft Corporation",
+       "MSFT",
+       "77673000000",
+       "2025-09-30"
+      ]
+     ]
+    },
+    "essay": null,
+    "message": null,
+    "candidates": [],
+    "intent_label": "Quarterly lookup",
+    "chart": {
+     "kind": "line",
+     "title": "Trend",
+     "records": [
+      {
+       "Period": "2025-09-30",
+       "Microsoft Corporation": 77673000000.0
+      },
+      {
+       "Period": "2025-12-31",
+       "Microsoft Corporation": 81273000000.0
+      },
+      {
+       "Period": "2026-03-31",
+       "Microsoft Corporation": 82886000000.0
+      },
+      {
+       "Period": "2026-06-30",
+       "Microsoft Corporation": 90007000000.0
+      }
+     ],
+     "metric": "revenue",
+     "caption": "",
+     "horizontal": false,
+     "value_kind": "usd",
+     "metric_label": "Revenue",
+     "period_labels": [
+      "Sep 30, 2025",
+      "Dec 31, 2025",
+      "Mar 31, 2026",
+      "Jun 30, 2026"
+     ],
+     "series": [
+      "Microsoft Corporation"
+     ],
+     "amounts": [
+      {
+       "Microsoft Corporation": "$77.67 B"
+      },
+      {
+       "Microsoft Corporation": "$81.27 B"
+      },
+      {
+       "Microsoft Corporation": "$82.89 B"
+      },
+      {
+       "Microsoft Corporation": "$90.01 B"
+      }
+     ],
+     "resorted_caption": "",
+     "series_labels": [
+      "MSFT"
+     ],
+     "evidence": [
+      {
+       "Microsoft Corporation": 5
+      },
+      {
+       "Microsoft Corporation": 4
+      },
+      {
+       "Microsoft Corporation": 3
+      },
+      {
+       "Microsoft Corporation": 0
+      }
+     ],
+     "derived": [
+      [],
+      [],
+      [],
+      [
+       "Microsoft Corporation"
+      ]
+     ]
+    },
+    "evidence": [
+     {
+      "label": "Microsoft Corporation · Revenue · Apr 1, 2026 – Jun 30, 2026",
+      "amount": "$90.01 B",
+      "raw_amount": "90007000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Apr 1, 2026 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Derived quarter: Fiscal year (10-K) minus nine months (10-Q). The reported facts are listed.",
+      "exact_amount": "90,007,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Revenue · Jul 1, 2025 – Jun 30, 2026",
+      "amount": "$331.84 B",
+      "raw_amount": "331839000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Jul 1, 2025 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Reported 10-K amount for the stated period.",
+      "exact_amount": "331,839,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Revenue · Jul 1, 2025 – Mar 31, 2026",
+      "amount": "$241.83 B",
+      "raw_amount": "241832000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Jul 1, 2025 – Mar 31, 2026",
+      "accession_number": "0001193125-26-191507",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "selection_rule": "Reported 10-Q amount for the stated period.",
+      "exact_amount": "241,832,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Revenue · Jan 1, 2026 – Mar 31, 2026",
+      "amount": "$82.89 B",
+      "raw_amount": "82886000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Jan 1, 2026 – Mar 31, 2026",
+      "accession_number": "0001193125-26-191507",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "82,886,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Revenue · Oct 1, 2025 – Dec 31, 2025",
+      "amount": "$81.27 B",
+      "raw_amount": "81273000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Oct 1, 2025 – Dec 31, 2025",
+      "accession_number": "0001193125-26-027207",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027207/msft-20251231.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "81,273,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Revenue · Jul 1, 2025 – Sep 30, 2025",
+      "amount": "$77.67 B",
+      "raw_amount": "77673000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "period_label": "Jul 1, 2025 – Sep 30, 2025",
+      "accession_number": "0001193125-25-256321",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312525256321/msft-20250930.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "77,673,000,000"
+     }
+    ],
+    "disclosures": [],
+    "clarify_prompt": null,
+    "suggestions": [
+     "show year-over-year",
+     "add Palantir Technologies",
+     "add net margin"
+    ],
+    "message_tone": "warning",
+    "headline": "Microsoft's revenue rose from $77.67 B to $90.01 B † over 4 quarters to Jun 30, 2026.",
+    "trends": []
+   }
+  },
+  {
+   "label": "Rank then inspect filings",
+   "question": "What are the top 10 tech companies and R&D spend for each?",
+   "presentation": {
+    "intent": "rank_and_lookup",
+    "banners": [
+     "Universe snapshot as of Sep 27, 2026, 10:43 PM UTC",
+     "† Derived from reported figures because the filings do not report it on its own: a fiscal fourth quarter is the 10-K's full year minus the 10-Q's nine months. The source facts are in the evidence."
+    ],
+    "traces": [
+     {
+      "header": "Ranked tech in the universe snapshot",
+      "inputs": [
+       [
+        "Industry",
+        "tech"
+       ],
+       [
+        "Limit",
+        "10"
+       ]
+      ],
+      "outputs": [
+       [
+        "Snapshot As Of",
+        "Sep 27, 2026, 10:43 PM UTC"
+       ],
+       [
+        "Source",
+        "universe_snapshot"
+       ],
+       [
+        "Sector",
+        "Technology"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up NVIDIA Corporation · Research and development in SEC filings (Apr 27, 2026 – Jul 26, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0001045810"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001045810-26-000075"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Apr 27, 2026"
+       ],
+       [
+        "End date",
+        "Jul 26, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/nvda-20260726.htm](https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Apple Inc. · Research and development in SEC filings (Mar 29, 2026 – Jun 27, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000320193"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0000320193-26-000020"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Mar 29, 2026"
+       ],
+       [
+        "End date",
+        "Jun 27, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/aapl-20260627.htm](https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Microsoft Corporation · Research and development in SEC filings (Apr 1, 2026 – Jun 30, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000789019"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Derived",
+        "Fiscal year (10-K) minus nine months (10-Q)"
+       ],
+       [
+        "10-K Jul 1, 2025 – Jun 30, 2026",
+        "$35.56 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ],
+       [
+        "Minus 10-Q Jul 1, 2025 – Mar 31, 2026",
+        "$25.57 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260331.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm)"
+       ],
+       [
+        "Form",
+        "10-K"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-323660"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Apr 1, 2026"
+       ],
+       [
+        "End date",
+        "Jun 30, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/msft-20260630.htm](https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Broadcom Inc. · Research and development in SEC filings (May 4, 2026 – Aug 2, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0001730168"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001730168-26-000080"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "May 4, 2026"
+       ],
+       [
+        "End date",
+        "Aug 2, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/avgo-20260802.htm](https://www.sec.gov/Archives/edgar/data/1730168/000173016826000080/avgo-20260802.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Micron Technology, Inc. · Research and development in SEC filings (Feb 27, 2026 – May 28, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000723125"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0000723125-26-000015"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Feb 27, 2026"
+       ],
+       [
+        "End date",
+        "May 28, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/mu-20260528.htm](https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Advanced Micro Devices, Inc. · Research and development in SEC filings (Mar 29, 2026 – Jun 27, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000002488"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0000002488-26-000123"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Mar 29, 2026"
+       ],
+       [
+        "End date",
+        "Jun 27, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/amd-20260627.htm](https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Intel Corp. · Research and development in SEC filings (Mar 29, 2026 – Jun 27, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000050863"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0000050863-26-000157"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Mar 29, 2026"
+       ],
+       [
+        "End date",
+        "Jun 27, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/intc-20260627.htm](https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Palantir Technologies Inc. · Research and development in SEC filings (Apr 1, 2026 – Jun 30, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0001321655"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001321655-26-000041"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Apr 1, 2026"
+       ],
+       [
+        "End date",
+        "Jun 30, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/pltr-20260630.htm](https://www.sec.gov/Archives/edgar/data/1321655/000132165526000041/pltr-20260630.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Cisco Systems, Inc. · Research and development in SEC filings (Apr 26, 2026 – Jul 25, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0000858877"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Derived",
+        "Fiscal year (10-K) minus nine months (10-Q)"
+       ],
+       [
+        "10-K Jul 27, 2025 – Jul 25, 2026",
+        "$9.56 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/csco-20260725.htm](https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm)"
+       ],
+       [
+        "Minus 10-Q Jul 27, 2025 – Apr 25, 2026",
+        "$7.13 B"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/csco-20260425.htm](https://www.sec.gov/Archives/edgar/data/858877/000085887726000078/csco-20260425.htm)"
+       ],
+       [
+        "Form",
+        "10-K"
+       ],
+       [
+        "Accession number",
+        "0000858877-26-000132"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Apr 26, 2026"
+       ],
+       [
+        "End date",
+        "Jul 25, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/csco-20260725.htm](https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm)"
+       ]
+      ]
+     },
+     {
+      "header": "Looked up Oracle Corporation · Research and development in SEC filings (Jun 1, 2026 – Aug 31, 2026)",
+      "inputs": [
+       [
+        "Company",
+        "0001341439"
+       ],
+       [
+        "Metric",
+        "Research and development"
+       ]
+      ],
+      "outputs": [
+       [
+        "Form",
+        "10-Q"
+       ],
+       [
+        "Accession number",
+        "0001193125-26-389274"
+       ],
+       [
+        "Taxonomy",
+        "us-gaap"
+       ],
+       [
+        "Concept",
+        "ResearchAndDevelopmentExpense"
+       ],
+       [
+        "Start date",
+        "Jun 1, 2026"
+       ],
+       [
+        "End date",
+        "Aug 31, 2026"
+       ],
+       [
+        "Source",
+        "SEC EDGAR"
+       ],
+       [
+        "Source URL",
+        "[www.sec.gov/…/orcl-20260831.htm](https://www.sec.gov/Archives/edgar/data/1341439/000119312526389274/orcl-20260831.htm)"
+       ]
+      ]
+     }
+    ],
+    "citations": [],
+    "fact_card": null,
+    "table": {
+     "headers": [
+      "Rank",
+      "Company",
+      "Ticker",
+      "Research and development",
+      "Market cap",
+      "Start date",
+      "End date",
+      "Form",
+      "Accession number",
+      "Concept",
+      "Source URL"
+     ],
+     "keys": [
+      "rank",
+      "company_name",
+      "ticker",
+      "value",
+      "market_cap",
+      "start_date",
+      "end_date",
+      "form",
+      "accession_number",
+      "concept",
+      "source_url"
+     ],
+     "rows": [
+      [
+       "1",
+       "NVIDIA Corporation",
+       "NVDA",
+       "$7.05 B",
+       "$5.45 T",
+       "Apr 27, 2026",
+       "Jul 26, 2026",
+       "10-Q",
+       "0001045810-26-000075",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm"
+      ],
+      [
+       "2",
+       "Apple Inc.",
+       "AAPL",
+       "$11.73 B",
+       "$5.01 T",
+       "Mar 29, 2026",
+       "Jun 27, 2026",
+       "10-Q",
+       "0000320193-26-000020",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm"
+      ],
+      [
+       "3",
+       "Microsoft Corporation",
+       "MSFT",
+       "$10.00 B †",
+       "$3.83 T",
+       "Apr 1, 2026",
+       "Jun 30, 2026",
+       "10-K",
+       "0001193125-26-323660",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm"
+      ],
+      [
+       "4",
+       "Broadcom Inc.",
+       "AVGO",
+       "$2.90 B",
+       "$1.68 T",
+       "May 4, 2026",
+       "Aug 2, 2026",
+       "10-Q",
+       "0001730168-26-000080",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1730168/000173016826000080/avgo-20260802.htm"
+      ],
+      [
+       "5",
+       "Micron Technology, Inc.",
+       "MU",
+       "$1.32 B",
+       "$1.22 T",
+       "Feb 27, 2026",
+       "May 28, 2026",
+       "10-Q",
+       "0000723125-26-000015",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm"
+      ],
+      [
+       "6",
+       "Advanced Micro Devices, Inc.",
+       "AMD",
+       "$2.53 B",
+       "$1.03 T",
+       "Mar 29, 2026",
+       "Jun 27, 2026",
+       "10-Q",
+       "0000002488-26-000123",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm"
+      ],
+      [
+       "7",
+       "Intel Corp.",
+       "INTC",
+       "$3.37 B",
+       "$620.41 B",
+       "Mar 29, 2026",
+       "Jun 27, 2026",
+       "10-Q",
+       "0000050863-26-000157",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm"
+      ],
+      [
+       "8",
+       "Palantir Technologies Inc.",
+       "PLTR",
+       "$192.51 M",
+       "$435.50 B",
+       "Apr 1, 2026",
+       "Jun 30, 2026",
+       "10-Q",
+       "0001321655-26-000041",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000041/pltr-20260630.htm"
+      ],
+      [
+       "9",
+       "Cisco Systems, Inc.",
+       "CSCO",
+       "$2.43 B †",
+       "$420.55 B",
+       "Apr 26, 2026",
+       "Jul 25, 2026",
+       "10-K",
+       "0000858877-26-000132",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm"
+      ],
+      [
+       "10",
+       "Oracle Corporation",
+       "ORCL",
+       "$2.40 B",
+       "$394.85 B",
+       "Jun 1, 2026",
+       "Aug 31, 2026",
+       "10-Q",
+       "0001193125-26-389274",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1341439/000119312526389274/orcl-20260831.htm"
+      ]
+     ],
+     "numbers": [
+      [
+       1,
+       null,
+       null,
+       7054000000.0,
+       5451420470000.0,
+       739733,
+       739823,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       2,
+       null,
+       null,
+       11729000000.0,
+       5009416510920.0,
+       739704,
+       739794,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       3,
+       null,
+       null,
+       9997000000.0,
+       3832846143500.0,
+       739707,
+       739797,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       4,
+       null,
+       null,
+       2895000000.0,
+       1678521799800.0,
+       739740,
+       739830,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       5,
+       null,
+       null,
+       1316000000.0,
+       1222316209200.0,
+       739674,
+       739764,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       6,
+       null,
+       null,
+       2528000000.0,
+       1028305278000.0,
+       739704,
+       739794,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       7,
+       null,
+       null,
+       3368000000.0,
+       620411968881.0,
+       739704,
+       739794,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       8,
+       null,
+       null,
+       192513000.0,
+       435495596900.0,
+       739707,
+       739797,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       9,
+       null,
+       null,
+       2431000000.0,
+       420551078756.0,
+       739732,
+       739822,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       10,
+       null,
+       null,
+       2401000000.0,
+       394854827600.0,
+       739768,
+       739859,
+       null,
+       null,
+       null,
+       null
+      ]
+     ],
+     "row_keys": [
+      "NVDA",
+      "AAPL",
+      "MSFT",
+      "AVGO",
+      "MU",
+      "AMD",
+      "INTC",
+      "PLTR",
+      "CSCO",
+      "ORCL"
+     ],
+     "evidence": [
+      [
+       null,
+       null,
+       null,
+       0,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       1,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       2,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       5,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       6,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       7,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       8,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       9,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       10,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      [
+       null,
+       null,
+       null,
+       13,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     ],
+     "raw": [
+      [
+       "1",
+       "NVIDIA Corporation",
+       "NVDA",
+       "7054000000",
+       "5451420470000",
+       "2026-04-27",
+       "2026-07-26",
+       "10-Q",
+       "0001045810-26-000075",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm"
+      ],
+      [
+       "2",
+       "Apple Inc.",
+       "AAPL",
+       "11729000000",
+       "5009416510920",
+       "2026-03-29",
+       "2026-06-27",
+       "10-Q",
+       "0000320193-26-000020",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm"
+      ],
+      [
+       "3",
+       "Microsoft Corporation",
+       "MSFT",
+       "9997000000",
+       "3832846143500",
+       "2026-04-01",
+       "2026-06-30",
+       "10-K",
+       "0001193125-26-323660",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm"
+      ],
+      [
+       "4",
+       "Broadcom Inc.",
+       "AVGO",
+       "2895000000",
+       "1678521799800",
+       "2026-05-04",
+       "2026-08-02",
+       "10-Q",
+       "0001730168-26-000080",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1730168/000173016826000080/avgo-20260802.htm"
+      ],
+      [
+       "5",
+       "Micron Technology, Inc.",
+       "MU",
+       "1316000000",
+       "1222316209200",
+       "2026-02-27",
+       "2026-05-28",
+       "10-Q",
+       "0000723125-26-000015",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm"
+      ],
+      [
+       "6",
+       "Advanced Micro Devices, Inc.",
+       "AMD",
+       "2528000000",
+       "1028305278000",
+       "2026-03-29",
+       "2026-06-27",
+       "10-Q",
+       "0000002488-26-000123",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm"
+      ],
+      [
+       "7",
+       "Intel Corp.",
+       "INTC",
+       "3368000000",
+       "620411968881",
+       "2026-03-29",
+       "2026-06-27",
+       "10-Q",
+       "0000050863-26-000157",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm"
+      ],
+      [
+       "8",
+       "Palantir Technologies Inc.",
+       "PLTR",
+       "192513000",
+       "435495596900",
+       "2026-04-01",
+       "2026-06-30",
+       "10-Q",
+       "0001321655-26-000041",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000041/pltr-20260630.htm"
+      ],
+      [
+       "9",
+       "Cisco Systems, Inc.",
+       "CSCO",
+       "2431000000",
+       "420551078756",
+       "2026-04-26",
+       "2026-07-25",
+       "10-K",
+       "0000858877-26-000132",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm"
+      ],
+      [
+       "10",
+       "Oracle Corporation",
+       "ORCL",
+       "2401000000",
+       "394854827600",
+       "2026-06-01",
+       "2026-08-31",
+       "10-Q",
+       "0001193125-26-389274",
+       "ResearchAndDevelopmentExpense",
+       "https://www.sec.gov/Archives/edgar/data/1341439/000119312526389274/orcl-20260831.htm"
+      ]
+     ]
+    },
+    "essay": null,
+    "message": null,
+    "candidates": [],
+    "intent_label": "Rank and lookup",
+    "chart": {
+     "kind": "bar",
+     "title": "Comparison",
+     "records": [
+      {
+       "Key": "NVDA",
+       "Company": "#1 NVDA",
+       "Value": 7054000000.0,
+       "Amount": "$7.05 B",
+       "Label": "$7.05 B",
+       "Missing": false,
+       "Evidence": 0,
+       "Derived": false,
+       "Period": "Apr 27, 2026 – Jul 26, 2026"
+      },
+      {
+       "Key": "AAPL",
+       "Company": "#2 AAPL",
+       "Value": 11729000000.0,
+       "Amount": "$11.73 B",
+       "Label": "$11.73 B",
+       "Missing": false,
+       "Evidence": 1,
+       "Derived": false,
+       "Period": "Mar 29, 2026 – Jun 27, 2026"
+      },
+      {
+       "Key": "MSFT",
+       "Company": "#3 MSFT",
+       "Value": 9997000000.0,
+       "Amount": "$10.00 B",
+       "Label": "$10.00 B",
+       "Missing": false,
+       "Evidence": 2,
+       "Derived": true,
+       "Period": "Apr 1, 2026 – Jun 30, 2026"
+      },
+      {
+       "Key": "AVGO",
+       "Company": "#4 AVGO",
+       "Value": 2895000000.0,
+       "Amount": "$2.90 B",
+       "Label": "$2.90 B",
+       "Missing": false,
+       "Evidence": 5,
+       "Derived": false,
+       "Period": "May 4, 2026 – Aug 2, 2026"
+      },
+      {
+       "Key": "MU",
+       "Company": "#5 MU",
+       "Value": 1316000000.0,
+       "Amount": "$1.32 B",
+       "Label": "$1.32 B",
+       "Missing": false,
+       "Evidence": 6,
+       "Derived": false,
+       "Period": "Feb 27, 2026 – May 28, 2026"
+      },
+      {
+       "Key": "AMD",
+       "Company": "#6 AMD",
+       "Value": 2528000000.0,
+       "Amount": "$2.53 B",
+       "Label": "$2.53 B",
+       "Missing": false,
+       "Evidence": 7,
+       "Derived": false,
+       "Period": "Mar 29, 2026 – Jun 27, 2026"
+      },
+      {
+       "Key": "INTC",
+       "Company": "#7 INTC",
+       "Value": 3368000000.0,
+       "Amount": "$3.37 B",
+       "Label": "$3.37 B",
+       "Missing": false,
+       "Evidence": 8,
+       "Derived": false,
+       "Period": "Mar 29, 2026 – Jun 27, 2026"
+      },
+      {
+       "Key": "PLTR",
+       "Company": "#8 PLTR",
+       "Value": 192513000.0,
+       "Amount": "$192.51 M",
+       "Label": "$192.51 M",
+       "Missing": false,
+       "Evidence": 9,
+       "Derived": false,
+       "Period": "Apr 1, 2026 – Jun 30, 2026"
+      },
+      {
+       "Key": "CSCO",
+       "Company": "#9 CSCO",
+       "Value": 2431000000.0,
+       "Amount": "$2.43 B",
+       "Label": "$2.43 B",
+       "Missing": false,
+       "Evidence": 10,
+       "Derived": true,
+       "Period": "Apr 26, 2026 – Jul 25, 2026"
+      },
+      {
+       "Key": "ORCL",
+       "Company": "#10 ORCL",
+       "Value": 2401000000.0,
+       "Amount": "$2.40 B",
+       "Label": "$2.40 B",
+       "Missing": false,
+       "Evidence": 13,
+       "Derived": false,
+       "Period": "Jun 1, 2026 – Aug 31, 2026"
+      }
+     ],
+     "metric": "research_and_development",
+     "caption": "Ordered by market cap; bar length is latest-quarter Research and development. Periods differ by issuer.",
+     "horizontal": true,
+     "value_kind": "usd",
+     "metric_label": "Research and development",
+     "period_labels": [],
+     "series": [],
+     "amounts": [],
+     "resorted_caption": "Bar length is latest-quarter Research and development. Periods differ by issuer.",
+     "series_labels": [],
+     "evidence": [],
+     "derived": []
+    },
+    "evidence": [
+     {
+      "label": "NVIDIA Corporation · Research and development · Apr 27, 2026 – Jul 26, 2026",
+      "amount": "$7.05 B",
+      "raw_amount": "7054000000",
+      "company_name": "NVIDIA Corporation",
+      "ticker": "NVDA",
+      "cik": "0001045810",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Apr 27, 2026 – Jul 26, 2026",
+      "accession_number": "0001045810-26-000075",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "7,054,000,000"
+     },
+     {
+      "label": "Apple Inc. · Research and development · Mar 29, 2026 – Jun 27, 2026",
+      "amount": "$11.73 B",
+      "raw_amount": "11729000000",
+      "company_name": "Apple Inc.",
+      "ticker": "AAPL",
+      "cik": "0000320193",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Mar 29, 2026 – Jun 27, 2026",
+      "accession_number": "0000320193-26-000020",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "11,729,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Research and development · Apr 1, 2026 – Jun 30, 2026",
+      "amount": "$10.00 B",
+      "raw_amount": "9997000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Apr 1, 2026 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Derived quarter: Fiscal year (10-K) minus nine months (10-Q). The reported facts are listed.",
+      "exact_amount": "9,997,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Research and development · Jul 1, 2025 – Jun 30, 2026",
+      "amount": "$35.56 B",
+      "raw_amount": "35562000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Jul 1, 2025 – Jun 30, 2026",
+      "accession_number": "0001193125-26-323660",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm",
+      "selection_rule": "Reported 10-K amount for the stated period.",
+      "exact_amount": "35,562,000,000"
+     },
+     {
+      "label": "Microsoft Corporation · Research and development · Jul 1, 2025 – Mar 31, 2026",
+      "amount": "$25.57 B",
+      "raw_amount": "25565000000",
+      "company_name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "cik": "0000789019",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Jul 1, 2025 – Mar 31, 2026",
+      "accession_number": "0001193125-26-191507",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "selection_rule": "Reported 10-Q amount for the stated period.",
+      "exact_amount": "25,565,000,000"
+     },
+     {
+      "label": "Broadcom Inc. · Research and development · May 4, 2026 – Aug 2, 2026",
+      "amount": "$2.90 B",
+      "raw_amount": "2895000000",
+      "company_name": "Broadcom Inc.",
+      "ticker": "AVGO",
+      "cik": "0001730168",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "May 4, 2026 – Aug 2, 2026",
+      "accession_number": "0001730168-26-000080",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1730168/000173016826000080/avgo-20260802.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "2,895,000,000"
+     },
+     {
+      "label": "Micron Technology, Inc. · Research and development · Feb 27, 2026 – May 28, 2026",
+      "amount": "$1.32 B",
+      "raw_amount": "1316000000",
+      "company_name": "Micron Technology, Inc.",
+      "ticker": "MU",
+      "cik": "0000723125",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Feb 27, 2026 – May 28, 2026",
+      "accession_number": "0000723125-26-000015",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/723125/000072312526000015/mu-20260528.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "1,316,000,000"
+     },
+     {
+      "label": "Advanced Micro Devices, Inc. · Research and development · Mar 29, 2026 – Jun 27, 2026",
+      "amount": "$2.53 B",
+      "raw_amount": "2528000000",
+      "company_name": "Advanced Micro Devices, Inc.",
+      "ticker": "AMD",
+      "cik": "0000002488",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Mar 29, 2026 – Jun 27, 2026",
+      "accession_number": "0000002488-26-000123",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "2,528,000,000"
+     },
+     {
+      "label": "Intel Corp. · Research and development · Mar 29, 2026 – Jun 27, 2026",
+      "amount": "$3.37 B",
+      "raw_amount": "3368000000",
+      "company_name": "Intel Corp.",
+      "ticker": "INTC",
+      "cik": "0000050863",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Mar 29, 2026 – Jun 27, 2026",
+      "accession_number": "0000050863-26-000157",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "3,368,000,000"
+     },
+     {
+      "label": "Palantir Technologies Inc. · Research and development · Apr 1, 2026 – Jun 30, 2026",
+      "amount": "$192.51 M",
+      "raw_amount": "192513000",
+      "company_name": "Palantir Technologies Inc.",
+      "ticker": "PLTR",
+      "cik": "0001321655",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Apr 1, 2026 – Jun 30, 2026",
+      "accession_number": "0001321655-26-000041",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000041/pltr-20260630.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "192,513,000"
+     },
+     {
+      "label": "Cisco Systems, Inc. · Research and development · Apr 26, 2026 – Jul 25, 2026",
+      "amount": "$2.43 B",
+      "raw_amount": "2431000000",
+      "company_name": "Cisco Systems, Inc.",
+      "ticker": "CSCO",
+      "cik": "0000858877",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Apr 26, 2026 – Jul 25, 2026",
+      "accession_number": "0000858877-26-000132",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm",
+      "selection_rule": "Derived quarter: Fiscal year (10-K) minus nine months (10-Q). The reported facts are listed.",
+      "exact_amount": "2,431,000,000"
+     },
+     {
+      "label": "Cisco Systems, Inc. · Research and development · Jul 27, 2025 – Jul 25, 2026",
+      "amount": "$9.56 B",
+      "raw_amount": "9563000000",
+      "company_name": "Cisco Systems, Inc.",
+      "ticker": "CSCO",
+      "cik": "0000858877",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Jul 27, 2025 – Jul 25, 2026",
+      "accession_number": "0000858877-26-000132",
+      "form": "10-K",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/858877/000085887726000132/csco-20260725.htm",
+      "selection_rule": "Reported 10-K amount for the stated period.",
+      "exact_amount": "9,563,000,000"
+     },
+     {
+      "label": "Cisco Systems, Inc. · Research and development · Jul 27, 2025 – Apr 25, 2026",
+      "amount": "$7.13 B",
+      "raw_amount": "7132000000",
+      "company_name": "Cisco Systems, Inc.",
+      "ticker": "CSCO",
+      "cik": "0000858877",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Jul 27, 2025 – Apr 25, 2026",
+      "accession_number": "0000858877-26-000078",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/858877/000085887726000078/csco-20260425.htm",
+      "selection_rule": "Reported 10-Q amount for the stated period.",
+      "exact_amount": "7,132,000,000"
+     },
+     {
+      "label": "Oracle Corporation · Research and development · Jun 1, 2026 – Aug 31, 2026",
+      "amount": "$2.40 B",
+      "raw_amount": "2401000000",
+      "company_name": "Oracle Corporation",
+      "ticker": "ORCL",
+      "cik": "0001341439",
+      "concept": "ResearchAndDevelopmentExpense",
+      "period_label": "Jun 1, 2026 – Aug 31, 2026",
+      "accession_number": "0001193125-26-389274",
+      "form": "10-Q",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526389274/orcl-20260831.htm",
+      "selection_rule": "Standalone 10-Q fact for the stated period; no year-to-date derivation.",
+      "exact_amount": "2,401,000,000"
+     }
+    ],
+    "disclosures": [],
+    "clarify_prompt": null,
+    "suggestions": [
+     "show their revenue",
+     "only the top 5"
+    ],
+    "message_tone": "warning",
+    "headline": "Of these 10 companies, Apple reported the most research and development, $11.73 B, and Palantir Technologies the least, $192.51 M.",
+    "trends": []
+   }
+  },
+  {
+   "label": "What changed in the 10-Q",
+   "question": "What changed in Microsoft's latest 10-Q?",
+   "presentation": {
+    "intent": "filing_change",
+    "banners": [
+     "Comparing Microsoft's latest 10-Q (quarter ended Mar 31, 2026) with the one for Mar 31, 2025."
+    ],
+    "traces": [
+     {
+      "header": "Compared 10-Q text for Microsoft",
+      "inputs": [
+       [
+        "Company",
+        "Microsoft"
+       ],
+       [
+        "Older Accession",
+        "0000950170-25-061046"
+       ],
+       [
+        "Newer Accession",
+        "0001193125-26-191507"
+       ],
+       [
+        "Sections",
+        "mda, risk_factors"
+       ]
+      ],
+      "outputs": [
+       [
+        "Change Count",
+        "15"
+       ],
+       [
+        "CIK",
+        "0000789019"
+       ]
+      ]
+     }
+    ],
+    "citations": [],
+    "fact_card": null,
+    "table": null,
+    "essay": null,
+    "message": null,
+    "candidates": [],
+    "intent_label": "Filing change",
+    "chart": null,
+    "evidence": [],
+    "disclosures": [
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "The following Management’s Discussion and Analysis of Financial Condition and Results of Operations (“MD&A”) is intended to help the reader understand the results of operations and financial condition of Microsoft Corporation. MD&A is provided as a supplement to, and should be read in conjunction with, our Annual Report on Form 10-K for the year ended June 30, 2024, our Form 8-K filed on December 3, 2024, and our consolidated financial statements and the accompanying Notes to Financial Statements (Part I, Item 1 of this Form 10-Q).",
+      "after_text": "The following Management’s Discussion and Analysis of Financial Condition and Results of Operations (“MD&A”) is intended to help the reader understand the results of operations and financial condition of Microsoft Corporation. MD&A is provided as a supplement to, and should be read in conjunction with, our Annual Report on Form 10-K for the year ended June 30, 2025, and our consolidated financial statements and the accompanying Notes to Financial Statements (Part I, Item 1 of this Form 10-Q).",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20following%20Management%E2%80%99s%20Discussion%20and%20Analysis%20of%20Financial%20Condition%20and%20Results%20of%20Operati",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=The%20following%20Management%E2%80%99s%20Discussion%20and%20Analysis%20of%20Financial%20Condition%20and%20Results%20of%20Operati",
+      "subsection": ""
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Microsoft Cloud revenue increased 20% to $42.4 billion.",
+      "after_text": "Microsoft Cloud revenue increased 29% to $54.5 billion.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20Cloud%20revenue%20increased%2020%25%20to%20%2442.4%20billion.",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Microsoft%20Cloud%20revenue%20increased%2029%25%20to%20%2454.5%20billion.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Commercial remaining performance obligation increased 99% to $627 billion.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Commercial%20remaining%20performance%20obligation%20increased%2099%25%20to%20%24627%20billion.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Microsoft 365 Commercial products and cloud services revenue increased 11% driven by Microsoft 365 Commercial cloud revenue growth of 12%.",
+      "after_text": "Microsoft 365 Commercial cloud revenue increased 19%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Commercial%20products%20and%20cloud%20services%20revenue%20increased%2011%25%20driven%20by%20Microsoft%203",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Microsoft%20365%20Commercial%20cloud%20revenue%20increased%2019%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Microsoft 365 Consumer products and cloud services revenue increased 10% driven by Microsoft 365 Consumer cloud revenue growth of 10%.",
+      "after_text": "Microsoft 365 Consumer cloud revenue increased 33%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Consumer%20products%20and%20cloud%20services%20revenue%20increased%2010%25%20driven%20by%20Microsoft%20365",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Microsoft%20365%20Consumer%20cloud%20revenue%20increased%2033%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "LinkedIn revenue increased 7%.",
+      "after_text": "LinkedIn revenue increased 12%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=LinkedIn%20revenue%20increased%207%25.",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=LinkedIn%20revenue%20increased%2012%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "removed",
+      "before_text": "Dynamics products and cloud services revenue increased 11% driven by Dynamics 365 revenue growth of 16%.",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Dynamics%20products%20and%20cloud%20services%20revenue%20increased%2011%25%20driven%20by%20Dynamics%20365%20revenue%20growth",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Dynamics 365 revenue increased 22%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Dynamics%20365%20revenue%20increased%2022%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Server products and cloud services revenue increased 22% driven by Azure and other cloud services revenue growth of 33%.",
+      "after_text": "Azure and other cloud services revenue increased 40%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Server%20products%20and%20cloud%20services%20revenue%20increased%2022%25%20driven%20by%20Azure%20and%20other%20cloud%20service",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Azure%20and%20other%20cloud%20services%20revenue%20increased%2040%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Windows OEM and Devices revenue increased 3%.",
+      "after_text": "Windows OEM and Devices revenue decreased 2%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Windows%20OEM%20and%20Devices%20revenue%20increased%203%25.",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Windows%20OEM%20and%20Devices%20revenue%20decreased%202%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Xbox content and services revenue increased 8%.",
+      "after_text": "Xbox content and services revenue decreased 5%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Xbox%20content%20and%20services%20revenue%20increased%208%25.",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Xbox%20content%20and%20services%20revenue%20decreased%205%25.",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Search and news advertising revenue excluding traffic acquisition costs increased 21%.",
+      "after_text": "Search advertising (formerly Search and news advertising) revenue excluding traffic acquisition costs increased 12%.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Search%20and%20news%20advertising%20revenue%20excluding%20traffic%20acquisition%20costs%20increased%2021%25.",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Search%20advertising%20%28formerly%20Search%20and%20news%20advertising%29%20revenue%20excluding%20traffic%20acquisition%20",
+      "subsection": "Overview"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "We face intense competition across all markets for our products and services, which may adversely affect our results of operations.",
+      "after_text": "We face intense competition across all markets for our products and services, which could adversely affect our results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=We%20face%20intense%20competition%20across%20all%20markets%20for%20our%20products%20and%20services%2C%20which%20may%20adversel",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20face%20intense%20competition%20across%20all%20markets%20for%20our%20products%20and%20services%2C%20which%20could%20advers",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our competitors range in size from diversified global companies with significant research and development resources to small, specialized firms whose narrower product lines may let them be more effective in deploying technical, marketing, and financial resources. Barriers to entry in many of our businesses are low and many of the areas in which we compete evolve rapidly with changing and disruptive technologies, shifting user needs, and frequent introductions of new products and services. If we do not continue to innovate and provide products, devices, and services that appeal to businesses and consumers, we may not remain competitive, which may adversely affect our business, financial condition, and results of operations.",
+      "after_text": "Our competitors range in size from diversified global companies with significant research and development resources to small, specialized firms whose narrower product lines may let them be more effective in deploying technical, marketing, and financial resources. Barriers to entry in many of our businesses are low and many of the areas in which we compete evolve rapidly with changing and disruptive technologies, shifting user needs, and frequent introductions of new products and services. If we do not continue to innovate and provide products, devices, and services that appeal to businesses and consumers, we may not remain competitive, which could adversely affect our business, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20competitors%20range%20in%20size%20from%20diversified%20global%20companies%20with%20significant%20research%20and%20de",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20competitors%20range%20in%20size%20from%20diversified%20global%20companies%20with%20significant%20research%20and%20de",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "An important element of our business model has been to create platform-based ecosystems on which many participants can build diverse solutions. A well-established ecosystem creates beneficial network effects among users, application developers, and the platform provider that can accelerate growth. Establishing significant scale in the marketplace is necessary to achieve and maintain attractive margins. We face significant competition from firms that provide competing platforms.",
+      "after_text": "An important element of our business model has been to create platform-based ecosystems on which many participants can build diverse solutions. A well-established ecosystem creates beneficial network effects among users, application developers, and the platform provider that can accelerate growth. Establishing significant scale in the marketplace is necessary to meet consumer demand and to achieve and maintain attractive margins. We face significant competition from firms that provide competing platforms.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=An%20important%20element%20of%20our%20business%20model%20has%20been%20to%20create%20platform-based%20ecosystems%20on%20which",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=An%20important%20element%20of%20our%20business%20model%20has%20been%20to%20create%20platform-based%20ecosystems%20on%20which",
+      "subsection": "Strategic and Competitive Risks"
+     }
+    ],
+    "clarify_prompt": null,
+    "suggestions": [],
+    "message_tone": "warning",
+    "headline": null,
+    "trends": []
+   }
+  }
+ ]
+}
