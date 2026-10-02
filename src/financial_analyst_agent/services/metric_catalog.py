@@ -94,8 +94,10 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "PaymentsOfDividends"),
     ],
     Metric.DIVIDENDS_PER_SHARE: [
-        ("us-gaap", "CommonStockDividendsPerShareDeclared"),
+        # What a quarter paid first: Walmart declares a year's dividend in its
+        # first quarter, so its declared figure reads $0.00 for the other three.
         ("us-gaap", "CommonStockDividendsPerShareCashPaid"),
+        ("us-gaap", "CommonStockDividendsPerShareDeclared"),
     ],
     Metric.CASH: [
         ("us-gaap", "CashAndCashEquivalentsAtCarryingValue"),

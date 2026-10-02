@@ -577,6 +577,8 @@ class SecFactLookup:
             )
         try:
             fact = select(records, metric)
+            if metric is Metric.DIVIDENDS_PER_SHARE:
+                _refuse_dividend_declared_earlier(fact, records)
             return _with_diluted_shares(fact, payload) if metric in PER_SHARE_METRICS else fact
         except UnsupportedQuarterlyFactError:
             if metric is Metric.DEPRECIATION_AMORTIZATION:
@@ -954,6 +956,34 @@ def _sales_revenue(
         return revenue
     same = (fact.start_date, fact.end_date) == (revenue.start_date, revenue.end_date)
     return fact if same else revenue
+
+
+DIVIDEND_DECLARED_EARLIER_MESSAGE = (
+    "This quarter's dividend was declared earlier in the fiscal year"
+)
+
+
+def _refuse_dividend_declared_earlier(fact: FinancialFact, records: list[FactRecord]) -> None:
+    """Refuse a declared dividend of zero when the year to date declared one.
+
+    Walmart declares the year's dividend in its first quarter; the next 10-Q
+    reports $0.00 declared for its quarter beside $0.99 for the six months.
+    """
+    if fact.value != 0 or fact.concept != "CommonStockDividendsPerShareDeclared":
+        return
+    if any(
+        record.accession_number == fact.accession_number
+        and record.concept == fact.concept
+        and record.start_date is not None
+        and record.start_date < fact.start_date
+        and record.end_date == fact.end_date
+        and record.value > 0
+        for record in records
+    ):
+        raise PerShareNotDerivableError(
+            DIVIDEND_DECLARED_EARLIER_MESSAGE,
+            details={"metric": fact.metric.value, "report_date": fact.end_date.isoformat()},
+        )
 
 
 def _with_diluted_shares(fact: FinancialFact, payload: dict[str, Any]) -> FinancialFact:

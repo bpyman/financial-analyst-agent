@@ -1288,6 +1288,11 @@ _FRIENDLY_MESSAGES = {
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
         "6-K reports instead, which this app does not read yet."
     ),
+    "This quarter's dividend was declared earlier in the fiscal year": (
+        "This company declares its dividend for the whole year in an earlier quarter, "
+        "so the filing reports no dividend declared in this one; the year's dividend "
+        "is in the quarter it was declared."
+    ),
     "Per-share figures for this quarter are reported only for a longer period": (
         "Filings report per-share figures such as EPS for a fiscal fourth quarter "
         "only inside the full-year total, and EPS cannot be subtracted the way "
