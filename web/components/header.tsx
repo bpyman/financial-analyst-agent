@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { useId, useSyncExternalStore } from "react";
 import { cn } from "@/lib/format";
 import type { RuntimeKind } from "@/lib/types";
+import { ConfirmPanel, type ConfirmRequest } from "./confirm-panel";
 import { LogoMark } from "./ui";
 
 const RUNTIMES: { kind: RuntimeKind; label: string }[] = [
@@ -18,15 +19,25 @@ export function Header({
   locked,
   lockedNotice,
   busy,
+  restarting,
+  confirm,
   onSwitchRuntime,
   onStartOver,
+  onConfirm,
+  onCancel,
 }: {
   runtime: RuntimeKind | null;
   locked: boolean;
   lockedNotice: string;
   busy: boolean;
+  /** A new conversation is being started; Start over stays available otherwise, mid-answer included. */
+  restarting: boolean;
+  /** The question to ask before clearing the conversation, while it is open. */
+  confirm: ConfirmRequest | null;
   onSwitchRuntime: (runtime: RuntimeKind) => void;
   onStartOver: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
   return (
     <header className="z-30 border-b border-border bg-bg tall:sticky tall:top-0">
@@ -57,7 +68,7 @@ export function Header({
           <button
             type="button"
             onClick={onStartOver}
-            disabled={busy}
+            disabled={restarting}
             title="Start over"
             className={cn(GHOST_BUTTON, "gap-1.5 px-2 sm:px-2.5")}
           >
@@ -66,6 +77,7 @@ export function Header({
           </button>
         </div>
       </div>
+      {confirm && <ConfirmPanel request={confirm} onConfirm={onConfirm} onCancel={onCancel} />}
     </header>
   );
 }
