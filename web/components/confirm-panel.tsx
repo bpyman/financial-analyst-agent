@@ -76,7 +76,7 @@ export function ConfirmPanel({
           ref={action}
           type="button"
           onClick={onConfirm}
-          className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-fg shadow-sm shadow-primary/30 transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          className="inline-flex h-8 items-center rounded-lg bg-primary-solid px-3 text-xs font-medium text-primary-fg shadow-sm shadow-primary/30 transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           {request.action}
         </button>

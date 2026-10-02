@@ -6,7 +6,7 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
 
 const BUTTON: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-primary-fg shadow-sm shadow-primary/20 hover:brightness-110 disabled:opacity-40",
+    "bg-primary-solid text-primary-fg shadow-sm shadow-primary/20 hover:brightness-110 disabled:opacity-40",
   secondary: "bg-surface-2 text-fg hover:bg-surface-3 disabled:opacity-50",
   outline:
     "border border-border bg-surface text-fg hover:border-border-strong hover:bg-surface-2 disabled:opacity-50",

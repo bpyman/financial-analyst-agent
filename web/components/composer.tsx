@@ -75,7 +75,7 @@ export function Composer({
             type="submit"
             disabled={!canSend}
             aria-label={busy ? busyLabel : "Send"}
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-fg shadow-sm shadow-primary/30 transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-solid text-primary-fg shadow-sm shadow-primary/30 transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none"
           >
             {busy ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
