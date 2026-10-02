@@ -331,3 +331,15 @@ def test_a_lone_recorded_fact_carries_both_changes() -> None:
     card = present_turn(result).fact_card
     assert card is not None
     assert [chip.label for chip in card.changes] == ["▲35.0% YoY", "▲12.0% QoQ"]
+
+
+def test_an_overview_says_so() -> None:
+    rows = _series(MSFT, ["70", "80", "90"])
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=rows[-1:],
+        trend_rows=rows,
+    )
+    assert present_turn(result).intent_label == "Overview"

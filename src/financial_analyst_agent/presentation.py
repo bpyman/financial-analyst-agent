@@ -1438,6 +1438,8 @@ def _dedupe_evidence(items: Any) -> tuple[EvidenceItem, ...]:
 GUIDE_LABEL = "Guide"
 REFUSED_LABEL = "Not answered"
 CLARIFY_LABEL = "Question for you"
+# One company at a glance: "How is Nvidia doing?"
+OVERVIEW_LABEL = "Overview"
 
 
 def present_turn(result: TurnResult) -> Presentation:
@@ -1515,6 +1517,8 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.renderer is RendererKind.REFUSE
             else CLARIFY_LABEL
             if result.renderer is RendererKind.CLARIFY
+            else OVERVIEW_LABEL
+            if result.trend_rows
             else intent_label(result.intent.value)
         ),
         banners=tuple(banners),
