@@ -23,11 +23,11 @@ export function AnswerActions({
   presentation: Presentation;
   rowOrder: number[] | null;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
 
   useEffect(() => {
     if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1800);
+    const timer = window.setTimeout(() => setCopied(null), copied === "failed" ? 4000 : 1800);
     return () => window.clearTimeout(timer);
   }, [copied]);
 
@@ -36,9 +36,10 @@ export function AnswerActions({
   async function copy() {
     try {
       await navigator.clipboard.writeText(text());
-      setCopied(true);
+      setCopied("copied");
     } catch {
-      // Clipboard can be blocked (insecure origin, permissions); saving still works.
+      // Clipboard can be blocked (insecure origin, permissions); saving still works, so say so.
+      setCopied("failed");
     }
   }
 
@@ -57,12 +58,16 @@ export function AnswerActions({
         type="button"
         onClick={copy}
         title="Copy this answer with its sources, as Markdown"
-        className={cn(ACTION, copied && "text-positive hover:text-positive")}
+        className={cn(
+          ACTION,
+          copied === "copied" && "text-positive hover:text-positive",
+          copied === "failed" && "text-negative hover:text-negative",
+        )}
       >
-        {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-        {copied ? "Copied" : "Copy with sources"}
+        {copied === "copied" ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+        {copied === "copied" ? "Copied" : copied === "failed" ? "Couldn't copy; use Save" : "Copy with sources"}
         <span className="sr-only" aria-live="polite">
-          {copied ? "Answer copied" : ""}
+          {copied === "copied" ? "Answer copied" : copied === "failed" ? "Couldn't copy the answer. Save it instead." : ""}
         </span>
       </button>
       <button
