@@ -4,8 +4,9 @@ Run it after ``build-universe-snapshot`` so the public demo, which is locked to
 the recorded runtime, shows the same freeze as the live runtime.
 
 First, ``fixture_universe_snapshot.json`` takes the freeze's ``as_of`` and each
-of its companies' market caps, industries, and ``files_quarterly`` flags from
-``universe_snapshot.json`` (membership and sectors stay as they are).
+of its companies' market caps, sectors, industries, and ``files_quarterly`` flags
+from ``universe_snapshot.json`` (membership stays as it is), so a ranking draws
+the same companies on both runtimes.
 
 Then ``sec_fixture_recordings.json`` is re-recorded from live EDGAR. The
 recorded runtime replays it through the same selection code the live runtime
@@ -80,13 +81,14 @@ def _with_price(company: dict[str, Any], price: str | None) -> dict[str, Any]:
 
 
 def _sync_fixture_snapshot() -> str:
-    """Carry the live freeze's date, caps, prices, industries, and filer flags across."""
+    """Carry the live freeze's date, caps, prices, sectors, industries, and filer flags across."""
     raw = FIXTURE_SNAPSHOT.read_text()
     fixture = json.loads(raw)
     live = json.loads(LIVE_SNAPSHOT.read_text())
     caps = {company["cik"]: company["market_cap"] for company in live["companies"]}
     prices = {company["cik"]: company.get("price") for company in live["companies"]}
     industries = {company["cik"]: company.get("industry", "") for company in live["companies"]}
+    sectors = {company["cik"]: company.get("sector", "") for company in live["companies"]}
     # Like write_universe_snapshot, only a False flag is written.
     foreign = {c["cik"] for c in live["companies"] if c.get("files_quarterly", True) is False}
     missing = [c["ticker"] for c in fixture["companies"] if c["cik"] not in caps]
@@ -97,6 +99,7 @@ def _sync_fixture_snapshot() -> str:
         company["market_cap"] = caps[company["cik"]]
         fixture["companies"][index] = company = _with_price(company, prices[company["cik"]])
         company["industry"] = industries[company["cik"]]
+        company["sector"] = sectors[company["cik"]]
         if company["cik"] in foreign:
             company["files_quarterly"] = False
         else:
