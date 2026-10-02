@@ -253,6 +253,36 @@ def test_a_clarification_saved_before_checkpoints_still_resumes(tmp_path: Path) 
     assert saved["checkpoint"] is None
 
 
+def test_a_failed_turn_keeps_a_clarification_saved_before_checkpoints(tmp_path: Path) -> None:
+    # The API saves the session budget after a failed or timed-out turn; that save
+    # must not drop the old record's open question before a turn has resumed it.
+    from financial_analyst_agent.session import SessionBudget, persist_session_budget
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    legacy = {
+        "thread_id": "t1",
+        "runtime": "recorded",
+        "messages": [{"role": "analyst", "content": "What was Google's profit?"}],
+        "pending_clarification": {
+            "kind": "ambiguous_metric",
+            "candidates": list(PROFIT),
+            "patch": {"mode": "replace", "add_companies": ["Google"], "add_metrics": ["unknown"]},
+            "intent": "lookup",
+            "question": "What was Google's profit?",
+        },
+        "turn_count": 1,
+    }
+    (tmp_path / "t1.json").write_text(json.dumps(legacy), encoding="utf-8")
+    store = LocalThreadStore(tmp_path)
+
+    persist_session_budget(store, "t1", SessionBudget(max_turns=50, max_live_sec_requests=50))
+
+    record = store.load("t1")
+    assert record is not None
+    assert record.pending_clarification is not None
+    assert record.pending_clarification.question == "What was Google's profit?"
+
+
 def test_an_unreadable_checkpoint_is_dropped_rather_than_failing_the_thread(
     tmp_path: Path,
 ) -> None:

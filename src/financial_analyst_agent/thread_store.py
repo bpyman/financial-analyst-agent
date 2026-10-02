@@ -17,10 +17,10 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import quote
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 from financial_analyst_agent.contracts import RuntimeKind, TurnResult
 from financial_analyst_agent.evidence_store import (
@@ -67,13 +67,22 @@ class ThreadState(BaseModel):
     checkpoint: GraphCheckpoint | None = None
     # Records saved before the graph held clarifications kept the open question
     # as ``pending_clarification``. Read so the next turn can carry it into the
-    # graph; never written back.
+    # graph, and written back under that name until a finished turn replaces the
+    # record: a failed turn's budget save must not drop the analyst's question.
     legacy_pending_clarification: PendingClarification | None = Field(
-        default=None, validation_alias="pending_clarification", exclude=True
+        default=None, validation_alias="pending_clarification"
     )
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     turn_count: int = 0
     live_sec_requests: int = 0
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        legacy = data.pop("legacy_pending_clarification", None)
+        if legacy is not None:
+            data["pending_clarification"] = legacy
+        return data
 
     @property
     def pending_clarification(self) -> PendingClarification | None:
