@@ -272,6 +272,8 @@ test("the composer takes its message limit from the server", async ({ page }) =>
   await new Analyst(page).open();
 
   await expect(page.getByRole("textbox", { name: "Ask a question" })).toHaveAttribute("maxlength", "50");
+  // The storefront asks again once it knows the runtime; that read may still be in the route.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("a question sent before the storefront loads leaves the runtime to the deployment", async ({ page }) => {

@@ -177,7 +177,7 @@ test("a landed answer is announced", async ({ page }) => {
 test("the landing page offers its stories while the service is down", async ({ page }) => {
   await page.route("**/api/meta**", (route) => route.abort("connectionrefused"));
   const analyst = new Analyst(page);
-  await analyst.open();
+  await page.goto("/");
 
   await expect(analyst.story("Rank then inspect filings")).toBeVisible();
   await expect(page.getByRole("region", { name: "What you can ask" })).toBeVisible();
@@ -227,7 +227,7 @@ test("a cold start says it is waking, and for how long", async ({ page }) => {
   await page.route("**/api/meta**", () => undefined);
   await page.route(TURNS, () => undefined);
   const analyst = new Analyst(page);
-  await analyst.open();
+  await page.goto("/");
   await expect(page.getByText("Waking the analysis service…")).toBeVisible();
 
   await analyst.story("Verify a quarterly fact").click();

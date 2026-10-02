@@ -34,8 +34,17 @@ export default defineConfig({
           name: "API",
           command: "uv run serve-api",
           cwd: "..",
-          // Explicit values beat a developer's .env: recorded runtime, no proxy token.
-          env: { APP_MODE: "recorded", PUBLIC_DEMO: "false", API_PROXY_TOKEN: "", PORT: String(API_PORT) },
+          // Explicit values beat a developer's .env: recorded runtime, no proxy token. Every
+          // test is one visitor (127.0.0.1), and the suite starts more threads than one
+          // visitor's hourly allowance.
+          env: {
+            APP_MODE: "recorded",
+            PUBLIC_DEMO: "false",
+            API_PROXY_TOKEN: "",
+            PORT: String(API_PORT),
+            CLIENT_THREADS_PER_HOUR: "1000",
+            CLIENT_TURNS_PER_HOUR: "1000",
+          },
           url: `http://127.0.0.1:${API_PORT}/api/health`,
           reuseExistingServer: !ci,
           timeout: 120_000,
