@@ -11,23 +11,29 @@ New multi-turn behaviour is asserted at ``run_conversation_turn``.
 import json
 import re
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from financial_analyst_agent.contracts import (
     AMBIGUOUS_CONCEPT,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
+    EXTREME_MARGIN,
     FORMULA_COMPONENTS,
     INSTANT_METRICS,
     LATEST_PERIOD_ONLY,
+    MARGIN_FORMULAS,
     MARKET_FORMULAS,
     MISSING_FACT,
     MODEL_ANALYSIS_BANNER,
+    NEGATIVE_EQUITY,
+    NEGATIVE_REVENUE,
     NEWS_SUMMARY_BANNER,
     NOT_MEANINGFUL,
     NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
     PERIOD_MISMATCH,
+    PRETAX_LOSS,
     SEARCH_NEWS_MAX_RESULTS,
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
@@ -524,6 +530,35 @@ def _formula_value(metric: str, facts: list[FinancialFact]) -> Any:
     return first.value / second.value
 
 
+# A margin past this many times revenue says more about the revenue than the business.
+_EXTREME_MARGIN = Decimal(10)
+# Ratios that mean nothing when their denominator is negative, and why.
+_NEGATIVE_DENOMINATOR = {
+    **dict.fromkeys(MARGIN_FORMULAS, NEGATIVE_REVENUE),
+    "return_on_equity": NEGATIVE_EQUITY,
+    "effective_tax_rate": PRETAX_LOSS,
+}
+
+
+def _not_meaningful(metric: str, facts: list[FinancialFact]) -> str | None:
+    """Why a ratio's value would mislead, or None when it is sound to show."""
+    if (
+        metric not in FORMULA_COMPONENTS
+        or metric in DIFFERENCE_FORMULAS
+        or metric in SUM_FORMULAS
+    ):
+        return None
+    numerator, denominator = facts
+    if denominator.value == 0:
+        return ZERO_DENOMINATOR
+    reason = _NEGATIVE_DENOMINATOR.get(metric)
+    if reason is not None and denominator.value < 0:
+        return reason
+    if metric in MARGIN_FORMULAS and abs(numerator.value / denominator.value) > _EXTREME_MARGIN:
+        return EXTREME_MARGIN
+    return None
+
+
 def _metric_name(fact: FinancialFact) -> str:
     return fact.metric.value
 
@@ -644,24 +679,19 @@ def compare_metrics(
             )
             continue
         period_start, period_end = period
-        if (
-            metric in FORMULA_COMPONENTS
-            and metric not in DIFFERENCE_FORMULAS
-            and metric not in SUM_FORMULAS
-        ):
-            _numerator, denominator = fetched
-            if denominator.value == 0:
-                rows.append(
-                    _compare_row(
-                        identity,
-                        metric,
-                        start_date=period_start,
-                        end_date=period_end,
-                        components=components,
-                        reason=ZERO_DENOMINATOR,
-                    )
+        unusable = _not_meaningful(metric, fetched)
+        if unusable is not None:
+            rows.append(
+                _compare_row(
+                    identity,
+                    metric,
+                    start_date=period_start,
+                    end_date=period_end,
+                    components=components,
+                    reason=unusable,
                 )
-                continue
+            )
+            continue
         rows.append(
             _compare_row(
                 identity,

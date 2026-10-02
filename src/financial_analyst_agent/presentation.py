@@ -70,6 +70,10 @@ _REASON_LABELS = {
     "source_unavailable": "Source unavailable",
     "not_reported_for_quarter": "Reported for the year only",
     "not_meaningful": "Not meaningful (loss)",
+    "negative_equity": "Not meaningful (negative equity)",
+    "negative_revenue": "Not meaningful (negative revenue)",
+    "pretax_loss": "Not meaningful (pretax loss)",
+    "extreme_margin": "Not meaningful (beyond ±1,000%)",
     "latest_period_only": "Latest period only",
 }
 _FIELD_LABELS = {
@@ -994,7 +998,7 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
         if row.value is not None
-        else (row.reason or "")
+        else format_reason(row.reason or "")
     )
     raw = str(row.value) if row.value is not None else ""
     period = _period_label(row.start_date, row.end_date)

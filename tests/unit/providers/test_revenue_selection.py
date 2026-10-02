@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from tests.sec_fixtures import fixture_lookup
+from sec_fixtures import fixture_lookup
 
 
 def test_a_component_line_tagged_revenues_gives_way_to_the_total() -> None:

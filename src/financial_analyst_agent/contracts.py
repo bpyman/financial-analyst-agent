@@ -96,6 +96,14 @@ PERCENT_FORMULAS: tuple[str, ...] = (
     "effective_tax_rate",
     "return_on_equity",
 )
+# Formulas whose denominator is revenue.
+MARGIN_FORMULAS: tuple[str, ...] = (
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "rd_to_sales",
+    "sga_ratio",
+)
 FORMULA_COMPONENTS: dict[str, tuple[str, str]] = {
     "gross_margin": ("gross_profit", "revenue"),
     "operating_margin": ("operating_income", "revenue"),
@@ -151,6 +159,13 @@ ZERO_DENOMINATOR = "zero_denominator"
 NOT_REPORTED_FOR_QUARTER = "not_reported_for_quarter"
 # A ratio that means nothing for these inputs: a P/E on a trailing-year loss.
 NOT_MEANINGFUL = "not_meaningful"
+# Ratios over a negative denominator, which would mislead: McDonald's
+# negative equity gives a return of -859%, a tax on a pretax loss a negative rate.
+NEGATIVE_EQUITY = "negative_equity"
+NEGATIVE_REVENUE = "negative_revenue"
+PRETAX_LOSS = "pretax_loss"
+# A margin beyond 1,000% of revenue either way: a sliver of revenue, not a business's margin.
+EXTREME_MARGIN = "extreme_margin"
 # A snapshot-based figure asked for a past period (ADR 0008).
 LATEST_PERIOD_ONLY = "latest_period_only"
 MODEL_ANALYSIS_BANNER = "model-analysis"

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from tests.sec_fixtures import fixture_lookup
+from sec_fixtures import fixture_lookup
 
 
 @pytest.mark.parametrize(
