@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from functools import partial
-from types import SimpleNamespace
 from typing import Any
 
 from financial_analyst_agent.contracts import (
@@ -69,6 +68,12 @@ from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import calendar_quarter, dates_for
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+from financial_analyst_agent.turn import (
+    compare_task,
+    lookup_task,
+    rank_and_lookup_task,
+    rank_task,
+)
 
 _ADD_EDIT = re.compile(
     r"^\s*(?:now\s+)?(?:also\s+)?(?:add|include)\s+(.+?)\s*$",
@@ -926,23 +931,18 @@ def _rejection_result(rejection: SpecRejection, intent: Intent) -> TurnResult:
     )
 
 
-def execute_compiled_task(
-    task: CompiledTask, runtime: Runtime, *, query: str = ""
-) -> TurnResult:
-    from financial_analyst_agent.graph import run_workflow_turn
+# One deterministic workflow per compiled task kind: the closed set a task can run.
+TASK_WORKFLOWS: dict[str, Callable[[CompiledTask, Runtime], TurnResult]] = {
+    "lookup": lookup_task,
+    "compare": compare_task,
+    "rank": rank_task,
+    "rank_and_lookup": rank_and_lookup_task,
+}
 
-    # CompiledTask kinds are Intent values; rank tasks carry no metric or period.
-    plan = SimpleNamespace(
-        intent=Intent(task.kind),
-        company=task.company_queries[0] if task.kind == "lookup" else None,
-        companies=list(task.company_queries) if task.kind == "compare" else [],
-        metric=task.metric,
-        industry=task.industry,
-        limit=task.limit or DEFAULT_RANK_LIMIT,
-        topic=None,
-        report_date=task.report_date,
-    )
-    return run_workflow_turn(plan, runtime, query=query)
+
+def execute_compiled_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
+    """Run one compiled cell through the workflow for its kind."""
+    return TASK_WORKFLOWS[task.kind](task, runtime)
 
 
 RANKED_LATEST_QUARTER_BANNER = (
@@ -1010,7 +1010,6 @@ def dispatch_compiled_tasks(
     tasks: tuple[CompiledTask, ...],
     runtime: Runtime,
     *,
-    query: str = "",
     on_progress: ProgressCallback | None = None,
     max_workers: int = DEFAULT_TASK_MAX_WORKERS,
 ) -> list[TurnResult]:
@@ -1027,7 +1026,7 @@ def dispatch_compiled_tasks(
         results: list[TurnResult] = []
         for index, task in enumerate(tasks):
             try:
-                results.append(execute_compiled_task(task, runtime, query=query))
+                results.append(execute_compiled_task(task, runtime))
             except SessionQuotaError:
                 raise
             except Exception as exc:
@@ -1044,7 +1043,7 @@ def dispatch_compiled_tasks(
         futures = {
             pool.submit(
                 copy_context().run,
-                partial(execute_compiled_task, task, runtime, query=query),
+                partial(execute_compiled_task, task, runtime),
             ): index
             for index, task in enumerate(tasks)
         }
@@ -1546,7 +1545,6 @@ def run_spec_turn_context(
     results = dispatch_compiled_tasks(
         tasks,
         runtime,
-        query=message,
         on_progress=on_progress,
         max_workers=max_workers,
     )
@@ -1565,7 +1563,7 @@ def run_spec_turn_context(
         merged = _order_by_metric(merged, _ordering_metric(spec, message))
     elif "order_by_metric" in spec.operations and spec.companies and spec.metrics:
         merged = _order_companies_by_metric(merged, _ordering_metric(spec, message))
-    trend = overview_trend(spec, runtime, query=message, max_workers=max_workers)
+    trend = overview_trend(spec, runtime, max_workers=max_workers)
     if trend is not None:
         merged = merged.model_copy(
             update={
@@ -1573,7 +1571,7 @@ def run_spec_turn_context(
                 "tool_traces": [*merged.tool_traces, *trend.tool_traces],
             }
         )
-    prior = prior_quarter(spec, merged, runtime, query=message)
+    prior = prior_quarter(spec, merged, runtime)
     if prior is not None:
         merged = merged.model_copy(
             update={
@@ -1732,7 +1730,6 @@ def overview_trend(
     spec: AnalysisSpec,
     runtime: Runtime,
     *,
-    query: str = "",
     max_workers: int = DEFAULT_TASK_MAX_WORKERS,
 ) -> TurnResult | None:
     """The last few quarters of revenue and net margin for "How is Nvidia doing?".
@@ -1759,7 +1756,7 @@ def overview_trend(
     try:
         window = materialize_period_dates(window, runtime)
         tasks = compile_tasks(window)
-        results = dispatch_compiled_tasks(tasks, runtime, query=query, max_workers=max_workers)
+        results = dispatch_compiled_tasks(tasks, runtime, max_workers=max_workers)
     except (CompanyNotFoundError, SessionQuotaError, *SOURCE_FAILURES):
         return None
     if not tasks:
@@ -1773,8 +1770,6 @@ def prior_quarter(
     spec: AnalysisSpec,
     result: TurnResult,
     runtime: Runtime,
-    *,
-    query: str = "",
 ) -> TurnResult | None:
     """The quarter before a lone latest-quarter fact, for its quarter-over-quarter chip.
 
@@ -1818,7 +1813,7 @@ def prior_quarter(
             }
         )
         tasks = compile_tasks(window)
-        results = dispatch_compiled_tasks(tasks, runtime, query=query, max_workers=1)
+        results = dispatch_compiled_tasks(tasks, runtime, max_workers=1)
     except (CompanyNotFoundError, SessionQuotaError, *SOURCE_FAILURES):
         return None
     if not tasks:

@@ -50,7 +50,14 @@ def test_turn_exports_its_workflows_and_contracts_owns_the_types() -> None:
 
     assert set(turn.__all__) == {
         "compare_metrics",
+        "compare_task",
+        "current_events_answer",
+        "explain_answer",
+        "exploratory_research_answer",
+        "lookup_task",
         "market_formula_rows",
+        "rank_and_lookup_task",
+        "rank_task",
         "run_turn",
         "snapshot_compare_rows",
     }

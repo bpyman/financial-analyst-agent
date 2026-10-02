@@ -1,8 +1,7 @@
-"""Qualitative workflows run through the parent graph (migration step 2).
+"""The qualitative workflows the analysis graph's essay nodes call.
 
-Asserts the public graph entry returns the same TurnResult shape as today's
-explain and news-and-explain paths. Does not assert node names, channels, or
-LangGraph internals.
+Asserts the explain and current-events workflows return the same TurnResult
+shape as before. Does not assert node names, channels, or LangGraph internals.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from financial_analyst_agent.runtime import FIXTURE_EXPLAIN_ESSAY
 
 class _SilentCompleter:
     def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
-        raise AssertionError("workflow graph entry must not re-plan")
+        raise AssertionError("an essay workflow must not re-plan")
 
 
 class _NumberFreeEssay:
@@ -69,20 +68,18 @@ def _runtime(*, essay: object | None = None, news: object | None = None) -> obje
     )
 
 
-def test_run_workflow_turn_explain_returns_model_analysis_essay() -> None:
+def test_explain_answer_returns_model_analysis_essay() -> None:
     from financial_analyst_agent.contracts import (
         MODEL_ANALYSIS_BANNER,
         Intent,
         RendererKind,
         TurnResult,
     )
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import explain_answer
 
-    plan = SimpleNamespace(intent=Intent.EXPLAIN, topic="How can AI disrupt healthcare?")
-    result = run_workflow_turn(
-        plan,
+    result = explain_answer(
+        "How can AI disrupt healthcare?",
         _runtime(essay=_NumberFreeEssay()),  # type: ignore[arg-type]
-        query="How can AI disrupt healthcare?",
     )
 
     assert type(result).__name__ == TurnResult.__name__
@@ -93,15 +90,13 @@ def test_run_workflow_turn_explain_returns_model_analysis_essay() -> None:
     assert result.tool_traces[0].tool == "explain_topic"
 
 
-def test_run_workflow_turn_news_returns_cited_essay() -> None:
+def test_current_events_answer_returns_cited_essay() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import current_events_answer
 
-    plan = SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=FIXTURE_NEWS_QUERY)
-    result = run_workflow_turn(
-        plan,
+    result = current_events_answer(
+        FIXTURE_NEWS_QUERY,
         _runtime(essay=_GroundedNewsEssay(), news=_FixtureNews()),  # type: ignore[arg-type]
-        query=FIXTURE_NEWS_QUERY,
     )
 
     assert result.intent == Intent.NEWS_AND_EXPLAIN
@@ -110,15 +105,13 @@ def test_run_workflow_turn_news_returns_cited_essay() -> None:
     assert result.tool_traces[0].tool == "search_news"
 
 
-def test_run_workflow_turn_news_refuses_empty_hits_without_essay() -> None:
+def test_current_events_answer_refuses_empty_hits_without_essay() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import current_events_answer
 
-    plan = SimpleNamespace(intent=Intent.NEWS_AND_EXPLAIN, query=FIXTURE_NEWS_QUERY)
-    result = run_workflow_turn(
-        plan,
+    result = current_events_answer(
+        FIXTURE_NEWS_QUERY,
         _runtime(essay=_ExplodingEssay(), news=_EmptyNews()),  # type: ignore[arg-type]
-        query=FIXTURE_NEWS_QUERY,
     )
 
     assert result.intent == Intent.NEWS_AND_EXPLAIN

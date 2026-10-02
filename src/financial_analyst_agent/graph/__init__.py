@@ -1,11 +1,8 @@
-"""Parent graph for closed analysis workflows (migration steps 1–2).
+"""Closed qualitative and filing workflows, dispatched by the planned intent.
 
-Edges are fixed and typed. The model still selects a closed intent upstream;
-it does not choose nodes or chain tools. Graph internals are not a test surface.
-
-Structured analysis (lookup/compare/rank/rank_and_lookup) runs as nodes on the
-parent. Qualitative explanation, current events, and exploratory research are
-separate subgraphs behind small typed interfaces; the parent dispatches to them.
+Structured analyses do not come through here: their compiled tasks run through
+``spec_turn.TASK_WORKFLOWS``. Edges are fixed and typed; the model selects a
+closed intent upstream and does not choose nodes or chain tools.
 """
 
 from __future__ import annotations
@@ -15,9 +12,6 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from financial_analyst_agent.contracts import Intent, Runtime, TurnResult
-from financial_analyst_agent.graph.explain import run_qualitative_explanation
-from financial_analyst_agent.graph.exploratory import run_exploratory_research
-from financial_analyst_agent.graph.news import run_current_events
 
 
 class WorkflowRunState(TypedDict):
@@ -28,34 +22,12 @@ class WorkflowRunState(TypedDict):
     result: TurnResult | None
 
 
-def _lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    from financial_analyst_agent.turn import _lookup_turn
-
-    return {"result": _lookup_turn(state["plan"], state["runtime"])}
-
-
-def _compare_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    from financial_analyst_agent.turn import _compare_turn
-
-    return {"result": _compare_turn(state["plan"], state["runtime"])}
-
-
-def _rank_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    from financial_analyst_agent.turn import _rank_turn
-
-    return {"result": _rank_turn(state["plan"], state["runtime"])}
-
-
-def _rank_and_lookup_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    from financial_analyst_agent.turn import _rank_and_lookup_turn
-
-    return {"result": _rank_and_lookup_turn(state["plan"], state["runtime"])}
-
-
 def _explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
+    from financial_analyst_agent.turn import explain_answer
+
     return {
-        "result": run_qualitative_explanation(
-            state["plan"],
+        "result": explain_answer(
+            state["plan"].topic,
             state["runtime"],
             grounding_json=state.get("grounding_json", ""),
         )
@@ -63,11 +35,15 @@ def _explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
 
 
 def _news_and_explain_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    return {"result": run_current_events(state["query"], state["runtime"])}
+    from financial_analyst_agent.turn import current_events_answer
+
+    return {"result": current_events_answer(state["query"], state["runtime"])}
 
 
 def _exploratory_research_node(state: WorkflowRunState) -> dict[str, TurnResult]:
-    return {"result": run_exploratory_research(state["query"], state["runtime"])}
+    from financial_analyst_agent.turn import exploratory_research_answer
+
+    return {"result": exploratory_research_answer(state["query"], state["runtime"])}
 
 
 def _filing_change_node(state: WorkflowRunState) -> dict[str, TurnResult]:
@@ -80,10 +56,6 @@ def _filing_change_node(state: WorkflowRunState) -> dict[str, TurnResult]:
 
 # Each closed intent is one node named after its value.
 _NODES: dict[Intent, Any] = {
-    Intent.LOOKUP: _lookup_node,
-    Intent.COMPARE: _compare_node,
-    Intent.RANK: _rank_node,
-    Intent.RANK_AND_LOOKUP: _rank_and_lookup_node,
     Intent.EXPLAIN: _explain_node,
     Intent.NEWS_AND_EXPLAIN: _news_and_explain_node,
     Intent.EXPLORATORY_RESEARCH: _exploratory_research_node,
@@ -119,11 +91,7 @@ def run_workflow_turn(
     query: str = "",
     grounding_json: str = "",
 ) -> TurnResult:
-    """Execute one closed workflow via the parent graph; return TurnResult.
-
-    ``grounding_json`` is optional deterministic analysis already on the thread
-    (injected by the conversation seam). Subgraphs still do not read history.
-    """
+    """Execute one closed qualitative or filing workflow; return TurnResult."""
     final: WorkflowRunState = _WORKFLOW_GRAPH.invoke(
         {
             "plan": plan,

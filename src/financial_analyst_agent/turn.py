@@ -1,8 +1,11 @@
 """Application seam: run_turn(query, runtime) → TurnResult.
 
 Contracts (ports, Runtime, result models, enums, metric constants) live in
-``contracts``; this module keeps the workflow implementations and re-exports
-every public name callers already import from here.
+``contracts``; this module keeps the workflow implementations the analysis
+graph calls: one function per compiled task kind (``lookup_task``,
+``compare_task``, ``rank_task``, ``rank_and_lookup_task``) and one per
+qualitative workflow (``explain_answer``, ``current_events_answer``,
+``exploratory_research_answer``).
 
 ``run_turn`` is a compatibility wrapper over an ephemeral conversation thread.
 New multi-turn behaviour is asserted at ``run_conversation_turn``.
@@ -17,6 +20,7 @@ from typing import Any
 from financial_analyst_agent.contracts import (
     AMBIGUOUS_CONCEPT,
     COMPANY_NOT_FOUND,
+    DEFAULT_RANK_LIMIT,
     DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     EXTREME_MARGIN,
@@ -68,6 +72,7 @@ from financial_analyst_agent.domain.errors import (
     UnsupportedQuarterlyFactError,
 )
 from financial_analyst_agent.domain.models import DerivationPart, FinancialFact
+from financial_analyst_agent.graph.analysis_spec import CompiledTask
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 
@@ -115,7 +120,14 @@ _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 
 __all__ = [
     "compare_metrics",
+    "compare_task",
+    "current_events_answer",
+    "explain_answer",
+    "exploratory_research_answer",
+    "lookup_task",
     "market_formula_rows",
+    "rank_and_lookup_task",
+    "rank_task",
     "run_turn",
     "snapshot_compare_rows",
 ]
@@ -187,17 +199,20 @@ def _numeral_lock_message(invented: str) -> str:
     )
 
 
-def _explain_turn(
-    plan: Any, runtime: Runtime, *, grounding_json: str = ""
-) -> TurnResult:
+def explain_answer(topic: str, runtime: Runtime, *, grounding_json: str = "") -> TurnResult:
+    """A model-analysis essay on ``topic``, held to the numeral lock.
+
+    ``grounding_json`` is the deterministic rows of the thread's last answer, if any:
+    the only figures the essay may quote.
+    """
     if runtime.essay is None:
         raise RuntimeError("explain intent requires an essay completer")
     essay_completer = runtime.essay
-    traces = [ToolTrace(tool="explain_topic", args={"topic": plan.topic})]
+    traces = [ToolTrace(tool="explain_topic", args={"topic": topic})]
     try:
         essay = call_provider(
             "llm",
-            lambda: essay_completer.complete_essay(plan.topic, grounding_json),
+            lambda: essay_completer.complete_essay(topic, grounding_json),
         )
     except ProviderError as exc:
         traces[0] = traces[0].model_copy(
@@ -368,13 +383,14 @@ def _news_grounded_essay_turn(
     )
 
 
-def _news_and_explain_turn(query: str, runtime: Runtime) -> TurnResult:
+def current_events_answer(query: str, runtime: Runtime) -> TurnResult:
+    """A cited news summary via the constrained news wrapper, held to the numeral lock."""
     return _news_grounded_essay_turn(
         query, runtime, intent=Intent.NEWS_AND_EXPLAIN, banners=[NEWS_SUMMARY_BANNER]
     )
 
 
-def _exploratory_research_turn(query: str, runtime: Runtime) -> TurnResult:
+def exploratory_research_answer(query: str, runtime: Runtime) -> TurnResult:
     """Cited research draft via the constrained news wrapper; never structured rows."""
     return _news_grounded_essay_turn(
         query,
@@ -471,14 +487,15 @@ def _lookup_provenance(fact: FinancialFact) -> dict[str, Any]:
 
 
 def _ranked_table(
-    plan: Any, runtime: Runtime, intent: Intent
+    task: CompiledTask, runtime: Runtime, intent: Intent
 ) -> tuple[Any, ToolTrace] | TurnResult:
-    """Rank the plan's industry, or a refusal when the industry is unknown."""
+    """Rank the task's industry, or a refusal when the industry is unknown."""
     if runtime.ranking is None:
         raise RuntimeError(f"{intent.value} intent requires a ranking adapter")
-    industry = plan.industry or ""
+    industry = task.industry or ""
+    limit = task.limit or DEFAULT_RANK_LIMIT
     try:
-        table = runtime.ranking.rank_companies(industry, plan.limit)
+        table = runtime.ranking.rank_companies(industry, limit)
     except UnknownIndustryError as exc:
         return TurnResult(
             intent=intent,
@@ -488,7 +505,7 @@ def _ranked_table(
         )
     trace = ToolTrace(
         tool="rank_companies",
-        args={"industry": industry, "limit": plan.limit},
+        args={"industry": industry, "limit": limit},
         provenance={
             "snapshot_as_of": table.as_of,
             "source": table.source,
@@ -498,8 +515,9 @@ def _ranked_table(
     return table, trace
 
 
-def _rank_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    ranked = _ranked_table(plan, runtime, Intent.RANK)
+def rank_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
+    """The snapshot's largest members of an industry, by market cap."""
+    ranked = _ranked_table(task, runtime, Intent.RANK)
     if isinstance(ranked, TurnResult):
         return ranked
     table, trace = ranked
@@ -893,12 +911,13 @@ def _with_rank_identity(row: TableRow, company: Any, index: int) -> TableRow:
     )
 
 
-def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    ranked = _ranked_table(plan, runtime, Intent.RANK_AND_LOOKUP)
+def rank_and_lookup_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
+    """An industry's ranked members, each with one metric's latest quarter."""
+    ranked = _ranked_table(task, runtime, Intent.RANK_AND_LOOKUP)
     if isinstance(ranked, TurnResult):
         return ranked
     table, trace = ranked
-    metric = plan.metric
+    metric = _task_metric(task)
     traces = [trace]
     rows: list[TableRow] = []
     for index, company in enumerate(table.companies, start=1):
@@ -1049,27 +1068,37 @@ def _snapshot_metrics_turn(
     )
 
 
-def _compare_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    report_date = getattr(plan, "report_date", None)
+def _task_metric(task: CompiledTask) -> str:
+    if task.metric is None:
+        raise ValueError(f"a {task.kind} task names a metric")
+    return task.metric
+
+
+def compare_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
+    """One metric for several companies, at one report date or each one's latest."""
     return _metrics_turn(
-        Intent.COMPARE, list(plan.companies), plan.metric, runtime, report_date=report_date
+        Intent.COMPARE,
+        list(task.company_queries),
+        _task_metric(task),
+        runtime,
+        report_date=task.report_date,
     )
 
 
-def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
-    metric = plan.metric
-    report_date = getattr(plan, "report_date", None)
+def lookup_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
+    """One company's metric, at one report date or its latest quarter."""
+    company = task.company_queries[0]
+    metric = _task_metric(task)
+    report_date = task.report_date
     if metric in FORMULA_COMPONENTS:
-        return _metrics_turn(
-            Intent.LOOKUP, [plan.company], metric, runtime, report_date=report_date
-        )
+        return _metrics_turn(Intent.LOOKUP, [company], metric, runtime, report_date=report_date)
     if metric in SNAPSHOT_METRICS:
-        return _snapshot_metrics_turn(Intent.LOOKUP, [plan.company], metric, runtime)
-    args: dict[str, Any] = {"company": plan.company, "metric": metric}
+        return _snapshot_metrics_turn(Intent.LOOKUP, [company], metric, runtime)
+    args: dict[str, Any] = {"company": company, "metric": metric}
     if report_date is not None:
         args["report_date"] = report_date.isoformat()
     try:
-        fact = runtime.facts.get_financials(plan.company, metric, report_date=report_date)
+        fact = runtime.facts.get_financials(company, metric, report_date=report_date)
     except _LOOKUP_FAILURES as exc:
         if isinstance(exc, PerShareNotDerivableError):
             # Not a failure: the filings say this figure exists only for the year.
@@ -1079,7 +1108,7 @@ def _lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
                 renderer=RendererKind.TABLE,
                 table_rows=[
                     TableRow(
-                        company_name=plan.company,
+                        company_name=company,
                         ticker="",
                         cik="",
                         metric=metric,

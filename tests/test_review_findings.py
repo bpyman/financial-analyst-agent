@@ -122,10 +122,10 @@ def test_a_replayed_news_answer_on_the_live_runtime_says_it_is_replayed() -> Non
     from financial_analyst_agent.turn import (
         REPLAYED_ESSAY_BANNER,
         REPLAYED_NEWS_BANNER,
-        _news_and_explain_turn,
+        current_events_answer,
     )
 
-    result = _news_and_explain_turn(FIXTURE_NEWS_QUERY, _keyless_live_runtime())
+    result = current_events_answer(FIXTURE_NEWS_QUERY, _keyless_live_runtime())
 
     assert result.renderer is RendererKind.ESSAY
     assert REPLAYED_NEWS_BANNER in result.banners
@@ -133,9 +133,9 @@ def test_a_replayed_news_answer_on_the_live_runtime_says_it_is_replayed() -> Non
 
 
 def test_news_off_does_not_claim_a_search_found_nothing() -> None:
-    from financial_analyst_agent.turn import NO_NEWS_MESSAGE, _news_and_explain_turn
+    from financial_analyst_agent.turn import NO_NEWS_MESSAGE, current_events_answer
 
-    result = _news_and_explain_turn("What is new with Eli Lilly?", _keyless_live_runtime())
+    result = current_events_answer("What is new with Eli Lilly?", _keyless_live_runtime())
 
     assert result.renderer is RendererKind.REFUSE
     assert result.message is not None

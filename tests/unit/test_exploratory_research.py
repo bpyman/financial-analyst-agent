@@ -104,19 +104,17 @@ def _runtime(
     )
 
 
-def test_run_workflow_turn_exploratory_returns_labelled_cited_research() -> None:
+def test_exploratory_research_returns_labelled_cited_research() -> None:
     from financial_analyst_agent.contracts import (
         EXPLORATORY_RESEARCH_BANNER,
         Intent,
         RendererKind,
     )
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import exploratory_research_answer
 
-    plan = SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=FIXTURE_RESEARCH_QUERY)
-    result = run_workflow_turn(
-        plan,
+    result = exploratory_research_answer(
+        FIXTURE_RESEARCH_QUERY,
         _runtime(essay=_GroundedResearchEssay(), news=_FixtureNews()),  # type: ignore[arg-type]
-        query=FIXTURE_RESEARCH_QUERY,
     )
 
     assert result.intent == Intent.EXPLORATORY_RESEARCH
@@ -133,19 +131,17 @@ def test_run_workflow_turn_exploratory_returns_labelled_cited_research() -> None
     assert result.tool_traces[0].args["topic"] == "news"
 
 
-def test_run_workflow_turn_exploratory_refuses_invented_numerals() -> None:
+def test_exploratory_research_refuses_invented_numerals() -> None:
     from financial_analyst_agent.contracts import (
         EXPLORATORY_RESEARCH_BANNER,
         Intent,
         RendererKind,
     )
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import exploratory_research_answer
 
-    plan = SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=FIXTURE_RESEARCH_QUERY)
-    result = run_workflow_turn(
-        plan,
+    result = exploratory_research_answer(
+        FIXTURE_RESEARCH_QUERY,
         _runtime(essay=_InventedDollarEssay(), news=_FixtureNews()),  # type: ignore[arg-type]
-        query=FIXTURE_RESEARCH_QUERY,
     )
 
     assert result.intent == Intent.EXPLORATORY_RESEARCH
@@ -158,15 +154,13 @@ def test_run_workflow_turn_exploratory_refuses_invented_numerals() -> None:
     assert "99.9" in result.message
 
 
-def test_run_workflow_turn_exploratory_refuses_empty_hits_without_essay() -> None:
+def test_exploratory_research_refuses_empty_hits_without_essay() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.turn import exploratory_research_answer
 
-    plan = SimpleNamespace(intent=Intent.EXPLORATORY_RESEARCH, topic=FIXTURE_RESEARCH_QUERY)
-    result = run_workflow_turn(
-        plan,
+    result = exploratory_research_answer(
+        FIXTURE_RESEARCH_QUERY,
         _runtime(essay=_ExplodingEssay(), news=_EmptyNews()),  # type: ignore[arg-type]
-        query=FIXTURE_RESEARCH_QUERY,
     )
 
     assert result.intent == Intent.EXPLORATORY_RESEARCH
