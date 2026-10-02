@@ -1,12 +1,13 @@
 "use client";
 
-import { Loader2, RotateCw } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { Loader2, RotateCcw, RotateCw } from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { clarifyChoices, shownMessage } from "@/lib/clarify";
 import { progressLabel, type TurnState } from "@/lib/turn-state";
 import type { Turn } from "@/lib/types";
 import { Answer } from "./answer";
 import { AnswerBoundary } from "./answer-boundary";
+import { AnswerScope } from "./answer-scope";
 import { cn } from "@/lib/format";
 import { Button, Callout, LogoMark } from "./ui";
 
@@ -14,14 +15,22 @@ import { Button, Callout, LogoMark } from "./ui";
 export function Thread({
   turns,
   turn,
+  full = false,
   onRetry,
   onAsk,
+  onStartOver,
+  onTryRecorded,
 }: {
   turns: Turn[];
   turn: TurnState;
+  /** The conversation has used every turn: nothing can be asked on it. */
+  full?: boolean;
   onRetry: (message: string) => void;
   /** Sends a clarify candidate's slug as the next analyst message. */
   onAsk: (message: string) => void;
+  onStartOver: () => void;
+  /** Offered when a live answer is slow; absent where Recorded is no option. */
+  onTryRecorded?: (message: string) => void;
 }) {
   const running = turn.status === "running";
   return (
@@ -32,26 +41,31 @@ export function Thread({
           data-turn={index}
           className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40"
         >
-          <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message}>
-            <AnswerBoundary>
-              <Answer
-                question={shownMessage(item, turns[index - 1])}
-                presentation={item.presentation}
-                onSuggest={index === turns.length - 1 && turn.status === "idle" ? onAsk : undefined}
-                clarify={{
-                  choices: clarifyChoices(item, turns[index + 1]),
-                  live: item.clarify_enabled && !running,
-                  onChoose: onAsk,
-                }}
-              />
-            </AnswerBoundary>
-          </Exchange>
+          <AnswerScope value={index > 0 ? `answer ${index + 1}` : ""}>
+            <Exchange message={shownMessage(item, turns[index - 1])} sent={item.message} heading={`Answer ${index + 1}`}>
+              <AnswerBoundary>
+                <Answer
+                  question={shownMessage(item, turns[index - 1])}
+                  presentation={item.presentation}
+                  onSuggest={index === turns.length - 1 && turn.status === "idle" && !full ? onAsk : undefined}
+                  clarify={{
+                    choices: clarifyChoices(item, turns[index + 1]),
+                    live: item.clarify_enabled && !running && !full,
+                    onChoose: onAsk,
+                  }}
+                />
+              </AnswerBoundary>
+            </Exchange>
+          </AnswerScope>
         </li>
       ))}
       {turn.status === "running" && (
         <li data-turn="pending" className="scroll-mt-4 tall:scroll-mt-20 sm:tall:scroll-mt-40">
           <Exchange message={shownMessage(turn, turns.at(-1))} sent={turn.message} working>
-            <Working state={turn} />
+            <Working
+              state={turn}
+              onTryRecorded={onTryRecorded && turn.message ? () => onTryRecorded(turn.message) : undefined}
+            />
           </Exchange>
         </li>
       )}
@@ -61,10 +75,18 @@ export function Thread({
             <Callout kind="error">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span>{turn.error}</span>
-                <Button size="sm" variant="outline" onClick={() => onRetry(turn.message)}>
-                  <RotateCw className="size-3.5" aria-hidden />
-                  Try again
-                </Button>
+                {/* A full conversation refuses every retry; only a new one can answer. */}
+                {full ? (
+                  <Button size="sm" variant="outline" onClick={onStartOver}>
+                    <RotateCcw className="size-3.5" aria-hidden />
+                    Start over
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => onRetry(turn.message)}>
+                    <RotateCw className="size-3.5" aria-hidden />
+                    Try again
+                  </Button>
+                )}
               </div>
             </Callout>
           </Exchange>
@@ -78,12 +100,15 @@ function Exchange({
   message,
   sent,
   working = false,
+  heading,
   children,
 }: {
   message: string;
   /** The message as sent, when the thread shows it differently (a clarify slug). */
   sent?: string;
   working?: boolean;
+  /** A heading for screen readers to jump between answers by. */
+  heading?: string;
   children: ReactNode;
 }) {
   return (
@@ -94,6 +119,7 @@ function Exchange({
           <Question message={message} sent={sent} />
         </div>
       )}
+      {heading && <h2 className="sr-only">{heading}</h2>}
       <div className={message ? "mt-5 flex gap-3" : "flex gap-3"}>
         <div className="relative hidden shrink-0 sm:block">
           <LogoMark className="size-7" />
@@ -110,20 +136,49 @@ function Exchange({
   );
 }
 
-function Working({ state }: { state: Extract<TurnState, { status: "running" }> }) {
+/** How long a live answer runs before Recorded is offered instead. */
+const SLOW_AFTER_SECONDS = 15;
+
+function Working({
+  state,
+  onTryRecorded,
+}: {
+  state: Extract<TurnState, { status: "running" }>;
+  onTryRecorded?: () => void;
+}) {
   const { progress, waking } = state;
+  const seconds = useElapsedSeconds();
   const fraction =
     progress && progress.total > 0 ? Math.min(1, progress.done / progress.total) : null;
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="px-4 py-3.5" role="status" aria-live="polite">
-        <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
+      <div className="px-4 py-3.5">
+        <div className="flex items-center gap-2 text-[13px] font-medium text-fg" role="status">
           <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
           {progressLabel(state)}
+          {waking && (
+            // Ticks every second: kept out of the live region so it is not read out each time.
+            <span className="num ml-auto text-[11.5px] font-normal text-subtle" aria-hidden>
+              {seconds} s
+            </span>
+          )}
         </div>
         {waking && (
           <p className="mt-1 pl-6 text-xs text-muted">
-            The hosted service sleeps when idle and takes about a minute to wake.
+            The hosted service sleeps when idle and can take about a minute to wake.
+          </p>
+        )}
+        {onTryRecorded && seconds >= SLOW_AFTER_SECONDS && (
+          <p className="mt-1.5 pl-6 text-xs text-muted">
+            Taking a while?{" "}
+            <button
+              type="button"
+              onClick={onTryRecorded}
+              className="rounded font-medium text-primary underline underline-offset-4"
+            >
+              Try Recorded instead
+            </button>{" "}
+            — captured filings answer at once.
           </p>
         )}
       </div>
@@ -146,6 +201,17 @@ function Working({ state }: { state: Extract<TurnState, { status: "running" }> }
   );
 }
 
+/** Whole seconds since the component appeared. */
+function useElapsedSeconds(): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    const timer = window.setInterval(() => setSeconds(Math.floor((performance.now() - start) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return seconds;
+}
+
 // A question longer than this, or with more lines, starts folded to eight lines.
 const LONG_QUESTION_CHARS = 400;
 const LONG_QUESTION_LINES = 8;
@@ -160,7 +226,7 @@ function Question({ message, sent }: { message: string; sent?: string }) {
       <p
         id={id}
         title={sent && sent !== message ? `Sent as ${sent}` : undefined}
-        className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg"
+        className="whitespace-pre-wrap break-words rounded-2xl [overflow-wrap:anywhere] rounded-br-md border border-border bg-surface-2 px-4 py-2.5 text-[15px] leading-relaxed text-fg"
       >
         {/* Clamped inside the padding, so no part of a ninth line shows below it. */}
         <span className={cn("block", long && !open && "line-clamp-8")}>{message}</span>

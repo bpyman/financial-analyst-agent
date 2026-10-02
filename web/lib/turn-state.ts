@@ -75,7 +75,7 @@ export function progressLabel(state: Extract<TurnState, { status: "running" }>):
   }
   const { done, total } = state.progress;
   if (total <= 0) return "Planning the analysis…";
-  return `Fetched ${done} of ${total} ${total === 1 ? "cell" : "cells"}`;
+  return `Fetched ${done} of ${total} ${total === 1 ? "figure" : "figures"}`;
 }
 
 export function turnCounterLabel(count: number, max: number): string {

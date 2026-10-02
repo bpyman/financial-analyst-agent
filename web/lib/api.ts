@@ -73,9 +73,15 @@ export function getMeta(runtime?: RuntimeKind): Promise<Meta> {
   return json(runtime ? `/api/meta?runtime=${runtime}` : "/api/meta", readMeta);
 }
 
-/** Wake the hosted API while the visitor reads the landing page (ADR 0006). */
-export function pingHealth(): void {
-  fetch("/api/health", { cache: "no-store" }).catch(() => undefined);
+/**
+ * Wake the hosted API while the visitor reads the landing page (ADR 0006).
+ * True once it answers, so a slow turn after that is not called a wake-up.
+ */
+export function pingHealth(): Promise<boolean> {
+  return fetch("/api/health", { cache: "no-store" }).then(
+    (response) => response.ok,
+    () => false,
+  );
 }
 
 /** Start a thread bound to `runtime` (the deployment default when omitted). */

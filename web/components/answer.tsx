@@ -8,6 +8,7 @@ import { cn, hardBreaks, parseLink, safeHref } from "@/lib/format";
 import type { DisplayTrace, EvidenceItem, Pair, Presentation, QuarterlyFactCard } from "@/lib/types";
 import { AnswerActions, hasTakeaway } from "./answer-actions";
 import { AnswerChart } from "./answer-chart";
+import { useRegionName } from "./answer-scope";
 import { Clarify } from "./clarify";
 import { CopyButton } from "./copy-button";
 import { DataTable } from "./data-table";
@@ -63,6 +64,7 @@ export function Answer({
   const [sort, setSort] = useState<TableSort | null>(null);
   const order = table ? sortedRowKeys(table, sort) : null;
   const sortNote = table && sort ? sortDescription(table, sort) : null;
+  const trendsName = useRegionName("Recent quarters");
   return (
     <div className="min-w-0 space-y-4">
       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -82,7 +84,7 @@ export function Answer({
       {fact_card && <FactCard card={fact_card} footnotes={banners.filter(isFootnote)} />}
       {chart && <AnswerChart chart={chart} order={order} sortNote={sortNote} />}
       {(presentation.trends?.length ?? 0) > 0 && (
-        <section aria-label="Recent quarters" className="grid gap-3 sm:grid-cols-2">
+        <section aria-label={trendsName} className="grid gap-3 sm:grid-cols-2">
           {presentation.trends?.map((trend) => <AnswerChart key={trend.metric} chart={trend} compact />)}
         </section>
       )}
@@ -152,9 +154,10 @@ export function FactCard({ card, footnotes = [] }: { card: QuarterlyFactCard; fo
   // A derived quarter's form is the filings it came from (a 10-K less a 10-Q),
   // not the quarter's own report; say "Derived" and keep the forms in the title.
   const derived = card.period_label.startsWith("Derived");
+  const name = useRegionName(`${card.metric_header}, ${card.company_name}`);
   return (
     <section
-      aria-label={`${card.metric_header}, ${card.company_name}`}
+      aria-label={name}
       className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_24px_48px_-32px_rgb(0_0_0/0.55)]"
     >
       <span
@@ -186,7 +189,7 @@ export function FactCard({ card, footnotes = [] }: { card: QuarterlyFactCard; fo
         </div>
         <div className="mt-7">
           <SectionLabel>{card.metric_header}</SectionLabel>
-          <div className="figure mt-2 text-[44px] font-semibold leading-none text-fg sm:text-[60px]">
+          <div className="figure mt-2 text-[44px] font-semibold leading-none text-fg [overflow-wrap:anywhere] sm:text-[60px]">
             {card.amount}
           </div>
           <div className="mt-3 text-[13px] text-muted">{card.period_label}</div>
@@ -235,9 +238,10 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
   const selectId = useId();
   const item = items[Math.min(chosen, items.length - 1)];
   const company = [item.company_name, item.ticker].filter(Boolean).join(" · ");
+  const name = useRegionName("Evidence inspector");
   return (
     <section
-      aria-label="Evidence inspector"
+      aria-label={name}
       className="overflow-hidden rounded-xl border border-border bg-surface"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
@@ -306,7 +310,7 @@ export function EvidenceInspector({ items }: { items: EvidenceItem[] }) {
           <span className="num break-all">{item.concept}</span>
         </EvidenceField>
         <EvidenceField label="Selection rule" hidden={!item.selection_rule} wide>
-          <span className="text-muted">{item.selection_rule}</span>
+          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">{item.selection_rule}</span>
         </EvidenceField>
       </dl>
       {safeHref(item.source_url) && (
@@ -348,8 +352,9 @@ export function Traces({ traces }: { traces: DisplayTrace[] }) {
   // A window over several quarters makes a step per cell; show the first few.
   const [all, setAll] = useState(false);
   const shown = all ? traces : traces.slice(0, TRACES_SHOWN);
+  const name = useRegionName("How this answer was fetched");
   return (
-    <section aria-label="How this answer was fetched">
+    <section aria-label={name}>
       <SectionLabel className="mb-2">How this answer was fetched</SectionLabel>
       <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
         {shown.map((trace, index) => (

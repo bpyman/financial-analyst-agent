@@ -89,10 +89,10 @@ describe("progressLabel", () => {
       "Planning the analysis…",
     );
     expect(progressLabel(running({ progress: { done: 1, total: 1 } }))).toBe(
-      "Fetched 1 of 1 cell",
+      "Fetched 1 of 1 figure",
     );
     expect(progressLabel(running({ progress: { done: 3, total: 10 } }))).toBe(
-      "Fetched 3 of 10 cells",
+      "Fetched 3 of 10 figures",
     );
   });
 });
@@ -112,6 +112,6 @@ describe("a turn waiting for a free slot", () => {
       "Busy right now, waiting for a free slot…",
     );
     const moving = turnReducer(queued, { type: "event", event: { event: "progress", data: { done: 1, total: 2 } } });
-    expect(moving.status === "running" && progressLabel(moving)).toBe("Fetched 1 of 2 cells");
+    expect(moving.status === "running" && progressLabel(moving)).toBe("Fetched 1 of 2 figures");
   });
 });

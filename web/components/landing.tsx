@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ArrowUpRight,
   FileDiff,
@@ -8,6 +10,7 @@ import {
   ReceiptText,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { Meta } from "@/lib/types";
 import { Button, Callout, SectionLabel } from "./ui";
 
@@ -17,6 +20,40 @@ const STORY_ICONS: Record<string, LucideIcon> = {
   "Rank then inspect filings": ListOrdered,
   "What changed in the 10-Q": FileDiff,
 };
+
+// What the landing page offers before /api/meta answers (a sleeping host takes
+// about a minute): the API's guided stories (storefront.py) and the examples
+// every runtime answers. Meta's own lists replace these when they arrive.
+const DEFAULT_STORIES: Meta["guided_stories"] = [
+  { label: "Verify a quarterly fact", question: "What was Microsoft's latest quarterly pretax income?" },
+  { label: "Compare four quarters", question: "What was Microsoft's quarterly revenue over the last four quarters?" },
+  { label: "Rank then inspect filings", question: "What are the top 10 tech companies and R&D spend for each?" },
+  { label: "What changed in the 10-Q", question: "What changed in Microsoft's latest 10-Q?" },
+];
+const DEFAULT_CAPABILITIES: Meta["capabilities"] = [
+  {
+    description:
+      "Look up any quarter's financials, EPS, cash flow, or market cap for any operating publicly-listed US company",
+    examples: [
+      "What was Microsoft's latest quarterly revenue?",
+      "Apple diluted EPS in Q3 FY2025",
+      "Microsoft free cash flow over the last four quarters",
+      "How is Nvidia doing?",
+    ],
+  },
+  {
+    description: "Compare companies on metrics, rank by market cap, or combine rank and lookup",
+    examples: [
+      "Compare Eli Lilly and Merck net margins",
+      "What are the top 10 tech companies and R&D spend for each?",
+      "Top 5 semiconductor companies by revenue",
+    ],
+  },
+  {
+    description: "Stay on the same thread to extend the current analysis, or start a new one",
+    examples: ["add Apple", "now add operating margin", "make that the last four quarters", "show year-over-year"],
+  },
+];
 
 /** First screen: guided stories, what you can ask, and the metric catalogue. */
 export function Landing({
@@ -36,6 +73,8 @@ export function Landing({
   onDraft: (question: string) => void;
   onRetry: () => void;
 }) {
+  const stories = meta?.guided_stories.length ? meta.guided_stories : DEFAULT_STORIES;
+  const capabilities = meta?.capabilities.length ? meta.capabilities : DEFAULT_CAPABILITIES;
   return (
     <div className="animate-fade-up">
       <section className="pb-10 pt-8 sm:pb-12 sm:pt-14">
@@ -69,96 +108,76 @@ export function Landing({
           <SectionLabel>
             <span id="stories-label">Guided stories</span>
           </SectionLabel>
-          {waking && !meta && !error && (
-            <span className="flex items-center gap-1.5 text-xs text-muted" role="status">
-              <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden />
-              Waking the analysis service…
-            </span>
-          )}
+          {waking && !meta && !error && <Waking />}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {meta
-            ? meta.guided_stories.map((story, index) => {
-                const Icon = STORY_ICONS[story.label] ?? Layers;
-                return (
-                  <button
-                    key={story.label}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => onAsk(story.question)}
-                    className="group relative flex flex-col justify-between gap-3 sm:min-h-32 sm:gap-4 overflow-hidden rounded-xl border border-border bg-surface p-4 text-left transition-[border-color,background-color,box-shadow] hover:border-primary/40 hover:shadow-[0_0_0_4px] hover:shadow-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
-                    />
-                    <span className="flex w-full items-center justify-between">
-                      <span className="flex items-center gap-2.5">
-                        <span className="flex size-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-primary">
-                          <Icon className="size-4" aria-hidden />
-                        </span>
-                        <span className="num text-[11px] text-subtle">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                      </span>
-                      <ArrowUpRight
-                        className="size-4 text-subtle transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary"
-                        aria-hidden
-                      />
-                    </span>
-                    <span>
-                      <span className="block text-sm font-medium text-fg">{story.label}</span>
-                      <span className="mt-1 block break-words text-[13px] leading-snug text-muted">
-                        {story.question}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })
-            : !error &&
-              [0, 1, 2, 3].map((slot) => (
-                <div
-                  key={slot}
+          {stories.map((story, index) => {
+            const Icon = STORY_ICONS[story.label] ?? Layers;
+            return (
+              <button
+                key={story.label}
+                type="button"
+                disabled={disabled}
+                onClick={() => onAsk(story.question)}
+                className="group relative flex flex-col justify-between gap-3 sm:min-h-32 sm:gap-4 overflow-hidden rounded-xl border border-border bg-surface p-4 text-left transition-[border-color,background-color,box-shadow] hover:border-primary/40 hover:shadow-[0_0_0_4px] hover:shadow-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span
                   aria-hidden
-                  className="flex min-h-32 flex-col justify-between rounded-xl border border-border bg-surface p-4"
-                >
-                  <span className="shimmer animate-shimmer size-8 rounded-lg" />
-                  <span className="space-y-2">
-                    <span className="shimmer animate-shimmer block h-3.5 w-2/5 rounded" />
-                    <span className="shimmer animate-shimmer block h-3 w-4/5 rounded" />
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 transition-opacity group-hover:opacity-100"
+                />
+                <span className="flex w-full items-center justify-between">
+                  <span className="flex items-center gap-2.5">
+                    <span className="flex size-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-primary">
+                      <Icon className="size-4" aria-hidden />
+                    </span>
+                    <span className="num text-[11px] text-subtle">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
                   </span>
-                </div>
-              ))}
+                  <ArrowUpRight
+                    className="size-4 text-subtle transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary"
+                    aria-hidden
+                  />
+                </span>
+                <span>
+                  <span className="block break-words text-sm font-medium text-fg">{story.label}</span>
+                  <span className="mt-1 block break-words text-[13px] leading-snug text-muted">
+                    {story.question}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      {meta && (
-        <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <section aria-labelledby="ask-label">
-            <SectionLabel className="mb-3">
-              <span id="ask-label">What you can ask</span>
-            </SectionLabel>
-            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-              {meta.capabilities.map((capability) => (
-                <li key={capability.description} className="px-4 py-3.5">
-                  <p className="text-[13px] leading-snug text-fg">{capability.description}</p>
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    {capability.examples.map((example) => (
-                      <button
-                        key={example}
-                        type="button"
-                        onClick={() => onDraft(example)}
-                        title="Put this in the composer"
-                        className="max-w-full break-words rounded-md border border-border bg-surface-2 px-2 py-1 text-left text-xs text-muted transition-colors [overflow-wrap:anywhere] hover:border-border-strong hover:text-fg"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+      <div className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section aria-labelledby="ask-label">
+          <SectionLabel className="mb-3">
+            <span id="ask-label">What you can ask</span>
+          </SectionLabel>
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+            {capabilities.map((capability) => (
+              <li key={capability.description} className="px-4 py-3.5">
+                <p className="text-[13px] leading-snug text-fg">{capability.description}</p>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {capability.examples.map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => onDraft(example)}
+                      title="Put this in the composer"
+                      className="max-w-full break-words rounded-md border border-border bg-surface-2 px-2 py-1 text-left text-xs text-muted transition-colors [overflow-wrap:anywhere] hover:border-border-strong hover:text-fg"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        {meta && meta.metric_groups.length > 0 && (
           <section aria-labelledby="metrics-label">
             <SectionLabel className="mb-3">
               <span id="metrics-label">Supported metrics</span>
@@ -181,8 +200,30 @@ export function Landing({
               ))}
             </div>
           </section>
-        </div>
-      )}
+        )}
+      </div>
     </div>
+  );
+}
+
+/** "Waking the analysis service… 12 s", counted from the visit: a sleeping host takes about a minute. */
+function Waking() {
+  const [seconds, setSeconds] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setSeconds(Math.floor(performance.now() / 1000));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted">
+      <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden />
+      <span role="status">Waking the analysis service…</span>
+      {seconds !== null && (
+        <span className="num text-subtle" aria-hidden>
+          {seconds} s
+        </span>
+      )}
+    </span>
   );
 }
