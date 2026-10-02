@@ -197,7 +197,7 @@ class ClientRateLimit:
         moment = time.monotonic() if now is None else now
         cutoff = moment - self._window
         with self._guard:
-            idle = [key for key, times in self._events.items() if times[-1] <= cutoff]
+            idle = [key for key, times in self._events.items() if not times or times[-1] <= cutoff]
             for key in idle:
                 del self._events[key]
             times = self._events.setdefault(client, deque())
@@ -214,6 +214,9 @@ class ClientRateLimit:
             times = self._events.get(client)
             if times:
                 times.pop()
+            # An emptied record is forgotten, as an idle client is.
+            if times is not None and not times:
+                del self._events[client]
 
 
 def _normalized_message(value: object) -> object:

@@ -913,6 +913,20 @@ def test_the_rate_limit_forgets_events_older_than_its_window() -> None:
     assert limit.try_acquire("a", now=10.5) is None
 
 
+def test_a_refund_of_a_clients_only_event_leaves_the_limit_working() -> None:
+    # A busy 429 refunds the visitor's only event; the next sweep used to read
+    # that emptied record and fail every turn, for everyone, until a restart.
+    limit = api.ClientRateLimit(2, window_seconds=10)
+
+    assert limit.try_acquire("a", now=0) is None
+    limit.refund("a")
+
+    assert limit.try_acquire("b", now=1) is None
+    assert limit.try_acquire("a", now=2) is None
+    assert limit.try_acquire("a", now=3) is None
+    assert limit.try_acquire("a", now=4) == pytest.approx(8)
+
+
 def test_an_oversized_body_is_refused(client: TestClient) -> None:
     thread_id = _new_thread(client)
     padded = '{"message": "Apple revenue"' + " " * 20_000 + "}"
