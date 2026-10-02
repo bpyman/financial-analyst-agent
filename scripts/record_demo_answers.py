@@ -34,7 +34,11 @@ def demo_answers() -> dict[str, Any]:
         for index, (label, question) in enumerate(GUIDED_STORIES):
             turn = run_conversation_turn(f"demo-{index}", question, runtime, store=store)
             stories.append(
-                {"label": label, "question": question, "presentation": presentation_json(turn.result)}
+                {
+                    "label": label,
+                    "question": question,
+                    "presentation": presentation_json(turn.result),
+                }
             )
     return {"source": "scripts/record_demo_answers.py (recorded runtime)", "stories": stories}
 
