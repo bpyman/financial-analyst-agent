@@ -26,9 +26,10 @@ const VIEWPORT = { width: 1280, height: 800 };
 const STILL = { width: 1280, height: 1000 };
 // Narrow enough that the chart, drawn at 2x and set 704 px wide on the card, keeps its text large.
 const SOCIAL_WINDOW = { width: 700, height: 1000 };
-// The card is read near 550 px wide in a feed: its chart's labels are drawn larger for it.
+// The card is read near 550 px wide in a feed: its chart's axis labels are drawn larger for
+// it, and the end labels give way to the card's own large figures (social-card.ts).
 const SOCIAL_CHART_STYLE = `
-  figure svg text.end-label { font-size: 21px !important; }
+  figure svg text.end-label { display: none; }
   figure svg .recharts-cartesian-axis-tick text { font-size: 14px !important; }
   figure header { font-size: 115%; }
   figure figcaption { display: none; }
@@ -150,6 +151,16 @@ async function captureSocial(browser: Browser) {
   await analyst.ask(LILLY_VS_PFIZER);
   const chart = analyst.charts().last();
   await expect(chart).toBeVisible();
+  // Each series' latest figure ("LLY $22.97 B") and its line's colour, for the card to set large.
+  const figures = await chart.evaluate((figure) => {
+    const lines = [...figure.querySelectorAll("svg .recharts-line-curve")];
+    return [...figure.querySelectorAll("svg text.end-label")].map((label, index) => {
+      const name = label.querySelector("tspan")?.textContent?.trim() ?? "";
+      const amount = (label.textContent ?? "").replace(name, "").trim();
+      const color = lines[index] ? getComputedStyle(lines[index]).stroke : "";
+      return { name, amount, color };
+    });
+  });
   await page.addStyleTag({ content: SOCIAL_CHART_STYLE });
   await settle(page);
   await page.mouse.move(0, 0);
@@ -159,7 +170,15 @@ async function captureSocial(browser: Browser) {
   const composer = await browser.newContext({ viewport: SOCIAL_SIZE, deviceScaleFactor: 1 });
   const canvas = await composer.newPage();
   await canvas.setContent(
-    socialCardHtml({ lead, muted, chips: CHIPS, repo: REPO, card: dataUri("image/png", card), fonts: geistFonts() }),
+    socialCardHtml({
+      lead,
+      muted,
+      chips: CHIPS,
+      repo: REPO,
+      card: dataUri("image/png", card),
+      fonts: geistFonts(),
+      figures,
+    }),
   );
   await settle(canvas);
   await canvas.screenshot({ path: path.join(OUT, FILES.social), animations: "disabled" });

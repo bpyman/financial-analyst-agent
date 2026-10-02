@@ -36,6 +36,24 @@ describe("socialCardHtml", () => {
     expect(html).toContain("github.com/bpyman/onfile");
   });
 
+  it("states each series' latest figure in its colour, above the chart", () => {
+    // The chart's own end labels collide with its lines at feed size; these do not.
+    const html = socialCardHtml({
+      ...card,
+      figures: [
+        { name: "LLY", amount: "$22.97 B", color: "rgb(59, 130, 246)" },
+        { name: "PFE", amount: "$15.03 B", color: "rgb(245, 158, 11)" },
+      ],
+    });
+    expect(html).toContain('<span class="swatch" style="background:rgb(59, 130, 246)"></span>LLY <b>$22.97 B</b>');
+    expect(html).toContain("PFE <b>$15.03 B</b>");
+  });
+
+  it("refuses a colour that is not one", () => {
+    const html = socialCardHtml({ ...card, figures: [{ name: "X", amount: "$1 B", color: "red;}<script>" }] });
+    expect(html).not.toContain("<script>");
+  });
+
   it("names the project beside its mark", () => {
     const html = socialCardHtml(card);
     expect(html).toMatch(/<div class="brand"><div class="logo">.*<\/div>Onfile<\/div>/);

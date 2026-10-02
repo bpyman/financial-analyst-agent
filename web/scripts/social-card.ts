@@ -1,9 +1,11 @@
 /**
  * The link preview (`capture-portfolio.ts`): the landing page's headline on the
  * left, a chart from the window across about 60% of the right. LinkedIn shows
- * it near 550 px wide, so the chart is large and its labels were enlarged at
- * capture. Pure, so the unit tests pin it; the capture script supplies the
- * headline, the chart screenshot, and the fonts.
+ * it near 550 px wide, so the chart is large, its axis labels were enlarged at
+ * capture, and each series' latest figure is set in large type above it (the
+ * chart's own end labels, enlarged, run into its lines). Pure, so the unit tests
+ * pin it; the capture script supplies the headline, the chart screenshot, the
+ * figures and the fonts.
  */
 
 /** LinkedIn's preferred 1.91:1 (GitHub and X crop it to fit). */
@@ -22,7 +24,12 @@ export interface SocialCard {
   card: string;
   /** Geist Sans and Geist Mono as woff2 data URIs, so the page needs no network. */
   fonts: { sans: string; mono: string };
+  /** Each series' latest figure, with its line's colour, read off the chart. */
+  figures?: { name: string; amount: string; color: string }[];
 }
+
+// A computed colour from the page: rgb() or a hex value, nothing else.
+const COLOR = /^(rgb\(\d{1,3}, \d{1,3}, \d{1,3}\)|#[0-9a-f]{3,8})$/i;
 
 const TREND_ICON =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.4" ' +
@@ -37,6 +44,12 @@ export function socialCardHtml(card: SocialCard): string {
   const { width, height } = SOCIAL_SIZE;
   const chips = card.chips
     .map((chip, index) => `<span class="pill">${index === 0 ? '<span class="dot"></span>' : ""}${escape(chip)}</span>`)
+    .join("");
+  const figures = (card.figures ?? [])
+    .map(({ name, amount, color }) => {
+      const swatch = COLOR.test(color) ? `<span class="swatch" style="background:${color}"></span>` : "";
+      return `<span class="figure">${swatch}${escape(name)} <b>${escape(amount)}</b></span>`;
+    })
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 @font-face{font-family:Geist;src:url(${card.fonts.sans}) format("woff2");font-weight:100 900}
@@ -54,14 +67,19 @@ h1 span{color:#8a93a0}
 .chips{position:absolute;left:56px;bottom:104px;width:420px;display:flex;flex-wrap:wrap;gap:10px}
 .pill{display:inline-flex;align-items:center;gap:9px;white-space:nowrap;border:1px solid #2d323b;background:#0e1014;border-radius:999px;padding:9px 16px;font-size:19px;color:#c5cad3}
 .dot{width:9px;height:9px;border-radius:50%;background:#34d399}
-.card{position:absolute;width:704px;right:28px;top:50%;transform:translateY(-50%);border-radius:18px;border:1px solid #2d323b;
+.card{position:absolute;width:704px;right:28px;top:calc(50% + 30px);transform:translateY(-50%);border-radius:18px;border:1px solid #2d323b;
   box-shadow:0 30px 80px rgb(0 0 0/.6),0 0 0 1px rgb(255 255 255/.03)}
+.figures{position:absolute;right:30px;top:34px;display:flex;gap:30px;font-size:25px;color:#8a93a0}
+.figure{display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
+.figure b{color:#f3f4f6;font-weight:650;font-variant-numeric:tabular-nums}
+.swatch{width:18px;height:4px;border-radius:2px}
 .repo{position:absolute;left:56px;bottom:52px;font-family:GeistMono,monospace;font-size:18px;color:#69717e}
 </style></head><body>
 <div class="glow"></div>
 <div class="brand"><div class="logo">${TREND_ICON}</div>Onfile</div>
 <h1>${escape(card.lead)}<br><span>${escape(card.muted)}</span></h1>
 <div class="chips">${chips}</div>
+<div class="figures">${figures}</div>
 <img class="card" src="${card.card}" alt="">
 <div class="repo">${escape(card.repo)}</div>
 </body></html>`;
