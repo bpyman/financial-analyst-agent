@@ -1118,7 +1118,8 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
             f"{_period_label(after.start_date, after.end_date)} vs "
             f"{_period_label(before.start_date, before.end_date)}"
         )
-        form, accession_number, source_url = after.form, after.accession_number, after.source_url
+        concept, form = after.concept, after.form
+        accession_number, source_url = after.accession_number, after.source_url
     change = _COMPARISON_LABELS.get(row.comparison or "")
     metric_label = _metric_heading(row.metric) + (
         f" · {change.lower()} change" if change else ""

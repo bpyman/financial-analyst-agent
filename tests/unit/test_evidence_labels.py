@@ -117,6 +117,7 @@ def test_a_change_names_both_quarters_and_both_filings() -> None:
 
     assert item.period_label == "Oct 1, 2025 – Dec 31, 2025 vs Oct 1, 2024 – Dec 31, 2024"
     assert item.accession_number == "0000059478-26-000010"
+    assert item.concept == "Revenues"
     assert "0000059478-25-000010" in item.selection_rule
     assert "0000059478-26-000010" in item.selection_rule
 
