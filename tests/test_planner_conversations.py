@@ -205,7 +205,8 @@ def test_an_unknown_word_is_named(runtime, question: str, word: str) -> None:  #
 def test_everyday_wording_finds_the_metric(runtime, question: str, metric: str) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _answers(runtime, question)
     assert answer.fact_card is not None, answer.message
-    assert answer.fact_card.metric_header == metric
+    # A trailing-year figure says so after its name ("P/E ratio (trailing year)").
+    assert answer.fact_card.metric_header.removesuffix(" (trailing year)") == metric
 
 
 def test_how_much_money_did_apple_make_asks_which(runtime) -> None:  # type: ignore[no-untyped-def]

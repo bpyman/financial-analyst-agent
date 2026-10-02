@@ -13,6 +13,9 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "ProfitLoss"),
     ],
     Metric.REVENUE: [
+        # The first of these the filing's own lines add up to wins, not merely
+        # the first reported (``sec_facts._total_revenue``); a bank that tags
+        # none of the totals gets net interest plus noninterest income.
         # The income statement's total first: contract revenue leaves out
         # insurance premiums, rent, financing income and membership fees
         # (Berkshire, Welltower, GM Financial, Walmart).
@@ -91,8 +94,10 @@ METRIC_CONCEPTS: dict[Metric, list[tuple[str, str]]] = {
         ("us-gaap", "PaymentsOfDividends"),
     ],
     Metric.DIVIDENDS_PER_SHARE: [
-        ("us-gaap", "CommonStockDividendsPerShareDeclared"),
+        # What a quarter paid first: Walmart declares a year's dividend in its
+        # first quarter, so its declared figure reads $0.00 for the other three.
         ("us-gaap", "CommonStockDividendsPerShareCashPaid"),
+        ("us-gaap", "CommonStockDividendsPerShareDeclared"),
     ],
     Metric.CASH: [
         ("us-gaap", "CashAndCashEquivalentsAtCarryingValue"),
@@ -110,6 +115,15 @@ METRIC_CONCEPTS[Metric.AMORTIZATION_OF_INTANGIBLES] = [
 ]
 # The trailing year reads the same concepts as the quarter it sums.
 METRIC_CONCEPTS[Metric.NET_INCOME_TTM] = METRIC_CONCEPTS[Metric.NET_INCOME]
+METRIC_CONCEPTS[Metric.NET_INTEREST_INCOME] = [("us-gaap", "InterestIncomeExpenseNet")]
+METRIC_CONCEPTS[Metric.NONINTEREST_INCOME] = [("us-gaap", "NoninterestIncome")]
+
+# Totals that tell which revenue line is the income statement's total: costs and
+# expenses plus operating income add up to it (Verra Mobility tags one segment
+# as Revenues). Read with the catalog's own concepts.
+REVENUE_CHECK_CONCEPTS: tuple[tuple[str, str], ...] = (("us-gaap", "CostsAndExpenses"),)
+# Weighted diluted shares beside a per-share figure: a split shows as a jump.
+SHARE_COUNT_CONCEPT = ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding")
 
 # Costs that show "cost of revenue" is not all of a company's cost of revenue: an
 # insurer's benefits and claims (UnitedHealth's medical costs) sit beside the cost
@@ -118,6 +132,14 @@ GROSS_PROFIT_EXCLUDING_CONCEPTS: tuple[tuple[str, str], ...] = (
     ("us-gaap", "PolicyholderBenefitsAndClaimsIncurredNet"),
     ("us-gaap", "PolicyholderBenefitsAndClaimsIncurredHealthCare"),
     ("us-gaap", "BenefitsLossesAndExpenses"),
+)
+
+# Every concept any metric or check reads; the rest of a facts file is dropped.
+READ_CONCEPTS: frozenset[tuple[str, str]] = (
+    frozenset(concept for candidates in METRIC_CONCEPTS.values() for concept in candidates)
+    | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
+    | frozenset(REVENUE_CHECK_CONCEPTS)
+    | {SHARE_COUNT_CONCEPT}
 )
 
 # Per-share amounts are reported in USD per share and are never derived by

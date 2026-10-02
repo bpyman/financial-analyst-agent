@@ -8,6 +8,7 @@ quarters (ADR 0007).
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -97,7 +98,75 @@ def periods_from_filings(
             quarter=quarter,
             form=filing.form,
         )
-    return _sequenced(tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True)))
+    newest_first = tuple(sorted(by_end.values(), key=lambda period: period.end, reverse=True))
+    return _without_repeats(_sequenced(newest_first))
+
+
+Label = tuple[int, int]
+# A quarter is 13 weeks: how many lie between two period ends.
+_QUARTER_DAYS = 91.3
+
+
+def _label(period: FiscalPeriod) -> Label | None:
+    if period.fiscal_year is None or period.quarter is None:
+        return None
+    return period.fiscal_year, period.quarter
+
+
+def _without_repeats(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
+    """Newest-first periods, where two that declare one quarter are told apart.
+
+    One of two periods declaring the same fiscal quarter is mislabelled
+    (Salesforce's 10-K for the year ended January 2026 declares fiscal 2025,
+    as did the one before; Blackstone's second 10-Q of 2024 declares Q1).
+    Each takes the label its position gives it: the quarters elapsed since
+    the period before it, or until the one after, from that period's own label,
+    when that label is not repeated. The one whose label its position confirms
+    keeps it; a repair can expose the next (CrowdStrike's 10-Ks each declare
+    the year before), so this runs until no label repeats or nothing changes.
+    """
+    ordered = list(reversed(periods))
+    for _ in ordered:
+        counts = Counter(label for period in ordered if (label := _label(period)) is not None)
+        repeated = {label for label, count in counts.items() if count > 1}
+        if not repeated:
+            break
+        fixes = {
+            index: expected
+            for index, period in enumerate(ordered)
+            if _label(period) in repeated
+            and (expected := _positional_label(ordered, index, repeated)) is not None
+            and expected != _label(period)
+        }
+        if not fixes:
+            break
+        for index, (year, quarter) in fixes.items():
+            ordered[index] = replace(ordered[index], fiscal_year=year, quarter=quarter)
+    return tuple(reversed(ordered))
+
+
+def _positional_label(
+    ordered: list[FiscalPeriod], index: int, repeated: set[Label]
+) -> Label | None:
+    """The label a period's neighbours give it, when those that are trusted agree."""
+    period = ordered[index]
+    found: set[Label] = set()
+    for step in (-1, 1):
+        other = index + step
+        if not 0 <= other < len(ordered):
+            continue
+        label = _label(ordered[other])
+        if label is None or label in repeated:
+            continue
+        quarters = round(abs((period.end - ordered[other].end).days) / _QUARTER_DAYS)
+        if quarters < 1:
+            continue
+        position = label[0] * 4 + label[1] - 1 - step * quarters
+        year, quarter = divmod(position, 4)
+        # A 10-K closes a fiscal year; a 10-Q never does.
+        if (quarter + 1 == 4) == (period.form in ANNUAL_FORMS):
+            found.add((year, quarter + 1))
+    return found.pop() if len(found) == 1 else None
 
 
 def _sequenced(periods: tuple[FiscalPeriod, ...]) -> tuple[FiscalPeriod, ...]:
@@ -216,17 +285,19 @@ def gross_profit_from_components(revenue: FinancialFact, cost: FinancialFact) ->
             metric=fact.metric.value,
         )
 
+    derivation = Derivation(
+        method="revenue_minus_cost_of_revenue",
+        label=GROSS_PROFIT_LABEL,
+        parts=[part(revenue), part(cost)],
+    )
     return revenue.model_copy(
         update={
             "metric": Metric.GROSS_PROFIT,
             "value": revenue.value - cost.value,
             "concept": f"{revenue.concept} − {cost.concept}",
             "directly_reported": False,
-            "derivation": Derivation(
-                method="revenue_minus_cost_of_revenue",
-                label=GROSS_PROFIT_LABEL,
-                parts=[part(revenue), part(cost)],
-            ),
+            "derivation": derivation,
+            "year_earlier": combined_year_earlier([revenue, cost], derivation, signs=(1, -1)),
         }
     )
 
@@ -241,6 +312,14 @@ def revenue_from_components(
     filed: FinancialFact, gross: FinancialFact, cost: FinancialFact
 ) -> FinancialFact:
     """Revenue as gross profit plus cost of revenue, when the filed revenue is mis-scaled."""
+    derivation = Derivation(
+        method="sum",
+        label=REVENUE_FROM_COMPONENTS_LABEL,
+        parts=[
+            _derivation_part(gross).model_copy(update={"metric": gross.metric.value}),
+            _derivation_part(cost).model_copy(update={"metric": cost.metric.value}),
+        ],
+    )
     return filed.model_copy(
         update={
             "value": gross.value + cost.value,
@@ -249,23 +328,28 @@ def revenue_from_components(
             "form": gross.form,
             "source_url": gross.source_url,
             "directly_reported": False,
-            "derivation": Derivation(
-                method="sum",
-                label=REVENUE_FROM_COMPONENTS_LABEL,
-                parts=[
-                    _derivation_part(gross).model_copy(update={"metric": gross.metric.value}),
-                    _derivation_part(cost).model_copy(update={"metric": cost.metric.value}),
-                ],
-            ),
+            "derivation": derivation,
+            "year_earlier": combined_year_earlier([gross, cost], derivation),
         }
     )
 
 
 DEPRECIATION_AMORTIZATION_LABEL = "Depreciation plus amortization of intangible assets"
+BANK_REVENUE_LABEL = "Net interest income plus noninterest income"
 
 
-def sum_of_components(metric: Metric, facts: list[FinancialFact]) -> FinancialFact:
-    """One amount as the sum of reported parts that cover the same period."""
+def sum_of_components(
+    metric: Metric,
+    facts: list[FinancialFact],
+    *,
+    label: str = DEPRECIATION_AMORTIZATION_LABEL,
+    name_parts: bool = False,
+) -> FinancialFact:
+    """One amount as the sum of reported parts that cover the same period.
+
+    ``name_parts`` labels each part by its own metric (a bank's net interest
+    income), where the parts are not halves of the same metric.
+    """
     first = facts[0]
     period = (first.start_date, first.end_date)
     if any((fact.start_date, fact.end_date) != period for fact in facts):
@@ -273,17 +357,64 @@ def sum_of_components(metric: Metric, facts: list[FinancialFact]) -> FinancialFa
             "The parts of the amount cover different periods",
             details={"metric": metric.value},
         )
+    derivation = Derivation(
+        method="sum",
+        label=label,
+        parts=[
+            _derivation_part(fact).model_copy(
+                update={"metric": fact.metric.value if name_parts else None}
+            )
+            for fact in facts
+        ],
+    )
     return first.model_copy(
         update={
             "metric": metric,
             "value": sum((fact.value for fact in facts), start=Decimal(0)),
             "concept": " + ".join(fact.concept for fact in facts),
             "directly_reported": False,
-            "derivation": Derivation(
-                method="sum",
-                label=DEPRECIATION_AMORTIZATION_LABEL,
-                parts=[_derivation_part(fact) for fact in facts],
+            "derivation": derivation,
+            "year_earlier": combined_year_earlier(facts, derivation),
+        }
+    )
+
+
+def combined_year_earlier(
+    facts: list[FinancialFact], derivation: Derivation, *, signs: tuple[int, ...] = ()
+) -> DerivationPart | None:
+    """The year-earlier amount by the same sum or difference, when every part has one.
+
+    Each part's comparative comes from that part's own filing, so a restated part
+    stays restated. None when any part lacks a comparative or they cover
+    different periods.
+    """
+    befores = [fact.year_earlier for fact in facts]
+    if any(before is None for before in befores):
+        return None
+    parts = [before for before in befores if before is not None]
+    if len({(part.start_date, part.end_date) for part in parts}) != 1:
+        return None
+    weights = signs or (1,) * len(parts)
+    value = sum(
+        (part.value * weight for part, weight in zip(parts, weights, strict=True)),
+        start=Decimal(0),
+    )
+    named = [
+        part.model_copy(update={"metric": inner.metric or part.metric})
+        for part, inner in zip(parts, derivation.parts, strict=True)
+    ]
+    return parts[0].model_copy(
+        update={
+            "value": value,
+            "concept": " ".join(
+                [parts[0].concept]
+                + [
+                    f"{'+' if weight > 0 else '−'} {part.concept}"
+                    for part, weight in zip(parts[1:], weights[1:], strict=True)
+                ]
             ),
+            "metric": None,
+            "derivation": derivation.model_copy(update={"parts": named}),
         }
     )
 

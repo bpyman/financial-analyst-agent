@@ -201,9 +201,10 @@ def test_year_over_year_shows_a_yoy_change_for_each_quarter(runtime) -> None:  #
     answers = _conversation(runtime, "Apple revenue last 4 quarters", "show year-over-year")
     table = answers[1].table
     assert table is not None
-    # Each quarter's year-over-year change sits beside it, in its own column.
+    # Each quarter's year-over-year change sits beside it, in its own column; the
+    # older quarters' changes read the comparatives their own 10-Qs report.
     changes = [row[table.headers.index("YoY change")] for row in table.rows]
-    assert sum(1 for change in changes if change) == 4
+    assert len(changes) == 8 and all(changes)
     assert "QoQ change" not in table.headers
 
 

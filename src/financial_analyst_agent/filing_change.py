@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
 from datetime import date
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
@@ -314,18 +315,25 @@ def _blocks(section_text: str) -> list[str]:
 
 
 def _paragraphs(section_text: str) -> list[str]:
-    """The section's prose: no running footers, and no rows that are mostly figures."""
+    """The section's prose: no running footers, headings, or rows that are mostly figures."""
     blocks = _blocks(section_text)
     # A running footer repeats word for word but for its page number ("Apple Inc. |
-    # Q3 2026 Form 10-Q | 18"); a segment's "Revenue increased $7.9 billion"
-    # repeats only its wording, and each is a disclosure.
-    repeats = Counter(_PAGE_NUMBER.sub("", block) for block in blocks)
+    # Q3 2026 Form 10-Q | 18", "37 Honeywell International Inc."); a segment's
+    # "Revenue increased $7.9 billion" repeats only its wording, and each is a
+    # disclosure.
+    repeats = Counter(_unpaged(block) for block in blocks)
     return [
         block
         for block in blocks
-        if repeats[_PAGE_NUMBER.sub("", block)] < _RUNNING_HEADER_REPEATS
+        if repeats[_unpaged(block)] < _RUNNING_HEADER_REPEATS
         and not _is_figures(block)
+        # A heading on its own is where a disclosure sits, not one.
+        and not _is_heading(block)
     ]
+
+
+def _unpaged(block: str) -> str:
+    return _PAGE_NUMBER.sub("", _LEADING_PAGE_NUMBER.sub("", block))
 
 
 def _subsections(section_text: str) -> dict[str, str]:
@@ -345,6 +353,10 @@ def _subsections(section_text: str) -> dict[str, str]:
         ):
             heading = _readable_heading(line)
         else:
+            if _FORWARD_LOOKING.search(heading) and not _FORWARD_LOOKING.search(line):
+                # The forward-looking note ends where its subject does: Microsoft's
+                # MD&A introduction follows it with no heading of its own.
+                heading = ""
             under.setdefault(line, heading)
     for block in _blocks(section_text):
         # A block of several lines sits under its first line's heading.
@@ -373,6 +385,11 @@ def _is_heading(line: str) -> bool:
         return False
     if _LINE_ITEM.match(line) or not line[:1].isalpha() or not line[:1].isupper():
         return False
+    # A table row ("ROE 34%", "ROE NM NM 24 % 18 %") titled like a heading.
+    if any(
+        char.isdigit() or char in "%$" for char in line
+    ) or _TABLE_MARKS & {word.casefold() for word in line.split()}:
+        return False
     words = [word for word in line.split() if word[:1].isalpha()]
     minor = {"and", "of", "the", "for", "in", "on", "to", "a", "an", "or", "with", "by"}
     capitalised = [word for word in words if word[:1].isupper() or word.casefold() in minor]
@@ -380,6 +397,9 @@ def _is_heading(line: str) -> bool:
 
 
 _MAX_HEADING = 90
+_FORWARD_LOOKING = re.compile(r"forward[\s-]looking", re.IGNORECASE)
+# Cells a table row holds that a heading never does: not meaningful, not applicable.
+_TABLE_MARKS = frozenset({"nm", "na", "n/a"})
 _HEADING_WORDS = 10
 
 
@@ -404,6 +424,7 @@ def _figure_rows(section_text: str) -> set[str]:
 
 
 _PAGE_NUMBER = re.compile(r"[\s|•·–-]*\d{1,3}\s*$")
+_LEADING_PAGE_NUMBER = re.compile(r"^\d{1,3}(?=\s+[A-Z])[\s|•·–-]*")
 _MONTH = (
     r"(?:January|February|March|April|May|June|July|August|September|October|November|December"
     r"|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?"
@@ -423,6 +444,77 @@ def _undated(paragraph: str) -> str:
     return _DATES.sub("<date>", " ".join(paragraph.split()))
 
 
+# Typography a filing agent changes between filings: curly quotes and dashes.
+_TYPOGRAPHY = str.maketrans(
+    {"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"', "\u2014": "-", "\u2013": "-"}
+)
+# A footnote mark glued to a word, "revenue(c)" or "(a)Included": the letters
+# move as notes are added, the disclosure does not. "$(11)" is an amount.
+_FOOTNOTE_MARK = re.compile(
+    r"(?<=[^\s$(])\((?:[a-z]|\d{1,2})\)|(?:^|(?<=\s))\((?:[a-z]|\d{1,2})\)(?=[A-Z])"
+)
+
+
+def _comparable(paragraph: str) -> str:
+    """The paragraph as compared: dates masked, typography and footnote marks set aside."""
+    return _undated(_FOOTNOTE_MARK.sub("", paragraph.translate(_TYPOGRAPHY)))
+
+
+def _words(paragraph: str) -> frozenset[str]:
+    # Words alone: an edited paragraph's figures all change, its wording mostly does not.
+    return frozenset(re.findall(r"[a-z][a-z']*", _comparable(paragraph).casefold()))
+
+
+def _similarity(left: frozenset[str], right: frozenset[str]) -> float:
+    union = left | right
+    return len(left & right) / len(union) if union else 1.0
+
+
+# Paragraphs sharing this share of their words are one paragraph, edited.
+_SAME_PARAGRAPH = 0.5
+# A moved paragraph must share more to be the same one.
+_MOVED_PARAGRAPH = 0.8
+# Pairs scored to align a replaced run; beyond this the run is not aligned.
+_MAX_PAIRINGS = 250_000
+
+
+def _aligned(left: list[str], right: list[str]) -> list[tuple[int | None, int | None]]:
+    """A replaced run's paragraphs paired in order by shared words; the rest unpaired.
+
+    The diff reports a run of old paragraphs replaced by a run of new ones;
+    position alone pairs a paragraph with whatever stands in its place (one
+    sentence with 80 new risk factors), so each is paired with the one most
+    like it, keeping their order.
+    """
+    n, m = len(left), len(right)
+    if n * m > _MAX_PAIRINGS:
+        return [(i, None) for i in range(n)] + [(None, j) for j in range(m)]
+    words_left = [_words(text) for text in left]
+    words_right = [_words(text) for text in right]
+    score = [[0.0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            similar = _similarity(words_left[i], words_right[j])
+            paired = similar + score[i + 1][j + 1] if similar >= _SAME_PARAGRAPH else -1.0
+            score[i][j] = max(paired, score[i + 1][j], score[i][j + 1])
+    pairs: list[tuple[int | None, int | None]] = []
+    i = j = 0
+    while i < n and j < m:
+        similar = _similarity(words_left[i], words_right[j])
+        if similar >= _SAME_PARAGRAPH and score[i][j] == similar + score[i + 1][j + 1]:
+            pairs.append((i, j))
+            i, j = i + 1, j + 1
+        elif score[i][j] == score[i + 1][j]:
+            pairs.append((i, None))
+            i += 1
+        else:
+            pairs.append((None, j))
+            j += 1
+    pairs.extend((index, None) for index in range(i, n))
+    pairs.extend((None, index) for index in range(j, m))
+    return pairs
+
+
 def diff_paragraphs(
     older: str,
     newer: str,
@@ -440,61 +532,143 @@ def diff_paragraphs(
     # Matched with dates masked: a paragraph that differs only by its dates ("the
     # quarter ended March 31, 2026" a year on) is the same disclosure, not a change.
     matcher = SequenceMatcher(
-        a=[_undated(text) for text in left], b=[_undated(text) for text in right], autojunk=False
+        a=[_comparable(text) for text in left],
+        b=[_comparable(text) for text in right],
+        autojunk=False,
     )
-    changes: list[DisclosureChange] = []
     label = SECTION_LABELS[section]
+
+    def added(paragraph: str) -> DisclosureChange:
+        return DisclosureChange(
+            section=section,
+            section_label=label,
+            change_kind="added",
+            after_text=paragraph,
+            subsection=under_right.get(paragraph, ""),
+            older_accession=older_accession,
+            newer_accession=newer_accession,
+            older_url=filing_anchor_url(older_url, label),
+            newer_url=filing_anchor_url(newer_url, paragraph),
+        )
+
+    def removed(paragraph: str) -> DisclosureChange:
+        return DisclosureChange(
+            section=section,
+            section_label=label,
+            change_kind="removed",
+            before_text=paragraph,
+            subsection=under_left.get(paragraph, ""),
+            older_accession=older_accession,
+            newer_accession=newer_accession,
+            older_url=filing_anchor_url(older_url, paragraph),
+            newer_url=filing_anchor_url(newer_url, label),
+        )
+
+    def changed(before: str, after: str) -> DisclosureChange:
+        return DisclosureChange(
+            section=section,
+            section_label=label,
+            change_kind="changed",
+            before_text=before,
+            after_text=after,
+            subsection=under_right.get(after, "") or under_left.get(before, ""),
+            older_accession=older_accession,
+            newer_accession=newer_accession,
+            older_url=filing_anchor_url(older_url, before),
+            newer_url=filing_anchor_url(newer_url, after),
+        )
+
+    changes: list[DisclosureChange] = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             continue
-        if tag == "insert":
-            for paragraph in right[j1:j2]:
-                changes.append(
-                    DisclosureChange(
-                        section=section,
-                        section_label=label,
-                        change_kind="added",
-                        after_text=paragraph,
-                        subsection=under_right.get(paragraph, ""),
-                        older_accession=older_accession,
-                        newer_accession=newer_accession,
-                        older_url=filing_anchor_url(older_url, label),
-                        newer_url=filing_anchor_url(newer_url, paragraph),
-                    )
-                )
-        elif tag == "delete":
-            for paragraph in left[i1:i2]:
-                changes.append(
-                    DisclosureChange(
-                        section=section,
-                        section_label=label,
-                        change_kind="removed",
-                        before_text=paragraph,
-                        subsection=under_left.get(paragraph, ""),
-                        older_accession=older_accession,
-                        newer_accession=newer_accession,
-                        older_url=filing_anchor_url(older_url, paragraph),
-                        newer_url=filing_anchor_url(newer_url, label),
-                    )
-                )
+        for i, j in _aligned(left[i1:i2], right[j1:j2]):
+            if i is not None and j is not None:
+                before, after = left[i1 + i], right[j1 + j]
+                if _comparable(before) != _comparable(after):
+                    changes.append(changed(before, after))
+            elif j is not None:
+                changes.append(added(right[j1 + j]))
+            elif i is not None:
+                changes.append(removed(left[i1 + i]))
+    return _rejoin_moved(changes, changed)
+
+
+def _rejoin_moved(
+    changes: list[DisclosureChange],
+    changed: Callable[[str, str], DisclosureChange],
+) -> list[DisclosureChange]:
+    """One change for a paragraph that moved and was edited; none for one that only moved.
+
+    The diff sees a moved paragraph as removed in one place and added in
+    another (Accenture's one-word edit to a risk it listed elsewhere).
+    """
+    joined: list[DisclosureChange | None] = list(changes)
+    for index, item in enumerate(changes):
+        if item.change_kind != "removed":
+            continue
+        words = _words(item.before_text)
+        match = next(
+            (
+                other
+                for other, candidate in enumerate(joined)
+                if candidate is not None
+                and candidate.change_kind == "added"
+                and _similarity(words, _words(candidate.after_text)) >= _MOVED_PARAGRAPH
+            ),
+            None,
+        )
+        if match is None:
+            continue
+        after = joined[match]
+        assert after is not None
+        if _comparable(item.before_text) == _comparable(after.after_text):
+            joined[match] = None
         else:
-            before = "\n\n".join(left[i1:i2])
-            after = "\n\n".join(right[j1:j2])
-            changes.append(
-                DisclosureChange(
-                    section=section,
-                    section_label=label,
-                    change_kind="changed",
-                    before_text=before,
-                    after_text=after,
-                    subsection=under_right.get(right[j1], "") or under_left.get(left[i1], ""),
-                    older_accession=older_accession,
-                    newer_accession=newer_accession,
-                    older_url=filing_anchor_url(older_url, before),
-                    newer_url=filing_anchor_url(newer_url, after),
-                )
-            )
-    return changes
+            joined[match] = changed(item.before_text, after.after_text)
+        joined[index] = None
+    return [item for item in joined if item is not None]
+
+
+def cap_changes(changes: list[DisclosureChange]) -> tuple[list[DisclosureChange], str]:
+    """The changes shown, at most ``MAX_CHANGES_SHOWN``, shared among the sections.
+
+    Capped in filing order across the whole filing, a long MD&A (JPMorgan's 274
+    changes) left Risk Factors none. Each section gets an equal share; what one
+    leaves unused goes to the others. The banner says what was left out.
+    """
+    counts = Counter(item.section for item in changes)
+    if len(changes) <= MAX_CHANGES_SHOWN:
+        return changes, ""
+    budget = dict.fromkeys(counts, 0)
+    left = MAX_CHANGES_SHOWN
+    while left > 0:
+        open_sections = [section for section in counts if budget[section] < counts[section]]
+        if not open_sections:
+            break
+        share = max(1, left // len(open_sections))
+        for section in open_sections:
+            grant = min(share, counts[section] - budget[section], left)
+            budget[section] += grant
+            left -= grant
+    shown: list[DisclosureChange] = []
+    taken = Counter[str]()
+    for item in changes:
+        if taken[item.section] < budget[item.section]:
+            shown.append(item)
+            taken[item.section] += 1
+    parts = [
+        f"all {counts[section]} in {SECTION_LABELS[section]}"
+        if budget[section] == counts[section]
+        else f"the first {budget[section]} of {counts[section]} in {SECTION_LABELS[section]}"
+        for section in counts
+    ]
+    banner = f"Showing {_join(parts)} changes, in the order they appear in the filing."
+    return shown, banner
+
+
+def _join(parts: list[str]) -> str:
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def parse_sections(raw: str) -> tuple[SectionId, ...]:
@@ -918,12 +1092,9 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
             f"{figure_rows} table {rows} of figures changed too and are left out here; "
             "ask for a metric to see the figures with their sources."
         )
-    if len(changes) > MAX_CHANGES_SHOWN:
-        banners.append(
-            f"Showing the first {MAX_CHANGES_SHOWN} of {len(changes)} changes, in the "
-            "order they appear in the filing."
-        )
-        changes = changes[:MAX_CHANGES_SHOWN]
+    changes, capped = cap_changes(changes)
+    if capped:
+        banners.append(capped)
     # The model reads the first changes, each cut to a length it can weigh.
     grounding = json.dumps(
         [
