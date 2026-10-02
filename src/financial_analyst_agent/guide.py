@@ -66,7 +66,56 @@ _ADVICE = re.compile(
     r"|worth (?:buying|investing)|invest in|price target|stock (?:go up|go down|rise|fall)"
     r"|buy or sell|undervalued|overvalued|buy the dip)\b"
     r"|\b(?:is|are)\b.{1,40}?\ba (?:good |bad |strong |safe )?(?:buy|sell|hold)\b"
+    # "Best stock to buy?", "what stocks should I buy", "stock tips".
+    r"|\b(?:best|top|hottest|safest) (?:stocks?|shares?|investments?|picks?)"
+    r"(?: to (?:buy|own|invest in|hold))?\b"
+    r"|\b(?:which|what) (?:stocks?|shares?|companies) (?:to|should i|do i|would you) "
+    r"(?:buy|invest|own|pick)\b"
+    r"|\bstock (?:tips?|picks?|recommendations?)\b|\bwhere (?:should|do) i invest\b"
 )
+STOCK_PICKS_MESSAGE = (
+    "I don't give investment advice or pick stocks. I can show what companies' filings "
+    "report, so you can compare them yourself, for example “Top 5 semiconductor companies "
+    "by revenue” or “Compare Apple and Microsoft net margin”."
+)
+ENGLISH_MESSAGE = (
+    "I read questions in English for now. Try, for example, “What was Apple's revenue "
+    "last quarter?”"
+)
+# Words of other languages a finance question uses; with no catalog metric in
+# the question, they mean it was not asked in English.
+_FOREIGN_WORDS = frozenset(
+    """
+    cuál cuáles cual fueron los las ingresos ganancias beneficio último trimestre empresa
+    qué cuánto wie hoch war der die das umsatz gewinn von quartal welche ist quel quelle
+    est le les chiffre d'affaires bénéfice trimestre dernier quanto receita lucro
+    """.split()  # noqa: SIM905
+)
+_NON_LATIN = re.compile(r"[Ѐ-ӿ֐-ۿऀ-ॿ぀-ヿ㐀-鿿가-힯]")
+NOT_OPERATING_MESSAGE = (
+    "SPACs, business development companies, funds and ETFs aren't operating companies, "
+    "so the snapshot leaves them out and they can't be ranked or looked up. Rankings "
+    "cover operating companies, for example “Top 5 banks by revenue”."
+)
+_NOT_OPERATING_GROUP = re.compile(
+    r"\b(?:spacs?|blank[- ]check|bdcs?|business development compan(?:y|ies)|etfs?"
+    r"|(?:mutual |index |hedge )?funds?|closed[- ]end)\b"
+)
+_RANKING_WORDS = re.compile(r"\b(?:top|biggest|largest|leading|rank(?:ed|ing)?|best)\b")
+ETF_MESSAGE = (
+    "{ticker} is an exchange-traded fund, not an operating company, so it files no 10-Q "
+    "figures to look up. Ask about a company it holds, for example “Apple revenue”."
+)
+# Funds people name by ticker that SEC's company list does not hold.
+_ETF_TICKERS = frozenset(
+    """
+    QQQ VOO VTI IVV IWM DIA GLD SLV ARKK XLK XLF XLE XLV VGT SCHD TLT HYG LQD EEM EFA
+    VEA VWO BND AGG SMH SOXX TQQQ SQQQ VNQ JEPI VIG VYM IEMG IEFA RSP
+    """.split()  # noqa: SIM905
+)
+_ETF_MENTION = re.compile(r"(?<![\w$])\$?([A-Z]{3,5})\b")
+NEVER_MIND_MESSAGE = "Okay, set that aside. Ask about any company, industry or period."
+_NEVER_MIND = re.compile(r"^(?:never ?mind|nevermind|cancel|forget it|nvm|skip it)$")
 START_OVER_MESSAGE = "Started over. Ask about any company, industry or period."
 UNDO_MESSAGE = (
     "I can't undo a step yet. Say what to change instead (“remove Apple”, “just "
@@ -149,10 +198,12 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
         return _guide(HELP_MESSAGE, list(STARTER_QUESTIONS))
     if _THANKS.match(text) and len(text.split()) <= _THANKS_MAX_WORDS:
         return _guide(THANKS_MESSAGE, list(STARTER_QUESTIONS[:3]))
+    if _NEVER_MIND.match(text):
+        return _guide(NEVER_MIND_MESSAGE, list(STARTER_QUESTIONS[:3]))
     if _ADVICE.search(text):
         named = _named_company(message, index) or _spec_company(spec)
         if named is None:
-            return _guide(ADVICE_MESSAGE.format(subject="companies'"), list(STARTER_QUESTIONS))
+            return _guide(STOCK_PICKS_MESSAGE, list(STARTER_QUESTIONS[:3]))
         name, _query = named
         return _guide(
             ADVICE_MESSAGE.format(subject=f"{name}'s"),
@@ -162,6 +213,13 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
                 f"What changed in {name}'s latest 10-Q?",
             ],
         )
+    if _not_english(text):
+        return _guide(ENGLISH_MESSAGE, list(STARTER_QUESTIONS[:3]))
+    if _NOT_OPERATING_GROUP.search(text) and _RANKING_WORDS.search(text):
+        return _guide(NOT_OPERATING_MESSAGE, ["Top 5 banks by revenue", STARTER_QUESTIONS[2]])
+    etf = _etf_ticker(message, index)
+    if etf is not None:
+        return _guide(ETF_MESSAGE.format(ticker=etf), list(STARTER_QUESTIONS[:3]))
     if _START_OVER.match(text):
         return _guide(START_OVER_MESSAGE, list(STARTER_QUESTIONS))
     if _UNDO.match(text):
@@ -192,6 +250,25 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
         name, _query = named
         return _guide(WHY_MESSAGE, [f"What changed in {name}'s latest 10-Q?"])
     return None
+
+
+def _not_english(text: str) -> bool:
+    """A question in another language: other scripts, or its finance words, and no metric."""
+    from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+    words = set(re.findall(r"[\w'’]+", text))
+    foreign = _NON_LATIN.search(text) is not None or len(words & _FOREIGN_WORDS) >= 2
+    return foreign and resolve_metric_phrase(text).kind == "unknown"
+
+
+def _etf_ticker(message: str, index: Any) -> str | None:
+    """A fund's ticker named on its own ("QQQ revenue"), which no company list holds."""
+    found = [match.group(1) for match in _ETF_MENTION.finditer(message)]
+    etf = next((ticker for ticker in found if ticker in _ETF_TICKERS), None)
+    if etf is None:
+        return None
+    find = getattr(index, "find", None)
+    return etf if not callable(find) or not find(message) else None
 
 
 def resets_analysis(message: str) -> bool:

@@ -6,6 +6,7 @@ should not depend on these helpers; the conversation seam owns the public API.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Literal
 
@@ -91,9 +92,16 @@ class AnalysisSpec(BaseModel):
     periods: PeriodSelection = Field(default_factory=PeriodSelection)
     operations: tuple[str, ...] = ()
     presentation: Literal["table"] = "table"
-    # Companies a swap ("what about AMD?") replaced, so "which one is more
-    # profitable?" can compare the two the analyst just looked at.
+    # Companies a swap ("what about AMD?") or a new question replaced, so "which
+    # one is more profitable?" and "compare them" reach the ones just looked at.
     earlier_companies: tuple[str, ...] = ()
+    # Every company this thread has looked at, first named first ("compare with
+    # the first one").
+    seen_companies: tuple[str, ...] = ()
+    # The metric "sort by …" ordered the rows by; None orders by the first metric.
+    order_by: str | None = None
+    # The snapshot date a market-data-only analysis reads (market cap, price).
+    as_of: date | None = None
 
 
 class SpecPatch(BaseModel):
@@ -113,6 +121,7 @@ class SpecPatch(BaseModel):
     remove_operations: tuple[str, ...] = ()
     set_presentation: Literal["table"] | None = None
     ranked_request: tuple[str, int] | None = None
+    set_order_by: str | None = None
 
 
 class SpecDraft(BaseModel):
@@ -125,6 +134,8 @@ class SpecDraft(BaseModel):
     presentation: Literal["table"] = "table"
     ranked_request: tuple[str, int] | None = None
     earlier_companies: tuple[str, ...] = ()
+    seen_companies: tuple[str, ...] = ()
+    order_by: str | None = None
 
 
 # A ranking lists at most this many companies: each one with a filed metric
@@ -132,6 +143,8 @@ class SpecDraft(BaseModel):
 MAX_RANKED_COMPANIES = 25
 # "Last N quarters" reads at most ten years: more than any filing history here.
 MAX_QUARTERS_ASKED = 40
+# Companies a thread remembers having looked at.
+_MAX_SEEN_COMPANIES = 12
 
 SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"}
@@ -154,18 +167,30 @@ class CompiledTask(BaseModel):
 
 def _company_matches_token(company: ResolvedCompany, token: str) -> bool:
     needle = token.casefold()
-    return needle in {
+    if needle in {
         company.query.casefold(),
         company.name.casefold(),
         company.ticker.casefold(),
         company.cik.casefold(),
-    }
+    }:
+        return True
+    # "remove JPMorgan" names "JPMorgan Chase & Co." by the start of its name.
+    words = " ".join(re.findall(r"[a-z0-9&]+", needle))
+    name = " ".join(re.findall(r"[a-z0-9&]+", company.name.casefold()))
+    return bool(words) and re.match(rf"{re.escape(words)}\b", name) is not None
+
+
+def _seen(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    seen = tuple(dict.fromkeys(company for group in groups for company in group))
+    return seen[:_MAX_SEEN_COMPANIES]
 
 
 def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
     """Apply a proposed patch to the current spec (or empty) → unresolved draft."""
     if patch.mode is None and current is not None:
         raise ValueError("ambiguous patch mode must be clarified before apply_patch")
+    current_queries = tuple(company.query for company in current.companies) if current else ()
+    seen = _seen(current.seen_companies if current else (), current_queries)
     if patch.mode == "replace" or current is None:
         companies = list(patch.add_companies)
         metrics = list(patch.add_metrics)
@@ -173,7 +198,37 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
         operations = list(patch.add_operations)
         presentation = patch.set_presentation or "table"
         ranked = patch.ranked_request
-        earlier: tuple[str, ...] = ()
+        order_by = patch.set_order_by
+        # "Apple revenue", then "Microsoft revenue": "compare them" means both.
+        earlier: tuple[str, ...] = (
+            current_queries
+            if companies and not {query.casefold() for query in current_queries}
+            & {query.casefold() for query in companies}
+            else ()
+        )
+    elif current.constituents is not None and patch.ranked_request is None and (
+        patch.add_companies or patch.remove_companies
+    ):
+        # "add Apple" to the top 5 banks: the ranking becomes those companies.
+        members = [
+            company
+            for company in current.constituents.members
+            if not any(_company_matches_token(company, token) for token in patch.remove_companies)
+        ]
+        companies = [company.query for company in members]
+        companies.extend(token for token in patch.add_companies if token not in companies)
+        metrics = [m for m in current.metrics if m not in patch.remove_metrics]
+        metrics.extend(m for m in patch.add_metrics if m not in metrics)
+        # A plain ranking shows market cap; the companies keep showing it.
+        metrics = metrics or ["market_cap"]
+        periods = patch.set_periods or current.periods
+        dropped = ("rank", *patch.remove_operations)
+        operations = [op for op in current.operations if op not in dropped]
+        operations.extend(op for op in patch.add_operations if op not in operations)
+        presentation = patch.set_presentation or current.presentation
+        ranked = None
+        order_by = patch.set_order_by or current.order_by
+        earlier = ()
     else:
         kept = [
             company
@@ -212,6 +267,7 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
             ranked = (current.constituents.industry, current.constituents.limit)
         else:
             ranked = None
+        order_by = patch.set_order_by or current.order_by
 
     if ranked is not None:
         # Ranked constituents come from the ranking port; ignore model-typed lists.
@@ -225,7 +281,34 @@ def apply_patch(current: AnalysisSpec | None, patch: SpecPatch) -> SpecDraft:
         presentation=presentation,
         ranked_request=ranked,
         earlier_companies=() if ranked is not None else earlier,
+        seen_companies=_seen(seen, tuple(companies)),
+        order_by=order_by if order_by in metrics else None,
     )
+
+
+def emptied_by(
+    current: AnalysisSpec | None, patch: SpecPatch
+) -> Literal["companies", "metrics"] | None:
+    """What an edit would leave the analysis without: "remove Apple" when Apple is all."""
+    if current is None or patch.mode != "extend" or patch.ranked_request is not None:
+        return None
+    if current.constituents is None and current.companies and not patch.add_companies:
+        kept = [
+            company
+            for company in current.companies
+            if not any(_company_matches_token(company, token) for token in patch.remove_companies)
+        ]
+        if not kept:
+            return "companies"
+    # A ranking without its metrics is still a ranking, by market cap.
+    if (
+        current.constituents is None
+        and current.metrics
+        and not patch.add_metrics
+        and set(current.metrics) <= set(patch.remove_metrics)
+    ):
+        return "metrics"
+    return None
 
 
 def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpec:
@@ -273,6 +356,8 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
         operations=tuple(operations),
         presentation=draft.presentation,
         earlier_companies=draft.earlier_companies,
+        seen_companies=draft.seen_companies,
+        order_by=draft.order_by,
     )
 
 

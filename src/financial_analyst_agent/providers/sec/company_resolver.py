@@ -21,6 +21,9 @@ _LEGAL_SUFFIXES = re.compile(
     re.IGNORECASE,
 )
 _MIN_CORE_PREFIX_LEN = 4
+# "MAIN" or "BRK.A": a ticker. One the mapping lacks names no company by prefix
+# ("MAIN" is not MainStreet Bancshares, "CHEV" is not Chevron).
+_TICKER_SHAPE = re.compile(r"[A-Z]{1,5}(?:[.\-/][A-Z])?")
 
 
 def _normalize_text(value: str) -> str:
@@ -81,7 +84,9 @@ def _unique_cik(
     return next(iter(ciks))
 
 
-def _name_match_ciks(query: str, entries: list[dict[str, str]]) -> set[str]:
+def _name_match_ciks(
+    query: str, entries: list[dict[str, str]], *, prefix: bool = True
+) -> set[str]:
     normalized_query = _normalize_text(query)
     exact = {
         entry["cik"]
@@ -100,7 +105,7 @@ def _name_match_ciks(query: str, entries: list[dict[str, str]]) -> set[str]:
     }
     if core_matches:
         return core_matches
-    if len(query_core) < _MIN_CORE_PREFIX_LEN:
+    if not prefix or len(query_core) < _MIN_CORE_PREFIX_LEN:
         return set()
     return {
         entry["cik"]
@@ -118,6 +123,7 @@ def resolve_company(query: str, tickers_payload: dict[str, Any]) -> Company:
     2. Direct CIK
     3. Explicit alias registry
     4. Legal name, then suffix-stripped core name, then unique core prefix
+       (never for a ticker-shaped query: "MAIN" is not MainStreet Bancshares)
     5. Typed not-found or ambiguity error
 
     Ambiguity is raised only when valid matches span multiple distinct CIKs.
@@ -158,7 +164,9 @@ def resolve_company(query: str, tickers_payload: dict[str, Any]) -> Company:
         )
         return _company_from_group(cik, grouped[cik])
 
-    name_ciks = _name_match_ciks(query, entries)
+    name_ciks = _name_match_ciks(
+        query, entries, prefix=_TICKER_SHAPE.fullmatch(query.strip()) is None
+    )
     if not name_ciks:
         raise CompanyNotFoundError(
             f"Company not found for query '{query}'",

@@ -14,6 +14,8 @@ Ambiguous (1:N), only if no unique span matched: `profit margin` → Gross margi
 
 Two unique catalog names in one question are also an ambiguous metric (those names). `costs`, `ROE`, `EBITDA` stay unknown.
 
+Everyday wording added later, unique: `top line` / `topline` / `turnover` → `revenue`; `earn` / `earned` → `net_income`; `depreciation` → `depreciation_amortization`; `research spending` / `spend on research` / `research costs` → `research_and_development`; `pe` → `pe_ratio`; `market value` / `valuation` / `valued` / `worth` → `market_cap`; `net worth` → `shareholders_equity`. The plural `margins` / `profit margins` names all three margins at once, not one of them. Ambiguous: `money` → Revenue, Net income; `expense` / `expenses` → Cost of revenue, Operating expenses. A clarification answer may name several candidates (“gross and net”), all of them (“all”, “both”), or another catalog metric outright; a period on its own (“last 4 quarters”) is held for the open question rather than read as a new one.
+
 ## Considered Options
 
 - **LLM writes a clarifying question** — rejected: the catalog owns the candidate set.

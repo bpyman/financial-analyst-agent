@@ -1217,7 +1217,7 @@ def test_compare_staggered_latest_quarters_uses_vertical_bar() -> None:
     assert chart is not None
     assert chart.kind == "bar"
     assert chart.horizontal is False
-    assert chart.caption == "Latest standalone quarter; periods differ by issuer."
+    assert chart.caption == "Periods differ by issuer: each bar is the company's own quarter."
     assert [record["Company"] for record in chart.records] == ["MSFT", "NVDA"]
 
 

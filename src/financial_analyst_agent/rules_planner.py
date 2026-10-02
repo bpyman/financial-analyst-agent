@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from financial_analyst_agent.contracts import ALLOWED_METRICS, Intent
+from financial_analyst_agent.contracts import ALLOWED_METRICS, DEFAULT_RANK_LIMIT, Intent
 from financial_analyst_agent.filing_change import (
     ACCESSION_PATTERN,
     REVIEWED_SECTIONS,
@@ -32,8 +32,14 @@ from financial_analyst_agent.issuer_index import (
     IssuerIndex,
     expand_groups,
     normalize,
+    plain_text,
 )
-from financial_analyst_agent.services.metric_catalog import metric_phrases, resolve_metric_phrase
+from financial_analyst_agent.services.metric_catalog import (
+    metric_phrases,
+    resolve_metric_phrase,
+    segment_note,
+    segment_term,
+)
 from financial_analyst_agent.universe import (
     DEFAULT_SNAPSHOT_PATH,
     ineligible_issuers,
@@ -71,6 +77,8 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("amd", "AMD"),
     ("jpmorgan", "JPM"),
     ("jp morgan", "JPM"),
+    # "J.P. Morgan" reads as "j p morgan"; "Morgan" alone is Morgan Stanley.
+    ("j p morgan", "JPM"),
     ("jpm", "JPM"),
     ("johnson & johnson", "JNJ"),
     ("johnson and johnson", "JNJ"),
@@ -106,18 +114,22 @@ _ISSUER_PHRASES: tuple[tuple[str, str], ...] = (
     ("pfe", "PFE"),
     ("danaher", "DHR"),
 )
+# The industry a ranking with none named ranks: every snapshot member.
+WHOLE_MARKET = "companies"
 RECORDED_FILING_OLDER = "0000950170-25-061046"
 RECORDED_FILING_NEWER = "0001193125-26-191507"
 
 
 def _company_from_query(normalized: str) -> str:
+    return _lookup_company(normalized) or "unknown"
+
+
+def _lookup_company(normalized: str) -> str | None:
+    """The company a question names, or None: never "unknown" or "the"."""
     companies = _companies_from_query(normalized)
     if companies:
         return companies[0]
-    issuer = _issuer_from_lookup_query(normalized)
-    if issuer:
-        return issuer
-    return "unknown"
+    return _issuer_from_lookup_query(normalized)
 
 
 def _companies_from_query(normalized: str) -> list[str]:
@@ -144,7 +156,18 @@ def _issuer_from_lookup_query(normalized: str) -> str | None:
     if match is None:
         return None
     issuer = match.group(1).strip(" .,?!'")
-    return issuer or None
+    # "what was the revenue?" names no company: "the" is not one.
+    words = [word for word in issuer.split() if word not in _NOT_A_NAME]
+    return " ".join(words) or None
+
+
+# Words a lookup question puts where a company's name would go.
+_NOT_A_NAME = frozenset(
+    """
+    the a an this that its it their his her my our your these those total latest
+    last current quarterly annual reported company's company companies firm stock
+    """.split()  # noqa: SIM905
+)
 
 
 def _limit_from_query(normalized: str) -> int:
@@ -168,8 +191,11 @@ def _industry_from_query(normalized: str) -> str:
     ):
         match = re.search(pattern, normalized)
         if match is not None:
-            return _normalize_industry_label(match.group(1))
-    return "unknown"
+            label = _normalize_industry_label(match.group(1))
+            if label and not re.match(r"(?:by|in terms of)\b", label):
+                return label
+    # "top 5 by revenue" names no industry: the whole snapshot is ranked.
+    return WHOLE_MARKET
 
 
 def _metric_from_query(normalized: str) -> str:
@@ -261,7 +287,8 @@ _LIST_WORDING = re.compile(r"\b(?:vs|versus|compare[ds]?|and|or|against)\b|,")
 _RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading|rank|ranked|ranking)\b")
 # "Which tech company has the highest net margin?" ranks an industry by a metric.
 _WHICH_HIGHEST = re.compile(
-    r"\bwhich\s+(?P<group>[a-z&][a-z&\- ]*?)\s+(?:companies|company|stocks|stock|firms|firm)?\s*"
+    r"\bwhich\s+(?P<group>[a-z&][a-z&\- ]*?)\s+"
+    r"(?P<noun>companies|company|stocks|stock|firms|firm)?\s*"
     r"(?:has|have|had|is|are|with)\s+the\s+(?:highest|most|biggest|largest|best|greatest|top)\b"
 )
 _ORDER_WORDING = re.compile(
@@ -374,6 +401,54 @@ def _limit(normalized: str) -> int:
     return int(match.group(1) or match.group(2))
 
 
+_ODD_COUNT = re.compile(r"\b(top|biggest|largest|leading)\s+(-\s*\d+|\d+\.\d+|0+)(?=\s|$)", re.I)
+
+
+def _whole_counts(query: str) -> tuple[str, list[str]]:
+    """ "top -5", "top 5.5" and "top 0" as a count a ranking can list, said in a note."""
+    notes: list[str] = []
+
+    def count(match: re.Match[str]) -> str:
+        raw = match.group(2).replace(" ", "")
+        whole = abs(int(float(raw)))
+        if whole == 0:
+            notes.append(
+                f"A ranking lists at least one company, so this shows the top {DEFAULT_RANK_LIMIT}."
+            )
+            whole = DEFAULT_RANK_LIMIT
+        else:
+            notes.append(f"I read “{match.group(0)}” as the top {whole}.")
+        return f"{match.group(1)} {whole}"
+
+    return _ODD_COUNT.sub(count, query), notes
+
+
+_COUNT_NOUN_PLURALS = {"company": "companies", "stock": "stocks", "firm": "firms"}
+# Everyday words for an industry the snapshot names otherwise.
+_INDUSTRY_WORDS = {
+    word: "automakers"
+    for word in (
+        "ev", "evs", "electric vehicle", "electric vehicles", "electric vehicle makers",
+        "ev makers", "car", "cars", "car makers", "carmakers", "auto", "autos",
+    )
+}  # fmt: skip
+
+
+def _plural_group(group: str) -> str:
+    """ "which bank has …" ranks banks; "which tech company" ranks tech."""
+    words = group.split()
+    if not words or words[-1].endswith("s"):
+        return group
+    last = words[-1]
+    if last in _COUNT_NOUN_PLURALS:
+        plural = _COUNT_NOUN_PLURALS[last]
+    elif last.endswith("y") and last[-2:-1] not in ("a", "e", "o", "u"):
+        plural = last[:-1] + "ies"
+    else:
+        plural = last + "s"
+    return " ".join([*words[:-1], plural])
+
+
 def _ranked_industry(normalized: str) -> str:
     """The group a ranking names: "top 5 semiconductor companies", "biggest banks"."""
     text = re.sub(r"\b(?:by|in terms of|ranked by)\b.*$", "", normalized)
@@ -386,8 +461,16 @@ def _ranked_industry(normalized: str) -> str:
         text,
     ) or re.search(r"\b\d+\s+(?:biggest|largest)\s+(.+)$", text)
     if match is None:
+        match = re.search(r"\b(?:in|among|within|across)\s+(.+)$", text)
+    if match is None:
         return _industry_from_query(normalized)
-    label = re.sub(r"\s+(?:companies|stocks|firms|names)\b.*$", "", match.group(1))
+    label = re.sub(
+        r"^(?:companies|stocks|firms|names)\s+(?=(?:in|among|within|across)\b)", "", match.group(1)
+    )
+    # "rank in tech", "top 5 in banking": the preposition is not the industry.
+    label = re.sub(r"^(?:in|among|within|across|of|for|from)\s+", "", label)
+    label = re.sub(r"\s+(?:companies|stocks|firms|names)\b.*$", "", label)
+    label = re.sub(r"^(?:companies|stocks|firms|names)$", "", label)
     label = re.sub(r"\b(?:the|us|u s|american)\s+", "", label)
     label = label.strip(" .,?!")
     return label or _industry_from_query(normalized)
@@ -420,15 +503,19 @@ class DemoCompleter:
         """The live snapshot's index on the recorded runtime, to name what was not recorded."""
         return issuer_index() if self._recorded else None
 
-    def complete(self, query: str, current_spec: object = None) -> Any:
-        query = _count_words_as_digits(expand_groups(query))
+    def complete(
+        self, query: str, current_spec: object = None, *, _nested: bool = False
+    ) -> Any:
+        query, count_notes = _whole_counts(
+            _count_words_as_digits(expand_groups(plain_text(query)))
+        )
         normalized = query.strip().casefold()
         metric = _metric_from_query(normalized)
         mentions = self.index.find(query)
-        notes: tuple[str, ...] = ()
+        notes: list[str] = []
         if not mentions:
             mentions = self.index.correct(query, ignore=_METRIC_WORDS)
-            notes = tuple(_mention_note(self.index, mention) for mention in mentions)
+            notes = [_mention_note(self.index, mention) for mention in mentions]
         elif _LIST_WORDING.search(normalized):
             # "Microsoft vs Aple": a misspelled name beside a correct one still counts.
             named_words = frozenset(
@@ -442,7 +529,8 @@ class DemoCompleter:
             ]
             if extra:
                 mentions = sorted([*mentions, *extra], key=lambda mention: mention.start)
-                notes = tuple(_mention_note(self.index, mention) for mention in extra)
+                notes = [_mention_note(self.index, mention) for mention in extra]
+        notes.extend(_ticker_notes(self.index, mentions))
         companies = [mention.query for mention in mentions]
 
         if _is_filing_change_query(normalized):
@@ -451,7 +539,7 @@ class DemoCompleter:
                 plan.company = companies[0]
                 # One company's filings are compared at a time; the turn says so.
                 plan.other_companies = tuple(companies[1:])
-            plan.notes = notes
+            plan.notes = tuple(notes)
             return plan
         if "disrupt" in normalized or re.search(
             r"\bhow (?:can|could|will|might|would) ai\b", normalized
@@ -468,10 +556,33 @@ class DemoCompleter:
             if follow_up is not None:
                 return follow_up
 
+        plan = self._plan(query, normalized, metric, mentions)
+        planned = [*count_notes, *notes, *plan.notes]
+        if not _nested:
+            planned.extend(self._unanswered_notes(query, normalized, plan, mentions))
+        plan.notes = tuple(dict.fromkeys(planned))
+        return plan
+
+    def _plan(
+        self, query: str, normalized: str, metric: str, mentions: list[CompanyMention]
+    ) -> SimpleNamespace:
+        """The closed plan a question asks for, before notes on what it leaves out."""
+        companies = [mention.query for mention in mentions]
         which = _WHICH_HIGHEST.search(normalized) if not companies else None
-        if len(companies) < 2 and (_RANK_WORDS.search(normalized) or which is not None):
-            industry = which.group("group") if which is not None else _ranked_industry(normalized)
+        ranked = _RANK_WORDS.search(normalized) is not None or which is not None
+        if ranked and _ranks_with(normalized, companies):
+            if which is not None:
+                group = which.group("group")
+                industry = group if which.group("noun") else _plural_group(group)
+            else:
+                industry = _ranked_industry(normalized)
+            industry = _INDUSTRY_WORDS.get(industry, industry)
             limit = _limit(normalized)
+            notes = (
+                (_left_out_of_ranking(self.index, mentions[0], industry, limit),)
+                if mentions
+                else ()
+            )
             phrase = resolve_metric_phrase(normalized)
             if metric not in ALLOWED_METRICS and phrase.kind == "ambiguous" and phrase.candidates:
                 # "highest income": still a ranked lookup ordered by the metric; the
@@ -488,17 +599,24 @@ class DemoCompleter:
                     metric=metric,
                     # "top 5 banks by net income" orders by it; "and their net income" does not.
                     order_by_metric=ordered,
+                    notes=notes,
                 )
-            return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit)
+            return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit, notes=notes)
+        segment = segment_term(query)
+        segment_notes = (segment_note(segment),) if segment and metric in ALLOWED_METRICS else ()
         if len(companies) == 1 and _PEERS.search(normalized):
             # "Compare Nvidia to its peers": the conversation adds the peers.
             return SimpleNamespace(
                 intent=Intent.COMPARE,
                 companies=companies,
                 metric=metric if metric != "unknown" else OVERVIEW_PLAN,
-                notes=notes,
+                notes=(),
                 peers=True,
             )
+        unknown_wording = resolve_metric_phrase(normalized).kind == "unknown"
+        if metric == "unknown" and companies and unknown_wording:
+            # "Apple happiness index": name the word rather than show an overview.
+            metric = segment or _unknown_term(query, mentions) or metric
         # "Meta margin Q2 2026 vs Q2 2025" compares periods of one company.
         compare_words = re.search(r"\b(?:compare|vs|versus)\b", normalized) and not (
             len(companies) == 1 and len(parse_named_periods(normalized)) >= 2
@@ -507,10 +625,189 @@ class DemoCompleter:
             if metric == "unknown" and len(companies) >= 2 and _names_only(query, mentions):
                 metric = OVERVIEW_PLAN
             return SimpleNamespace(
-                intent=Intent.COMPARE, companies=companies, metric=metric, notes=notes
+                intent=Intent.COMPARE,
+                companies=companies,
+                metric=metric,
+                notes=segment_notes,
+                # "Rank Apple, Microsoft and Nvidia by revenue" orders the companies.
+                order_by_metric=_RANK_NAMED.search(normalized) is not None,
             )
-        company = companies[0] if companies else _company_from_query(normalized)
-        return SimpleNamespace(intent=Intent.LOOKUP, company=company, metric=metric, notes=notes)
+        company = companies[0] if companies else _lookup_company(normalized)
+        return SimpleNamespace(
+            intent=Intent.LOOKUP, company=company, metric=metric, notes=segment_notes
+        )
+
+    def _unanswered_notes(
+        self, query: str, normalized: str, plan: Any, mentions: list[CompanyMention]
+    ) -> list[str]:
+        """Say what a plan leaves out: a name no company matched, a second question."""
+        notes: list[str] = []
+        if plan.intent in (Intent.COMPARE, Intent.LOOKUP) and _LIST_WORDING.search(normalized):
+            outside = self.outside_index
+            for name in _unfound_names(query, mentions):
+                if outside is not None and outside.find(name):
+                    # The recorded runtime says on its own what it did not record.
+                    continue
+                notes.append(f"I couldn't find a company called “{name}”, so it is left out.")
+        answered = _subject(plan)
+        for part in _question_parts(query):
+            if not _covers(answered, _subject(self.complete(part, _nested=True))):
+                notes.append(f"This answers one question at a time: ask “{part}” on its own.")
+        return notes
+
+
+def _subject(plan: Any) -> tuple[str, frozenset[str]] | None:
+    """What a plan is about: its companies, its ranking, or a kind of answer."""
+    intent = getattr(plan, "intent", None)
+    if intent in (Intent.RANK, Intent.RANK_AND_LOOKUP):
+        return "rank", frozenset({str(plan.industry).casefold()})
+    if intent is Intent.COMPARE:
+        return "companies", frozenset(plan.companies)
+    if intent is Intent.LOOKUP:
+        return ("companies", frozenset({plan.company})) if plan.company else None
+    if isinstance(intent, Intent):
+        return intent.value, frozenset()
+    return None
+
+
+def _covers(
+    answered: tuple[str, frozenset[str]] | None, part: tuple[str, frozenset[str]] | None
+) -> bool:
+    if part is None or answered is None:
+        return True
+    return answered[0] == part[0] and part[1] <= answered[1]
+
+
+# A second question in one message: "… revenue and rank the top 5 banks", "…? What about …".
+_QUESTION_BREAK = re.compile(
+    # A full stop ends a sentence after a word, not after an initial ("J.P. Morgan").
+    r"(?:[?;]|(?<=[a-z0-9]{2})\.(?=\s))\s+"
+    r"|,?\s+(?:and|also|then|plus)\s+(?=(?:what|how|which|who|why|rank|show|list|give|tell"
+    r"|compare|top)\b)",
+    re.IGNORECASE,
+)
+
+
+def _question_parts(query: str) -> list[str]:
+    parts = [part.strip(" .?;,!") for part in _QUESTION_BREAK.split(query)]
+    parts = [part for part in parts if part]
+    return parts if len(parts) > 1 else []
+
+
+_RANK_NAMED = re.compile(r"\b(?:rank|ranked|sort|sorted|order|ordered)\b")
+
+
+def _ranks_with(normalized: str, companies: list[str]) -> bool:
+    """Whether a question with rank words is a ranking rather than a lookup.
+
+    "Apple top line" and "Apple's biggest expense" are about Apple; "Top 5 banks
+    and Apple revenue" is a ranking that leaves Apple out, and says so.
+    """
+    if not companies:
+        return True
+    if len(companies) > 1:
+        return False
+    return bool(
+        _LIMIT_WORDS.search(normalized)
+        or re.search(r"\brank(?:ed|s)?\s+(?:in|among|within|across)\b", normalized)
+    )
+
+
+def _left_out_of_ranking(
+    index: IssuerIndex, mention: CompanyMention, industry: str, limit: int
+) -> str:
+    name = short_name(index.display_name(mention.query)) or mention.typed
+    return (
+        f"This ranks the top {limit} {industry}; {name} is listed only if it is among "
+        f"them. Ask about {name} on its own for its figures."
+    )
+
+
+def _ticker_notes(index: IssuerIndex, mentions: list[CompanyMention]) -> list[str]:
+    """Say when a bare ticker adds a company beside a named one, or one is named twice."""
+    notes: list[str] = []
+    # Beside "JPM", "BAC" reads as the ticker it is; beside "Apple", "DAN" may not.
+    named = any(
+        not mention.bare_ticker and mention.typed.upper() not in index.tickers
+        for mention in mentions
+    )
+    for mention in mentions:
+        name = short_name(index.display_name(mention.query)) or mention.query
+        if mention.bare_ticker and named:
+            notes.append(f"Showing {name} for “{mention.typed}”.")
+        if mention.also_typed:
+            typed = " and ".join(
+                dict.fromkeys(word.upper() if len(word) <= 5 else word
+                              for word in (mention.typed, *mention.also_typed))
+            )
+            notes.append(f"{typed} are both {name}, so it is shown once.")
+    return notes
+
+
+# Capitalised words beside a list joiner: the names a compare question lists.
+_LISTED_NAME = re.compile(
+    r"(?:\b(?:and|or|vs\.?|versus|with|to|against)\s+|,\s*)"
+    r"(?P<after>[A-Z][\w.&'’-]*(?:\s+[A-Z][\w.&'’-]*)*)"
+    r"|(?P<before>[A-Z][\w.&'’-]*(?:\s+[A-Z][\w.&'’-]*)*)"
+    r"(?=\s*,|\s+(?:and|or|vs\.?|versus)\b)"
+)
+
+
+def _unfound_names(query: str, mentions: list[CompanyMention]) -> list[str]:
+    """Names a list question gives that no company matched ("Apple and Foobar")."""
+    named = {word for mention in mentions for word in normalize(mention.typed).split()}
+    found: list[str] = []
+    for match in _LISTED_NAME.finditer(query):
+        name = (match.group("after") or match.group("before") or "").strip(" .,'’")
+        words = normalize(name).split()
+        if not words or any(word in named for word in words):
+            continue
+        if all(
+            word in _METRIC_WORDS
+            or word in _QUESTION_WORDS
+            or re.fullmatch(r"[qh]\d|fy\d*|\d+|cy\d*", word)
+            for word in words
+        ):
+            continue
+        if name not in found:
+            found.append(name)
+    return found
+
+
+# Words a short question uses around a company and a figure, none a metric:
+# what is left after them is the word the catalog does not know.
+_QUESTION_WORDS = frozenset(
+    """
+    what whats was is are were be been the a an of for in on at to and or by s show me
+    give tell about please latest last recent current quarter quarterly this that it its
+    their how much many did does do has have had numbers number year years now today
+    report reported figure figures data compare comparing versus vs with i want know
+    see get find look up who which why when where can could you your our my most
+    overview snapshot summary profile financials fundamentals key metrics glance
+    results doing going performing performance like q1 q2 q3 q4 fy ttm ytd lately
+    explain all every same
+    """.split()  # noqa: SIM905
+)
+_MAX_UNKNOWN_WORDS = 3
+
+
+def _unknown_term(query: str, mentions: list[CompanyMention]) -> str | None:
+    """The word a short question asks for that names no metric ("happiness index").
+
+    It keeps the analyst's own spelling: "CEO", not "ceo".
+    """
+    named = {word for mention in mentions for word in normalize(mention.typed).split()}
+    left = [
+        typed
+        for typed in re.findall(r"[\w&]+", re.sub(r"['’]s\b", "", query))
+        if (word := typed.casefold()) not in named
+        and word not in _QUESTION_WORDS
+        and word not in _COMPARE_FILLER
+        and not re.fullmatch(r"(?:fy|cy)?\d+|q\d|\dq|h\d", word)
+    ]
+    if not left or len(left) > _MAX_UNKNOWN_WORDS or implied_metrics(query, short=False):
+        return None
+    return " ".join(left)
 
 
 # Wording that names no metric but implies some (see ``implied_metrics``). The
@@ -535,6 +832,27 @@ def _names_only(query: str, mentions: list[CompanyMention]) -> bool:
 
 
 _WHICH_OF_TWO = re.compile(r"\b(?:which (?:one|is|of)|both|them|compared?|vs|versus)\b")
+# "which is biggest?" asks about the companies on screen, not a ranking.
+_WHICH_OF_THEM = re.compile(
+    r"^which(?: one| company| stock| firm"
+    r"| of (?:them|these|those|the (?:two|three|four|companies)))?"
+    r"(?: of them)?\s+(?:is|has|had|was|were|grew|makes?|made|earns?|earned)\b"
+)
+# "what was it last quarter?": the analysis on screen, asked again.
+_PRONOUN_QUESTION = re.compile(
+    r"^(?:and |so |ok |okay )?(?:what|how much|how)\s+(?:was|is|were|are|about)\s+"
+    r"(?:it|that|this|they|them|those|these)\b"
+)
+# "compare with the first one": the first company this thread looked at.
+_COMPARE_FIRST = re.compile(
+    r"(?:now |ok |okay )?compare (?:it |them |this |that )?(?:with|to|against) the "
+    r"(?:first|1st|original) (?:one|company)"
+)
+# "what about pharma?" after a ranking: the same ranking of another industry.
+_INDUSTRY_SWAP = re.compile(
+    r"^(?:and |ok |okay |now )?(?:what about|how about|same for|now do|and) (?:the )?"
+    r"(?P<industry>[a-z&][a-z& -]*?)(?: companies| stocks| firms)?$"
+)
 
 
 def _follow_up(
@@ -543,36 +861,67 @@ def _follow_up(
     """Short edits that lean on the current analysis ("and net margin", "what about MSFT?")."""
     if len(normalized.split()) > _FOLLOW_UP_MAX_WORDS:
         return None
+    text = normalized.strip(" .?!")
     top = _TOP_N.search(normalized)
     if (
         top is not None
         and spec.constituents is not None
         and not companies
-        and re.fullmatch(r"(?:only |just |show )?(?:the )?top\s+\d+", normalized.strip(" .?!"))
+        and re.fullmatch(r"(?:only |just |show )?(?:the )?top\s+\d+", text)
     ):
         return SpecPatch(
             mode="extend", ranked_request=(spec.constituents.industry, int(top.group(1)))
         )
-    sort = _SORT_BY.match(normalized.strip(" .?!"))
-    if sort is not None and spec.companies and not companies:
+    on_screen = bool(spec.companies) or spec.constituents is not None
+    sort = _SORT_BY.match(text)
+    if sort is not None and on_screen and not companies:
         # "sort by revenue": order the companies on screen, largest first.
         wanted = metric if metric in ALLOWED_METRICS else None
         return SpecPatch(
             mode="extend",
             add_metrics=(wanted,) if wanted and wanted not in spec.metrics else (),
             add_operations=("order_by_metric",),
+            set_order_by=wanted,
+        )
+    if len(spec.companies) >= 2 and not companies and _WHICH_OF_THEM.match(text):
+        # "which is biggest?" orders the companies on screen by what it asks.
+        asked: tuple[str, ...] = (
+            (metric,) if metric in ALLOWED_METRICS else implied_metrics(text, short=False)
+        ) or ("market_cap", "revenue")
+        return SpecPatch(
+            mode="extend",
+            add_metrics=tuple(m for m in asked if m not in spec.metrics),
+            add_operations=("order_by_metric",),
+            set_order_by=asked[0],
         )
     if _RANK_WORDS.search(normalized) or _WHICH_HIGHEST.search(normalized):
         # "largest pharma companies by net income" is a new ranking, not an edit.
         return None
+    if not companies and metric not in ALLOWED_METRICS and on_screen and (
+        _PRONOUN_QUESTION.match(text)
+    ):
+        # The period wording ("last quarter", "a year ago") is read from the message.
+        return SpecPatch(mode="extend")
+    if not companies and spec.companies and _COMPARE_FIRST.fullmatch(text):
+        shown = {company.query for company in spec.companies}
+        first = [query for query in spec.seen_companies[:1] if query not in shown]
+        return SpecPatch(mode="extend", add_companies=tuple(first))
     if (
         not companies
         and metric == "unknown"
         and spec.companies
-        and _COMPARE_THEM.fullmatch(normalized.strip(" .?!"))
+        and _COMPARE_THEM.fullmatch(text)
     ):
         earlier = spec.earlier_companies if len(spec.companies) == 1 else ()
         return SpecPatch(mode="extend", add_companies=earlier)
+    swap = _INDUSTRY_SWAP.match(text)
+    if spec.constituents is not None and not companies and metric == "unknown" and swap:
+        # "what about pharma?": the same ranking, another industry.
+        industry = swap.group("industry").strip()
+        return SpecPatch(mode="extend", ranked_request=(industry, spec.constituents.limit))
+    if companies and metric == "unknown" and not on_screen and spec.metrics:
+        # "revenue", then "for Apple": the company the question was missing.
+        return SpecPatch(mode="extend", add_companies=tuple(companies))
     if companies and metric in ALLOWED_METRICS and spec.companies and _LEADING_AND.search(
         normalized
     ):

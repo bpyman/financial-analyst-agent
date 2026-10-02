@@ -11,10 +11,11 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
+from financial_analyst_agent.services.metric_catalog import metric_phrases
 from financial_analyst_agent.universe import UniverseCompany
 
 # Legal-form and filler words a company name drops in speech.
@@ -110,6 +111,34 @@ _NOT_TICKERS = frozenset(
         "Q",
     }
 )
+# Finance and chat shorthand that is never meant as a ticker unless "$"-prefixed:
+# "Apple SGA" is not Saga Communications, "IMO" is not Imperial Oil.
+_ACRONYMS = frozenset(
+    """
+    ar ap arr mrr ni gp op oi da sga cogs opex capex rev roi roic roa roce irr npv dcf
+    cagr ttm ytd mtd qtd ntm eps pe peg ev ebt fcf ocf dps bps kpi kpis esg uk eu us
+    usa uae nyse imo imho tbh fyi asap btw lol omg eod ath atl ipo spac bdc reit etf
+    usd eur gbp jpy cny cpi ppi gdp fomc fed hr pr ir it ai ml saas vc ceo cfo coo
+    cto ok vs aka yoy qoq mom h1 h2 q1 q2 q3 q4 fy cy ltm
+    """.split()  # noqa: SIM905
+)
+# Short English words that are also tickers ("NOW", "FOR", "ARE", "SO"). One
+# counts as a ticker only when nothing else in the question names a company and
+# a figure follows it: "NOW revenue" is ServiceNow, "now" in a sentence is not.
+_ENGLISH_WORDS = frozenset(
+    """
+    a about after again all also am an and any are as ask at away back be been best
+    big both but buy by call can car cash cat come could day did do does done down
+    each earn eat eye fast few find fly for from fun gap get give go good got had has
+    have he her here high him his hot how if in into is it its just key know last
+    law less let like live long look lot low made main make man many may me mean
+    more most much must my need net new next no not now of off old on once one only
+    or other our out over own pay per plan play plus put real run said same say see
+    sell she show so some such sun take team tell ten than that the their them then
+    there these they this those top true two up us use very want was way we well
+    were what when which who why will win with work would year yes yet you your
+    """.split()  # noqa: SIM905
+)
 # Names people use that no listing title contains, by the ticker they mean.
 # Applied only when that ticker is in the snapshot.
 _NICKNAMES: tuple[tuple[str, str], ...] = (
@@ -142,6 +171,21 @@ _NICKNAMES: tuple[tuple[str, str], ...] = (
     ("oreilly", "ORLY"),
     ("tsmc", "TSM"),
     ("tmobile", "TMUS"),
+    ("spacex", "SPCX"),
+    ("space x", "SPCX"),
+    # Tickers people type in lower case, and names no listing title holds.
+    ("ge", "GE"),
+    ("kkr", "KKR"),
+    ("pnc", "PNC"),
+    ("mgm", "MGM"),
+    ("amc", "AMC"),
+    ("bp", "BP"),
+    ("us bank", "USB"),
+    ("snapchat", "SNAP"),
+    ("arm holdings", "ARM"),
+    ("santander", "SAN"),
+    ("royal caribbean", "RCL"),
+    ("peloton", "PTON"),
 )
 # Two-word starts of a longer name that are places or words, not that company:
 # "New York" Times, "Las Vegas" Sands.
@@ -159,12 +203,21 @@ _METRIC_STARTS = {
 # SEC titles end with a state or "new" marker: "CONSUMERS BANCORP INC /OH/".
 _SEC_STATE = re.compile(r"\s*/[A-Za-z .]+/?\s*$")
 _CIK = re.compile(r"\bcik\s*#?:?\s*(\d{1,10})\b|\b(0\d{9})\b", re.IGNORECASE)
+# "Alphabet Class C", "Series B": the letter names a share class, not Citigroup.
+_SHARE_CLASS_WORD = re.compile(r"\b(?:class|series|cl)\s*$", re.IGNORECASE)
+# The word after a ticker that makes it one: "NOW revenue", "NOW's margin".
+_FIGURE_AFTER = re.compile(r"^(?:'s|’s)?\s*([A-Za-z&/]+)")
 _MAX_NGRAM = 5
 _FIRST_WORD_ALIAS_RANK = 1500
 _TYPO_CUTOFF = 0.84
 _TYPO_MIN_LENGTH = 5
 # A four-letter word is corrected only when one letter is missing ("aple").
 _SHORT_TYPO_LENGTH = 4
+# Words this long are corrected at one edit ("Nvidea", "Telsa", "Oracel").
+_EDIT_TYPO_LENGTHS = range(5, 8)
+# Most of a question's words in capitals: it is shouted, not a list of tickers.
+_SHOUTED_SHARE = 0.6
+_SHOUTED_MIN_WORDS = 3
 
 
 # Groups people name as if they were one company.
@@ -182,6 +235,21 @@ def expand_groups(question: str) -> str:
     """ "Magnificent 7 revenue" → the seven companies' names, so each is looked up."""
     for pattern, names in _GROUPS:
         question = pattern.sub(names, question)
+    return question
+
+
+# Markdown a pasted question carries: "**Apple** _revenue_" is "Apple revenue".
+_MARKDOWN = (
+    (re.compile(r"\[([^\]]*)\]\([^)]*\)"), r"\1"),
+    (re.compile(r"\*\*|__|~~|[*`]"), ""),
+    (re.compile(r"(?<!\w)_(\S(?:[^_]*\S)?)_(?!\w)"), r"\1"),
+)
+
+
+def plain_text(question: str) -> str:
+    """The question without markdown emphasis, code marks or link targets."""
+    for pattern, kept in _MARKDOWN:
+        question = pattern.sub(kept, question)
     return question
 
 
@@ -210,6 +278,10 @@ class CompanyMention:
     start: int
     typed: str
     corrected: bool = False
+    # Read as a ticker with no "$" and no name: the planner says so beside a name.
+    bare_ticker: bool = False
+    # Other words in the question that named the same company ("GOOG", "GOOGL").
+    also_typed: tuple[str, ...] = ()
 
 
 @dataclass
@@ -325,6 +397,17 @@ class IssuerIndex:
             position += len(word) + 1
         taken = [False] * len(words)
         found: dict[str, CompanyMention] = {}
+
+        def note(query: str, mention: CompanyMention) -> None:
+            shown = found.get(query)
+            if shown is None:
+                found[query] = mention
+            elif mention.typed.casefold() not in {
+                typed.casefold() for typed in (shown.typed, *shown.also_typed)
+            }:
+                # "GOOG vs GOOGL": one company, named twice; the planner says so.
+                found[query] = replace(shown, also_typed=(*shown.also_typed, mention.typed))
+
         for size in range(min(_MAX_NGRAM, len(words)), 0, -1):
             for start in range(len(words) - size + 1):
                 if any(taken[start : start + size]):
@@ -335,36 +418,65 @@ class IssuerIndex:
                     continue
                 for slot in range(start, start + size):
                     taken[slot] = True
-                if query not in found:
-                    found[query] = CompanyMention(query, offsets[start], phrase)
+                note(query, CompanyMention(query, offsets[start], phrase))
         for match in _CIK.finditer(question):
             # "CIK 320193" or SEC's ten-digit "0000320193".
             query = self.ciks.get((match.group(1) or match.group(2)).zfill(10))
             if query is not None and query not in found:
                 found[query] = CompanyMention(query, _char_to_word_offset(question, match), query)
+        named = bool(found)
+        shouted = _shouted(question)
+        # The "J" of "J.P. Morgan" belongs to the name the phrase pass found.
+        name_words = {word for word, used in zip(words, taken, strict=True) if used}
         for match in _TICKER.finditer(question):
             raw, share_class = match.group(1), match.group(2)
             dollar = match.group(0).startswith("$")
-            if not dollar and (raw != raw.upper() or raw in _NOT_TICKERS):
-                continue
-            following = question[match.end() :].split(maxsplit=1)
-            if (
-                not dollar
-                and following
-                and following[0].casefold() in _METRIC_STARTS.get(raw, frozenset())
+            if not dollar and (
+                raw.casefold() in name_words
+                or not self._bare_ticker(question, match, named=named, shouted=shouted)
             ):
                 continue
             if share_class is not None:
                 # "BRK.B" is Berkshire's B shares; "P/E" and "U.S." name no class.
-                query = self.tickers.get(f"{raw}-{share_class}".upper())
+                query = self._share_class(raw, share_class)
             elif raw.casefold() in self.phrases:
                 # "AAPL" is also an alias phrase; the phrase pass named it once.
                 continue
             else:
                 query = self.tickers.get(raw.upper())
-            if query is not None and query not in found:
-                found[query] = CompanyMention(query, _char_to_word_offset(question, match), raw)
+            if query is not None:
+                start = _char_to_word_offset(question, match)
+                note(query, CompanyMention(query, start, raw, bare_ticker=not dollar))
         return sorted(found.values(), key=lambda mention: mention.start)
+
+    def _bare_ticker(
+        self, question: str, match: re.Match[str], *, named: bool, shouted: bool
+    ) -> bool:
+        """Whether a capitalised word with no "$" is a ticker here."""
+        raw = match.group(1)
+        if raw != raw.upper() or raw in _NOT_TICKERS or raw.casefold() in _ACRONYMS:
+            return False
+        if _SHARE_CLASS_WORD.search(question[: match.start()]):
+            return False
+        following = question[match.end() :].split(maxsplit=1)
+        if following and following[0].casefold() in _METRIC_STARTS.get(raw, frozenset()):
+            return False
+        if shouted and named:
+            # "WHAT IS NVIDIA NET MARGIN NOW?": capitals are the question's tone.
+            return False
+        if raw.casefold() in _ENGLISH_WORDS or raw.casefold() in _figure_words():
+            # "NOW revenue" is ServiceNow; "Apple, now and then" is not.
+            return not named and not shouted and _figure_follows(question, match)
+        return True
+
+    def _share_class(self, raw: str, share_class: str) -> str | None:
+        """ "BRK.B" as listed, or "BRK.A" as the class the snapshot keeps."""
+        query = self.tickers.get(f"{raw}-{share_class}".upper())
+        if query is not None:
+            return query
+        prefix = f"{raw.upper()}-"
+        other = next((ticker for ticker in self.tickers if ticker.startswith(prefix)), None)
+        return self.tickers[other] if other is not None else None
 
     def correct(
         self, question: str, *, ignore: frozenset[str] = frozenset()
@@ -398,8 +510,11 @@ class IssuerIndex:
             ):
                 continue
             close = difflib.get_close_matches(word, candidates, n=1, cutoff=_TYPO_CUTOFF)
-            if close and close[0][0] == word[0]:
-                query = self.phrases[close[0]]
+            phrase = close[0] if close and close[0][0] == word[0] else None
+            if phrase is None and len(word) in _EDIT_TYPO_LENGTHS:
+                phrase = _one_edit_away(word, candidates)
+            if phrase is not None:
+                query = self.phrases[phrase]
                 if all(mention.query != query for mention in mentions):
                     mentions.append(CompanyMention(query, start, word, corrected=True))
         return mentions
@@ -423,6 +538,66 @@ def _one_letter_missing(word: str, candidates: list[str]) -> str | None:
         and any(phrase[:cut] + phrase[cut + 1 :] == word for cut in range(1, len(phrase) - 1))
     ]
     return found[0] if len(found) == 1 else None
+
+
+def _one_edit_away(word: str, candidates: list[str]) -> str | None:
+    """The one single-word name ``word`` is a letter swap, slip, drop or extra from.
+
+    Damerau-Levenshtein distance one, same first letter: "Nvidea" is Nvidia,
+    "Telsa" is Tesla. Two names that close leave the word alone.
+    """
+    found = [
+        phrase
+        for phrase in candidates
+        if " " not in phrase
+        and phrase[0] == word[0]
+        and abs(len(phrase) - len(word)) <= 1
+        and phrase != word
+        and _within_one_edit(word, phrase)
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+def _within_one_edit(left: str, right: str) -> bool:
+    if len(left) == len(right):
+        differ = [index for index, (a, b) in enumerate(zip(left, right, strict=True)) if a != b]
+        if len(differ) == 1:
+            return True
+        # Two neighbouring letters swapped: "telsa".
+        return (
+            len(differ) == 2
+            and differ[1] == differ[0] + 1
+            and left[differ[0]] == right[differ[1]]
+            and left[differ[1]] == right[differ[0]]
+        )
+    shorter, longer = sorted((left, right), key=len)
+    return any(longer[:cut] + longer[cut + 1 :] == shorter for cut in range(len(longer)))
+
+
+def _shouted(question: str) -> bool:
+    """Whether most of the question's words are in capitals."""
+    words: list[str] = re.findall(r"[A-Za-z]{2,}", question)
+    if len(words) < _SHOUTED_MIN_WORDS:
+        return False
+    return sum(word.isupper() for word in words) >= _SHOUTED_SHARE * len(words)
+
+
+@lru_cache(maxsize=1)
+def _figure_words() -> frozenset[str]:
+    """Words that start a figure's name: "revenue", "net", "earnings", "stock"."""
+    starts = {re.split(r"[\s/_-]", phrase)[0] for phrase in metric_phrases()}
+    return frozenset(
+        {*starts, "stock", "shares", "earnings", "results", "financials", "filings", "10-q"}
+    )
+
+
+def _figure_follows(question: str, match: re.Match[str]) -> bool:
+    """Whether a figure's name follows the word, or the word is the whole question."""
+    rest = question[match.end() :]
+    if not rest.strip(" ?!."):
+        return not question[: match.start()].strip(" $")
+    after = _FIGURE_AFTER.match(rest.lstrip())
+    return after is not None and after.group(1).casefold() in _figure_words()
 
 
 @lru_cache(maxsize=1)
