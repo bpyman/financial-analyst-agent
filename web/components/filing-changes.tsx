@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
 import type { DisplayDisclosure } from "@/lib/types";
 import { wordDiff, type DiffPiece } from "@/lib/word-diff";
+import { useRegionName } from "./answer-scope";
 import { Badge, FilingButton, SectionLabel, type Tone } from "./ui";
 
 const KIND_TONE: Record<string, Tone> = {
@@ -19,8 +20,9 @@ export function FilingChanges({ items }: { items: DisplayDisclosure[] }) {
   const { older_accession: older, newer_accession: newer } = items[0];
   // Each item is one changed paragraph; several can sit in one section.
   const sections = groupBySection(items);
+  const name = useRegionName("Filing changes");
   return (
-    <section aria-label="Filing changes" className="space-y-3">
+    <section aria-label={name} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <SectionLabel>
           {`${items.length} ${items.length === 1 ? "change" : "changes"} in ${sections.length} ${
