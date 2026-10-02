@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
+    DIFFERENCE_FORMULAS,
     EXPLORATORY_RESEARCH_BANNER,
     FORMULA_METRICS,
     MODEL_ANALYSIS_BANNER,
@@ -20,11 +21,14 @@ from financial_analyst_agent.contracts import (
     REPORTED_METRICS,
     SNAPSHOT_BANNER_PREFIX,
     SNAPSHOT_METRICS,
+    SPLIT_RATIO,
+    SUM_FORMULAS,
     TRAILING_YEAR_FORMULAS,
     Intent,
     RendererKind,
     TableRow,
     TurnResult,
+    split_between,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
 from financial_analyst_agent.guide import short_name
@@ -35,6 +39,7 @@ from financial_analyst_agent.services.fact_selector import (
 )
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import (
+    BANK_REVENUE_LABEL,
     DEPRECIATION_AMORTIZATION_LABEL,
     GROSS_PROFIT_LABEL,
     REVENUE_FROM_COMPONENTS_LABEL,
@@ -58,7 +63,11 @@ _MONTHS = (
 _TRILLION = Decimal("1000000000000")
 _BILLION = Decimal("1000000000")
 _MILLION = Decimal("1000000")
+_THOUSAND = Decimal("1000")
 _CENTS = Decimal("0.01")
+_FOUR_PLACES = Decimal("0.0001")
+# Per-share figures below this keep their fractions of a cent; a share price does not.
+_FINE_PER_SHARE_BELOW = Decimal("10")
 _TENTH = Decimal("0.1")
 
 _REASON_LABELS = {
@@ -72,6 +81,10 @@ _REASON_LABELS = {
     "company_not_found": "Company not found",
     "not_reported_for_quarter": "Reported for the year only",
     "not_meaningful": "Not meaningful (loss)",
+    "negative_equity": "Not meaningful (negative equity)",
+    "negative_revenue": "Not meaningful (negative revenue)",
+    "pretax_loss": "Not meaningful (pretax loss)",
+    "extreme_margin": "Not meaningful (beyond ±1,000%)",
     "latest_period_only": "Latest period only",
 }
 _FIELD_LABELS = {
@@ -110,11 +123,13 @@ _FIELD_LABELS = {
     "dividends_per_share": "Dividends per share",
     "cash": "Cash and equivalents",
     "shareholders_equity": "Shareholders' equity",
-    "net_income_ttm": "Net income (trailing 12 months)",
+    "net_income_ttm": "Net income (trailing year)",
     "ebitda": "EBITDA",
     "return_on_equity": "Return on equity",
     "pe_ratio": "P/E ratio",
     "price": "Share price",
+    "net_interest_income": "Net interest income",
+    "noninterest_income": "Noninterest income",
 }
 # Marks a derived value in a table cell; a banner says how it was derived.
 DERIVED_MARK = " †"
@@ -135,11 +150,15 @@ _DERIVED_NOTES = {
         "revenue figure is smaller than either, so its scale was mis-tagged"
     ),
     TRAILING_YEAR_LABEL: (
-        "trailing-12-month net income is the last 10-K's year plus this year to date "
+        "trailing-year net income is the last 10-K's year plus this year to date "
         "minus the same months a year earlier"
     ),
     DEPRECIATION_AMORTIZATION_LABEL: (
         "depreciation and amortization is depreciation plus amortization of intangibles"
+    ),
+    BANK_REVENUE_LABEL: (
+        "a bank's revenue is its net interest income plus noninterest income, "
+        "because it tags no total revenue"
     ),
 }
 
@@ -149,7 +168,7 @@ def format_usd(value: Decimal) -> str:
     amount = abs(value)
     if amount == 0:
         return "$0"
-    units = ((_TRILLION, "T"), (_BILLION, "B"), (_MILLION, "M"))
+    units = ((_TRILLION, "T"), (_BILLION, "B"), (_MILLION, "M"), (_THOUSAND, "K"))
     for index, (unit, suffix) in enumerate(units):
         if amount < unit:
             continue
@@ -169,8 +188,15 @@ def format_percent(ratio: Decimal) -> str:
 
 
 def format_per_share(value: Decimal) -> str:
+    """Cents, or up to four places when a small figure has them: a $0.2475 dividend."""
     sign = "-" if value < 0 else ""
-    return f"{sign}${abs(value).quantize(_CENTS, rounding=ROUND_HALF_UP):.2f}"
+    amount = abs(value)
+    cents = amount.quantize(_CENTS, rounding=ROUND_HALF_UP)
+    if amount == cents or amount >= _FINE_PER_SHARE_BELOW:
+        return f"{sign}${cents:.2f}"
+    fine = amount.quantize(_FOUR_PLACES, rounding=ROUND_HALF_UP).normalize()
+    places = max(2, -int(fine.as_tuple().exponent))
+    return f"{sign}${fine:.{places}f}"
 
 
 def format_multiple(ratio: Decimal) -> str:
@@ -250,7 +276,7 @@ def derived_banner(rows: list[TableRow]) -> str:
     return (
         "† Derived from reported figures because the filings do not report it on its own: "
         + "; ".join(notes)
-        + ". Both source facts are in the evidence."
+        + ". The source facts are in the evidence."
     )
 
 
@@ -283,6 +309,81 @@ def long_quarter_banner(rows: list[TableRow]) -> str:
     if not notes:
         return ""
     return "; ".join(notes) + ", longer than the usual 13 weeks, which lifts those amounts."
+
+
+def restated_banners(rows: list[TableRow]) -> list[str]:
+    """Say where the table's year-earlier levels differ from the base a change used.
+
+    A year-over-year change starts from the comparative the newer filing
+    reports; the table shows each quarter as first filed. After a share split
+    the two differ several times over, and the quarter-over-quarter change
+    across it is left out; after a restatement they differ a little.
+    """
+    levels = [row for row in rows if row.comparison is None and row.value is not None]
+    splits: dict[tuple[str, str], list[str]] = {}
+    restated: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        if row.comparison != "yoy" or len(row.components) != 2:
+            continue
+        before, after = row.components
+        if before.accession_number != after.accession_number:
+            continue
+        first = next(
+            (
+                level
+                for level in levels
+                if (level.cik or level.company_name) == (row.cik or row.company_name)
+                and level.metric == row.metric
+                and level.end_date is not None
+                and abs(level.end_date - before.end_date) <= FISCAL_WEEK_TOLERANCE
+            ),
+            None,
+        )
+        if first is None or first.value is None or first.value == before.value:
+            continue
+        key = (_owner(row), row.metric)
+        ratio = abs(first.value / before.value) if before.value else Decimal(0)
+        per_share = row.metric in PER_SHARE_METRICS
+        if per_share and (ratio >= SPLIT_RATIO or 0 < ratio <= 1 / SPLIT_RATIO):
+            splits.setdefault(key, []).append(format_date(before.end_date))
+        elif abs(first.value - before.value) > abs(before.value) / 200:
+            restated.setdefault(key, []).append(format_date(before.end_date))
+    by_series: dict[tuple[str, str], list[TableRow]] = {}
+    for level in levels:
+        if level.metric in PER_SHARE_METRICS and level.end_date is not None:
+            by_series.setdefault((_owner(level), level.metric), []).append(level)
+    for key, series in by_series.items():
+        ordered = sorted(series, key=lambda level: level.end_date or date.min, reverse=True)
+        for newer, older in zip(ordered, ordered[1:], strict=False):
+            if split_between(newer, older) and older.end_date is not None:
+                splits.setdefault(key, []).append(format_date(older.end_date))
+    notes = [
+        f"{owner} {_in_sentence(format_field_name(metric))} for the "
+        f"{_plural('quarter', ends)} ended {_join_words(list(dict.fromkeys(ends)))} "
+        f"{'is' if len(set(ends)) == 1 else 'are'} shown as first reported, before a share "
+        "split, so "
+        f"{'it does' if len(set(ends)) == 1 else 'they do'} not compare with later quarters: "
+        "year-over-year changes use the year-earlier figures as the later filings "
+        "restate them, and no quarter-over-quarter change crosses the split."
+        for (owner, metric), ends in splits.items()
+    ]
+    notes.extend(
+        f"{owner} {_in_sentence(format_field_name(metric))} for the "
+        f"{_plural('quarter', ends)} ended {_join_words(list(dict.fromkeys(ends)))} "
+        "is shown as first filed; a later filing restated it, and the year-over-year "
+        "change uses the restated figure that filing reports."
+        for (owner, metric), ends in restated.items()
+    )
+    return notes
+
+
+def _owner(row: TableRow) -> str:
+    name = short_name(row.company_name) or row.company_name
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+def _plural(word: str, items: list[str]) -> str:
+    return word if len(set(items)) == 1 else f"{word}s"
 
 
 def newer_filing_banner(rows: list[TableRow]) -> str:
@@ -944,16 +1045,17 @@ def _period_label(start: date | None, end: date | None) -> str:
 def _selection_rule(row: TableRow) -> str:
     if row.metric in SNAPSHOT_METRICS:
         return _SNAPSHOT_RULE
-    if row.derivation:
-        return f"Derived quarter: {row.derivation}. Both reported facts are listed."
+    if row.comparison is not None:
+        return _change_rule(row)
     # A compare row carries its one fact as a component; only a formula is calculated.
     single = row.components[0] if len(row.components) == 1 else None
+    derivation = row.derivation or (
+        single.derivation if single is not None and single.metric == row.metric else None
+    )
+    if derivation:
+        return f"Derived quarter: {derivation}. The reported facts are listed."
     if row.components and (single is None or single.metric != row.metric):
         return _FORMULA_RULE
-    if row.comparison == "yoy":
-        return "Year-over-year change from two standalone periods."
-    if row.comparison == "sequential":
-        return "Sequential change from two standalone periods."
     form = row.form or (single.form if single else None)
     if form and row.start_date is not None and row.start_date == row.end_date:
         return f"Balance-sheet amount the {form} reports at the stated date."
@@ -963,6 +1065,23 @@ def _selection_rule(row: TableRow) -> str:
             "no year-to-date derivation."
         )
     return _LATEST_QUARTER_RULE
+
+
+def _change_rule(row: TableRow) -> str:
+    """A change, with the period and filing of each level it compares."""
+    kind = "Year-over-year" if row.comparison == "yoy" else "Quarter-over-quarter"
+    if len(row.components) != 2:
+        return f"{kind} change between two reported periods."
+    before, after = row.components
+    filing = f"{after.form} {after.accession_number}"
+    newer = f"{_period_label(after.start_date, after.end_date)} ({filing})"
+    older = _period_label(before.start_date, before.end_date)
+    if before.accession_number == after.accession_number:
+        source = "as that filing reports it beside the quarter"
+    else:
+        source = f"as {before.form} {before.accession_number} reports it"
+    marked = " Derived figures are marked †." if is_derived(row) else ""
+    return f"{kind} change: {newer} against {older}, {source}.{marked}"
 
 
 def _exact_amount(value: Decimal | None) -> str:
@@ -1003,8 +1122,19 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
     raw = str(row.value) if row.value is not None else ""
     period = _period_label(row.start_date, row.end_date)
     concept, form, accession_number, source_url = _row_provenance(row)
+    if row.comparison is not None and len(row.components) == 2:
+        # A change spans two periods, not the months between them; it cites the newer filing.
+        before, after = row.components
+        period = (
+            f"{_period_label(after.start_date, after.end_date)} vs "
+            f"{_period_label(before.start_date, before.end_date)}"
+        )
+        concept, form = after.concept, after.form
+        accession_number, source_url = after.accession_number, after.source_url
     change = _COMPARISON_LABELS.get(row.comparison or "")
-    metric_label = format_field_name(row.metric) + (f" · {change.lower()} change" if change else "")
+    metric_label = _metric_heading(row.metric) + (
+        f" · {change.lower()} change" if change else ""
+    )
     return EvidenceItem(
         label=f"{row.company_name} · {metric_label}" + (f" · {period}" if period else ""),
         amount=amount,
@@ -1108,7 +1238,9 @@ def present_turn(result: TurnResult) -> Presentation:
     ):
         fact_card = _fact_card(result.table_rows[0])
     elif result.renderer is RendererKind.TABLE and result.table_rows:
-        table = _display_table(result.table_rows, intent=result.intent)
+        table = _display_table(
+            result.table_rows, intent=result.intent, snapshot_day=_snapshot_day(result.banners)
+        )
     evidence = _dedupe_evidence(
         item
         for row in result.table_rows
@@ -1143,6 +1275,7 @@ def present_turn(result: TurnResult) -> Presentation:
     newer = newer_filing_banner(result.table_rows)
     if newer:
         banners.append(newer)
+    banners.extend(restated_banners(result.table_rows))
     if result.ordered_by:
         label = _in_sentence(format_field_name(result.ordered_by))
         amount = (
@@ -1230,6 +1363,11 @@ _FRIENDLY_MESSAGES = {
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
         "6-K reports instead, which this app does not read yet."
     ),
+    "This quarter's dividend was declared earlier in the fiscal year": (
+        "This company declares its dividend for the whole year in an earlier quarter, "
+        "so the filing reports no dividend declared in this one; the year's dividend "
+        "is in the quarter it was declared."
+    ),
     "Per-share figures for this quarter are reported only for a longer period": (
         "Filings report per-share figures such as EPS for a fiscal fourth quarter "
         "only inside the full-year total, and EPS cannot be subtracted the way "
@@ -1237,8 +1375,8 @@ _FRIENDLY_MESSAGES = {
     ),
     "No reported or derivable quarter exists for metric": (
         "This company's filings do not report that metric for this quarter. Not every "
-        "company reports every line item: banks, for example, report neither revenue "
-        "nor capital spending the way operating companies do."
+        "company reports every line item: banks, for example, report no cost of "
+        "revenue or capital spending the way operating companies do."
     ),
     "SEC's structured data does not yet include this quarter's filing": (
         "This quarter's report is filed, but SEC's structured data, which the figures "
@@ -1252,7 +1390,7 @@ _FRIENDLY_MESSAGES = {
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
         "metric. Not every company reports every line item: banks, for example, "
-        "report neither revenue nor capital spending the way operating companies do."
+        "report no cost of revenue or capital spending the way operating companies do."
     ),
 }
 
@@ -1327,11 +1465,45 @@ def _clarify_prompt(result: TurnResult) -> str | None:
     return _METRIC_CLARIFY_PROMPT
 
 
+_INPUT_NAMES = {"net_income_ttm": "trailing-year net income"}
+
+
+def _formula_inputs(row: TableRow) -> str:
+    """ "Market cap (Sep 27, 2026) ÷ trailing-year net income": what a figure is computed from."""
+    operator = " ÷ "
+    if row.metric in DIFFERENCE_FORMULAS:
+        operator = " − "
+    elif row.metric in SUM_FORMULAS:
+        operator = " + "
+    names = []
+    for component in row.components:
+        name = _INPUT_NAMES.get(component.metric) or _in_sentence(
+            format_field_name(component.metric)
+        )
+        if component.metric in SNAPSHOT_METRICS:
+            name += f" ({format_date(component.end_date)})"
+        names.append(name)
+    text = operator.join(names)
+    return text[:1].upper() + text[1:]
+
+
+def _metric_heading(metric: str) -> str:
+    """A metric's name in a table or card; a trailing-year ratio says it is one."""
+    label = format_field_name(metric)
+    return f"{label} (trailing year)" if metric in TRAILING_YEAR_FORMULAS else label
+
+
 def _fact_card(row: TableRow) -> QuarterlyFactCard:
     assert row.start_date is not None
     assert row.end_date is not None
     concept, form, accession_number, source_url = _row_provenance(row)
-    if is_derived(row):
+    span = ""
+    if row.metric in FORMULA_METRICS and row.components:
+        # Calculated from its inputs, which the concept field names; no one filing's form.
+        lead = "Calculated" + DERIVED_MARK if is_derived(row) else "Calculated"
+        span = "Trailing year · " if row.metric in TRAILING_YEAR_FORMULAS else ""
+        concept, form = _formula_inputs(row), ""
+    elif is_derived(row):
         lead = "Derived †"
     elif row.start_date == row.end_date:
         lead = "Balance sheet"
@@ -1340,9 +1512,9 @@ def _fact_card(row: TableRow) -> QuarterlyFactCard:
     return QuarterlyFactCard(
         company_name=row.company_name,
         ticker=row.ticker,
-        metric_header=format_field_name(row.metric),
+        metric_header=_metric_heading(row.metric),
         amount=format_metric_value(row.metric, row.value),
-        period_label=f"{lead} · {_period_label(row.start_date, row.end_date)}",
+        period_label=f"{lead} · {span}{_period_label(row.start_date, row.end_date)}",
         form=form,
         accession_number=accession_number,
         concept=concept,
@@ -1396,7 +1568,9 @@ def _change_key(metric: str, kind: str | None) -> str:
     return f"{WIDE_CHANGE_PREFIX}{metric}" + (f":{kind}" if kind else "")
 
 
-def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable | None:
+def _wide_table(
+    rows: list[TableRow], *, intent: Intent | None, snapshot_day: date | None = None
+) -> DisplayTable | None:
     """A row per company and quarter (and change), a column per metric.
 
     "How is Apple doing?" and "their operating margin" read across a row, not
@@ -1466,16 +1640,20 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
         *(key for key in change_headers if any(key in group for group in cells.values())),
         "end_date",
     ]
+    # A trailing year or a snapshot price is not a quarter.
+    quarterly = not set(metrics) & {*TRAILING_YEAR_FORMULAS, *SNAPSHOT_METRICS}
     headers = tuple(
         change_headers[key]
         if key.startswith(WIDE_CHANGE_PREFIX)
-        else format_field_name(key[len(WIDE_VALUE_PREFIX) :])
+        else _metric_heading(key[len(WIDE_VALUE_PREFIX) :])
         if key.startswith(WIDE_VALUE_PREFIX)
-        else "Quarter ended"
+        else ("Quarter ended" if quarterly else "Period ended")
         if key == "end_date"
         else format_field_name(key)
         for key in keys
     )
+    # A snapshot figure beside filed ones says its own date, not the period's.
+    dated_snapshot = snapshot_day if any(m not in SNAPSHOT_METRICS for m in metrics) else None
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
     identities: list[TableRow] = []
@@ -1497,7 +1675,10 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
                     text.append(_REASON_LABELS.get(cell.reason or "", "") or "")
                     values.append(None)
                 else:
-                    text.append(_format_cell(cell, "value"))
+                    shown = _format_cell(cell, "value")
+                    if dated_snapshot is not None and cell.metric in SNAPSHOT_METRICS:
+                        shown += f" on {format_date(dated_snapshot)}"
+                    text.append(shown)
                     values.append(float(cell.value))
             elif key.startswith(WIDE_CHANGE_PREFIX):
                 change = by_metric.get(key)
@@ -1538,8 +1719,19 @@ def _wide_table(rows: list[TableRow], *, intent: Intent | None) -> DisplayTable 
     )
 
 
-def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> DisplayTable:
-    wide = _wide_table(rows, intent=intent)
+def _snapshot_day(banners: list[str]) -> date | None:
+    for banner in banners:
+        if banner.startswith(SNAPSHOT_BANNER_PREFIX):
+            parsed = try_parse_datetime(banner[len(SNAPSHOT_BANNER_PREFIX) :])
+            if parsed is not None:
+                return parsed.date()
+    return None
+
+
+def _display_table(
+    rows: list[TableRow], *, intent: Intent | None = None, snapshot_day: date | None = None
+) -> DisplayTable:
+    wide = _wide_table(rows, intent=intent, snapshot_day=snapshot_day)
     if wide is not None:
         return wide
     allowed = (
@@ -1553,7 +1745,7 @@ def _display_table(rows: list[TableRow], *, intent: Intent | None = None) -> Dis
         keys = [key for key in keys if key not in ("cik", "currency")]
     metrics = {row.metric for row in rows if row.metric}
     single_metric = len(metrics) == 1
-    value_header = format_field_name(next(iter(metrics))) if single_metric else None
+    value_header = _metric_heading(next(iter(metrics))) if single_metric else None
     if single_metric:
         keys = [key for key in keys if key != "metric"]
         if "value" not in keys:
@@ -1708,11 +1900,14 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     parts: list[str] = []
     for index, row in enumerate(ordered):
         percent = change_percent(row) or Decimal(0)
-        verb = "grew" if percent >= 0 else "fell"
         name = short_name(row.company_name) or row.company_name
         owner = f"{name}'" if name.endswith("s") else f"{name}'s"
         subject = f"{owner} {label}" if index == 0 else owner
         mark = DERIVED_MARK if is_derived(row) else ""
+        if percent == 0:
+            parts.append(f"{subject} was unchanged{mark}")
+            continue
+        verb = "grew" if percent > 0 else "fell"
         parts.append(f"{subject} {verb} {abs(percent):.1f}%{mark}")
     if len(parts) == 1:
         ended = format_date(ordered[0].end_date) if ordered[0].end_date else ""

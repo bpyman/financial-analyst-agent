@@ -4,6 +4,7 @@ import threading
 from collections import Counter
 from collections.abc import Callable, Mapping
 from datetime import date
+from decimal import Decimal
 from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
@@ -19,7 +20,10 @@ from financial_analyst_agent.domain.errors import (
 )
 from financial_analyst_agent.domain.models import Company, FactRecord, Filing, FinancialFact
 from financial_analyst_agent.providers.sec.client import SECClient
-from financial_analyst_agent.providers.sec.company_facts import parse_company_facts
+from financial_analyst_agent.providers.sec.company_facts import (
+    parse_company_facts,
+    parse_company_facts_for_concepts,
+)
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.providers.sec.submissions import (
     files_quarterly_reports,
@@ -42,6 +46,7 @@ from financial_analyst_agent.services.filing_selector import (
     list_quarterly_report_dates,
 )
 from financial_analyst_agent.services.fiscal_periods import (
+    BANK_REVENUE_LABEL,
     FiscalLabel,
     FiscalPeriod,
     fiscal_labels,
@@ -54,6 +59,10 @@ from financial_analyst_agent.services.metric_catalog import (
     GROSS_PROFIT_EXCLUDING_CONCEPTS,
     INSTANT_METRICS,
     METRIC_CONCEPTS,
+    PER_SHARE_METRICS,
+    READ_CONCEPTS,
+    REVENUE_CHECK_CONCEPTS,
+    SHARE_COUNT_CONCEPT,
     TRAILING_YEAR_METRICS,
     metric_unit,
     parse_metric,
@@ -83,9 +92,7 @@ _FULL_HISTORY_DAYS = 3 * 365
 # Every concept a metric reads. A company's facts file holds a thousand concepts
 # and parses to about 40 MB for a bank; once its whole-file summaries are taken,
 # only these stay in memory (about 2 MB), so a ten-company ranking fits.
-_READ_CONCEPTS = frozenset(
-    concept for candidates in METRIC_CONCEPTS.values() for concept in candidates
-) | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
+_READ_CONCEPTS = READ_CONCEPTS
 # Facts files parsed at once across the process: a spike of rankings would
 # otherwise hold dozens of whole files in memory together. Only the parse holds
 # a slot; the download happens before it, so a slow SEC holds none.
@@ -583,11 +590,12 @@ class SecFactLookup:
         report_date: date | None,
         filer_ciks: Mapping[str, str] | None = None,
     ) -> FinancialFact:
-        if metric is Metric.REVENUE:
-            fact = _select_or_derive(
-                records,
+
+        def select(kept: list[FactRecord], chosen: Metric) -> FinancialFact:
+            return _select_or_derive(
+                kept,
                 filings,
-                metric,
+                chosen,
                 unit,
                 company_name,
                 ticker,
@@ -595,21 +603,18 @@ class SecFactLookup:
                 report_date=report_date,
                 filer_ciks=filer_ciks,
             )
+
+        if metric is Metric.REVENUE:
+            fact = _total_revenue(records, payload, unit, select)
+            fact = _bank_revenue(fact, payload, unit, select)
             return self._plausible_revenue(
                 fact, payload, filings, unit, company_name, ticker, cik, filer_ciks=filer_ciks
             )
         try:
-            return _select_or_derive(
-                records,
-                filings,
-                metric,
-                unit,
-                company_name,
-                ticker,
-                cik,
-                report_date=report_date,
-                filer_ciks=filer_ciks,
-            )
+            fact = select(records, metric)
+            if metric is Metric.DIVIDENDS_PER_SHARE:
+                _refuse_dividend_declared_earlier(fact, records)
+            return _with_diluted_shares(fact, payload) if metric in PER_SHARE_METRICS else fact
         except UnsupportedQuarterlyFactError:
             if metric is Metric.DEPRECIATION_AMORTIZATION:
                 return self._depreciation_plus_amortization(
@@ -626,23 +631,12 @@ class SecFactLookup:
                 raise
             # Retailers (Costco, Walmart) tag no gross profit line; revenue
             # minus cost of revenue is the same amount (ADR 0007).
-            parts = []
-            for component in (Metric.REVENUE, Metric.COST_OF_REVENUE):
-                component_records, _ = parse_company_facts(payload, component, unit)
-                parts.append(
-                    _select_or_derive(
-                        component_records,
-                        filings,
-                        component,
-                        unit,
-                        company_name,
-                        ticker,
-                        cik,
-                        report_date=report_date,
-                        filer_ciks=filer_ciks,
-                    )
-                )
-            revenue, cost = parts
+            revenue_records, _ = parse_company_facts(payload, Metric.REVENUE, unit)
+            revenue = _sales_revenue(
+                _total_revenue(revenue_records, payload, unit, select), revenue_records, select
+            )
+            cost_records, _ = parse_company_facts(payload, Metric.COST_OF_REVENUE, unit)
+            cost = select(cost_records, Metric.COST_OF_REVENUE)
             if (revenue.start_date, revenue.end_date) != (cost.start_date, cost.end_date):
                 raise
             if _reports_excluding_costs(payload, revenue.end_date):
@@ -812,6 +806,227 @@ def _reports_excluding_costs(payload: dict[str, Any], end: date) -> bool:
             if any(record.get("end") == end.isoformat() for record in records):
                 return True
     return False
+
+
+_CONTRACT_REVENUE = "RevenueFromContractWithCustomerExcludingAssessedTax"
+# The most of total revenue that membership and other income may be (Walmart's is 1%).
+_OTHER_INCOME_SHARE = Decimal("0.05")
+_COST_CONCEPTS = tuple(concept for _, concept in METRIC_CONCEPTS[Metric.COST_OF_REVENUE])
+# Cost of revenue this many times revenue means the revenue line is a part of it.
+_COST_MULTIPLE = 5
+
+
+def _anchor(fact: FinancialFact) -> tuple[str, date | None, date]:
+    """The filing and period a quarter was read from: a derived one's longer amount."""
+    if fact.derivation is not None and fact.derivation.parts:
+        part = fact.derivation.parts[0]
+        if part.accession_number == fact.accession_number:
+            return part.accession_number, part.start_date, part.end_date
+    return fact.accession_number, fact.start_date, fact.end_date
+
+
+def _reported(
+    records: list[FactRecord], anchor: tuple[str, date | None, date]
+) -> dict[str, Decimal]:
+    """Each concept's value in the anchor's filing and period."""
+    accession, start, end = anchor
+    return {
+        record.concept: record.value
+        for record in records
+        if record.accession_number == accession
+        and record.start_date == start
+        and record.end_date == end
+    }
+
+
+def _revenue_checks(
+    payload: dict[str, Any], unit: str, anchor: tuple[str, date | None, date]
+) -> tuple[list[Decimal], dict[str, Decimal]]:
+    """Totals the filing's other lines add up to, and those lines, for the anchor period.
+
+    Costs and expenses plus operating income is revenue; so is operating
+    expenses plus operating income, with or without cost of revenue (Kopin's
+    operating expenses hold its cost of sales), and gross profit plus cost of revenue.
+    """
+    concepts = [
+        *REVENUE_CHECK_CONCEPTS,
+        *METRIC_CONCEPTS[Metric.OPERATING_EXPENSES],
+        *METRIC_CONCEPTS[Metric.OPERATING_INCOME],
+        *METRIC_CONCEPTS[Metric.COST_OF_REVENUE],
+        *METRIC_CONCEPTS[Metric.GROSS_PROFIT],
+    ]
+    records, _ = parse_company_facts_for_concepts(payload, concepts, unit)
+    lines = _reported(records, anchor)
+    income = lines.get("OperatingIncomeLoss")
+    costs = [lines[name] for name in _COST_CONCEPTS if name in lines]
+    totals: list[Decimal] = []
+    if income is not None:
+        for name in ("CostsAndExpenses", "OperatingExpenses"):
+            if name in lines:
+                totals.append(lines[name] + income)
+        if "OperatingExpenses" in lines:
+            totals.extend(lines["OperatingExpenses"] + cost + income for cost in costs)
+    if "GrossProfit" in lines:
+        totals.extend(lines["GrossProfit"] + cost for cost in costs)
+    return totals, lines
+
+
+def _agrees(value: Decimal, totals: list[Decimal]) -> bool:
+    return any(abs(total - value) <= abs(total) / 100 for total in totals)
+
+
+def _implausible(value: Decimal, lines: dict[str, Decimal]) -> bool:
+    """Operating income above revenue, or cost of revenue many times it."""
+    if value <= 0:
+        return False
+    income = lines.get("OperatingIncomeLoss")
+    costs = [lines[name] for name in _COST_CONCEPTS if name in lines]
+    return (income is not None and income > value) or any(
+        cost >= value * _COST_MULTIPLE for cost in costs
+    )
+
+
+def _total_revenue(
+    records: list[FactRecord],
+    payload: dict[str, Any],
+    unit: str,
+    select: Callable[[list[FactRecord], Metric], FinancialFact],
+) -> FinancialFact:
+    """Revenue from the concept that is the filing's total, not one of its lines.
+
+    The catalog prefers ``Revenues``, but Verra Mobility tags one segment's
+    $25.8 million with it beside $263.6 million of contract revenue. When the
+    filing's revenue concepts disagree, the one its costs plus operating income
+    add up to is the total; without those lines, a revenue below operating
+    income or far below cost of revenue is a part. California Resources'
+    smaller ``Revenues`` nets a derivative loss and does add up, so it stays.
+    """
+    fact = select(records, Metric.REVENUE)
+    anchor = _anchor(fact)
+    reported = _reported(
+        [record for record in records if record.taxonomy == fact.taxonomy], anchor
+    )
+    others = {
+        concept: value
+        for concept, value in reported.items()
+        if concept != fact.concept and value != fact.value
+    }
+    if not others:
+        return fact
+    totals, lines = _revenue_checks(payload, unit, anchor)
+    if _agrees(fact.value, totals):
+        return fact
+    agreeing = {concept for concept, value in reported.items() if _agrees(value, totals)}
+    if agreeing:
+        wrong = set(reported) - agreeing
+    elif _implausible(fact.value, lines):
+        wrong = {concept for concept, value in reported.items() if _implausible(value, lines)}
+    else:
+        return fact
+    if not set(others) - wrong:
+        return fact
+    try:
+        total = select(
+            [record for record in records if record.concept not in wrong], Metric.REVENUE
+        )
+    except (UnsupportedQuarterlyFactError, FilingNotFoundError):
+        return fact
+    return total if total.end_date == fact.end_date else fact
+
+
+def _bank_revenue(
+    revenue: FinancialFact,
+    payload: dict[str, Any],
+    unit: str,
+    select: Callable[[list[FactRecord], Metric], FinancialFact],
+) -> FinancialFact:
+    """A bank's revenue as net interest income plus noninterest income.
+
+    M&T and Huntington tag no total revenue; their contract revenue is fee
+    income alone, a part of noninterest income, so net margins read over 100%.
+    """
+    if revenue.concept != _CONTRACT_REVENUE:
+        return revenue
+    parts: list[FinancialFact] = []
+    for component in (Metric.NET_INTEREST_INCOME, Metric.NONINTEREST_INCOME):
+        component_records, _ = parse_company_facts(payload, component, unit)
+        try:
+            parts.append(select(component_records, component))
+        except (UnsupportedQuarterlyFactError, FilingNotFoundError):
+            return revenue
+    interest, noninterest = parts
+    period = (revenue.start_date, revenue.end_date)
+    if any((part.start_date, part.end_date) != period for part in parts):
+        return revenue
+    # Fees are a part of noninterest income; a company's net interest expense is not a bank's.
+    if interest.value <= 0 or noninterest.value < revenue.value:
+        return revenue
+    return sum_of_components(Metric.REVENUE, parts, label=BANK_REVENUE_LABEL, name_parts=True)
+
+
+def _sales_revenue(
+    revenue: FinancialFact,
+    records: list[FactRecord],
+    select: Callable[[list[FactRecord], Metric], FinancialFact],
+) -> FinancialFact:
+    """Sales for a gross profit: contract revenue, when the total adds other income.
+
+    Walmart's ``Revenues`` adds membership and other income to net sales, and
+    cost of sales is the cost of net sales alone. Such income is a sliver of
+    the total; a wider gap is rent or interest (Welltower, WEX) whose costs
+    may sit in cost of revenue, so the total stays.
+    """
+    if revenue.concept != "Revenues":
+        return revenue
+    anchor = _anchor(revenue)
+    reported = _reported(records, anchor)
+    sales, total = reported.get(_CONTRACT_REVENUE), reported.get("Revenues")
+    if sales is None or total is None or not 0 < total - sales <= total * _OTHER_INCOME_SHARE:
+        return revenue
+    try:
+        fact = select(
+            [record for record in records if record.concept == _CONTRACT_REVENUE], Metric.REVENUE
+        )
+    except (UnsupportedQuarterlyFactError, FilingNotFoundError):
+        return revenue
+    same = (fact.start_date, fact.end_date) == (revenue.start_date, revenue.end_date)
+    return fact if same else revenue
+
+
+DIVIDEND_DECLARED_EARLIER_MESSAGE = (
+    "This quarter's dividend was declared earlier in the fiscal year"
+)
+
+
+def _refuse_dividend_declared_earlier(fact: FinancialFact, records: list[FactRecord]) -> None:
+    """Refuse a declared dividend of zero when the year to date declared one.
+
+    Walmart declares the year's dividend in its first quarter; the next 10-Q
+    reports $0.00 declared for its quarter beside $0.99 for the six months.
+    """
+    if fact.value != 0 or fact.concept != "CommonStockDividendsPerShareDeclared":
+        return
+    if any(
+        record.accession_number == fact.accession_number
+        and record.concept == fact.concept
+        and record.start_date is not None
+        and record.start_date < fact.start_date
+        and record.end_date == fact.end_date
+        and record.value > 0
+        for record in records
+    ):
+        raise PerShareNotDerivableError(
+            DIVIDEND_DECLARED_EARLIER_MESSAGE,
+            details={"metric": fact.metric.value, "report_date": fact.end_date.isoformat()},
+        )
+
+
+def _with_diluted_shares(fact: FinancialFact, payload: dict[str, Any]) -> FinancialFact:
+    """A per-share figure with the weighted diluted shares its filing reports beside it."""
+    records, _ = parse_company_facts_for_concepts(payload, [SHARE_COUNT_CONCEPT], "shares")
+    shares = _reported(records, (fact.accession_number, fact.start_date, fact.end_date))
+    count = shares.get(SHARE_COUNT_CONCEPT[1])
+    return fact if count is None else fact.model_copy(update={"diluted_shares": count})
 
 
 def _periodic_history_days(filings: list[Filing]) -> int:

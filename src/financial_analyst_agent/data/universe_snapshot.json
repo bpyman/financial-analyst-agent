@@ -26783,18 +26783,6 @@
       "industry": "Apparel - Footwear & Accessories"
     },
     {
-      "cik": "0000319654",
-      "name": "Permian Basin Royalty Trust",
-      "ticker": "PBT",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "1562792930",
-      "price": "33.53",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Midstream"
-    },
-    {
       "cik": "0000712771",
       "name": "ConnectOne Bancorp, Inc.",
       "ticker": "CNOB",
@@ -29894,18 +29882,6 @@
       "is_fund": false,
       "industry": "Construction Materials",
       "files_quarterly": false
-    },
-    {
-      "cik": "0000710752",
-      "name": "Sabine Royalty Trust",
-      "ticker": "SBR",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "1046651178",
-      "price": "71.79",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Midstream"
     },
     {
       "cik": "0001309402",
@@ -41577,18 +41553,6 @@
       "industry": "Education & Training Services"
     },
     {
-      "cik": "0000065172",
-      "name": "Mesabi Trust",
-      "ticker": "MSB",
-      "sector": "Basic Materials",
-      "exchange": "NYSE",
-      "market_cap": "250854400",
-      "price": "19.12",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Steel"
-    },
-    {
       "cik": "0002067674",
       "name": "Silver Bow Mining Corp.",
       "ticker": "SBMT",
@@ -44282,18 +44246,6 @@
       "is_fund": false,
       "industry": "Biotechnology",
       "files_quarterly": false
-    },
-    {
-      "cik": "0000319655",
-      "name": "San Juan Basin Royalty Trust",
-      "ticker": "SJT",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "159402096",
-      "price": "3.42",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
     },
     {
       "cik": "0001778016",
@@ -48025,18 +47977,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0000072633",
-      "name": "North European Oil Royalty Trust",
-      "ticker": "NRT",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "79039074",
-      "price": "8.6",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
-    },
-    {
       "cik": "0000849146",
       "name": "LifeVantage Corporation",
       "ticker": "LFVN",
@@ -48365,18 +48305,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Biotechnology"
-    },
-    {
-      "cik": "0000881787",
-      "name": "Cross Timbers Royalty Trust",
-      "ticker": "CRT",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "75000000",
-      "price": "12.5",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
     },
     {
       "cik": "0001574094",
@@ -49590,18 +49518,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0001520048",
-      "name": "Permianville Royalty Trust",
-      "ticker": "PVL",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "59730000",
-      "price": "1.81",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
-    },
-    {
       "cik": "0001877939",
       "name": "Castellum, Inc.",
       "ticker": "CTM",
@@ -49770,18 +49686,6 @@
       "is_etf": false,
       "is_fund": false,
       "industry": "Advertising Agencies"
-    },
-    {
-      "cik": "0001505413",
-      "name": "VOC Energy Trust",
-      "ticker": "VOC",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "57970000",
-      "price": "3.41",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
     },
     {
       "cik": "0002010788",
@@ -53711,18 +53615,6 @@
       "industry": "Drug Manufacturers - Specialty & Generic"
     },
     {
-      "cik": "0001724009",
-      "name": "PermRock Royalty Trust",
-      "ticker": "PRT",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "24453121",
-      "price": "2.01",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
-    },
-    {
       "cik": "0001058307",
       "name": "NextPlat Corp",
       "ticker": "NXPL",
@@ -57495,18 +57387,6 @@
       "industry": "Biotechnology"
     },
     {
-      "cik": "0000062362",
-      "name": "Marine Petroleum Trust",
-      "ticker": "MARPS",
-      "sector": "Energy",
-      "exchange": "NASDAQ",
-      "market_cap": "8520000",
-      "price": "4.26",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Midstream"
-    },
-    {
       "cik": "0001840317",
       "name": "Veea Inc.",
       "ticker": "VEEA",
@@ -59189,18 +59069,6 @@
       "is_fund": false,
       "industry": "Software - Application",
       "files_quarterly": false
-    },
-    {
-      "cik": "0000313364",
-      "name": "Mesa Royalty Trust",
-      "ticker": "MTR",
-      "sector": "Energy",
-      "exchange": "NYSE",
-      "market_cap": "4528524",
-      "price": "2.43",
-      "is_etf": false,
-      "is_fund": false,
-      "industry": "Oil & Gas Exploration & Production"
     },
     {
       "cik": "0001979610",

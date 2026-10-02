@@ -4,8 +4,9 @@ Run it after ``build-universe-snapshot`` so the public demo, which is locked to
 the recorded runtime, shows the same freeze as the live runtime.
 
 First, ``fixture_universe_snapshot.json`` takes the freeze's ``as_of`` and each
-of its companies' market caps, industries, and ``files_quarterly`` flags from
-``universe_snapshot.json`` (membership and sectors stay as they are).
+of its companies' market caps, sectors, industries, and ``files_quarterly`` flags
+from ``universe_snapshot.json`` (membership stays as it is), so a ranking draws
+the same companies on both runtimes.
 
 Then ``sec_fixture_recordings.json`` is re-recorded from live EDGAR. The
 recorded runtime replays it through the same selection code the live runtime
@@ -15,8 +16,8 @@ uses, so the cassette holds real EDGAR payloads, trimmed to what the demo reads:
 - ``submissions``: each issuer's 10-Q and 10-K filings (and amendments) from
   the last ``--quarters`` period ends. A 10-K's period end is the fiscal fourth
   quarter, derived from it per ADR 0007.
-- ``company_facts``: the concepts in ``METRIC_CONCEPTS`` and
-  ``GROSS_PROFIT_EXCLUDING_CONCEPTS``, only as reported in those filings.
+- ``company_facts``: the concepts in ``READ_CONCEPTS`` (every concept a metric
+  or a check reads), only as reported in those filings.
 - ``filing_documents``: the Management's Discussion and Analysis and Risk
   Factors sections of each issuer's newest 10-Q and the 10-Q a year before it,
   the pair "What changed in X's latest 10-Q?" compares, as extracted by
@@ -45,10 +46,7 @@ from financial_analyst_agent.filing_change import (
     _year_apart_quarterlies,
     extract_section,
 )
-from financial_analyst_agent.services.metric_catalog import (
-    GROSS_PROFIT_EXCLUDING_CONCEPTS,
-    METRIC_CONCEPTS,
-)
+from financial_analyst_agent.services.metric_catalog import READ_CONCEPTS
 
 DATA = Path(__file__).resolve().parents[1] / "src" / "financial_analyst_agent" / "data"
 CASSETTE = DATA / "sec_fixture_recordings.json"
@@ -83,13 +81,14 @@ def _with_price(company: dict[str, Any], price: str | None) -> dict[str, Any]:
 
 
 def _sync_fixture_snapshot() -> str:
-    """Carry the live freeze's date, caps, prices, industries, and filer flags across."""
+    """Carry the live freeze's date, caps, prices, sectors, industries, and filer flags across."""
     raw = FIXTURE_SNAPSHOT.read_text()
     fixture = json.loads(raw)
     live = json.loads(LIVE_SNAPSHOT.read_text())
     caps = {company["cik"]: company["market_cap"] for company in live["companies"]}
     prices = {company["cik"]: company.get("price") for company in live["companies"]}
     industries = {company["cik"]: company.get("industry", "") for company in live["companies"]}
+    sectors = {company["cik"]: company.get("sector", "") for company in live["companies"]}
     # Like write_universe_snapshot, only a False flag is written.
     foreign = {c["cik"] for c in live["companies"] if c.get("files_quarterly", True) is False}
     missing = [c["ticker"] for c in fixture["companies"] if c["cik"] not in caps]
@@ -100,6 +99,7 @@ def _sync_fixture_snapshot() -> str:
         company["market_cap"] = caps[company["cik"]]
         fixture["companies"][index] = company = _with_price(company, prices[company["cik"]])
         company["industry"] = industries[company["cik"]]
+        company["sector"] = sectors[company["cik"]]
         if company["cik"] in foreign:
             company["files_quarterly"] = False
         else:
@@ -149,22 +149,21 @@ def _trim_submissions(payload: dict[str, Any], quarters: int) -> dict[str, Any]:
 
 def _trim_company_facts(payload: dict[str, Any], accessions: set[str]) -> dict[str, Any]:
     facts: dict[str, dict[str, Any]] = {}
-    for concepts in (*METRIC_CONCEPTS.values(), GROSS_PROFIT_EXCLUDING_CONCEPTS):
-        for taxonomy, concept in concepts:
-            body = payload.get("facts", {}).get(taxonomy, {}).get(concept)
-            if body is None:
-                continue
-            units: dict[str, list[dict[str, Any]]] = {}
-            for unit, records in body.get("units", {}).items():
-                kept = [
-                    {field: record[field] for field in FACT_FIELDS if field in record}
-                    for record in records
-                    if record.get("accn") in accessions
-                ]
-                if kept:
-                    units[unit] = kept
-            if units:
-                facts.setdefault(taxonomy, {})[concept] = {"units": units}
+    for taxonomy, concept in sorted(READ_CONCEPTS):
+        body = payload.get("facts", {}).get(taxonomy, {}).get(concept)
+        if body is None:
+            continue
+        units: dict[str, list[dict[str, Any]]] = {}
+        for unit, records in body.get("units", {}).items():
+            kept = [
+                {field: record[field] for field in FACT_FIELDS if field in record}
+                for record in records
+                if record.get("accn") in accessions
+            ]
+            if kept:
+                units[unit] = kept
+        if units:
+            facts.setdefault(taxonomy, {})[concept] = {"units": units}
     return {"cik": payload["cik"], "entityName": payload["entityName"], "facts": facts}
 
 
