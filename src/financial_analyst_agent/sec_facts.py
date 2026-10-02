@@ -2,13 +2,14 @@
 
 import threading
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any, Protocol
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.enums import PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import (
+    DataIntegrityError,
     FilingNotFoundError,
     IneligibleIssuerError,
     PerShareNotDerivableError,
@@ -22,6 +23,7 @@ from financial_analyst_agent.providers.sec.company_resolver import resolve_compa
 from financial_analyst_agent.providers.sec.submissions import (
     files_quarterly_reports,
     parse_submissions,
+    trim_submissions,
 )
 from financial_analyst_agent.providers.sec.tickers import parse_cik
 from financial_analyst_agent.providers.sec.urls import build_filing_source_url
@@ -84,8 +86,11 @@ _READ_CONCEPTS = frozenset(
     concept for candidates in METRIC_CONCEPTS.values() for concept in candidates
 ) | frozenset(GROSS_PROFIT_EXCLUDING_CONCEPTS)
 # Facts files parsed at once across the process: a spike of rankings would
-# otherwise hold dozens of whole files in memory together.
+# otherwise hold dozens of whole files in memory together. Only the parse holds
+# a slot; the download happens before it, so a slow SEC holds none.
 _FACTS_PARSE_SLOTS = threading.BoundedSemaphore(2)
+# A source failure, as opposed to a filing that lacks the fact.
+SOURCE_FAILURES = (ProviderError, DataIntegrityError, OSError)
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
 _THIN_HISTORY = 4
 
@@ -265,6 +270,9 @@ class SecFactLookup:
         # GOOG), so a table row and the ranking name it alike. Keyed by CIK.
         self._listed_tickers: Mapping[str, str] = listed_tickers or {}
         self._tickers: dict[str, Any] | None = None
+        # A document that failed once this turn fails again without asking SEC:
+        # a ranking's metrics and periods would otherwise ask six times each.
+        self._failures: dict[str, BaseException] = {}
         self._resolved_by_query: dict[str, Company] = {}
         self._submissions_by_cik: dict[str, dict[str, Any]] = {}
         self._company_facts_by_cik: dict[str, dict[str, Any] | None] = {}
@@ -288,9 +296,20 @@ class SecFactLookup:
         if self._owns_client:
             self._client.close()
 
+    def _remembering_failure[T](self, key: str, fetch: Callable[[], T]) -> T:
+        failed = self._failures.get(key)
+        if failed is not None:
+            raise failed
+        try:
+            return fetch()
+        except SOURCE_FAILURES as exc:
+            if not (isinstance(exc, ProviderError) and exc.details.get("status_code") == 404):
+                self._failures[key] = exc
+            raise
+
     def _cached_company_tickers(self) -> dict[str, Any]:
         if self._tickers is None:
-            self._tickers = self._client.get_company_tickers()
+            self._tickers = self._remembering_failure("tickers", self._client.get_company_tickers)
         return self._tickers
 
     def _resolve(self, company: str) -> Company:
@@ -305,7 +324,11 @@ class SecFactLookup:
     def _cached_submissions(self, cik: str) -> dict[str, Any]:
         payload = self._submissions_by_cik.get(cik)
         if payload is None:
-            payload = self._client.get_submissions(cik)
+            payload = trim_submissions(
+                self._remembering_failure(
+                    f"submissions:{cik}", lambda: self._client.get_submissions(cik)
+                )
+            )
             self._submissions_by_cik[cik] = payload
         return payload
 
@@ -408,19 +431,25 @@ class SecFactLookup:
                     details={"cik": cik, "status_code": 404},
                 )
             return payload
+        try:
+            payload = self._remembering_failure(f"facts:{cik}", lambda: self._parsed_facts(cik))
+        except ProviderError as exc:
+            if exc.details.get("status_code") == 404:
+                self._company_facts_by_cik[cik] = None
+            raise
+        self._company_facts_by_cik[cik] = payload
+        return payload
+
+    def _parsed_facts(self, cik: str) -> dict[str, Any]:
+        prefetch = getattr(self._client, "prefetch_company_facts", None)
+        if callable(prefetch):
+            prefetch(cik)
         with _FACTS_PARSE_SLOTS:
-            try:
-                payload = self._client.get_company_facts(cik)
-            except ProviderError as exc:
-                if exc.details.get("status_code") == 404:
-                    self._company_facts_by_cik[cik] = None
-                raise
+            payload = self._client.get_company_facts(cik)
             # The summaries read every concept; the rest of the turn reads only the catalog's.
             self._fiscal_labels_by_cik.setdefault(cik, fiscal_labels(payload))
             self._facts_filings_by_cik[cik] = filings_from_company_facts(payload)
-            payload = _read_concepts_only(payload)
-        self._company_facts_by_cik[cik] = payload
-        return payload
+            return _read_concepts_only(payload)
 
     def get_financials(
         self,

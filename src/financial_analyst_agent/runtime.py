@@ -197,6 +197,9 @@ def _shared_sec_client(settings: Settings) -> SECClient:
         settings.sec_base_url,
         settings.sec_max_requests_per_second,
         settings.sec_timeout_seconds,
+        settings.sec_request_deadline_seconds,
+        settings.sec_max_response_bytes,
+        settings.sec_block_pause_seconds,
     )
     with _SEC_CLIENTS_LOCK:
         client = _SEC_CLIENTS.get(key)
@@ -259,7 +262,14 @@ def live_runtime(
     )
     news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
-    client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
+    client = CachingSECDataSource(
+        _shared_sec_client(resolved),
+        Path(cache_dir),
+        budget=budget,
+        # Waiting on another turn's fetch longer than one request may take is pointless.
+        fill_wait_seconds=resolved.sec_request_deadline_seconds,
+        max_bytes=resolved.sec_cache_max_bytes,
+    )
     return Runtime(
         completer=completer,
         filings=client,
