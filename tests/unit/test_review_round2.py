@@ -7,7 +7,6 @@ from decimal import Decimal
 
 from financial_analyst_agent.api import _Throttle
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
-from financial_analyst_agent.conversation import _match_clarification_answer
 from financial_analyst_agent.graph.analysis_spec import (
     AnalysisSpec,
     PeriodSelection,
@@ -15,6 +14,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     SpecPatch,
     compile_tasks,
 )
+from financial_analyst_agent.graph.clarify import match_clarification_answer
 from financial_analyst_agent.graph.spec_turn import (
     CALENDARS_DIFFER_BANNER,
     _period_notes,
@@ -41,9 +41,9 @@ def _pending() -> PendingClarification:
 
 
 def test_a_new_question_naming_a_candidate_is_not_an_answer() -> None:
-    assert _match_clarification_answer(_pending(), "net income") == "net_income"
-    assert _match_clarification_answer(_pending(), "What was Microsoft's net income?") is None
-    assert _match_clarification_answer(_pending(), "compare Apple and Microsoft net income") is None
+    assert match_clarification_answer(_pending(), "net income") == "net_income"
+    assert match_clarification_answer(_pending(), "What was Microsoft's net income?") is None
+    assert match_clarification_answer(_pending(), "compare Apple and Microsoft net income") is None
 
 
 class _Listing:

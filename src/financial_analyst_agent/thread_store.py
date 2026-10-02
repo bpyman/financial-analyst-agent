@@ -22,13 +22,24 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
-from financial_analyst_agent.contracts import ClarifyKind, Intent, RuntimeKind, TurnResult
+from financial_analyst_agent.contracts import RuntimeKind, TurnResult
 from financial_analyst_agent.evidence_store import (
     EvidenceStore,
     InMemoryEvidenceStore,
     LocalEvidenceStore,
 )
-from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec
+from financial_analyst_agent.graph.checkpointer import GraphCheckpoint, paused_values
+from financial_analyst_agent.graph.state import Clarification, PendingClarification
+
+__all__ = [
+    "EphemeralThreadStore",
+    "LocalThreadStore",
+    "PendingClarification",
+    "ThreadMessage",
+    "ThreadState",
+    "ThreadStore",
+]
 
 
 class ThreadMessage(BaseModel):
@@ -36,24 +47,15 @@ class ThreadMessage(BaseModel):
     content: str
 
 
-class PendingClarification(BaseModel):
-    """Analysis held awaiting the analyst's answer. Nothing has been fetched."""
-
-    kind: ClarifyKind
-    candidates: tuple[str, ...]
-    patch: SpecPatch
-    intent: Intent = Intent.LOOKUP
-    metric_role: Literal["add", "remove"] = "add"
-    # The question that was held, so an answer like "replace" resumes it rather
-    # than being read as a question of its own. Empty in threads saved before.
-    question: str = ""
-
-
 class ThreadState(BaseModel):
     """Persisted conversation-thread state (not run state, not evidence bodies).
 
     ``runtime`` is the runtime the thread is bound to. ``None`` means not yet bound:
     a thread saved before binding existed binds on its next turn.
+
+    ``checkpoint`` is the analysis graph's paused run while a clarification is
+    open (ADR 0005), and ``None`` otherwise. It is saved in this record, so the
+    thread and its paused run are written, expired, and cleared together.
     """
 
     thread_id: str
@@ -62,10 +64,26 @@ class ThreadState(BaseModel):
     evidence_refs: tuple[str, ...] = ()
     last_result_ref: str | None = None
     analysis_spec: AnalysisSpec | None = None
-    pending_clarification: PendingClarification | None = None
+    checkpoint: GraphCheckpoint | None = None
+    # Records saved before the graph held clarifications kept the open question
+    # as ``pending_clarification``. Read so the next turn can carry it into the
+    # graph; never written back.
+    legacy_pending_clarification: PendingClarification | None = Field(
+        default=None, validation_alias="pending_clarification", exclude=True
+    )
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     turn_count: int = 0
     live_sec_requests: int = 0
+
+    @property
+    def pending_clarification(self) -> PendingClarification | None:
+        """The open question the thread's analysis is paused on, if any."""
+        if self.checkpoint is None:
+            return self.legacy_pending_clarification
+        for value in paused_values(self.checkpoint):
+            if isinstance(value, Clarification):
+                return value.pending
+        return None
 
 
 class ThreadStore(Protocol):

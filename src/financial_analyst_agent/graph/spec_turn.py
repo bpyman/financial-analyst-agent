@@ -1,4 +1,10 @@
-"""Execute a compiled analysis-spec task through existing closed workflows."""
+"""Resolve a structured request into compiled tasks, run them, and merge the answer.
+
+The analysis graph's structured steps call into here: ``resolve_request``
+(patch → resolve → validate → compile, nothing fetched), ``dispatch_compiled_tasks``
+(the bounded, deadline-aware provider fan-out), and the deterministic merge and
+annotation of the task results.
+"""
 
 from __future__ import annotations
 
@@ -63,6 +69,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     resolve_spec,
     validate_spec,
 )
+from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
@@ -244,17 +251,6 @@ _NUMBER_WORDS = {
 DEFAULT_TASK_MAX_WORKERS = 8
 
 ProgressCallback = Callable[[int, int], None]
-
-
-@dataclass(frozen=True)
-class TurnContext:
-    """Bundled inputs that travel together into a spec turn."""
-
-    message: str
-    current_spec: AnalysisSpec | None
-    proposal: Any
-    on_progress: ProgressCallback | None = None
-    max_workers: int = DEFAULT_TASK_MAX_WORKERS
 
 
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
@@ -1372,24 +1368,39 @@ def _fill_identity(result: TurnResult, spec: AnalysisSpec) -> TurnResult:
     return result.model_copy(update={"table_rows": rows})
 
 
-def run_spec_turn_context(
-    ctx: TurnContext, runtime: Runtime
-) -> tuple[TurnResult, AnalysisSpec | None, SpecPatch]:
-    """Apply a structured proposal: patch → resolve → validate → compile → execute."""
-    message = ctx.message
-    current_spec = ctx.current_spec
-    proposal = ctx.proposal
-    on_progress = ctx.on_progress
-    max_workers = ctx.max_workers
-    patch = (
-        proposal
-        if isinstance(proposal, SpecPatch)
-        else plan_to_spec_patch(proposal)
-    )
-    intent = getattr(proposal, "intent", None) if not isinstance(proposal, SpecPatch) else None
+@dataclass(frozen=True)
+class Resolution:
+    """What resolving a structured request decided, before anything is fetched.
+
+    Either an answer that needs no fetch (a refusal, or a CLARIFY asking one
+    question) with the analysis it stands for, or compiled work. ``patch`` is the
+    patch as resolution applied it; a clarification holds it.
+    """
+
+    patch: SpecPatch
+    result: TurnResult | None = None
+    analysis_spec: AnalysisSpec | None = None
+    compiled: CompiledAnalysis | None = None
+
+
+def resolve_request(
+    request: StructuredRequest, current_spec: AnalysisSpec | None, runtime: Runtime
+) -> Resolution:
+    """Apply a structured request: patch → resolve → validate → compile. Nothing is fetched.
+
+    Only resolution decides identity (CIKs), catalog membership, and the period's
+    report dates; the model's patch is never executed as given.
+    """
+    message = request.wording
+    patch = request.patch
+    intent = request.intent
+
+    def answered(result: TurnResult, spec: AnalysisSpec | None) -> Resolution:
+        return Resolution(patch=patch, result=result, analysis_spec=spec)
+
     invalid = _INVALID_QUARTER.search(message)
     if invalid is not None:
-        return (
+        return answered(
             TurnResult(
                 intent=intent or Intent.LOOKUP,
                 tool_traces=[],
@@ -1400,34 +1411,31 @@ def run_spec_turn_context(
                 ),
             ),
             current_spec,
-            patch,
         )
     forecast = _FORECAST.search(message)
     if forecast is not None:
-        return _refusal(intent, forecast_message(forecast.group(0))), current_spec, patch
+        return answered(_refusal(intent, forecast_message(forecast.group(0))), current_spec)
     patch = refine_patch_from_message(patch, message, current_spec)
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
         else:
-            effective = intent or Intent.LOOKUP
-            return (
+            return answered(
                 TurnResult(
-                    intent=effective,
+                    intent=intent or Intent.LOOKUP,
                     tool_traces=[],
                     renderer=RendererKind.CLARIFY,
                     candidates=("extend", "replace"),
                     clarify_kind="ambiguous_mode",
                 ),
                 current_spec,
-                patch,
             )
     patch, early = bind_metrics_from_message(patch, message, intent=intent)
     if early is not None:
-        return early, current_spec, patch
+        return answered(early, current_spec)
     emptied = emptied_by(current_spec, patch)
     if emptied is not None:
-        return _refusal(intent, EMPTIED_MESSAGES[emptied]), current_spec, patch
+        return answered(_refusal(intent, EMPTIED_MESSAGES[emptied]), current_spec)
 
     draft = apply_patch(current_spec, patch)
     # A refusal names the analysis that was asked for, not a default lookup.
@@ -1436,69 +1444,46 @@ def run_spec_turn_context(
     # resolve a unique phrase (plan slug may still be present on replace).
     if draft.metrics and any(m not in ALLOWED_METRICS for m in draft.metrics):
         bad = next(m for m in draft.metrics if m not in ALLOWED_METRICS)
-        return (
+        return answered(
             _rejection_result(
-                SpecRejection(
-                    code="invalid_metric",
-                    message=unknown_metric_message(bad),
-                ),
+                SpecRejection(code="invalid_metric", message=unknown_metric_message(bad)),
                 asked,
             ),
             None,
-            patch,
         )
 
     try:
         spec = resolve_spec(draft, ranking=runtime.ranking)
     except UnknownIndustryError as exc:
-        return (
-            TurnResult(
-                intent=asked,
-                tool_traces=[],
-                renderer=RendererKind.REFUSE,
-                message=str(exc),
-            ),
-            None,
-            patch,
-        )
+        return answered(_refusal(asked, str(exc)), None)
     if not spec.companies and spec.constituents is None and spec.metrics:
         # "what was the revenue?": naming the company next ("for Apple") completes it.
         held = current_spec if current_spec is not None else spec
-        return _refusal(asked, no_company_message(spec.metrics)), held, patch
+        return answered(_refusal(asked, no_company_message(spec.metrics)), held)
     outcome = validate_spec(spec)
     if outcome is not None:
-        return _rejection_result(outcome, asked), None, patch
+        return answered(_rejection_result(outcome, asked), None)
 
     spec, annual_filers = drop_annual_filers(spec, runtime)
     if annual_filers and not spec.companies and spec.constituents is None:
-        return (
+        return answered(
             _rejection_result(
                 SpecRejection(code="empty_spec", message=annual_filer_note(annual_filers)),
                 asked,
             ),
             None,
-            patch,
         )
 
     try:
         spec = materialize_period_dates(spec, runtime)
     except (CompanyNotFoundError, *SOURCE_FAILURES) as exc:
         public = isinstance(exc, (CompanyNotFoundError, ProviderRefusal))
-        return (
-            TurnResult(
-                intent=asked,
-                tool_traces=[],
-                renderer=RendererKind.REFUSE,
-                message=str(exc) if public else SOURCE_UNAVAILABLE_MESSAGE,
-            ),
-            None,
-            patch,
-        )
+        return answered(_refusal(asked, str(exc) if public else SOURCE_UNAVAILABLE_MESSAGE), None)
     if spec.periods.kind == "named" and spec.companies and not spec.periods.report_dates:
         future = all(
             period.year > date.today().year for period in spec.periods.named
         ) or _after_latest_filing(spec, runtime)
-        return (
+        return answered(
             _rejection_result(
                 SpecRejection(
                     code="empty_spec",
@@ -1514,10 +1499,9 @@ def run_spec_turn_context(
                 asked,
             ),
             None,
-            patch,
         )
     if spec.periods.kind == "last_n_quarters" and not spec.periods.report_dates:
-        return (
+        return answered(
             _rejection_result(
                 SpecRejection(
                     code="empty_spec",
@@ -1529,40 +1513,61 @@ def run_spec_turn_context(
                 asked,
             ),
             None,
-            patch,
         )
     tasks = compile_tasks(spec)
     if not tasks:
-        return (
+        return answered(
             _rejection_result(
                 SpecRejection(code="empty_spec", message="Analysis compiled to no tasks"),
                 asked,
             ),
             None,
-            patch,
         )
-
-    results = dispatch_compiled_tasks(
-        tasks,
-        runtime,
-        on_progress=on_progress,
-        max_workers=max_workers,
+    return Resolution(
+        patch=patch,
+        compiled=CompiledAnalysis(
+            spec=spec,
+            tasks=tasks,
+            patch=patch,
+            wording=message,
+            prior_spec=current_spec,
+            notes=request.notes,
+            annual_filers=tuple(annual_filers),
+            unrecorded=request.unrecorded,
+        ),
     )
-    across = "across_periods" in spec.operations
+
+
+def merge_analysis(compiled: CompiledAnalysis, results: list[TurnResult]) -> TurnResult:
+    """One answer from the task results, in task order: deterministic, no fetch."""
+    spec = compiled.spec
     merged = merge_task_results(
-        tasks,
+        compiled.tasks,
         results,
-        across_periods=across,
+        across_periods="across_periods" in spec.operations,
         sequential="year_over_year" not in spec.operations,
     )
     if len(spec.companies) == 1 and spec.constituents is None:
         # "How is SPY doing?": one reason, said once, not a row for each metric.
         merged = _not_operating_once(merged, results, spec.companies[0])
     merged = _fill_identity(merged, spec)
+    message = compiled.wording
     if "order_by_metric" in spec.operations and spec.constituents is not None and spec.metrics:
         merged = _order_by_metric(merged, _ordering_metric(spec, message))
     elif "order_by_metric" in spec.operations and spec.companies and spec.metrics:
         merged = _order_companies_by_metric(merged, _ordering_metric(spec, message))
+    return merged
+
+
+def add_history(
+    compiled: CompiledAnalysis,
+    merged: TurnResult,
+    runtime: Runtime,
+    *,
+    max_workers: int = DEFAULT_TASK_MAX_WORKERS,
+) -> TurnResult:
+    """An overview's trend rows and a lone fact's prior quarter, when the answer has them."""
+    spec = compiled.spec
     trend = overview_trend(spec, runtime, max_workers=max_workers)
     if trend is not None:
         merged = merged.model_copy(
@@ -1579,22 +1584,28 @@ def run_spec_turn_context(
                 "tool_traces": [*merged.tool_traces, *prior.tool_traces],
             }
         )
+    return merged
+
+
+def annotate_analysis(
+    compiled: CompiledAnalysis, merged: TurnResult, runtime: Runtime
+) -> tuple[TurnResult, AnalysisSpec]:
+    """The answer's notes, and the resolved analysis the thread keeps."""
+    spec = compiled.spec
+    patch = compiled.patch
     # Planner notes first: a corrected company name explains the whole answer.
-    planner_notes = [
-        note for note in getattr(proposal, "notes", ()) or () if isinstance(note, str)
-    ]
     notes = [
-        *([annual_filer_note(annual_filers)] if annual_filers else []),
-        *_already_present_notes(patch, current_spec, spec),
-        *_period_notes(message, spec),
+        *([annual_filer_note(list(compiled.annual_filers))] if compiled.annual_filers else []),
+        *_already_present_notes(patch, compiled.prior_spec, spec),
+        *_period_notes(compiled.wording, spec),
         *_short_ranking_notes(spec),
         *_capped_ranking_notes(patch),
     ]
-    banners = list(dict.fromkeys([*planner_notes, *merged.banners, *notes]))
+    banners = list(dict.fromkeys([*compiled.notes, *merged.banners, *notes]))
     if banners != merged.banners:
         merged = merged.model_copy(update={"banners": banners})
     resolved = _identity_from_rows(spec, merged)
-    return merged, _with_market_date(resolved, runtime), patch
+    return merged, _with_market_date(resolved, runtime)
 
 
 EMPTIED_MESSAGES = {
