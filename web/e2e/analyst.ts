@@ -37,9 +37,12 @@ export class Analyst {
   }
 
   async startOver() {
-    // A conversation is only cleared once the analyst confirms it.
-    this.page.once("dialog", (dialog) => void dialog.accept());
     await this.page.getByRole("button", { name: "Start over" }).click();
+    // A conversation is only cleared once the analyst confirms it, in the page.
+    await this.page
+      .getByRole("alertdialog", { name: "Start over?" })
+      .getByRole("button", { name: "Clear conversation" })
+      .click();
     await expect(this.conversation()).toBeHidden();
     await expect(this.story("Verify a quarterly fact")).toBeEnabled();
   }

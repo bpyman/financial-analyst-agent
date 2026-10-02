@@ -26,6 +26,7 @@ import {
 import { IDLE, WAKE_AFTER_MS, turnReducer } from "@/lib/turn-state";
 import type { Meta, RuntimeKind, ThreadView } from "@/lib/types";
 import { Composer } from "./composer";
+import type { ConfirmRequest } from "./confirm-panel";
 import { Header } from "./header";
 import { Landing } from "./landing";
 import { StatusLine } from "./status-line";
@@ -35,8 +36,16 @@ import { Callout } from "./ui";
 const threadApi: ThreadApi = { createThread, getThread, deleteThread };
 const UNREACHABLE = "The analysis service is unreachable. Please try again shortly.";
 const OTHER_TAB_NOTICE = "This conversation changed in another tab, so this one follows it.";
-const START_OVER_CONFIRM = "Start over? This clears the current conversation.";
-const SWITCH_CONFIRM = "Switch runtime? This starts a new conversation and clears the current one.";
+const START_OVER_CONFIRM: ConfirmRequest = {
+  title: "Start over?",
+  body: "This clears the current conversation.",
+  action: "Clear conversation",
+};
+const SWITCH_CONFIRM: ConfirmRequest = {
+  title: "Switch runtime?",
+  body: "This starts a new conversation and clears the current one.",
+  action: "Switch runtime",
+};
 const FALLBACK_PLACEHOLDER = "Ask about a company's latest quarterly results…";
 const UNFINISHED = "Your last question could not be completed. Please ask it again.";
 /** The composer's limit until meta brings the server's `max_message_chars`. */
@@ -67,7 +76,11 @@ export function AnalystWindow() {
   const [turn, dispatch] = useReducer(turnReducer, IDLE);
   const [draft, setDraft] = useState("");
   const [switching, setSwitching] = useState(false);
+  // Start over or a runtime switch waiting on the analyst's answer.
+  const [confirming, setConfirming] = useState<{ next: RuntimeKind | null; request: ConfirmRequest } | null>(null);
   const inFlight = useRef(false);
+  // The running answer, or the reload's wait for one; Start over aborts it.
+  const work = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const shownTurns = useRef(0);
 
@@ -84,6 +97,7 @@ export function AnalystWindow() {
   const resuming = !booted && storedThreadId !== null;
   const runtime = view?.runtime ?? (resuming || resumeFailed ? null : chosenRuntime ?? meta?.runtime.default ?? null);
   const busy = turn.status === "running" || switching || resuming;
+  const hasThread = (view?.turns.length ?? 0) > 0 || turn.status !== "idle";
 
   // Wake on visit, then resume the stored thread. A reload mid-turn finds the
   // turn still in flight: show it running and poll until the answer lands.
@@ -91,6 +105,8 @@ export function AnalystWindow() {
     pingHealth();
     const aborted = new AbortController();
     const { signal } = aborted;
+    // Start over aborts the reload too, so the saved thread cannot come back over the new one.
+    work.current = aborted;
 
     async function reattach(resumed: ThreadView) {
       inFlight.current = true;
@@ -107,7 +123,10 @@ export function AnalystWindow() {
         dispatch({ type: "reset" });
         setNotice({ kind: "error", text: errorText(error) });
       } finally {
-        inFlight.current = false;
+        if (work.current === aborted) {
+          work.current = null;
+          inFlight.current = false;
+        }
       }
     }
 
@@ -236,6 +255,8 @@ export function AnalystWindow() {
     const message = text.trim();
     if (!message || inFlight.current || resuming || resumeFailed) return;
     inFlight.current = true;
+    const controller = new AbortController();
+    work.current = controller;
     dispatch({ type: "send", message });
     setDraft("");
     setNotice(null);
@@ -246,6 +267,7 @@ export function AnalystWindow() {
       if (!threadId) {
         // Before the analyst picks a runtime, the server applies its deployment default.
         const started = await startThread(threadApi, store, chosenRuntime ?? undefined);
+        if (controller.signal.aborted) return;
         setView(started.view);
         threadId = started.view.thread_id;
         if (started.notice) setNotice({ kind: "info", text: started.notice });
@@ -253,7 +275,8 @@ export function AnalystWindow() {
       const asked = askOnThread(
         threadApi,
         store,
-        (id, text) => whenFree(() => runTurn(id, text), { onBusy: () => dispatch({ type: "queued" }) }),
+        (id, text) =>
+          whenFree(() => runTurn(id, text, controller.signal), { onBusy: () => dispatch({ type: "queued" }) }),
         threadId,
         message,
         view?.runtime ?? chosenRuntime ?? undefined,
@@ -266,17 +289,25 @@ export function AnalystWindow() {
         },
       );
       for await (const event of asked) {
+        if (controller.signal.aborted) break;
         if (event.event === "thread") setView(event.data);
         if (event.event === "error") stale = true;
         dispatch({ type: "event", event });
       }
     } catch (error) {
-      stale = true;
-      dispatch({ type: "fail", error: errorText(error) });
+      if (!controller.signal.aborted) {
+        stale = true;
+        dispatch({ type: "fail", error: errorText(error) });
+      }
     } finally {
       window.clearTimeout(waking);
-      inFlight.current = false;
+      // Start over took the window over: leave its flags alone.
+      if (work.current === controller) {
+        work.current = null;
+        inFlight.current = false;
+      }
     }
+    if (controller.signal.aborted) return;
     if (stale && threadId) {
       // A failed turn can still have changed the thread (its turn and budget
       // counts); redraw from the server rather than keep the pre-turn view,
@@ -290,19 +321,29 @@ export function AnalystWindow() {
     }
   }
 
-  /** Start over on `next`: the same runtime, or the other one when the switch flips. */
-  async function restart(next: RuntimeKind | null) {
-    if (inFlight.current || resuming) return;
-    const changesRuntime = next !== null && next !== runtime;
-    // Asked only when there is a conversation to lose.
-    if (
-      (view?.turns.length ?? 0) > 0 &&
-      !window.confirm(changesRuntime ? SWITCH_CONFIRM : START_OVER_CONFIRM)
-    ) {
+  /**
+   * Start over on `next`: the same runtime, or the other one when the switch
+   * flips. Asked first, in the page, when there is a conversation to lose.
+   */
+  function restart(next: RuntimeKind | null) {
+    if (switching) return;
+    if (hasThread || resuming) {
+      const changesRuntime = next !== null && next !== runtime;
+      setConfirming({ next, request: changesRuntime ? SWITCH_CONFIRM : START_OVER_CONFIRM });
       return;
     }
+    void startOver(next);
+  }
+
+  /** Drops a running answer or a reload still loading, then opens a new thread. */
+  async function startOver(next: RuntimeKind | null) {
+    setConfirming(null);
+    work.current?.abort();
+    work.current = null;
     inFlight.current = true;
     setSwitching(true);
+    // A saved thread still loading is dropped: `resumeThread` sees the new id and ignores it.
+    setBooted(true);
     setResumeFailed(false);
     setDraft("");
     setNotice(null);
@@ -329,8 +370,6 @@ export function AnalystWindow() {
     inputRef.current?.focus();
   }
 
-  const hasThread = (view?.turns.length ?? 0) > 0 || turn.status !== "idle";
-
   return (
     <div className="flex min-h-dvh flex-col">
       <Header
@@ -338,8 +377,12 @@ export function AnalystWindow() {
         locked={locked}
         lockedNotice={meta?.runtime_copy.locked ?? ""}
         busy={busy}
+        restarting={switching}
+        confirm={confirming?.request ?? null}
         onSwitchRuntime={restart}
         onStartOver={() => restart(runtime)}
+        onConfirm={() => confirming && void startOver(confirming.next)}
+        onCancel={() => setConfirming(null)}
       />
       <StatusLine
         runtime={runtime}

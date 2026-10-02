@@ -118,11 +118,59 @@ test("Start over asks first, and keeps the conversation when declined", async ({
   await analyst.open();
   await analyst.tell("Verify a quarterly fact");
 
-  page.once("dialog", (dialog) => void dialog.dismiss());
   await page.getByRole("button", { name: "Start over" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Start over?" });
+  await expect(confirm).toContainText("This clears the current conversation.");
+  await confirm.getByRole("button", { name: "Cancel" }).click();
 
+  await expect(confirm).toBeHidden();
   await expect(analyst.counter()).toHaveText(/^1 of /);
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
+});
+
+test("Start over works where the browser's own dialogs never show", async ({ page }) => {
+  // In-app browsers (LinkedIn, Slack) answer window.confirm with Cancel, unseen.
+  await page.addInitScript(() => {
+    window.confirm = () => false;
+  });
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message());
+    void dialog.dismiss();
+  });
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Verify a quarterly fact");
+
+  await analyst.startOver();
+  await expect(analyst.counter()).toHaveText(/^0 of /);
+  expect(dialogs).toEqual([]);
+});
+
+test("Start over drops an answer that is still running", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  let releaseTurn = () => {};
+  const turnHeld = new Promise<void>((resolve) => (releaseTurn = resolve));
+  await page.route(/\/api\/threads\/[0-9a-f-]+\/turns$/, async (route) => {
+    await turnHeld;
+    await route.continue().catch(() => undefined);
+  });
+  const composer = page.getByRole("textbox", { name: "Ask a question" });
+  await composer.fill("What was Apple's latest quarterly revenue?");
+  await composer.press("Enter");
+  await expect(page.locator('[data-turn="pending"]')).toBeVisible();
+
+  await analyst.startOver();
+  await expect(page.locator('[data-turn="pending"]')).toBeHidden();
+  await expect(analyst.counter()).toHaveText(/^0 of /);
+
+  // The dropped answer finishing later does not come back into the new conversation.
+  releaseTurn();
+  await page.waitForTimeout(1500);
+  await expect(analyst.conversation()).toBeHidden();
+  await page.getByRole("textbox", { name: "Ask a question" }).fill("Microsoft revenue");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
 test("a second tab follows the first when it starts over", async ({ page, context }) => {
@@ -168,7 +216,6 @@ test("a reload keeps the window from starting another thread until the saved one
   await composer.fill("What was Apple's latest quarterly revenue?");
   await composer.press("Enter");
   await expect(loading).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Start over" })).toBeDisabled();
 
   releaseThread();
   await expect(analyst.factCards(/, Microsoft Corporation$/)).toBeVisible();
@@ -177,6 +224,34 @@ test("a reload keeps the window from starting another thread until the saved one
   await expect(page.getByRole("button", { name: "Start over" })).toBeEnabled();
   expect(created).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"))).toBe(savedId);
+});
+
+test("Start over works while a saved thread is slow to come back", async ({ page }) => {
+  const analyst = new Analyst(page);
+  await analyst.open();
+  await analyst.tell("Verify a quarterly fact");
+  const savedId = await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"));
+
+  let releaseThread = () => {};
+  const threadHeld = new Promise<void>((resolve) => (releaseThread = resolve));
+  await page.route(/\/api\/threads\/[0-9a-f-]+$/, async (route) => {
+    if (route.request().method() === "GET" && route.request().url().endsWith(savedId ?? "")) await threadHeld;
+    await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Loading your thread" })).toBeDisabled();
+
+  await analyst.startOver();
+  await expect(analyst.counter()).toHaveText(/^0 of /);
+  const freshId = await page.evaluate(() => localStorage.getItem("financial-analyst-agent.thread-id"));
+  expect(freshId).not.toBe(savedId);
+
+  // The saved thread arriving late does not replace the fresh one.
+  releaseThread();
+  await page.waitForTimeout(1500);
+  await expect(analyst.conversation()).toBeHidden();
+  await page.getByRole("textbox", { name: "Ask a question" }).fill("Microsoft revenue");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
 test("the storefront reports the deployment's runtime and asks for that runtime's snapshot", async ({ page }) => {
