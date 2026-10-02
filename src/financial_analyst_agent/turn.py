@@ -32,6 +32,7 @@ from financial_analyst_agent.contracts import (
     SEARCH_NEWS_TIME_RANGE,
     SEARCH_NEWS_TOPIC,
     SNAPSHOT_METRICS,
+    SOURCE_UNAVAILABLE,
     SUM_FORMULAS,
     ZERO_DENOMINATOR,
     ComponentProvenance,
@@ -48,12 +49,14 @@ from financial_analyst_agent.contracts import (
     snapshot_banner,
 )
 from financial_analyst_agent.domain.errors import (
+    SOURCE_FAILURES,
     AmbiguousCompanyError,
     AmbiguousFactError,
     CompanyNotFoundError,
     IneligibleIssuerError,
     PerShareNotDerivableError,
     ProviderError,
+    ProviderRefusal,
     UnknownIndustryError,
     UnsupportedQuarterlyFactError,
 )
@@ -67,6 +70,10 @@ _LOOKUP_FAILURES = (
     AmbiguousCompanyError,
     CompanyNotFoundError,
 )
+# What one company in a comparison or ranking may fail with and still leave
+# the other companies their own rows.
+_COMPANY_FAILURES = (*_LOOKUP_FAILURES, *SOURCE_FAILURES)
+ESSAY_UNAVAILABLE_MESSAGE = "The written answer could not be produced just now. Please try again."
 _NUMERIC_TOKEN = re.compile(
     # A number never ends in its list comma ("29, then"), and a one-letter unit
     # must end the word ("5B", not the "t" of "then").
@@ -193,7 +200,7 @@ def _explain_turn(
             intent=Intent.EXPLAIN,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message=str(exc),
+            message=str(exc) if isinstance(exc, ProviderRefusal) else ESSAY_UNAVAILABLE_MESSAGE,
         )
     lock_json = grounding_json or json.dumps(
         [trace.model_dump(mode="json") for trace in traces]
@@ -568,6 +575,9 @@ def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
 
 
 def _partial_lookup_reason(exc: BaseException) -> str:
+    if isinstance(exc, SOURCE_FAILURES):
+        # EDGAR failed for this company; the filing may well report the fact.
+        return SOURCE_UNAVAILABLE
     if isinstance(exc, IneligibleIssuerError):
         # A typed miss: the row says why, rather than implying a missing filing.
         return NOT_OPERATING_COMPANY
@@ -617,7 +627,7 @@ def compare_metrics(
                 facts.get_financials(issuer, component, report_date=report_date)
                 for component in component_names
             ]
-        except _LOOKUP_FAILURES as exc:
+        except _COMPANY_FAILURES as exc:
             rows.append(
                 _compare_unresolved_row(
                     issuer, metric, _partial_lookup_reason(exc), report_date=report_date
@@ -719,7 +729,7 @@ def market_formula_rows(
                 if report_date is None
                 else facts.get_financials(issuer, earnings_metric, report_date=report_date)
             )
-        except (*_LOOKUP_FAILURES, PerShareNotDerivableError) as exc:
+        except (*_COMPANY_FAILURES, PerShareNotDerivableError) as exc:
             rows.append(
                 _compare_unresolved_row(
                     issuer, metric, _partial_lookup_reason(exc), report_date=report_date
@@ -820,7 +830,7 @@ def _rank_and_lookup_turn(plan: Any, runtime: Runtime) -> TurnResult:
         args = {"company": company.cik, "metric": metric}
         try:
             fact = runtime.facts.get_financials(company.cik, metric)
-        except _LOOKUP_FAILURES as exc:
+        except _COMPANY_FAILURES as exc:
             rows.append(_rank_and_lookup_row(company, index, metric, _partial_lookup_reason(exc)))
             traces.append(ToolTrace(tool="get_financials", args=args))
             continue

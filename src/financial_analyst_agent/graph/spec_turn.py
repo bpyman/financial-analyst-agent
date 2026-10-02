@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 from contextvars import copy_context
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -16,6 +17,7 @@ from typing import Any
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
     DEFAULT_RANK_LIMIT,
+    LOOKUP_FAILED,
     MISSING_FACT,
     NOT_OPERATING_COMPANY,
     QUALITATIVE_INTENTS,
@@ -32,9 +34,11 @@ from financial_analyst_agent.contracts import (
     unknown_metric_message,
 )
 from financial_analyst_agent.domain.errors import (
+    SOURCE_FAILURES,
     CompanyNotFoundError,
     IneligibleIssuerError,
     ProviderError,
+    ProviderRefusal,
     SessionQuotaError,
     UnknownIndustryError,
 )
@@ -55,6 +59,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     validate_spec,
 )
 from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import dates_for
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
@@ -822,6 +827,12 @@ CALENDARS_DIFFER_BANNER = (
     "so each row shows the company's own quarter."
 )
 TASK_FAILURE_MESSAGE = "This part of the analysis could not be completed. Please try again."
+SOURCE_UNAVAILABLE_MESSAGE = (
+    "SEC EDGAR could not be reached just now, so this could not be answered. "
+    "Please try again in a few minutes."
+)
+# How long the tasks may run past the turn's SEC budget: parsing what was read.
+_TASK_GRACE_SECONDS = 15.0
 
 
 def _missing_cell(
@@ -840,11 +851,11 @@ def _missing_cell(
 def _task_failure_result(task: CompiledTask, exc: BaseException) -> TurnResult:
     """Isolate an unexpected cell failure as a typed partial or refuse.
 
-    A provider failure (an EDGAR outage, retries exhausted) is not evidence that
-    the filing lacks the fact, so it gets its own reason. The raw exception text
-    never reaches the visitor.
+    Neither a source failure (an EDGAR outage, retries exhausted, a full disk)
+    nor a fault of ours is evidence that the filing lacks the fact, so each
+    gets its own reason. The raw exception text never reaches the visitor.
     """
-    reason = SOURCE_UNAVAILABLE if isinstance(exc, ProviderError) else MISSING_FACT
+    reason = SOURCE_UNAVAILABLE if isinstance(exc, SOURCE_FAILURES) else LOOKUP_FAILED
     if task.kind in ("lookup", "compare") and task.company_queries and task.metric:
         companies = task.company_queries[:1] if task.kind == "lookup" else task.company_queries
         return TurnResult(
@@ -906,17 +917,28 @@ def dispatch_compiled_tasks(
             ): index
             for index, task in enumerate(tasks)
         }
-        for future in as_completed(futures):
-            index = futures[future]
-            try:
-                ordered[index] = future.result()
-            except SessionQuotaError:
-                raise
-            except Exception as exc:
-                ordered[index] = _task_failure_result(tasks[index], exc)
-            done += 1
-            if on_progress is not None:
-                on_progress(done, total)
+        left = sec_turn_seconds_left()
+        timeout = None if left == float("inf") else max(0.0, left) + _TASK_GRACE_SECONDS
+        try:
+            for future in as_completed(futures, timeout=timeout):
+                index = futures[future]
+                try:
+                    ordered[index] = future.result()
+                except SessionQuotaError:
+                    raise
+                except Exception as exc:
+                    ordered[index] = _task_failure_result(tasks[index], exc)
+                done += 1
+                if on_progress is not None:
+                    on_progress(done, total)
+        except FuturesTimeout:
+            # The turn's time is up: what is still running answers as unavailable.
+            late = ProviderError("The turn's time for SEC requests is spent")
+            for index, result in enumerate(ordered):
+                if result is None:
+                    ordered[index] = _task_failure_result(tasks[index], late)
+            pool.shutdown(wait=False, cancel_futures=True)
+            return [result for result in ordered if result is not None]
     except BaseException:
         # A quota stop (or any escape) must not wait for the queued tasks to run.
         pool.shutdown(wait=False, cancel_futures=True)
@@ -1287,13 +1309,14 @@ def run_spec_turn_context(
 
     try:
         spec = materialize_period_dates(spec, runtime)
-    except (CompanyNotFoundError, ProviderError) as exc:
+    except (CompanyNotFoundError, *SOURCE_FAILURES) as exc:
+        public = isinstance(exc, (CompanyNotFoundError, ProviderRefusal))
         return (
             TurnResult(
                 intent=asked,
                 tool_traces=[],
                 renderer=RendererKind.REFUSE,
-                message=str(exc),
+                message=str(exc) if public else SOURCE_UNAVAILABLE_MESSAGE,
             ),
             None,
             patch,
@@ -1428,7 +1451,7 @@ def overview_trend(
         window = materialize_period_dates(window, runtime)
         tasks = compile_tasks(window)
         results = dispatch_compiled_tasks(tasks, runtime, query=query, max_workers=max_workers)
-    except (CompanyNotFoundError, ProviderError, SessionQuotaError):
+    except (CompanyNotFoundError, SessionQuotaError, *SOURCE_FAILURES):
         return None
     if not tasks:
         return None

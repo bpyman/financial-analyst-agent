@@ -846,6 +846,21 @@ def test_company_facts_are_downloaded_before_a_parse_slot_is_taken() -> None:
     assert all(free == 2 for free in source.slots_free_at_download)
 
 
+@pytest.mark.parametrize("value", ["12abc", True, None], ids=["text", "boolean", "missing"])
+def test_malformed_facts_are_unreadable_not_unreported(value: object) -> None:
+    from financial_analyst_agent.domain.errors import DataIntegrityError
+
+    class _Malformed(_RecordingSource):
+        def get_company_facts(self, cik: str) -> dict[str, object]:
+            payload = _quarterly_net_income_facts(cik, ACCESSION)
+            entry = payload["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["USD"][0]  # type: ignore[index]
+            entry["val"] = value
+            return payload
+
+    with pytest.raises(DataIntegrityError, match="could not be read"):
+        SecFactLookup(client=_Malformed()).get_financials("XOM", "net_income")
+
+
 def test_a_lookup_keeps_only_the_submissions_rows_and_columns_it_reads() -> None:
     lookup = SecFactLookup(client=_RecordingSource())
 

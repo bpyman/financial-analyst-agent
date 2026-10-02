@@ -144,6 +144,8 @@ MISSING_FACT = "missing_fact"
 NOT_OPERATING_COMPANY = "not_operating_company"
 # The source (EDGAR) failed for this cell; the fact may well exist.
 SOURCE_UNAVAILABLE = "source_unavailable"
+# The lookup itself failed (a fault of ours, not the filing's or EDGAR's).
+LOOKUP_FAILED = "lookup_failed"
 AMBIGUOUS_CONCEPT = "ambiguous_concept"
 ZERO_DENOMINATOR = "zero_denominator"
 # A per-share figure for a quarter the filings do not report on its own

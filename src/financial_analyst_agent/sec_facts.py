@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.enums import PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import (
+    SOURCE_FAILURES,
     DataIntegrityError,
     FilingNotFoundError,
     IneligibleIssuerError,
@@ -89,14 +90,14 @@ _READ_CONCEPTS = frozenset(
 # otherwise hold dozens of whole files in memory together. Only the parse holds
 # a slot; the download happens before it, so a slow SEC holds none.
 _FACTS_PARSE_SLOTS = threading.BoundedSemaphore(2)
-# A source failure, as opposed to a filing that lacks the fact.
-SOURCE_FAILURES = (ProviderError, DataIntegrityError, OSError)
 # Fewer periodic reports than this marks a new registrant worth a predecessor check.
 _THIN_HISTORY = 4
 
 
 # A quarter whose filing SEC lists but whose facts its structured data lacks yet.
 PENDING_IN_XBRL_MESSAGE = "SEC's structured data does not yet include this quarter's filing"
+# Every entry SEC holds for the metric is malformed: not the same as not reported.
+UNREADABLE_FACTS_MESSAGE = "SEC's structured data for this metric could not be read"
 
 
 def _related_lookup_ciks(resolved_cik: str, predecessor: str | None) -> tuple[str, ...]:
@@ -487,6 +488,7 @@ class SecFactLookup:
         target = report_date if report_date is not None else latest_period_end(filings)
         last_unsupported: UnsupportedQuarterlyFactError | FilingNotFoundError | None = None
         last_missing: ProviderError | None = None
+        unreadable = False
         related = _related_lookup_ciks(resolved.cik, self._predecessor_ciks.get(resolved.cik))
         for cik in related:
             try:
@@ -496,7 +498,8 @@ class SecFactLookup:
                     raise
                 last_missing = exc
                 continue
-            records, _rejections = parse_company_facts(company_facts_payload, parsed_metric, unit)
+            records, rejections = parse_company_facts(company_facts_payload, parsed_metric, unit)
+            unreadable = unreadable or (not records and bool(rejections))
             filer_ciks: dict[str, str] = {}
             predecessor = self._predecessor_ciks.get(resolved.cik)
             if cik == resolved.cik and predecessor is not None:
@@ -546,6 +549,10 @@ class SecFactLookup:
                 if period is not None and period != targets[0]:
                     fact = fact.model_copy(update={"newer_filing_end": targets[0]})
                 return fact
+        if unreadable:
+            raise DataIntegrityError(
+                UNREADABLE_FACTS_MESSAGE, details={"metric": parsed_metric.value}
+            ) from last_unsupported
         if isinstance(last_unsupported, FilingNotFoundError):
             raise UnsupportedQuarterlyFactError(
                 str(last_unsupported),

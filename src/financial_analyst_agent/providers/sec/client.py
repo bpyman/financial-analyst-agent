@@ -58,7 +58,8 @@ def sec_turn_budget(seconds: float) -> Iterator[None]:
         _TURN_DEADLINE.reset(token)
 
 
-def _turn_seconds_left() -> float:
+def sec_turn_seconds_left() -> float:
+    """The SEC time this turn has left; infinite outside a turn's budget."""
     deadline = _TURN_DEADLINE.get()
     return float("inf") if deadline is None else deadline - time.monotonic()
 
@@ -221,13 +222,13 @@ class SECClient:
         """Take a request slot, unless SEC asked for quiet or the turn's time is up."""
         paused = SEC_PAUSE.remaining()
         if paused > 0:
-            if paused > _MAX_RETRY_DELAY_SECONDS or paused >= _turn_seconds_left():
+            if paused > _MAX_RETRY_DELAY_SECONDS or paused >= sec_turn_seconds_left():
                 raise ProviderError(
                     "SEC asked for a pause in requests",
                     details={"url": url, "retryable": False, "paused_seconds": round(paused)},
                 )
             time.sleep(paused)
-        if _turn_seconds_left() <= 0:
+        if sec_turn_seconds_left() <= 0:
             raise ProviderError(
                 "The turn's time for SEC requests is spent",
                 details={"url": url, "retryable": False},
@@ -246,7 +247,7 @@ class SECClient:
                     if not exc.details.get("retryable") or attempt >= _MAX_RETRIES:
                         raise
                     delay = min(_DEFAULT_RETRY_DELAY_SECONDS * attempt, _MAX_RETRY_DELAY_SECONDS)
-                    if delay >= _turn_seconds_left():
+                    if delay >= sec_turn_seconds_left():
                         raise
                     time.sleep(delay)
 
@@ -260,7 +261,7 @@ class SECClient:
             "Accept": accept,
         }
         started = time.monotonic()
-        deadline = started + min(self._request_deadline, _turn_seconds_left())
+        deadline = started + min(self._request_deadline, sec_turn_seconds_left())
         timeout = httpx.Timeout(max(0.001, min(self._timeout, deadline - started)))
         try:
             with self._http().stream("GET", url, headers=headers, timeout=timeout) as response:

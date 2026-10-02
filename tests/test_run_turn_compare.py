@@ -4,8 +4,15 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
-from financial_analyst_agent.domain.errors import AmbiguousFactError, UnsupportedQuarterlyFactError
+from financial_analyst_agent.domain.errors import (
+    AmbiguousFactError,
+    DataIntegrityError,
+    ProviderError,
+    UnsupportedQuarterlyFactError,
+)
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.sec_facts import SecFactLookup
@@ -461,3 +468,40 @@ def test_run_turn_compare_snapshot_market_caps() -> None:
         "issuers": ["Microsoft", "Google"],
         "metric": "market_cap",
     }
+
+
+class _OneSourceFails:
+    """Microsoft's SEC documents fail; Google's answer, for its own quarter."""
+
+    def __init__(self, failure: Exception) -> None:
+        self._failure = failure
+
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
+        if company == "Microsoft":
+            raise self._failure
+        return _MissingMicrosoftFacts().get_financials(company, metric, report_date=report_date)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ProviderError("SEC server error", details={"status_code": 503}),
+        DataIntegrityError("companyfacts response identity does not match the requested CIK"),
+        OSError(28, "No space left on device"),
+    ],
+    ids=["outage", "integrity", "disk"],
+)
+def test_one_companys_source_failure_leaves_the_others_their_rows(failure: Exception) -> None:
+    result = run_turn(
+        MSFT_GOOG_OPERATING_MARGINS_QUERY,
+        Runtime(completer=_CompareCompleter(), facts=_OneSourceFails(failure)),
+    )
+
+    assert result.renderer is RendererKind.TABLE
+    microsoft, alphabet = result.table_rows
+    assert microsoft.value is None
+    assert microsoft.reason == "source_unavailable"
+    assert alphabet.value == ALPHABET_OPERATING_MARGIN
+    assert (alphabet.start_date, alphabet.end_date) == (PERIOD_START, PERIOD_END)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.contracts import Runtime, RuntimeKind
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import ProviderError, ProviderRefusal
 from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.news import (
@@ -78,18 +78,18 @@ def _recorded_disclosure_summary(tool_json: str) -> str:
     except json.JSONDecodeError as exc:
         raise ProviderError("Recorded disclosure changes were invalid") from exc
     if not isinstance(payload, list) or not payload:
-        raise ProviderError(RECORDED_SUMMARY_MISSING)
+        raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
     keys: list[tuple[str, str, str]] = []
     for item in payload:
         if not isinstance(item, dict):
-            raise ProviderError(RECORDED_SUMMARY_MISSING)
+            raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
         key = (
             str(item.get("older_accession") or ""),
             str(item.get("newer_accession") or ""),
             str(item.get("section") or ""),
         )
         if key not in RECORDED_DISCLOSURE_SUMMARIES:
-            raise ProviderError(RECORDED_SUMMARY_MISSING)
+            raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
         if key not in keys:
             keys.append(key)
     return " ".join(RECORDED_DISCLOSURE_SUMMARIES[key] for key in keys)
@@ -105,13 +105,13 @@ class RecordedEssayCompleter:
     def __init__(self, *, live: bool = False) -> None:
         self._live = live
 
-    def _refusal(self, captured: str) -> ProviderError:
+    def _refusal(self, captured: str) -> ProviderRefusal:
         if self._live:
-            return ProviderError(
+            return ProviderRefusal(
                 "Written answers need an OpenAI key, which this server does not have. "
                 f"It can replay the one it captured, for {captured}."
             )
-        return ProviderError(
+        return ProviderRefusal(
             f"The recorded demo replays written answers only for {captured}. "
             "Switch to Live for other questions."
         )

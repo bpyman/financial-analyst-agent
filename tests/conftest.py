@@ -4,8 +4,6 @@ from collections.abc import Iterator
 
 import pytest
 
-from financial_analyst_agent.providers.sec.client import SEC_PAUSE
-
 
 @pytest.fixture(autouse=True)
 def _keep_non_network_tests_offline(
@@ -25,6 +23,9 @@ def _keep_non_network_tests_offline(
 @pytest.fixture(autouse=True)
 def _sec_not_paused() -> Iterator[None]:
     """A Retry-After or block page in one test must not pause SEC for the next."""
-    SEC_PAUSE.clear()
+    # Looked up each time: a test may reload the package's modules.
+    from financial_analyst_agent.providers.sec import client
+
+    client.SEC_PAUSE.clear()
     yield
-    SEC_PAUSE.clear()
+    client.SEC_PAUSE.clear()
