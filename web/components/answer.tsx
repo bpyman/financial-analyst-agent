@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ClarifyChoice } from "@/lib/clarify";
 import { inspectorOrder } from "@/lib/inspect";
 import { answerFilings, splitNotes, type FilingLink } from "@/lib/notes";
@@ -648,7 +649,8 @@ function SourceSheet({ item, onClose }: { item: EvidenceItem; onClose: () => voi
       previous?.focus({ preventScroll: true });
     };
   }, [onClose]);
-  return (
+  // On the body, above the pinned question box: an answer's fade-in would otherwise confine its layer.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:hidden">
       <button type="button" aria-hidden tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
       <div
@@ -679,7 +681,8 @@ function SourceSheet({ item, onClose }: { item: EvidenceItem; onClose: () => voi
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

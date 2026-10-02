@@ -158,7 +158,9 @@ test("/ jumps to the question box and ↑ brings back the last question", async 
   await expect(box).toHaveValue("R/D");
 });
 
-const { defaultBrowserType: _browser, ...iPhone } = devices["iPhone 13"];
+// The suite runs in Chromium; the phone is its size, touch and user agent, not WebKit.
+const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices["iPhone 13"];
+const iPhone = { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch };
 
 test.describe("on a phone", () => {
   test.use(iPhone);
