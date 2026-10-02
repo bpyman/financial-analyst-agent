@@ -213,7 +213,8 @@ def test_swap_add_remove_company_keeps_metrics(tmp_path: Path) -> None:
     assert turn.analysis_spec.metrics == ("net_income",)  # type: ignore[union-attr]
 
 
-def test_unrelated_question_replaces_spec(tmp_path: Path) -> None:
+def test_unrelated_question_keeps_spec(tmp_path: Path) -> None:
+    """An essay or news answer leaves the analysis on screen for the next edit."""
     from financial_analyst_agent.contracts import Intent
     from financial_analyst_agent.conversation import run_conversation_turn
     from financial_analyst_agent.thread_store import LocalThreadStore
@@ -232,10 +233,10 @@ def test_unrelated_question_replaces_spec(tmp_path: Path) -> None:
         store=store,
     )
     assert turn.result.intent is Intent.EXPLAIN
-    assert turn.analysis_spec is None
     state = store.load("t1")
     assert state is not None
-    assert state.analysis_spec is None
+    assert state.analysis_spec is not None
+    assert state.analysis_spec.metrics == ("net_income",)
 
 
 def test_complete_does_not_retry_internal_typeerror(tmp_path: Path) -> None:
