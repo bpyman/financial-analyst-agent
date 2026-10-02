@@ -989,7 +989,9 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
         if row.value is not None
-        else (row.reason or "")
+        else format_reason(row.reason)
+        if row.reason
+        else ""
     )
     raw = str(row.value) if row.value is not None else ""
     period = _period_label(row.start_date, row.end_date)

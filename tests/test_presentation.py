@@ -1690,3 +1690,24 @@ def test_a_failed_step_shows_no_internal_wording(error: dict[str, str], shown: s
     assert error["message"] not in str(presented)
     if presented.message is not None:
         assert presented.message == shown
+
+
+def test_an_evidence_item_without_a_value_names_its_reason_in_words() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Apple Inc.",
+                ticker="AAPL",
+                cik="0000320193",
+                metric="revenue",
+                reason="source_unavailable",
+            )
+        ],
+    )
+
+    [item] = present_turn(result).evidence
+
+    assert item.amount == "Source unavailable"
