@@ -216,10 +216,31 @@ npm run capture
 
 It starts the recorded API and the built window itself, as the browser check does, or reuses them if they are already running.
 
+## What failed and what I changed
+
+Approaches I built, then retired:
+
+- **A Streamlit window.** The first audience window was a Streamlit app. It became a Next.js window over a small FastAPI seam, so every number is still formatted in Python and a thread is bound to one runtime. [ADR 0006](docs/adr/0006-react-audience-window.md), [#4](https://github.com/bpyman/onfile/pull/4), [#6](https://github.com/bpyman/onfile/pull/6).
+- **A lock on year-to-date subtraction.** ADR 0003 forbade deriving any quarter, so every multi-quarter window skipped fiscal fourth quarters and cash flow could not be offered at all. It became two labelled derivations: the 10-K's year minus the nine months, and a year-to-date difference. Each is marked derived and keeps both filings as evidence. [ADR 0007](docs/adr/0007-derived-quarters-and-per-share.md), [#16](https://github.com/bpyman/onfile/pull/16).
+- **Issuer-name catalogs.** Ranking first excluded funds and acquisition shells by words in their names (`Fund`, `BDC`, `Acquisition`, `Capital Corp`). That missed ordinary-named shells and dropped real operating companies. Membership is now structural (security type, listing title, issuer industry) plus a CIK blocklist, and lookups apply the same rule. [ADR 0001](docs/adr/0001-snapshot-membership.md), [ADR 0002](docs/adr/0002-lookup-membership.md), [`9c8c1f3`](https://github.com/bpyman/onfile/commit/9c8c1f3) replaced by [`1fd4215`](https://github.com/bpyman/onfile/commit/1fd4215).
+- **Year over year against the original filing.** A change subtracted the year-earlier quarter as first filed. After NVIDIA's ten-for-one split, its diluted EPS read −87.3% instead of +26.7%. A change now starts from the comparative the newer filing reports on the current basis. [ADR 0009](docs/adr/0009-year-over-year-reads-the-comparative.md), [#48](https://github.com/bpyman/onfile/pull/48).
+
+Bugs the second red-team round found:
+
+- **One busy refund broke every turn.** Refunding a turn turned away as busy left an empty rate-limit record, and from then on every turn, for every visitor, returned 500 until the process restarted. [#45](https://github.com/bpyman/onfile/pull/45).
+- **Wrong numbers** ([#48](https://github.com/bpyman/onfile/pull/48)), each checked against SEC company facts or the filing:
+  - EPS growth across a stock split showed −87.3% instead of +26.7%.
+  - Revenue took one tagged line instead of the total: $25.83M instead of $263.59M for Verra Mobility.
+  - Derived fourth quarters ignored nine-month figures the 10-K had revised: Rapid7's net income read −$1.48M instead of +$2.17M.
+- **A slow SEC response froze the service.** A response dripping one byte at a time kept a turn open and its thread locked, and four of them made every visitor "busy". A turn now ends with "Source unavailable" and frees its slot. [#47](https://github.com/bpyman/onfile/pull/47).
+- **Capitalised words were read as tickers.** "WHAT IS NVIDIA NET MARGIN NOW?" added ServiceNow. Ordinary words and finance acronyms no longer resolve as tickers; real ones like `NOW revenue` still do. [#46](https://github.com/bpyman/onfile/pull/46).
+
+As an independent check outside the XBRL data the app reads, [the filing check](docs/evaluation/filing-check.md) opens the 10-Q each figure cites and looks for the number in the filing's own text: **25 of 25** figures were found.
+
 ## Limitations
 
 - Ranking membership is a dated US operating-company snapshot, not a live screener.
-- Quarterly facts are directly reported standalone quarters. The one derivation is a fiscal fourth quarter (the 10-K's year minus the nine months), marked †; other year-to-date subtraction is not done.
+- Quarterly facts are directly reported standalone quarters where the filing has one. Otherwise only two derivations are made, both marked †: a fiscal fourth quarter (the 10-K's year minus the nine months) and a year-to-date difference (ADR 0007). Per-share figures are never derived.
 - The metric catalog is closed. Unknown or ambiguous phrases do not guess, and segment figures (AWS, iPhone) are not covered: the answer says so rather than showing the company total as the segment.
 - Foreign private issuers (20-F and 40-F filers) have no 10-Q facts, and subsidiaries that file jointly with their parent have no quarterly figures of their own in SEC's data.
 - Questions are read in English.
