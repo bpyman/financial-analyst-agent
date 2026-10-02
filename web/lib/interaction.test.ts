@@ -91,11 +91,18 @@ describe("filing change order", () => {
   );
   const added = change("added", "", "A new risk about tariffs.");
 
-  it("puts numeric changes first, larger first, and folds wording-only edits", () => {
+  it("puts numeric changes first in the filing's order, and folds wording-only edits", () => {
     expect(isWordingOnly(wording)).toBe(true);
     expect(isWordingOnly(small)).toBe(false);
     expect(isWordingOnly(added)).toBe(false);
-    expect(orderChanges([wording, added, small, big])).toEqual([big, small, added, wording]);
+    // A filing leads with its headline figures; a longer edit does not outrank them.
+    expect(orderChanges([wording, added, small, big])).toEqual([small, big, added, wording]);
+  });
+
+  it("puts a changed figure ahead of a whole paragraph added or removed with figures in it", () => {
+    // A removed bullet holds figures, but "20% to 29%" says more than a paragraph gone.
+    const removed = change("removed", "Segment revenue increased 11% driven by cloud growth of 12%.", "");
+    expect(orderChanges([removed, added, small])).toEqual([small, removed, added]);
   });
 
   it("clamps a paragraph to the sentences that changed", () => {

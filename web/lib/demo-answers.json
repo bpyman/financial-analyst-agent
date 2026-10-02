@@ -2269,7 +2269,7 @@
       "outputs": [
        [
         "Change Count",
-        "17"
+        "15"
        ],
        [
         "CIK",
@@ -2312,28 +2312,6 @@
      },
      {
       "section_label": "Management's Discussion and Analysis",
-      "change_kind": "removed",
-      "before_text": "Microsoft 365 Commercial products and cloud services revenue increased 11% driven by Microsoft 365 Commercial cloud revenue growth of 12%.",
-      "after_text": "",
-      "older_accession": "0000950170-25-061046",
-      "newer_accession": "0001193125-26-191507",
-      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Commercial%20products%20and%20cloud%20services%20revenue%20increased%2011%25%20driven%20by%20Microsoft%203",
-      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
-      "subsection": "Overview"
-     },
-     {
-      "section_label": "Management's Discussion and Analysis",
-      "change_kind": "removed",
-      "before_text": "Microsoft 365 Consumer products and cloud services revenue increased 10% driven by Microsoft 365 Consumer cloud revenue growth of 10%.",
-      "after_text": "",
-      "older_accession": "0000950170-25-061046",
-      "newer_accession": "0001193125-26-191507",
-      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Consumer%20products%20and%20cloud%20services%20revenue%20increased%2010%25%20driven%20by%20Microsoft%20365",
-      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
-      "subsection": "Overview"
-     },
-     {
-      "section_label": "Management's Discussion and Analysis",
       "change_kind": "added",
       "before_text": "",
       "after_text": "Commercial remaining performance obligation increased 99% to $627 billion.",
@@ -2345,23 +2323,23 @@
      },
      {
       "section_label": "Management's Discussion and Analysis",
-      "change_kind": "added",
-      "before_text": "",
+      "change_kind": "changed",
+      "before_text": "Microsoft 365 Commercial products and cloud services revenue increased 11% driven by Microsoft 365 Commercial cloud revenue growth of 12%.",
       "after_text": "Microsoft 365 Commercial cloud revenue increased 19%.",
       "older_accession": "0000950170-25-061046",
       "newer_accession": "0001193125-26-191507",
-      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Commercial%20products%20and%20cloud%20services%20revenue%20increased%2011%25%20driven%20by%20Microsoft%203",
       "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Microsoft%20365%20Commercial%20cloud%20revenue%20increased%2019%25.",
       "subsection": "Overview"
      },
      {
       "section_label": "Management's Discussion and Analysis",
-      "change_kind": "added",
-      "before_text": "",
+      "change_kind": "changed",
+      "before_text": "Microsoft 365 Consumer products and cloud services revenue increased 10% driven by Microsoft 365 Consumer cloud revenue growth of 10%.",
       "after_text": "Microsoft 365 Consumer cloud revenue increased 33%.",
       "older_accession": "0000950170-25-061046",
       "newer_accession": "0001193125-26-191507",
-      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Consumer%20products%20and%20cloud%20services%20revenue%20increased%2010%25%20driven%20by%20Microsoft%20365",
       "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Microsoft%20365%20Consumer%20cloud%20revenue%20increased%2033%25.",
       "subsection": "Overview"
      },

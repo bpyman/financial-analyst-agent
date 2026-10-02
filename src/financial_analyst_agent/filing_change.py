@@ -470,8 +470,26 @@ def _similarity(left: frozenset[str], right: frozenset[str]) -> float:
     return len(left & right) / len(union) if union else 1.0
 
 
+def _likeness(left: frozenset[str], right: frozenset[str]) -> float:
+    """How alike two paragraphs are for pairing an edit.
+
+    Shared words over all words, except that a paragraph of a few words or more
+    whose words the other nearly all holds is the same one, shortened or
+    expanded ("…cloud services revenue increased 11% driven by … growth of 12%"
+    became "…cloud revenue increased 19%").
+    """
+    similar = _similarity(left, right)
+    smaller = min(left, right, key=len)
+    if len(smaller) >= _CONTAINED_MIN_WORDS and len(left & right) / len(smaller) >= _CONTAINED:
+        return max(similar, _SAME_PARAGRAPH)
+    return similar
+
+
 # Paragraphs sharing this share of their words are one paragraph, edited.
 _SAME_PARAGRAPH = 0.5
+# A paragraph this much inside another, and at least this long, is that one edited.
+_CONTAINED = 0.8
+_CONTAINED_MIN_WORDS = 4
 # A moved paragraph must share more to be the same one.
 _MOVED_PARAGRAPH = 0.8
 # Pairs scored to align a replaced run; beyond this the run is not aligned.
@@ -494,13 +512,13 @@ def _aligned(left: list[str], right: list[str]) -> list[tuple[int | None, int | 
     score = [[0.0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
         for j in range(m - 1, -1, -1):
-            similar = _similarity(words_left[i], words_right[j])
+            similar = _likeness(words_left[i], words_right[j])
             paired = similar + score[i + 1][j + 1] if similar >= _SAME_PARAGRAPH else -1.0
             score[i][j] = max(paired, score[i + 1][j], score[i][j + 1])
     pairs: list[tuple[int | None, int | None]] = []
     i = j = 0
     while i < n and j < m:
-        similar = _similarity(words_left[i], words_right[j])
+        similar = _likeness(words_left[i], words_right[j])
         if similar >= _SAME_PARAGRAPH and score[i][j] == similar + score[i + 1][j + 1]:
             pairs.append((i, j))
             i, j = i + 1, j + 1

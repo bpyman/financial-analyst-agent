@@ -2,9 +2,9 @@ import type { DisplayDisclosure } from "./types";
 import type { UnifiedPiece } from "./word-diff";
 
 /**
- * How the 10-Q changes are laid out: what moved a number first, larger edits
- * before smaller, and edits that only reword folded away. The text itself is
- * the filing's, untouched.
+ * How the 10-Q changes are laid out: what moved a number first, in the filing's
+ * order, then other edits larger before smaller, and edits that only reword
+ * folded away. The text itself is the filing's, untouched.
  */
 
 const FIGURE = /\$?\d[\d,]*(?:\.\d+)?%?/g;
@@ -36,12 +36,18 @@ function size(item: DisplayDisclosure): number {
   return changed;
 }
 
-/** Figures that moved first, then other additions and removals, then rewordings; larger before smaller. */
+/**
+ * Figures that moved within a paragraph first, in the filing's order (it leads
+ * with its headline figures); then additions, removals and other edits, larger
+ * before smaller; then rewordings. A paragraph added or removed whole has
+ * figures on one side only, but says less than "20% to 29%".
+ */
 export function orderChanges(items: DisplayDisclosure[]): DisplayDisclosure[] {
-  const rank = (item: DisplayDisclosure) => (isWordingOnly(item) ? 2 : changesFigures(item) ? 0 : 1);
+  const rank = (item: DisplayDisclosure) =>
+    isWordingOnly(item) ? 2 : item.change_kind === "changed" && changesFigures(item) ? 0 : 1;
   return items
     .map((item, index) => ({ item, index, rank: rank(item), size: size(item) }))
-    .sort((a, b) => a.rank - b.rank || b.size - a.size || a.index - b.index)
+    .sort((a, b) => a.rank - b.rank || (a.rank === 1 ? b.size - a.size : 0) || a.index - b.index)
     .map(({ item }) => item);
 }
 
