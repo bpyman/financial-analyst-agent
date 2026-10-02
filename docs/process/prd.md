@@ -6,7 +6,7 @@ This repo is a portfolio project with no deadline. The stories and decisions bel
 
 ## Problem Statement
 
-The original brief was a technical-interview exercise: a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
+The original brief was a technical exercise: a working financial-analyst agent plus a short system design. The brief asks the agent to extract quarterly financials, rank public companies by industry market size, and answer qualitative questions (including AI disruption), routing tools from the user prompt — including prompts that need more than one tool.
 
 The agent should be a well-structured system with a visible process (typed graph, MCP tools, traces), while remaining reliable: numbers must come from real filings and a real ranking snapshot, not from the model. A prior attempt (v1) proved the XBRL fact path but was too narrow (toy universe, no UI, no graph/MCP, no comparisons or news). This repo is the v2 POC locked in grilling.
 
@@ -110,7 +110,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 ## Testing Decisions
 
 - **Good tests** assert `run_turn` external behavior: given a query and a runtime, the TurnResult intent, traces, renderer, payload values, provenance fields, banners, and refuses. They do not assert LangGraph node names, MCP wire JSON, Streamlit widget state, or Tavily HTTP.
-- **The one feature seam is `run_turn`.** *(ADR 0005: new multi-turn behaviour is asserted at the conversation seam; these gold tests stay on `run_turn` with no assertion changes.)* Gold tests (original interview script; keep green):
+- **The one feature seam is `run_turn`.** *(ADR 0005: new multi-turn behaviour is asserted at the conversation seam; these gold tests stay on `run_turn` with no assertion changes.)* Gold tests (the original brief's script; keep green):
   1. Microsoft pre-tax income — `lookup`; 10-Q `pretax_income` value and provenance from the fact adapter; table renderer.
   2. TSLA vs GM revenue — `compare`; two issuers on a reported line; same period, or each issuer's own latest quarter with an explicit note that the periods differ (`period_mismatch` stays for a formula whose components cover different periods).
   3. Top 10 tech companies R&D spend — `rank_and_lookup`; CIKs from ranking state; `research_and_development` per row; snapshot membership, not a live screener; partial row if a fact is missing.
@@ -124,7 +124,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 
 ## Out of Scope
 
-- PDF / 10-Q document parse (later fallback with warnings only; not in the original interview POC).
+- PDF / 10-Q document parse (later fallback with warnings only; not in the original proof of concept).
 - FMP ratios or edgartools as the source of quarterly facts or live compare margins.
 - Global listings; claiming a complete catalog of all public companies.
 - Open/LLM industry mapping; SIC-from-EDGAR as the rank taxonomy.
@@ -138,7 +138,7 @@ Live APIs are the default; a fixture kill-switch uses the same renderer if the n
 
 ## Further Notes
 
-- Origin: a technical-interview proof of concept (August 2026). There is no remaining deadline; this is a portfolio project. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
+- Origin: a proof of concept built to a technical brief (August 2026). There is no remaining deadline; this is a portfolio project. The brief’s “reported income” wording is an ambiguous metric; the demo asks named catalog lines.
 - v2 folder is the presentation repo; v1 remains the fact-engine donor. Do not require v1 to stay running as an HTTP backend.
 - Glossary is `CONTEXT.md`; ADRs are under `docs/adr/`. This PRD remains the product spec for the shipped POC.
 - The test seam was proposed as a single `run_turn` interface (snapshot builder not a second feature seam). Publishing proceeds on that basis after skills setup; implementation should not add HTTP/MCP/UI seams as the gold-test surface.

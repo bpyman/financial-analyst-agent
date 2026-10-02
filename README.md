@@ -231,4 +231,4 @@ It starts the recorded API and the built window itself, as the browser check doe
 
 ## Origin
 
-This repo began in August 2026 as a proof of concept for a technical-interview brief and continues as a portfolio project.
+This repo began in August 2026 as a proof of concept built to a technical brief and continues as a portfolio project.

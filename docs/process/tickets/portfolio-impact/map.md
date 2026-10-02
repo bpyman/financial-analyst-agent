@@ -6,7 +6,7 @@ Demo-first packaging of the financial analyst agent: storefront, CI, guarded pub
 
 ## Decisions-so-far
 
-- 01: Storefront leads with an evidence-first tagline; interview notes live in `docs/archive/interview/`. See [01](issues/01-reframe-portfolio-storefront.md).
+- 01: Storefront leads with an evidence-first tagline; the original brief's notes were archived (since removed from the repo). See [01](issues/01-reframe-portfolio-storefront.md).
 - 02: GitHub Actions runs pytest (including gold), ruff, and mypy. See [02](issues/02-add-continuous-verification.md).
 - 03: UUID threads, TTL, quotas, SEC disk cache, sanitized errors. See [03](issues/03-make-public-sessions-safe.md).
 - 04: One-click stories, spec chips, clickable clarification. See [04](issues/04-create-guided-first-run.md).

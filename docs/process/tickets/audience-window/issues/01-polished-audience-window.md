@@ -2,7 +2,7 @@
 
 **Status:** wontfix
 
-Superseded: the Streamlit window this ticket polishes was replaced by the Next.js window (ADR 0006, `.scratch/react-audience-window/`) and deleted.
+Superseded: the Streamlit window this ticket polishes was replaced by the Next.js window (ADR 0006, `docs/process/tickets/react-audience-window/`) and deleted.
 
 ## Problem Statement
 
@@ -32,7 +32,7 @@ Keep Streamlit as the only audience window and keep `run_turn` as the only featu
 16. As Rohit, I want news citations as title, URL, and formatted published time when parseable, so that news-and-explain is grounded.
 17. As an analyst, I want an unparseable news timestamp left as the original string, so that the UI does not invent a date.
 18. As Rohit, I want refuse turns as a clear error in the same shell, so that “top 10 AI” still shows the allowed industry names.
-19. As Blake, I want a configuration error (missing keys) still shown in the window, so that a dead live runtime is obvious before the interview starts.
+19. As Blake, I want a configuration error (missing keys) still shown in the window, so that a dead live runtime is obvious before the demo starts.
 20. As Rohit, I want dollar figures as compact USD (`$112.19 B`), so that a 12-digit Decimal is scannable.
 21. As Rohit, I want the same compact USD rule on market cap and every other dollar figure, so that rank and lookup do not use two money languages.
 22. As Rohit, I want amounts under one million as grouped dollars with no suffix, so that small figures are not written `$0.50 M`.
@@ -48,7 +48,7 @@ Keep Streamlit as the only audience window and keep `run_turn` as the only featu
 32. As Rohit, I want reason cells to show the domain code first, then the humanized phrase — `missing_fact (Missing fact)` — so that the reliability locks stay named.
 33. As Rohit, I want the same treatment for `period_mismatch`, `ambiguous_concept`, and `zero_denominator`, so that compare failures are not raw snake_case alone.
 34. As Blake, I want the fixture kill-switch still in the sidebar, so that the existing announce-out-loud path does not move.
-35. As Blake, I want the sidebar collapsed by default, so that the answer pane is full-width when the interview starts.
+35. As Blake, I want the sidebar collapsed by default, so that the answer pane is full-width when the demo starts.
 36. As Blake, I want a header status pill (`Live` / `Fixture`) with the sidebar shut, so that I cannot accidentally present a cassette as live EDGAR.
 37. As Blake, I want the existing kill-switch banner when Fixture is on, so that the gold rehearsal script still has a line to say out loud.
 38. As Rohit, I want a collapsed tool header of tool name plus a one-line identity, so that I know what `get_financials` ran before I expand it.
