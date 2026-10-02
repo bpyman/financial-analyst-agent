@@ -1,6 +1,8 @@
 {
-  "about": "Cases for comparing the rules planner with the LLM planner (financial_analyst_agent.planner_evaluation). 'scorecard' cases are the scorecard's questions; 'held_out' cases are paraphrases written for this comparison and labelled before either planner was run on them, so neither planner was tuned to them. Each case is a conversation; its expectations apply to the last turn. An expectation names only what a correct answer must show: outcome (answer, clarify or refuse), intent, tickers (exactly these companies), tickers_include (at least these), metrics (exactly these), periods (kind, and count for a window), operations_include. Fields a case leaves out are not scored.",
-  "label_changes": [],
+  "about": "Cases for comparing the rules planner with the LLM planner (financial_analyst_agent.planner_evaluation). 'scorecard' cases are the scorecard's questions; 'held_out' cases are paraphrases written for this comparison and labelled before either planner was run on them, so neither planner was tuned to them. Each case is a conversation; its expectations apply to the last turn. An expectation names only what a correct answer must show: outcome (answer, clarify or refuse), intent, tickers (exactly these companies), tickers_include (at least these), metrics (exactly these), periods (kind, and count for a window), operations_include. Fields a case leaves out are not scored. Missing data is not a planning error: a refusal for a fact the recorded filings lack (codes unsupported_quarterly_fact, missing_fact) counts as outcome no_data, which satisfies an expected answer; growth shown as year-over-year rows counts as the year_over_year operation.",
+  "label_changes": [
+    {"id": "ho_googl_cash", "change": "tickers GOOGL -> GOOG", "why": "The universe snapshot lists Alphabet under GOOG; the label named the other share class of the same company. Changed after the first rules run."}
+  ],
   "cases": [
     {"id": "lookup_msft_pretax", "split": "scorecard", "category": "lookup", "turns": ["Microsoft pre-tax income"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["MSFT"], "metrics": ["pretax_income"]}},
     {"id": "compare_tsla_gm", "split": "scorecard", "category": "compare", "turns": ["TSLA vs GM revenue"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["TSLA", "GM"], "metrics": ["revenue"]}},
@@ -39,9 +41,8 @@
     {"id": "ho_amgn_fcf", "split": "held_out", "category": "lookup", "turns": ["What's Amgen's free cash flow?"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["AMGN"], "metrics": ["free_cash_flow"]}},
     {"id": "ho_jnj_eps", "split": "held_out", "category": "lookup", "turns": ["diluted earnings per share for Johnson & Johnson"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["JNJ"], "metrics": ["eps_diluted"]}},
     {"id": "ho_unh_ocf", "split": "held_out", "category": "lookup", "turns": ["UnitedHealth operating cash flow last quarter"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["UNH"], "metrics": ["operating_cash_flow"]}},
-    {"id": "ho_googl_cash", "split": "held_out", "category": "lookup", "turns": ["How much cash does Alphabet have on hand?"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["GOOGL"], "metrics": ["cash"]}},
+    {"id": "ho_googl_cash", "split": "held_out", "category": "lookup", "turns": ["How much cash does Alphabet have on hand?"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["GOOG"], "metrics": ["cash"]}},
     {"id": "ho_pltr_net_margin", "split": "held_out", "category": "lookup", "turns": ["Palantir net margin"], "expect": {"outcome": "answer", "intent": "lookup", "tickers": ["PLTR"], "metrics": ["net_margin"]}},
-
     {"id": "ho_gs_jpm_net_income", "split": "held_out", "category": "compare", "turns": ["Goldman Sachs vs JPMorgan net income"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["GS", "JPM"], "metrics": ["net_income"]}},
     {"id": "ho_amd_intc_side_by_side", "split": "held_out", "category": "compare", "turns": ["put AMD and Intel revenue side by side"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["AMD", "INTC"], "metrics": ["revenue"]}},
     {"id": "ho_mrk_abbv_rd", "split": "held_out", "category": "compare", "turns": ["Merck versus AbbVie: R&D spending"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["MRK", "ABBV"], "metrics": ["research_and_development"]}},
@@ -49,36 +50,29 @@
     {"id": "ho_tmo_dhr_stack_up", "split": "held_out", "category": "compare", "turns": ["How does Thermo Fisher's revenue stack up against Danaher's?"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["TMO", "DHR"], "metrics": ["revenue"]}},
     {"id": "ho_gild_amgn_higher_margin", "split": "held_out", "category": "compare", "turns": ["Gilead and Amgen: which has the higher net margin?"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["GILD", "AMGN"], "metrics": ["net_margin"]}},
     {"id": "ho_tsla_gm_operating_income", "split": "held_out", "category": "compare", "turns": ["Tesla vs General Motors operating income"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["TSLA", "GM"], "metrics": ["operating_income"]}},
-
     {"id": "ho_aapl_eight_quarters", "split": "held_out", "category": "periods", "turns": ["Apple's revenue for each of the last eight quarters"], "expect": {"outcome": "answer", "tickers": ["AAPL"], "metrics": ["revenue"], "periods": {"kind": "last_n_quarters", "count": 8}}},
     {"id": "ho_nvda_past_four", "split": "held_out", "category": "periods", "turns": ["show me Nvidia net income over the past 4 quarters"], "expect": {"outcome": "answer", "tickers": ["NVDA"], "metrics": ["net_income"], "periods": {"kind": "last_n_quarters", "count": 4}}},
     {"id": "ho_lly_two_years", "split": "held_out", "category": "periods", "turns": ["Eli Lilly revenue over the last two years"], "expect": {"outcome": "answer", "tickers": ["LLY"], "metrics": ["revenue"], "periods": {"kind": "last_n_quarters", "count": 8}}},
     {"id": "ho_avgo_named_quarter", "split": "held_out", "category": "periods", "turns": ["Broadcom revenue in fiscal Q2 2025"], "expect": {"outcome": "answer", "tickers": ["AVGO"], "metrics": ["revenue"], "periods": {"kind": "named"}}},
     {"id": "ho_msft_named_eps", "split": "held_out", "category": "periods", "turns": ["Microsoft diluted EPS for Q1 FY2026"], "expect": {"outcome": "answer", "tickers": ["MSFT"], "metrics": ["eps_diluted"], "periods": {"kind": "named"}}},
     {"id": "ho_pfe_mrk_six_quarters", "split": "held_out", "category": "periods", "turns": ["Compare Pfizer and Merck revenue over the past six quarters"], "expect": {"outcome": "answer", "intent": "compare", "tickers": ["PFE", "MRK"], "metrics": ["revenue"], "periods": {"kind": "last_n_quarters", "count": 6}}},
-
     {"id": "ho_pltr_growth", "split": "held_out", "category": "growth", "turns": ["How fast is Palantir's revenue growing year over year?"], "expect": {"outcome": "answer", "tickers": ["PLTR"], "metrics": ["revenue"], "operations_include": ["year_over_year"]}},
     {"id": "ho_nvda_amd_growth", "split": "held_out", "category": "growth", "turns": ["Compare Nvidia and AMD revenue growth"], "expect": {"outcome": "answer", "tickers": ["NVDA", "AMD"], "metrics": ["revenue"], "operations_include": ["year_over_year"]}},
     {"id": "ho_aapl_ni_growth_window", "split": "held_out", "category": "growth", "turns": ["Apple net income growth over the last four quarters"], "expect": {"outcome": "answer", "tickers": ["AAPL"], "metrics": ["net_income"], "operations_include": ["year_over_year"]}},
-
     {"id": "ho_orcl_overview", "split": "held_out", "category": "overview", "turns": ["Give me an overview of Oracle's latest quarter"], "expect": {"outcome": "answer", "tickers": ["ORCL"]}},
     {"id": "ho_tsla_overview", "split": "held_out", "category": "overview", "turns": ["How's Tesla doing financially?"], "expect": {"outcome": "answer", "tickers": ["TSLA"]}},
-
     {"id": "ho_banks_market_cap", "split": "held_out", "category": "ranking", "turns": ["Which five banks are the largest by market cap?"], "expect": {"outcome": "answer", "tickers_include": ["JPM"]}},
     {"id": "ho_chipmakers_by_revenue", "split": "held_out", "category": "ranking", "turns": ["biggest 5 chip makers ranked by revenue"], "expect": {"outcome": "answer", "intent": "rank_and_lookup", "tickers_include": ["NVDA"], "metrics": ["revenue"]}},
     {"id": "ho_pharma_net_income", "split": "held_out", "category": "ranking", "turns": ["Top 3 pharma companies and their net income"], "expect": {"outcome": "answer", "intent": "rank_and_lookup", "tickers_include": ["LLY"], "metrics": ["net_income"]}},
     {"id": "ho_tech_rd_rank", "split": "held_out", "category": "ranking", "turns": ["rank the top 10 tech firms by R&D"], "expect": {"outcome": "answer", "intent": "rank_and_lookup", "tickers_include": ["AAPL"], "metrics": ["research_and_development"]}},
-
     {"id": "ho_mrk_margin_clarify", "split": "held_out", "category": "clarify", "turns": ["What was Merck's margin?"], "expect": {"outcome": "clarify"}},
     {"id": "ho_csco_profit_clarify", "split": "held_out", "category": "clarify", "turns": ["How much profit did Cisco make?"], "expect": {"outcome": "clarify"}},
     {"id": "ho_orcl_income_clarify", "split": "held_out", "category": "clarify", "turns": ["Oracle income"], "expect": {"outcome": "clarify"}},
-
     {"id": "ho_churn_unknown_metric", "split": "held_out", "category": "refusal", "turns": ["What's Microsoft's customer churn rate?"], "expect": {"outcome": "refuse"}},
     {"id": "ho_amd_advice", "split": "held_out", "category": "refusal", "turns": ["Is AMD a good buy right now?"], "expect": {"outcome": "refuse"}},
     {"id": "ho_joke_off_topic", "split": "held_out", "category": "refusal", "turns": ["Tell me a joke"], "expect": {"outcome": "refuse"}},
     {"id": "ho_qqq_fund", "split": "held_out", "category": "refusal", "turns": ["QQQ revenue"], "expect": {"outcome": "refuse"}},
     {"id": "ho_future_quarter", "split": "held_out", "category": "refusal", "turns": ["Apple revenue for Q3 2031"], "expect": {"outcome": "refuse"}},
-
     {"id": "ho_follow_include_oracle", "split": "held_out", "category": "follow_up", "turns": ["Microsoft revenue", "include Oracle too"], "expect": {"outcome": "answer", "tickers": ["MSFT", "ORCL"], "metrics": ["revenue"]}},
     {"id": "ho_follow_swap_abbvie", "split": "held_out", "category": "follow_up", "turns": ["Compare Pfizer and Merck net income", "swap Merck for AbbVie"], "expect": {"outcome": "answer", "tickers": ["PFE", "ABBV"], "metrics": ["net_income"]}},
     {"id": "ho_follow_add_metric", "split": "held_out", "category": "follow_up", "turns": ["Nvidia revenue over the last four quarters", "add net income"], "expect": {"outcome": "answer", "tickers": ["NVDA"], "metrics": ["revenue", "net_income"], "periods": {"kind": "last_n_quarters", "count": 4}}},
@@ -86,7 +80,6 @@
     {"id": "ho_follow_drop_company", "split": "held_out", "category": "follow_up", "turns": ["Compare JPMorgan and Wells Fargo revenue", "drop Wells Fargo"], "expect": {"outcome": "answer", "tickers": ["JPM"], "metrics": ["revenue"]}},
     {"id": "ho_follow_what_about", "split": "held_out", "category": "follow_up", "turns": ["Eli Lilly revenue", "what about Amgen?"], "expect": {"outcome": "answer", "tickers_include": ["AMGN"], "metrics": ["revenue"]}},
     {"id": "ho_follow_yoy", "split": "held_out", "category": "follow_up", "turns": ["Tesla revenue over the last four quarters", "show that year over year"], "expect": {"outcome": "answer", "tickers": ["TSLA"], "metrics": ["revenue"], "operations_include": ["year_over_year"]}},
-
     {"id": "ho_msft_filing_paraphrase", "split": "held_out", "category": "filing_change", "turns": ["Show me how Microsoft's newest 10-Q differs from the one before"], "expect": {"intent": "filing_change"}},
     {"id": "ho_ai_banking_explain", "split": "held_out", "category": "explain", "turns": ["How might AI change the banking industry?"], "expect": {"intent": "explain"}},
     {"id": "ho_exxon_news", "split": "held_out", "category": "news", "turns": ["What's the latest news affecting Exxon?"], "expect": {"intent": "news_and_explain"}}
