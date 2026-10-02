@@ -455,3 +455,17 @@ def test_a_fund_overview_is_one_refusal() -> None:
 
     assert result.renderer is RendererKind.REFUSE
     assert result.message is not None and "not an operating company" in result.message
+
+
+def test_initials_do_not_split_a_question() -> None:
+    plan = _live().complete("J.P. Morgan revenue")
+
+    assert plan.company == "JPM"
+    assert plan.notes == ()
+
+
+def test_a_segment_note_keeps_the_analysts_spelling() -> None:
+    plan = _live().complete("Amazon Web Services revenue")
+
+    assert plan.metric == "revenue"
+    assert any("“Amazon Web Services”" in note for note in plan.notes)

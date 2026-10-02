@@ -602,7 +602,7 @@ class DemoCompleter:
                     notes=notes,
                 )
             return SimpleNamespace(intent=Intent.RANK, industry=industry, limit=limit, notes=notes)
-        segment = segment_term(normalized)
+        segment = segment_term(query)
         segment_notes = (segment_note(segment),) if segment and metric in ALLOWED_METRICS else ()
         if len(companies) == 1 and _PEERS.search(normalized):
             # "Compare Nvidia to its peers": the conversation adds the peers.
@@ -680,7 +680,8 @@ def _covers(
 
 # A second question in one message: "… revenue and rank the top 5 banks", "…? What about …".
 _QUESTION_BREAK = re.compile(
-    r"(?:[?;]|\.(?=\s))\s+"
+    # A full stop ends a sentence after a word, not after an initial ("J.P. Morgan").
+    r"(?:[?;]|(?<=[a-z0-9]{2})\.(?=\s))\s+"
     r"|,?\s+(?:and|also|then|plus)\s+(?=(?:what|how|which|who|why|rank|show|list|give|tell"
     r"|compare|top)\b)",
     re.IGNORECASE,

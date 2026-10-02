@@ -384,7 +384,7 @@ _SEGMENT_WORDS = re.compile(
 def segment_term(question: str) -> str | None:
     """The segment or operating figure a question names ("iPhone", "per employee")."""
     match = _SEGMENT_WORDS.search(question)
-    return match.group(0).casefold() if match is not None else None
+    return match.group(0) if match is not None else None
 
 
 def segment_note(term: str) -> str:
