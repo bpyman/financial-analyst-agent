@@ -1648,3 +1648,66 @@ def test_a_ranking_chart_drops_its_order_from_the_caption_once_resorted() -> Non
     assert chart.caption.startswith("Ordered by market cap;")
     assert chart.resorted_caption.startswith("Bar length is latest-quarter Research")
     assert "Ordered" not in chart.resorted_caption
+
+
+@pytest.mark.parametrize(
+    ("error", "shown"),
+    [
+        ({"code": "provider_error", "message": "SEC server error"}, "Source unavailable"),
+        (
+            {"code": "data_integrity_error", "message": "company_tickers.json must be an object"},
+            "Source unavailable",
+        ),
+        (
+            {
+                "code": "ambiguous_fact",
+                "message": (
+                    "Multiple directly reported quarterly facts remain after precedence rules"
+                ),
+            },
+            "The filing reports different figures for that metric in the same quarter, "
+            "so none is shown rather than a guess.",
+        ),
+    ],
+)
+def test_a_failed_step_shows_no_internal_wording(error: dict[str, str], shown: str) -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.REFUSE,
+        message=error["message"] if error["code"] == "ambiguous_fact" else None,
+        tool_traces=[
+            ToolTrace(
+                tool="get_financials",
+                args={"company": "Apple", "metric": "revenue"},
+                provenance={"error": error},
+            )
+        ],
+    )
+
+    presented = present_turn(result)
+
+    assert dict(presented.traces[0].outputs)["Error"] == shown
+    assert error["message"] not in str(presented)
+    if presented.message is not None:
+        assert presented.message == shown
+
+
+def test_an_evidence_item_without_a_value_names_its_reason_in_words() -> None:
+    result = TurnResult(
+        intent=Intent.LOOKUP,
+        renderer=RendererKind.TABLE,
+        tool_traces=[],
+        table_rows=[
+            TableRow(
+                company_name="Apple Inc.",
+                ticker="AAPL",
+                cik="0000320193",
+                metric="revenue",
+                reason="source_unavailable",
+            )
+        ],
+    )
+
+    [item] = present_turn(result).evidence
+
+    assert item.amount == "Source unavailable"

@@ -37,7 +37,16 @@ class UnknownMetricError(FinancialAnalystError):
 
 
 class ProviderError(FinancialAnalystError):
+    """A data or model provider failed. Its message is for the log, not the visitor."""
+
     code = "provider_error"
+
+
+class ProviderRefusal(ProviderError):
+    """A provider's answer written for the visitor ("The recorded demo replays written
+    answers only for…"), shown as it is."""
+
+    code = "provider_refusal"
 
 
 class DataIntegrityError(FinancialAnalystError):
@@ -86,3 +95,7 @@ class RuntimeMismatchError(FinancialAnalystError):
     """A turn asked to run on a thread bound to the other runtime."""
 
     code = "runtime_mismatch"
+
+
+# A source that failed, as opposed to data that lacks the fact: the fact may well exist.
+SOURCE_FAILURES = (ProviderError, DataIntegrityError, OSError)

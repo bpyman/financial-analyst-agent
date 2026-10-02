@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from financial_analyst_agent.contracts import MISSING_FACT, RendererKind, TableRow
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.contracts import LOOKUP_FAILED, RendererKind, TableRow
+from financial_analyst_agent.domain.errors import DataIntegrityError, ProviderError
 from financial_analyst_agent.evidence_store import EvidenceCachedFacts, InMemoryEvidenceStore
 from financial_analyst_agent.graph.analysis_spec import CompiledTask
 from financial_analyst_agent.graph.spec_turn import (
@@ -81,7 +81,57 @@ def test_provider_failure_is_not_reported_as_a_missing_fact() -> None:
     bug = _task_failure_result(task, ValueError("boom"))
 
     assert outage.table_rows[0].reason == "source_unavailable"
-    assert bug.table_rows[0].reason == MISSING_FACT
+    assert bug.table_rows[0].reason == LOOKUP_FAILED
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError(28, "No space left on device"), DataIntegrityError("identity mismatch")],
+    ids=["disk", "integrity"],
+)
+def test_a_source_failure_that_is_not_a_provider_error_is_still_unavailable(
+    failure: Exception,
+) -> None:
+    task = CompiledTask(kind="compare", company_queries=("Apple", "Microsoft"), metric="revenue")
+
+    result = _task_failure_result(task, failure)
+
+    assert [row.reason for row in result.table_rows] == ["source_unavailable"] * 2
+
+
+def test_tasks_still_running_when_the_turn_runs_out_answer_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from financial_analyst_agent.graph import analysis_spec, spec_turn
+    from financial_analyst_agent.providers.sec.client import sec_turn_budget
+
+    release = threading.Event()
+
+    def fake_execute(task: object, runtime: object, *, query: str = "") -> object:
+        if getattr(task, "metric", "") == "revenue":
+            release.wait(5)
+        return SimpleNamespace(renderer=RendererKind.TABLE, table_rows=[])
+
+    monkeypatch.setattr(spec_turn, "execute_compiled_task", fake_execute)
+    monkeypatch.setattr(spec_turn, "_TASK_GRACE_SECONDS", 0.1)
+    task = analysis_spec.CompiledTask
+    tasks = (
+        task(kind="lookup", company_queries=("Apple",), metric="revenue"),
+        task(kind="lookup", company_queries=("Apple",), metric="net_income"),
+    )
+
+    started = time.monotonic()
+    try:
+        with sec_turn_budget(0.1):
+            results = spec_turn.dispatch_compiled_tasks(
+                tasks, SimpleNamespace(), max_workers=2  # type: ignore[arg-type]
+            )
+    finally:
+        release.set()
+
+    assert time.monotonic() - started < 2
+    assert results[0].table_rows[0].reason == "source_unavailable"
+    assert results[1].table_rows == []
 
 
 def test_unexpected_rank_failure_hides_the_exception_text() -> None:

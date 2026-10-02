@@ -453,6 +453,37 @@ def test_run_filing_change_refuses_unresolved_document(
     assert result.tool_traces[0].provenance["error"]
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ProviderError("SEC returned no usable filing document"),
+        ProviderError("SEC server error", details={"status_code": 503}),
+        OSError(30, "Read-only file system: '.cache/sec/tickers.json'"),
+    ],
+    ids=["unreadable", "outage", "disk"],
+)
+def test_a_filing_that_cannot_be_read_is_not_reported_as_missing_its_sections(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    facts = _Facts()
+
+    def unreadable(*args: object) -> str:
+        raise failure
+
+    monkeypatch.setattr(facts._client, "get_filing_document", unreadable)
+    result = run_filing_change(
+        SimpleNamespace(
+            company="Microsoft", older_accession=OLDER, newer_accession=NEWER, section="mda"
+        ),
+        _runtime(facts),
+    )
+
+    assert result.renderer is RendererKind.REFUSE
+    assert result.message is not None
+    assert result.message.startswith("I couldn't read the filings from SEC EDGAR")
+    assert str(failure) not in str(result.model_dump())
+
+
 def test_numeral_lock_drops_invented_summary_numbers() -> None:
     class _Essay:
         def complete_essay(self, query: str, tool_json: str = "") -> str:
@@ -692,12 +723,22 @@ def test_no_changes_is_claimed_only_for_the_sections_compared(
     assert result.tool_traces[0].provenance["section_errors"] == ["Risk Factors was not found"]
 
 
-def test_a_summary_the_model_cannot_write_is_explained() -> None:
-    from financial_analyst_agent.domain.errors import ProviderError
+@pytest.mark.parametrize(
+    ("raised", "shown"),
+    [
+        ("refusal", "No summary is shown for these filings."),
+        ("failure", "The model's summary could not be written just now."),
+    ],
+)
+def test_a_summary_the_model_cannot_write_is_explained(raised: str, shown: str) -> None:
+    from financial_analyst_agent.domain.errors import ProviderError, ProviderRefusal
 
     class _Essay:
         def complete_essay(self, query: str, tool_json: str = "") -> str:
-            raise ProviderError("No summary is shown for these filings.")
+            if raised == "refusal":
+                raise ProviderRefusal("No summary is shown for these filings.")
+            # A provider's own wording is for the log, not the window.
+            raise ProviderError("OpenAI 502 Bad Gateway")
 
     result = run_filing_change(
         SimpleNamespace(
@@ -713,7 +754,7 @@ def test_a_summary_the_model_cannot_write_is_explained() -> None:
     assert result.disclosure_changes
     assert result.essay is None
     assert MODEL_ANALYSIS_BANNER not in result.banners
-    assert "No summary is shown for these filings." in result.banners
+    assert shown in result.banners
 
 
 def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> None:

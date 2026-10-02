@@ -21,7 +21,13 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.domain.enums import PERIODIC_FORMS
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import (
+    SOURCE_FAILURES,
+    AmbiguousCompanyError,
+    CompanyNotFoundError,
+    ProviderError,
+    ProviderRefusal,
+)
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
@@ -521,8 +527,8 @@ def _primary_document(recent: dict[str, Any], accession: str) -> str:
             document = documents[index]
             if isinstance(document, str) and document.strip():
                 return document
-            raise ProviderError(f"Primary document is missing for accession {accession}")
-    raise ProviderError(f"Filing accession {accession} was not found in supported submissions")
+            raise ProviderRefusal(f"Primary document is missing for accession {accession}")
+    raise ProviderRefusal(f"Filing accession {accession} was not found in supported submissions")
 
 
 def _pretty(iso: str) -> str:
@@ -639,7 +645,7 @@ def _check_reviewable(recent: dict[str, Any], accession: str) -> None:
     """Refuse an accession that is this company's, but not a 10-Q or 10-K."""
     form = _form_of(recent, accession)
     if form and form not in PERIODIC_FORMS:
-        raise ProviderError(
+        raise ProviderRefusal(
             f"Accession {accession} is a {form}, not a 10-Q or 10-K; only quarterly and "
             "annual reports are compared."
         )
@@ -719,6 +725,21 @@ def _labels(sections: list[SectionId]) -> str:
     return " and ".join(SECTION_LABELS[section] for section in sections)
 
 
+# A filing that could not be fetched or read is not one whose sections are absent.
+FILINGS_UNREADABLE_MESSAGE = (
+    "I couldn't read the filings from SEC EDGAR just now, so they were not compared. "
+    "Please try again in a few minutes."
+)
+SUMMARY_UNAVAILABLE_MESSAGE = "The model's summary could not be written just now."
+
+
+def _public_message(exc: BaseException) -> str:
+    """A refusal written for the visitor as it is; a source failure in plain words."""
+    if isinstance(exc, (ProviderRefusal, CompanyNotFoundError, AmbiguousCompanyError)):
+        return str(exc)
+    return FILINGS_UNREADABLE_MESSAGE
+
+
 def _unreadable_sentence(unreadable: list[SectionId]) -> str:
     noun = "section" if len(unreadable) == 1 else "sections"
     missing = " or ".join(SECTION_LABELS[section] for section in unreadable)
@@ -775,12 +796,12 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         )
     try:
         resolved = resolve_company(company, filings.get_company_tickers())
-    except Exception as exc:
+    except (CompanyNotFoundError, AmbiguousCompanyError, *SOURCE_FAILURES) as exc:
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message=str(exc),
+            message=_public_message(exc),
         )
     cik = resolved.cik
     if not sec_identity_is_operating(cik, resolved.name):
@@ -809,7 +830,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         if not older:
             pair = _year_apart_quarterlies(recent, form)
             if pair is None:
-                raise ProviderError(_too_few_message(recent, name, form))
+                raise ProviderRefusal(_too_few_message(recent, name, form))
             older, newer = pair
             period = "quarter" if form == "10-Q" else "year"
             chosen_banner = (
@@ -857,15 +878,16 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                     newer_url=newer_url,
                 )
             )
-    except ProviderError as exc:
+    except SOURCE_FAILURES as exc:
+        code = exc.code if isinstance(exc, ProviderError) else ProviderError.code
         traces[0] = traces[0].model_copy(
-            update={"provenance": {"error": {"code": exc.code, "message": str(exc)}}}
+            update={"provenance": {"error": {"code": code, "message": _public_message(exc)}}}
         )
         return TurnResult(
             intent=Intent.FILING_CHANGE,
             tool_traces=traces,
             renderer=RendererKind.REFUSE,
-            message=str(exc),
+            message=_public_message(exc),
         )
     traces[0] = traces[0].model_copy(
         update={
@@ -949,7 +971,9 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
         except ProviderError as exc:
             # The changes stand on their own; say plainly why no summary is shown.
             essay = None
-            banners.append(str(exc))
+            banners.append(
+                str(exc) if isinstance(exc, ProviderRefusal) else SUMMARY_UNAVAILABLE_MESSAGE
+            )
     return TurnResult(
         intent=Intent.FILING_CHANGE,
         tool_traces=traces,

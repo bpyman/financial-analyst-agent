@@ -7,7 +7,7 @@ from pathlib import Path
 
 from financial_analyst_agent.config import AppMode, Settings, get_settings
 from financial_analyst_agent.contracts import Runtime, RuntimeKind
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import ProviderError, ProviderRefusal
 from financial_analyst_agent.essay import OpenAIEssayCompleter
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.news import (
@@ -78,18 +78,18 @@ def _recorded_disclosure_summary(tool_json: str) -> str:
     except json.JSONDecodeError as exc:
         raise ProviderError("Recorded disclosure changes were invalid") from exc
     if not isinstance(payload, list) or not payload:
-        raise ProviderError(RECORDED_SUMMARY_MISSING)
+        raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
     keys: list[tuple[str, str, str]] = []
     for item in payload:
         if not isinstance(item, dict):
-            raise ProviderError(RECORDED_SUMMARY_MISSING)
+            raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
         key = (
             str(item.get("older_accession") or ""),
             str(item.get("newer_accession") or ""),
             str(item.get("section") or ""),
         )
         if key not in RECORDED_DISCLOSURE_SUMMARIES:
-            raise ProviderError(RECORDED_SUMMARY_MISSING)
+            raise ProviderRefusal(RECORDED_SUMMARY_MISSING)
         if key not in keys:
             keys.append(key)
     return " ".join(RECORDED_DISCLOSURE_SUMMARIES[key] for key in keys)
@@ -105,13 +105,13 @@ class RecordedEssayCompleter:
     def __init__(self, *, live: bool = False) -> None:
         self._live = live
 
-    def _refusal(self, captured: str) -> ProviderError:
+    def _refusal(self, captured: str) -> ProviderRefusal:
         if self._live:
-            return ProviderError(
+            return ProviderRefusal(
                 "Written answers need an OpenAI key, which this server does not have. "
                 f"It can replay the one it captured, for {captured}."
             )
-        return ProviderError(
+        return ProviderRefusal(
             f"The recorded demo replays written answers only for {captured}. "
             "Switch to Live for other questions."
         )
@@ -197,6 +197,9 @@ def _shared_sec_client(settings: Settings) -> SECClient:
         settings.sec_base_url,
         settings.sec_max_requests_per_second,
         settings.sec_timeout_seconds,
+        settings.sec_request_deadline_seconds,
+        settings.sec_max_response_bytes,
+        settings.sec_block_pause_seconds,
     )
     with _SEC_CLIENTS_LOCK:
         client = _SEC_CLIENTS.get(key)
@@ -259,7 +262,14 @@ def live_runtime(
     )
     news = TavilyNewsSearch(resolved) if use_tavily else RecordedNewsSearch()
     cache_dir = resolved.sec_cache_dir or Path(".cache") / "sec"
-    client = CachingSECDataSource(_shared_sec_client(resolved), Path(cache_dir), budget=budget)
+    client = CachingSECDataSource(
+        _shared_sec_client(resolved),
+        Path(cache_dir),
+        budget=budget,
+        # Waiting on another turn's fetch longer than one request may take is pointless.
+        fill_wait_seconds=resolved.sec_request_deadline_seconds,
+        max_bytes=resolved.sec_cache_max_bytes,
+    )
     return Runtime(
         completer=completer,
         filings=client,
@@ -277,13 +287,20 @@ def live_runtime(
     )
 
 
+def live_sec_configured(settings: Settings) -> bool:
+    """Whether live SEC requests can be made: SEC asks for a User-Agent naming a contact."""
+    return bool(settings.sec_user_agent.strip())
+
+
 def runtime_locked(settings: Settings | None = None) -> bool:
     """Whether this deployment serves only the recorded runtime.
 
-    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked.
+    A public demo (``PUBLIC_DEMO`` on) with ``DEMO_LIVE_SEC`` off is locked, and
+    so is any deployment without ``SEC_USER_AGENT``: its live turns could only fail.
     """
     resolved = settings or get_settings()
-    return bool(resolved.public_demo) and not resolved.demo_live_sec
+    demo_off = bool(resolved.public_demo) and not resolved.demo_live_sec
+    return demo_off or not live_sec_configured(resolved)
 
 
 def resolve_runtime_kind(kind: RuntimeKind, settings: Settings | None = None) -> RuntimeKind:

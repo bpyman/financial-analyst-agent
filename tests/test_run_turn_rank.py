@@ -12,6 +12,7 @@ import pytest
 
 from financial_analyst_agent.config import Settings
 from financial_analyst_agent.contracts import Intent, RendererKind, Runtime
+from financial_analyst_agent.domain.errors import ProviderError
 from financial_analyst_agent.facts import RecordedSECDataSource
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH, DemoCompleter
@@ -886,6 +887,52 @@ def test_fetch_fmp_rows_includes_us_listed_foreign_issuers() -> None:
     assert all("country" not in url.params for url in screener_urls)
     assert {(row.ticker, row.cik, row.exchange) for row in rows} == {
         ("NVO", "0000353259", "NYSE")
+    }
+
+
+class _LillyUnavailableFacts:
+    """SEC fails for Eli Lilly; the other ranked companies report revenue."""
+
+    def get_financials(
+        self, company: str, metric: str, *, report_date: date | None = None
+    ) -> SimpleNamespace:
+        if company == "0000059478":
+            raise ProviderError("SEC server error", details={"status_code": 503})
+        return SimpleNamespace(
+            company_name=company,
+            ticker="",
+            cik=company,
+            metric=metric,
+            value=Decimal(int(company[-6:])),
+            currency="USD",
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 6, 30),
+            filed_date=date(2026, 8, 1),
+            form="10-Q",
+            accession_number=f"{company}-26-000001",
+            taxonomy="us-gaap",
+            concept="Revenues",
+            source_url="https://www.sec.gov/",
+            derivation=None,
+            newer_filing_end=None,
+        )
+
+
+def test_a_ranking_answers_with_the_companies_sec_could_serve() -> None:
+    runtime = Runtime(
+        completer=DemoCompleter(),
+        facts=_LillyUnavailableFacts(),
+        ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
+    )
+
+    result = run_turn("top 3 healthcare companies by revenue", runtime)
+
+    assert result.renderer is RendererKind.TABLE
+    reasons = {row.company_name: row.reason for row in result.table_rows}
+    assert reasons == {
+        "Johnson & Johnson": None,
+        "AbbVie Inc.": None,
+        "Eli Lilly and Company": "source_unavailable",
     }
 
 

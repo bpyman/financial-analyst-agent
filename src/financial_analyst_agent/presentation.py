@@ -68,6 +68,8 @@ _REASON_LABELS = {
     "ambiguous_concept": "Ambiguous concept",
     "zero_denominator": "Zero denominator",
     "source_unavailable": "Source unavailable",
+    "lookup_failed": "Lookup failed",
+    "company_not_found": "Company not found",
     "not_reported_for_quarter": "Reported for the year only",
     "not_meaningful": "Not meaningful (loss)",
     "latest_period_only": "Latest period only",
@@ -994,7 +996,9 @@ def _evidence_item(row: TableRow) -> EvidenceItem:
     amount = (
         format_metric_value(row.metric, row.value)
         if row.value is not None
-        else (row.reason or "")
+        else format_reason(row.reason)
+        if row.reason
+        else ""
     )
     raw = str(row.value) if row.value is not None else ""
     period = _period_label(row.start_date, row.end_date)
@@ -1240,6 +1244,10 @@ _FRIENDLY_MESSAGES = {
         "This quarter's report is filed, but SEC's structured data, which the figures "
         "here are read from, does not include it yet. It usually appears within a "
         "few weeks of the filing."
+    ),
+    "Multiple directly reported quarterly facts remain after precedence rules": (
+        "The filing reports different figures for that metric in the same quarter, "
+        "so none is shown rather than a guess."
     ),
     "No directly reported standalone-quarter fact exists for metric": (
         "This company's 10-Q does not report a standalone quarterly value for that "
@@ -1803,7 +1811,21 @@ def _append_trace_field(
         raw = str(value)
         fields.append((label, _SOURCE_LABELS.get(raw, raw)))
         return
+    if key == "error" and isinstance(value, dict):
+        fields.append((label, _public_trace_error(value)))
+        return
     fields.append((label, _format_trace_value(value)))
+
+
+# A provider's own wording ("SEC server error", a payload's shape) stays in the
+# record; the window says only that the source failed.
+_SOURCE_ERROR_CODES = frozenset({"provider_error", "data_integrity_error"})
+
+
+def _public_trace_error(error: dict[str, Any]) -> str:
+    if str(error.get("code") or "") in _SOURCE_ERROR_CODES:
+        return _REASON_LABELS["source_unavailable"]
+    return _friendly_message(str(error.get("message") or "")) or ""
 
 
 _USER_TEXT_FIELDS = frozenset({"topic", "query", "message", "question"})

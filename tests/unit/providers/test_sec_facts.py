@@ -773,3 +773,101 @@ def test_a_negative_gross_margin_keeps_the_filed_revenue() -> None:
 
     assert fact.value == Decimal("1000")
     assert fact.derivation is None
+
+
+class _RecordingSource:
+    """A data source that fails on demand and notes what it was asked for."""
+
+    def __init__(self, *, failing: str = "") -> None:
+        self.calls: list[str] = []
+        self.slots_free_at_download: list[int] = []
+        self._failing = failing
+
+    def get_company_tickers(self) -> dict[str, object]:
+        self.calls.append("tickers")
+        return {"0": {"cik_str": int(SUCCESSOR_CIK), "ticker": "XOM", "title": "Exxon Mobil"}}
+
+    def get_submissions(self, cik: str) -> dict[str, object]:
+        self.calls.append(f"submissions:{cik}")
+        if self._failing.startswith("submissions"):
+            status = 404 if self._failing.endswith("404") else 503
+            raise ProviderError("SEC error", details={"status_code": status})
+        payload = _submissions(cik, ACCESSION)
+        recent = payload["filings"]["recent"]  # type: ignore[index]
+        # A bank's list: periodic reports among prospectuses, with extra columns.
+        for column, value in (
+            ("form", "424B2"),
+            ("accessionNumber", "0000034088-26-000094"),
+            ("filingDate", "2026-08-04"),
+            ("reportDate", ""),
+            ("primaryDocument", "prospectus.htm"),
+        ):
+            recent[column].append(value)
+        recent["size"] = [1, 2]
+        return payload
+
+    def prefetch_company_facts(self, cik: str) -> None:
+        from financial_analyst_agent import sec_facts
+
+        self.calls.append(f"download:{cik}")
+        self.slots_free_at_download.append(sec_facts._FACTS_PARSE_SLOTS._value)
+
+    def get_company_facts(self, cik: str) -> dict[str, object]:
+        self.calls.append(f"facts:{cik}")
+        if self._failing == "facts":
+            raise ProviderError("SEC request timed out", details={"retryable": False})
+        return _quarterly_net_income_facts(cik, ACCESSION)
+
+    def close(self) -> None:
+        return None
+
+
+@pytest.mark.parametrize("failing", ["submissions", "submissions-404", "facts"])
+def test_a_failed_sec_document_is_not_asked_for_again_in_the_turn(failing: str) -> None:
+    source = _RecordingSource(failing=failing)
+    lookup = SecFactLookup(client=source)
+
+    for metric in ("net_income", "revenue", "net_income"):
+        with pytest.raises(ProviderError):
+            lookup.get_financials("XOM", metric)
+
+    document = failing.split("-")[0]
+    asked = [call for call in source.calls if call.startswith(f"{document}:")]
+    assert asked == [f"{document}:{SUCCESSOR_CIK}"]
+
+
+def test_company_facts_are_downloaded_before_a_parse_slot_is_taken() -> None:
+    source = _RecordingSource()
+
+    SecFactLookup(client=source).get_financials("XOM", "net_income")
+
+    assert source.calls.index(f"download:{SUCCESSOR_CIK}") < source.calls.index(
+        f"facts:{SUCCESSOR_CIK}"
+    )
+    assert source.slots_free_at_download
+    assert all(free == 2 for free in source.slots_free_at_download)
+
+
+@pytest.mark.parametrize("value", ["12abc", True, None], ids=["text", "boolean", "missing"])
+def test_malformed_facts_are_unreadable_not_unreported(value: object) -> None:
+    from financial_analyst_agent.domain.errors import DataIntegrityError
+
+    class _Malformed(_RecordingSource):
+        def get_company_facts(self, cik: str) -> dict[str, object]:
+            payload = _quarterly_net_income_facts(cik, ACCESSION)
+            entry = payload["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["USD"][0]  # type: ignore[index]
+            entry["val"] = value
+            return payload
+
+    with pytest.raises(DataIntegrityError, match="could not be read"):
+        SecFactLookup(client=_Malformed()).get_financials("XOM", "net_income")
+
+
+def test_a_lookup_keeps_only_the_submissions_rows_and_columns_it_reads() -> None:
+    lookup = SecFactLookup(client=_RecordingSource())
+
+    lookup.get_financials("XOM", "net_income")
+
+    kept = lookup._submissions_by_cik[SUCCESSOR_CIK]["filings"]["recent"]
+    assert kept["form"] == ["10-Q"]
+    assert set(kept) == {"form", "accessionNumber", "filingDate", "reportDate", "primaryDocument"}

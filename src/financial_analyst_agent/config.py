@@ -6,7 +6,7 @@ import re
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from financial_analyst_agent.domain.errors import ConfigurationError
@@ -55,8 +55,22 @@ class Settings(BaseSettings):
     sec_user_agent: str = ""
     sec_base_url: str = "https://data.sec.gov"
     sec_max_requests_per_second: float = 5.0
-    sec_timeout_seconds: float = 30.0
+    # Per connect or read: a hung SEC must not hold a three-company turn for 90 s.
+    sec_timeout_seconds: float = 10.0
+    # Wall clock for one SEC request, body included: a server that drips a byte
+    # at a time never trips a per-read timeout.
+    sec_request_deadline_seconds: float = 30.0
+    # Decompressed: the largest real document (a BDC's 10-Q) is about 25 MB.
+    sec_max_response_bytes: int = 64 * 1024 * 1024
+    # SEC time one turn may spend; past it, the companies not yet read show
+    # "Source unavailable" and the turn answers with the rest.
+    sec_turn_budget_seconds: float = 90.0
+    # How long every SEC request waits after SEC flags this app as an
+    # undeclared automated tool (its 403 page asks for about ten minutes).
+    sec_block_pause_seconds: float = 600.0
     sec_cache_dir: Path | None = None
+    # The SEC disk cache is trimmed, oldest files first, past this size.
+    sec_cache_max_bytes: int = 1024 * 1024 * 1024
     fmp_api_key: str = ""
     fmp_base_url: str = "https://financialmodelingprep.com"
     tavily_api_key: str = ""
@@ -76,6 +90,9 @@ class Settings(BaseSettings):
     # history, more); this fits two. Cached documents cost nothing.
     max_live_sec_requests_per_thread: int = 150
     max_concurrent_turns: int = 4
+    # A turn still running after this ends with an error and frees its thread
+    # and slot; above the SEC budget so a slow but working turn can finish.
+    turn_timeout_seconds: float = 150.0
     # Per visitor (client IP), per rolling hour: threads cost nothing to open,
     # so the per-thread budgets alone do not bound what one visitor can spend.
     client_threads_per_hour: int = 30
@@ -112,12 +129,33 @@ class Settings(BaseSettings):
             raise ValueError("SEC_MAX_REQUESTS_PER_SECOND must be greater than 0 and at most 5")
         return value
 
-    @field_validator("sec_timeout_seconds")
+    @field_validator(
+        "sec_timeout_seconds",
+        "sec_request_deadline_seconds",
+        "sec_turn_budget_seconds",
+        "turn_timeout_seconds",
+    )
     @classmethod
-    def validate_timeout_seconds(cls, value: float) -> float:
-        value = _reject_non_finite(value, "SEC_TIMEOUT_SECONDS")
+    def validate_positive_seconds(cls, value: float, info: ValidationInfo) -> float:
+        name = str(info.field_name).upper()
+        value = _reject_non_finite(value, name)
         if value <= 0:
-            raise ValueError("SEC_TIMEOUT_SECONDS must be greater than 0")
+            raise ValueError(f"{name} must be greater than 0")
+        return value
+
+    @field_validator("sec_block_pause_seconds")
+    @classmethod
+    def validate_block_pause_seconds(cls, value: float) -> float:
+        value = _reject_non_finite(value, "SEC_BLOCK_PAUSE_SECONDS")
+        if value < 0:
+            raise ValueError("SEC_BLOCK_PAUSE_SECONDS must not be negative")
+        return value
+
+    @field_validator("sec_max_response_bytes", "sec_cache_max_bytes")
+    @classmethod
+    def validate_byte_limit(cls, value: int, info: ValidationInfo) -> int:
+        if value < 1024 * 1024:
+            raise ValueError(f"{str(info.field_name).upper()} must be at least 1 MiB")
         return value
 
     @field_validator("max_concurrent_turns")

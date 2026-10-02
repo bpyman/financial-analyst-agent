@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from financial_analyst_agent.domain.errors import ProviderError
+from financial_analyst_agent.domain.errors import ProviderError, ProviderRefusal
 from financial_analyst_agent.providers.sec.company_facts import validate_companyfacts_response
 from financial_analyst_agent.providers.sec.submissions import validate_submissions_response
 from financial_analyst_agent.providers.sec.tickers import require_usable_company_tickers
@@ -51,7 +51,7 @@ class RecordedSECDataSource:
             raise ProviderError("Recorded SEC cassette missing filing_documents")
         payload = docs.get(f"{cik}:{accession}:{document}")
         if not isinstance(payload, str):
-            raise ProviderError(
+            raise ProviderRefusal(
                 "No recorded filing document",
                 details={"cik": cik, "accession": accession, "document": document},
             )
