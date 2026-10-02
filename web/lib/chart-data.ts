@@ -17,12 +17,16 @@ export const SERIES_COLORS = [
   "var(--chart-4)",
   "var(--chart-5)",
   "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
 ] as const;
 
 export interface LineSeries {
   /** Positional data key: company names such as "Apple Inc." read as paths. */
   key: string;
   name: string;
+  /** The short name an end label or a crowded tooltip uses: the ticker. */
+  label: string;
   color: string;
 }
 
@@ -31,15 +35,20 @@ export interface LineRow {
   /** The period end as epoch milliseconds (UTC), or null when the server sent no date. */
   time: number | null;
   amounts: Record<string, string>;
+  /** Each series' evidence index at this period. */
+  evidence: Record<string, number>;
+  /** Series whose point here is derived (†), drawn hollow. */
+  derived: string[];
   /** Series whose latest point is in this row. */
   last?: string[];
-  [series: string]: string | number | null | Record<string, string> | string[] | undefined;
+  [series: string]: string | number | null | Record<string, string> | Record<string, number> | string[] | undefined;
 }
 
 export function lineSeries(spec: LineChartSpec): LineSeries[] {
   return spec.series.map((name, index) => ({
     key: `s${index}`,
     name,
+    label: spec.series_labels?.[index] || name,
     color: SERIES_COLORS[index] ?? "var(--chart-muted)",
   }));
 }
@@ -52,8 +61,13 @@ export function lineRows(spec: LineChartSpec): LineRow[] {
       period: spec.period_labels[index] ?? String(record.Period ?? ""),
       time: periodTime(record.Period),
       amounts: {},
+      evidence: {},
+      derived: [],
     };
     for (const { key, name } of series) {
+      const evidence = spec.evidence?.[index]?.[name];
+      if (typeof evidence === "number") row.evidence[key] = evidence;
+      if (spec.derived?.[index]?.includes(name)) row.derived.push(key);
       const value = record[name];
       row[key] = typeof value === "number" && Number.isFinite(value) ? value : null;
       const amount = spec.amounts[index]?.[name];
@@ -154,6 +168,9 @@ export interface BarRow {
   label: string;
   missing: boolean;
   period: string;
+  /** Index into the answer's evidence. */
+  evidence: number | null;
+  derived: boolean;
 }
 
 /** A bar without a finite value keeps its row, drawn as missing with "—". */
@@ -168,6 +185,8 @@ export function barRows(spec: BarChartSpec): BarRow[] {
       label: record.Missing ? record.Label : missing ? "—" : record.Label,
       missing,
       period: record.Period ?? "",
+      evidence: typeof record.Evidence === "number" ? record.Evidence : null,
+      derived: record.Derived === true,
     };
   });
 }
@@ -217,11 +236,12 @@ export function valueDomain(
   return [low >= 0 && padded < 0 ? 0 : padded, high + pad];
 }
 
-/** Room beyond bar ends for their value labels, keeping zero as the baseline. */
-export function barDomain(values: (number | null | undefined)[]): [number, number] {
-  const [low, high] = valueDomain(values, { zero: true });
-  const pad = (high - low) * 0.2;
-  return [low < 0 ? low - pad : 0, high > 0 ? high + pad : 0];
+/**
+ * A bar axis that ends at the first nice tick beyond the longest bar ($20B for
+ * $18.2B, not $25B); the plot's margin, not the axis, holds the value labels.
+ */
+export function barTicks(values: (number | null | undefined)[]): number[] {
+  return niceTicks(valueDomain(values, { zero: true }));
 }
 
 /** Clean axis ticks (steps of 1, 2 or 5 × 10ⁿ) covering the domain. */

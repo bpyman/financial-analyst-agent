@@ -1,0 +1,58 @@
+import type { DisplayTable } from "./types";
+
+// "Microsoft's quarterly revenue over the last four quarters", then "add Apple",
+// as the recorded runtime's API sends it.
+export const SERIES: DisplayTable = {
+  headers: ["Company", "Ticker", "Revenue", "Quarter ended"],
+  keys: ["company_name", "ticker", "value:revenue", "end_date"],
+  rows: [
+    ["Microsoft Corporation", "MSFT", "$90.01 B †", "Jun 30, 2026"],
+    ["Microsoft Corporation", "MSFT", "$82.89 B", "Mar 31, 2026"],
+    ["Microsoft Corporation", "MSFT", "$81.27 B", "Dec 31, 2025"],
+    ["Microsoft Corporation", "MSFT", "$77.67 B", "Sep 30, 2025"],
+    ["Apple Inc.", "AAPL", "$109.42 B", "Jun 27, 2026"],
+    ["Apple Inc.", "AAPL", "$111.18 B", "Mar 28, 2026"],
+    ["Apple Inc.", "AAPL", "$143.76 B", "Dec 27, 2025"],
+    ["Apple Inc.", "AAPL", "$102.47 B †", "Sep 27, 2025"],
+  ],
+  numbers: [
+    [null, null, 90007000000.0, 739797],
+    [null, null, 82886000000.0, 739706],
+    [null, null, 81273000000.0, 739616],
+    [null, null, 77673000000.0, 739524],
+    [null, null, 109417000000.0, 739794],
+    [null, null, 111184000000.0, 739703],
+    [null, null, 143756000000.0, 739612],
+    [null, null, 102466000000.0, 739521],
+  ],
+  row_keys: [
+    "MSFT@2026-06-30",
+    "MSFT@2026-03-31",
+    "MSFT@2025-12-31",
+    "MSFT@2025-09-30",
+    "AAPL@2026-06-27",
+    "AAPL@2026-03-28",
+    "AAPL@2025-12-27",
+    "AAPL@2025-09-27",
+  ],
+  evidence: [
+    [null, null, 0, null],
+    [null, null, 3, null],
+    [null, null, 4, null],
+    [null, null, 5, null],
+    [null, null, 6, null],
+    [null, null, 7, null],
+    [null, null, 8, null],
+    [null, null, 9, null],
+  ],
+  raw: [
+    ["Microsoft Corporation", "MSFT", "90007000000", "2026-06-30"],
+    ["Microsoft Corporation", "MSFT", "82886000000", "2026-03-31"],
+    ["Microsoft Corporation", "MSFT", "81273000000", "2025-12-31"],
+    ["Microsoft Corporation", "MSFT", "77673000000", "2025-09-30"],
+    ["Apple Inc.", "AAPL", "109417000000", "2026-06-27"],
+    ["Apple Inc.", "AAPL", "111184000000", "2026-03-28"],
+    ["Apple Inc.", "AAPL", "143756000000", "2025-12-27"],
+    ["Apple Inc.", "AAPL", "102466000000", "2025-09-27"],
+  ],
+};
