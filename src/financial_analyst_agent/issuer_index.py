@@ -264,8 +264,22 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
+# A listing's description of the security, not part of the company's name:
+# "Pony AI Inc. American Depositary Shares", "Webull Corporation Class A Ordinary Shares".
+_SECURITY_TAIL = re.compile(
+    r"\s+(?:class\s+[a-z]\b|series\s+[a-z]\b|common\s+stock|ordinary\s+shares?"
+    r"|american\s+depositary|depositary\s+(?:shares?|receipts?)|(?:un)?sponsored\b"
+    r"|adss?\b|adrs?\b).*$",
+    re.IGNORECASE,
+)
+# Letters of a spelt-out legal form at the end of a name: "S.A.B. de C.V.",
+# "L.P.", "S.A.", "KGaA".
+_LEGAL_LETTERS = frozenset({"s", "a", "b", "c", "v", "l", "p", "sab", "cv", "sapi", "kgaa", "spa"})
+
+
 def _core_name(name: str, suffixes: frozenset[str] = _NAME_SUFFIXES) -> str:
-    words = normalize(name).split()
+    suffixes = suffixes | _LEGAL_LETTERS
+    words = normalize(_SECURITY_TAIL.sub("", name)).split()
     while words and words[-1] in suffixes:
         words.pop()
     while words and words[0] == "the":
@@ -431,7 +445,14 @@ class IssuerIndex:
             position += len(word) + 1
         taken = [False] * len(words)
         found: dict[str, CompanyMention] = {}
-        shapes = None if company_slot else _word_shapes(question, len(words))
+        typed_shapes = _word_shapes(question, len(words))
+        shapes = None if company_slot else typed_shapes
+        # "$TEAM" is Atlassian's ticker, whoever "team" names: the ticker pass reads it.
+        dollar = {
+            position
+            for position, shape in enumerate(typed_shapes or ())
+            if shape.before.endswith("$")
+        }
         # One-word everyday names, judged once every other name is known.
         tentative: list[tuple[int, str, CompanyMention]] = []
         # Names several companies share: kept only where read as a company.
@@ -453,6 +474,8 @@ class IssuerIndex:
                 if any(taken[start : start + size]):
                     continue
                 phrase = " ".join(words[start : start + size])
+                if size == 1 and start in dollar:
+                    continue
                 shared = size == 1 and phrase not in self.phrases and phrase in self.shared
                 if shared:
                     # "Lincoln": Lincoln Electric or Lincoln National. The
@@ -491,23 +514,30 @@ class IssuerIndex:
         name_words = {word for word, used in zip(words, taken, strict=True) if used}
         for match in _TICKER.finditer(question):
             raw, share_class = match.group(1), match.group(2)
-            dollar = match.group(0).startswith("$")
-            if not dollar and (
+            dollar_typed = match.group(0).startswith("$")
+            before = normalize(question[: match.start()]).split()
+            if not dollar_typed and (
                 raw.casefold() in name_words
+                # "Novartis AG", "BioNTech SE": the legal form, not a ticker.
+                or (
+                    raw.casefold() in _NAME_SUFFIXES
+                    and bool(before)
+                    and (before[-1] in name_words or before[-1] in _NAME_SUFFIXES)
+                )
                 or not self._bare_ticker(question, match, named=named, shouted=shouted)
             ):
                 continue
             if share_class is not None:
                 # "BRK.B" is Berkshire's B shares; "P/E" and "U.S." name no class.
                 query = self._share_class(raw, share_class)
-            elif raw.casefold() in self.phrases:
+            elif raw.casefold() in self.phrases and not dollar_typed:
                 # "AAPL" is also an alias phrase; the phrase pass named it once.
                 continue
             else:
                 query = self.tickers.get(raw.upper())
             if query is not None:
                 start = _char_to_word_offset(question, match)
-                note(query, CompanyMention(query, start, raw, bare_ticker=not dollar))
+                note(query, CompanyMention(query, start, raw, bare_ticker=not dollar_typed))
         return sorted(found.values(), key=lambda mention: mention.start)
 
     def named(self, company: str) -> str | None:
@@ -839,7 +869,8 @@ def _as_companies(
             cased and not lower and not _sentence_start(start) and start not in strict
         ):
             return True
-        if _joined(start):
+        if _joined(start) or following in _NAME_ENDS:
+            # "the Progressive Corporation": a legal form after the word makes it a name.
             return True
         if _word_before(words, shapes, start) or (cased and lower and named_in_capitals):
             return False
@@ -847,7 +878,6 @@ def _as_companies(
             shape.possessive
             or following in _figure_words()
             or following in _COMPANY_VERBS
-            or following in _NAME_ENDS
             or previous in _COMPANY_BEFORE
             or (previous in _OBJECT_BEFORE and (following is None or following in _CLAUSE_AFTER))
             # "Target?" or "Revenue, Target" ends the question.

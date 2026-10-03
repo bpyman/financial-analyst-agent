@@ -112,8 +112,14 @@ class SnapshotRanking:
         The issuer index reads the name first, as the planner does: "Goldman
         Sachs", "Lilly", "Merck & Co." and "$TMO" each name one member. A name
         it does not hold whole goes to the SEC-style resolver, which may find
-        it ambiguous.
+        it ambiguous. A ticker typed as one ("TEAM", "$COKE") is that listing,
+        even where it is also another company's name or nickname.
         """
+        typed = company.strip().removeprefix("$").rstrip(".")
+        as_ticker = typed.isupper() or company.strip().startswith("$")
+        listing = self._by_ticker.get(typed.upper()) if as_ticker else None
+        if listing is not None:
+            return preferred_listing(self._listings_by_cik[listing.cik])
         query = self.index.named(company)
         listing = self._by_ticker.get(query.upper()) if query is not None else None
         if listing is not None:

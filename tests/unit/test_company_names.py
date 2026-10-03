@@ -242,3 +242,25 @@ def test_facts_are_fetched_for_the_company_the_analysis_resolved(tmp_path: Path)
         ("GS", True),
         ("JPM", True),
     ]
+
+
+@pytest.mark.parametrize(
+    ("company", "ticker"), [("TEAM", "TEAM"), ("COKE", "COKE"), ("$coke", "COKE")]
+)
+def test_a_typed_ticker_is_that_listing_even_where_it_is_a_name(company: str, ticker: str) -> None:
+    # "team" is Team Inc and "coke" is Coca-Cola, but TEAM is Atlassian's ticker.
+    assert _ranking().lookup_member(company).ticker == ticker
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("$TEAM revenue", ["TEAM"]),
+        ("Novartis AG revenue", ["NVS"]),
+        ("UBS Group AG revenue", ["UBS"]),
+        ("The Progressive Corporation revenue", ["PGR"]),
+        ("Pony AI Inc. American Depositary Shares revenue", ["PONY"]),
+    ],
+)
+def test_listing_names_read_as_their_company(question: str, companies: list[str]) -> None:
+    assert _found(question) == companies
