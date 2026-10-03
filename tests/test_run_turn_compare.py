@@ -1,4 +1,4 @@
-"""Gold: Microsoft vs Google operating margins through run_turn."""
+"""Microsoft vs Google operating margins through run_turn."""
 
 from datetime import date
 from decimal import Decimal
@@ -21,7 +21,7 @@ from financial_analyst_agent.turn import PERIODS_DIFFER_BANNER, run_turn
 MSFT_GOOG_OPERATING_MARGINS_QUERY = "compare Microsoft and Google operating margins"
 UNKNOWN_RATIO_QUERY = "compare Microsoft and Google ROA"
 
-# Fixture-runtime gold literals (recorded facts, not live SEC).
+# Expected figures on the recorded runtime (recorded facts, not live SEC).
 ALPHABET_CIK = "0001652044"
 ALPHABET_NAME = "Alphabet Inc."
 ALPHABET_TICKER = "GOOG"

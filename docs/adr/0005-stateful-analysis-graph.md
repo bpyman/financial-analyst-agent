@@ -18,7 +18,7 @@ This supersedes "one user prompt maps to one intent" (PRD) and the one-shot rati
 
 ## Seams
 
-The new public seam is one conversation entry point: thread identifier + analyst message + runtime → typed conversation turn. `run_turn(query, runtime) → TurnResult` survives as a compatibility wrapper over an ephemeral single-message thread, so the gold suite and per-intent `run_turn` tests keep guarding XBRL selection, membership, formulas, numeral lock, and refusal catalogs for the whole migration. `Runtime` and its ports are unchanged. The presentation mapping is unchanged. Patch resolution, spec validation, and task compilation are internal seams with their own unit tests (prior art: `fact_selector`, metric phrase table). The graph's nodes and edges are pinned by one structural test, because the shape is the design; channel names and checkpoint payloads are not a test surface.
+The new public seam is one conversation entry point: thread identifier + analyst message + runtime → typed conversation turn. `run_turn(query, runtime) → TurnResult` survives as a compatibility wrapper over an ephemeral single-message thread, so the per-intent `run_turn` tests keep guarding XBRL selection, membership, formulas, numeral lock, and refusal catalogs for the whole migration. `Runtime` and its ports are unchanged. The presentation mapping is unchanged. Patch resolution, spec validation, and task compilation are internal seams with their own unit tests (prior art: `fact_selector`, metric phrase table). The graph's nodes and edges are pinned by one structural test, because the shape is the design; channel names and checkpoint payloads are not a test surface.
 
 ## Graph
 

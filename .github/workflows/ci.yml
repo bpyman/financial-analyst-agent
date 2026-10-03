@@ -21,8 +21,6 @@ jobs:
         run: uv run python -m mypy
       - name: Pytest
         run: uv run python -m pytest -q
-      - name: Gold
-        run: uv run python -m pytest -m gold -q
 
   # The API image a host deploys: build it, then run it and take one recorded turn.
   image:

@@ -70,8 +70,8 @@ flowchart TB
 6. **Render** — a typed `TurnResult` becomes a chart and table, grounded essay, clarification, or
    refusal. Financial values are never rewritten by the model.
 
-`run_turn(query, runtime)` remains a compatibility wrapper over a one-message thread so the gold
-suite stays green. The public seam is `run_conversation_turn`. See
+`run_turn(query, runtime)` remains a wrapper over a one-message thread, which the per-intent
+tests use. The public seam is `run_conversation_turn`. See
 [ADR 0005](adr/0005-stateful-analysis-graph.md). The trust boundary is identical on both paths.
 
 ## System boundaries
@@ -143,7 +143,7 @@ but not resolve. An open ReAct loop over the number path stays rejected.
 Live and recorded providers can change without creating separate execution paths.
 
 **Trade-off:** the conversation seam is a critical module and must be kept cohesive as the product
-grows. `run_turn` stays as a thin one-shot wrapper for the gold suite.
+grows. `run_turn` stays as a thin one-shot wrapper for the per-intent tests.
 
 **Shipped:** [ADR 0005](adr/0005-stateful-analysis-graph.md) is the current architecture: a
 persisted thread plus a patchable analysis spec. `Runtime` and its ports are unchanged.
@@ -224,8 +224,7 @@ application behavior, not live data freshness, and must be disclosed when used.
 
 The default test suite is offline and asserts behavior at `run_turn` and `run_conversation_turn`:
 intent, spec patches, tool order, values, periods, provenance, partial failures, citations, numeral
-lock, and renderer choice. Gold tests replay the demo workflows through the recorded runtime. CI runs pytest,
-gold, ruff, and mypy on every push. Separate network-marked tests cover live OpenAI, SEC, and
+lock, and renderer choice. CI runs pytest, ruff, and mypy on every push. Separate network-marked tests cover live OpenAI, SEC, and
 Tavily integrations. A generated evaluation scorecard reports pass rate and latency.
 
 Public sessions isolate threads, expire unused state, cache SEC responses, and quota-cap live

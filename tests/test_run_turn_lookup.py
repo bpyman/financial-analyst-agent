@@ -1,4 +1,4 @@
-"""Gold: Google latest-quarter net income through run_turn."""
+"""Google latest-quarter net income through run_turn."""
 
 from datetime import date
 from decimal import Decimal
@@ -43,7 +43,7 @@ SUCCESSOR_TICKERS = {
 
 # Closed catalog from the PRD: reported facts plus allowed formulas.
 
-# Fixture-runtime gold literals (recorded Alphabet quarterly fact, not live SEC).
+# Expected figures on the recorded runtime (recorded Alphabet quarterly fact, not live SEC).
 ALPHABET_CIK = "0001652044"
 ALPHABET_NAME = "Alphabet Inc."
 ALPHABET_TICKER = "GOOG"

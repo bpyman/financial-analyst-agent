@@ -1,4 +1,4 @@
-"""Gold: top 10 healthcare and net income for each through run_turn."""
+"""Top 10 healthcare and net income for each through run_turn."""
 
 from datetime import date
 from decimal import Decimal
@@ -15,7 +15,7 @@ from test_run_turn_rank import (
     FIXTURE_SNAPSHOT_PATH,
     HEALTHCARE_TOP_10,
     SNAPSHOT_AS_OF,
-    _gold_rank_runtime,
+    _snapshot_rank_runtime,
 )
 
 HEALTHCARE_INCOME_QUERY = "What are the top 10 healthcare companies and the net income for each?"
@@ -23,7 +23,7 @@ HEALTHCARE_NET_MARGINS_QUERY = (
     "What are the top 10 healthcare companies and the net margins of each?"
 )
 
-# Fixture-runtime gold literals (recorded 10-Q facts, not live SEC).
+# Expected figures on the recorded runtime (recorded 10-Q facts, not live SEC).
 PERIOD_START = date(2026, 1, 1)
 PERIOD_END = date(2026, 3, 31)
 FORM = "10-Q"
@@ -50,7 +50,7 @@ REVENUE_CONCEPT = "RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
 def test_run_turn_returns_rank_and_lookup_table_for_healthcare_incomes() -> None:
-    result = run_turn(HEALTHCARE_INCOME_QUERY, _gold_rank_runtime())
+    result = run_turn(HEALTHCARE_INCOME_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK_AND_LOOKUP
     assert result.renderer is RendererKind.TABLE
@@ -154,7 +154,7 @@ def test_run_turn_rank_and_lookup_keeps_good_rows_when_issuers_have_no_10_q() ->
     result = run_turn(
         HEALTHCARE_INCOME_QUERY,
         Runtime(
-            completer=_gold_rank_runtime().completer,
+            completer=_snapshot_rank_runtime().completer,
             facts=_Missing10QFacts(),
             ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
         ),
@@ -241,7 +241,7 @@ def test_run_turn_rank_and_lookup_preserves_ambiguous_fact_reason() -> None:
     result = run_turn(
         HEALTHCARE_INCOME_QUERY,
         Runtime(
-            completer=_gold_rank_runtime().completer,
+            completer=_snapshot_rank_runtime().completer,
             facts=_AmbiguousLillyFacts(),
             ranking=SnapshotRanking.from_path(FIXTURE_SNAPSHOT_PATH),
         ),
@@ -376,7 +376,7 @@ HEALTHCARE_MARKET_CAP_QUERY = (
 
 
 def test_run_turn_rank_and_lookup_uses_snapshot_market_caps() -> None:
-    result = run_turn(HEALTHCARE_MARKET_CAP_QUERY, _gold_rank_runtime())
+    result = run_turn(HEALTHCARE_MARKET_CAP_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK_AND_LOOKUP
     assert result.renderer is RendererKind.TABLE

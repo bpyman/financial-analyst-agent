@@ -1,4 +1,4 @@
-"""Gold: top 10 healthcare from the checked-in universe snapshot through run_turn."""
+"""Top 10 healthcare from the checked-in universe snapshot through run_turn."""
 
 import json
 from dataclasses import replace
@@ -35,7 +35,7 @@ FIXTURE_SNAPSHOT_PATH = FIXTURE_UNIVERSE_SNAPSHOT_PATH
 SNAPSHOT_AS_OF = "2026-09-27T22:43:45.015184+00:00"
 
 
-def _gold_rank_runtime() -> Runtime:
+def _snapshot_rank_runtime() -> Runtime:
     return Runtime(
         completer=DemoCompleter(),
         facts=SecFactLookup(client=RecordedSECDataSource()),
@@ -73,7 +73,7 @@ def test_packaged_snapshot_is_vendor_universe_freeze() -> None:
     assert xom.cik == "0002115436"
 
 
-# Fixture-runtime gold literals (injected snapshot, not the live vendor freeze).
+# Expected figures on the recorded runtime (injected snapshot, not the live vendor freeze).
 HEALTHCARE_TOP_10 = (
     ("Eli Lilly and Company", "LLY", "0000059478", Decimal("1114757656520")),
     ("Johnson & Johnson", "JNJ", "0000200406", Decimal("653612648388")),
@@ -89,7 +89,7 @@ HEALTHCARE_TOP_10 = (
 
 
 def test_run_turn_returns_rank_table_for_top_10_healthcare() -> None:
-    result = run_turn(HEALTHCARE_TOP_10_QUERY, _gold_rank_runtime())
+    result = run_turn(HEALTHCARE_TOP_10_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -122,7 +122,7 @@ def test_run_turn_returns_rank_table_for_top_10_healthcare() -> None:
 
 
 def test_run_turn_returns_rank_table_for_bare_top_10_healthcare() -> None:
-    result = run_turn("top 10 healthcare", _gold_rank_runtime())
+    result = run_turn("top 10 healthcare", _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -153,7 +153,7 @@ class _MissingIndustryCompleter:
 def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
     intent: Intent,
 ) -> None:
-    runtime = replace(_gold_rank_runtime(), completer=_MissingIndustryCompleter(intent))
+    runtime = replace(_snapshot_rank_runtime(), completer=_MissingIndustryCompleter(intent))
     query = (
         "rank companies by net income"
         if intent is Intent.RANK_AND_LOOKUP
@@ -172,7 +172,7 @@ def test_run_turn_refuses_missing_ranking_industry_from_injected_completer(
 
 
 def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
-    result = run_turn(UNKNOWN_INDUSTRY_QUERY, _gold_rank_runtime())
+    result = run_turn(UNKNOWN_INDUSTRY_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.REFUSE
@@ -186,7 +186,7 @@ def test_run_turn_refuses_unknown_ai_industry_with_allowed_names() -> None:
 
 
 def test_run_turn_refuses_biotechnology_and_fintech_instead_of_technology() -> None:
-    runtime = _gold_rank_runtime()
+    runtime = _snapshot_rank_runtime()
     for query, label in (
         ("What are the top 10 biotechnology companies?", "biotechnology"),
         ("What are the top 10 companies in fintech?", "fintech"),
@@ -212,7 +212,7 @@ FINANCE_TOP_4 = (
 
 
 def test_run_turn_ranks_finance_alias_and_does_not_pad_short_sectors() -> None:
-    result = run_turn(FINANCE_TOP_10_QUERY, _gold_rank_runtime())
+    result = run_turn(FINANCE_TOP_10_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -245,7 +245,7 @@ TECHNOLOGY_TOP_10 = (
 
 
 def test_run_turn_ranks_technology_as_the_live_snapshot_does() -> None:
-    result = run_turn(TECHNOLOGY_TOP_10_QUERY, _gold_rank_runtime())
+    result = run_turn(TECHNOLOGY_TOP_10_QUERY, _snapshot_rank_runtime())
 
     assert result.intent is Intent.RANK
     assert result.renderer is RendererKind.TABLE
@@ -261,7 +261,7 @@ def test_run_turn_ranks_technology_as_the_live_snapshot_does() -> None:
 
 def test_run_turn_consolidates_share_classes() -> None:
     result = run_turn(
-        "What are the top 10 companies in communication services?", _gold_rank_runtime()
+        "What are the top 10 companies in communication services?", _snapshot_rank_runtime()
     )
 
     assert [(row.ticker, row.cik) for row in result.table_rows] == [("GOOG", "0001652044")]
