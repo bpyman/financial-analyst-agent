@@ -55,7 +55,7 @@ DATA = Path(__file__).resolve().parents[1] / "src" / "financial_analyst_agent" /
 CASSETTE = DATA / "sec_fixture_recordings.json"
 LIVE_SNAPSHOT = DATA / "universe_snapshot.json"
 FIXTURE_SNAPSHOT = DATA / "fixture_universe_snapshot.json"
-# Issuers the guided stories and gold prompts name outside the ranking snapshot.
+# Issuers the guided stories and the scorecard name outside the ranking snapshot.
 EXTRA_CIKS = ("0001318605", "0001467858")  # Tesla, General Motors
 MICROSOFT = "0000789019"
 PERIODIC_FORMS = frozenset({"10-Q", "10-Q/A", "10-K", "10-K/A"})

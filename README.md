@@ -78,7 +78,7 @@ The images are captured from the window by a Playwright script against the recor
 
 ## Built with
 
-Python 3.12 (FastAPI, Pydantic, LangGraph, Decimal arithmetic) managed by uv, with the same tools served over MCP · Next.js and React with Recharts · SEC EDGAR companyfacts XBRL and filing text · Financial Modeling Prep for the ranking snapshot · OpenAI for planning and essays in live mode, with a rules planner when no key is set · pytest gold suite and Playwright browser checks in GitHub Actions · Vercel and Render.
+Python 3.12 (FastAPI, Pydantic, LangGraph, Decimal arithmetic) managed by uv, with the same tools served over MCP · Next.js and React with Recharts · SEC EDGAR companyfacts XBRL and filing text · Financial Modeling Prep for the ranking snapshot · OpenAI for planning and essays in live mode, with a rules planner when no key is set · pytest and Playwright browser checks in GitHub Actions · Vercel and Render.
 
 ## Run it locally
 
@@ -133,7 +133,7 @@ The hosted setup is the Next.js window on Vercel (`web/vercel.json`) and this im
 
 The audience window is a Next.js app. The browser only calls the window's own `/api/*`; a route handler proxies each call to a small FastAPI service (`financial_analyst_agent.api`), so the Python origin is never a second public entry point. The API adds no financial logic: it is a transport over the conversation seam, the thread store, and `present_turn`, which turns a result into display records. Every amount shown as text is formatted in Python, and a turn streams progress over server-sent events. See [ADR 0006](docs/adr/0006-react-audience-window.md).
 
-Behind the seam, a persisted **conversation thread** carries a patchable **analysis spec**. Follow-ups edit companies, metrics, periods, and operations instead of restarting. `run_turn` remains a compatibility wrapper over a one-message thread so the gold suite stays green.
+Behind the seam, a persisted **conversation thread** carries a patchable **analysis spec**. Follow-ups edit companies, metrics, periods, and operations instead of restarting. `run_turn` remains a one-message wrapper over a thread, which the per-intent tests use.
 
 ```mermaid
 flowchart TB
@@ -158,11 +158,10 @@ Full design: [`docs/design.md`](docs/design.md). ADRs: [`docs/adr/`](docs/adr/).
 
 ## Evaluation
 
-The offline suite (including gold rehearsal prompts) is the default CI gate:
+The offline suite is the default CI gate. It runs on the recorded runtime and the rules planner, so it needs no keys and can pin exact figures ([ADR 0011](docs/adr/0011-the-rules-planner-is-the-keyless-planner.md)):
 
 ```text
 uv run python -m pytest -q
-uv run python -m pytest -m gold
 ```
 
 Live network tests need keys:

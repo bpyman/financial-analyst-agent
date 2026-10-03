@@ -51,6 +51,10 @@ class EvalCase:
     # An end date (ISO) whose figure must be marked derived, as a fiscal Q4 is.
     expect_derived_end: str = ""
     expect_trends: int = 0
+    # A news answer cites its sources: at least one, each with a title and a link.
+    expect_citations: bool = False
+    # Every row's quarter, as (start, end) ISO dates.
+    expect_period: tuple[str, str] | None = None
 
 
 class _InventingEssay:
@@ -68,6 +72,8 @@ def _cases() -> tuple[EvalCase, ...]:
             RendererKind.TABLE,
             expect_tickers=("MSFT",),
             expect_values=("44047000000",),
+            # The latest quarter is fiscal Q4: the 10-K's year less the 10-Q's nine months.
+            expect_derived_end="2026-06-30",
             expect_accessions=("0001193125-26-323660",),
             expect_concepts=(
                 "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"
@@ -82,6 +88,7 @@ def _cases() -> tuple[EvalCase, ...]:
             RendererKind.TABLE,
             expect_tickers=("TSLA", "GM"),
             expect_values=("28236000000", "48026000000"),
+            expect_period=("2026-04-01", "2026-06-30"),
         ),
         EvalCase(
             "rank_tech_rd",
@@ -89,7 +96,14 @@ def _cases() -> tuple[EvalCase, ...]:
             "Top 10 tech companies R&D spend",
             Intent.RANK_AND_LOOKUP,
             RendererKind.TABLE,
-            expect_tickers=("AAPL", "MSFT", "NVDA"),
+            # The snapshot's ten largest technology companies, each with its R&D.
+            expect_order=(
+                "NVDA", "AAPL", "MSFT", "AVGO", "MU", "AMD", "INTC", "PLTR", "CSCO", "ORCL",
+            ),  # fmt: skip
+            expect_values=(
+                "7054000000", "11729000000", "9997000000", "2895000000", "1316000000",
+                "2528000000", "3368000000", "192513000", "2431000000", "2401000000",
+            ),  # fmt: skip
         ),
         EvalCase(
             "refuse_unknown_metric",
@@ -315,6 +329,7 @@ def _cases() -> tuple[EvalCase, ...]:
             FIXTURE_NEWS_QUERY,
             Intent.NEWS_AND_EXPLAIN,
             expect_banner="not from SEC filings",
+            expect_citations=True,
         ),
     )
 
@@ -382,6 +397,20 @@ def _check_result(case: EvalCase, result: Any) -> str:
         for row in rows
     ):
         return f"no derived figure ending {case.expect_derived_end}"
+    if case.expect_period is not None and any(
+        (
+            row.start_date.isoformat() if row.start_date else "",
+            row.end_date.isoformat() if row.end_date else "",
+        )
+        != case.expect_period
+        for row in rows
+        if row.value is not None
+    ):
+        return f"period not {case.expect_period}"
+    if case.expect_citations and not (
+        result.citations and all(hit.title and hit.url for hit in result.citations)
+    ):
+        return "missing citations"
     if case.category == "filing_change" and not result.disclosure_changes:
         return "missing disclosure changes"
     if case.category == "filing_change" and not all(
