@@ -42,7 +42,11 @@ def test_capture_script_writes_every_portfolio_image() -> None:
 
 
 def test_readme_has_no_streamlit_instructions() -> None:
-    assert "streamlit" not in _readme().lower()
+    # The retired window may be named in the project's history; nothing runs it.
+    text = _readme().lower()
+    commands = "\n".join(re.findall(r"```[^\n]*\n(.*?)```", text, re.S))
+    assert "streamlit" not in commands
+    assert "streamlit run" not in text
 
 
 def test_readme_links_adr_0006() -> None:

@@ -1,0 +1,213 @@
+"""Reading the analyst's reply to an open clarification (ADR 0004, ADR 0005).
+
+The graph pauses on one open question. The next message either answers it
+(a candidate's name, its number, "both", or another catalog metric), keeps it
+open (a period for the held question, or an option out of range), or asks
+something new, which sets the held question aside. These functions decide
+which, deterministically; the model has no say in it.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from financial_analyst_agent.contracts import RendererKind, TurnResult
+from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
+from financial_analyst_agent.graph.spec_turn import bind_periods_from_message
+from financial_analyst_agent.graph.state import (
+    Clarification,
+    PendingClarification,
+    StructuredRequest,
+)
+from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+_REMOVE_METRIC_EDIT = re.compile(
+    r"^\s*(?:drop|remove|without)\s+",
+    re.IGNORECASE,
+)
+_NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
+_MAX_ANSWER_WORDS = 6
+_ORDINAL_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "one": 1, "two": 2, "three": 3}
+_ORDINAL_ANSWER = re.compile(
+    r"(?:option |number |#)?(\d{1,2}|first|second|third|fourth|one|two|three)(?: one| option)?"
+    r"|(?:the )?(first|second|third|fourth)(?: one| option)?"
+)
+# "all of them", "all three", "both": every option shown.
+_EVERY_ANSWER = re.compile(
+    r"(?:all|every|each)(?: of them| of those| three| 3| four| 4)?|everything|both"
+)
+# Words around an answer that choose nothing: "the net one please".
+_ANSWER_FILLER = frozenset(
+    """
+    the one ones please pls i mean meant want wanted just show me option pick choose go
+    with ok okay yes yeah use that thanks thank you lets let's do give figure
+    """.split()  # noqa: SIM905
+)
+_ANSWER_PARTS = re.compile(r"\s*(?:,|&|\band\b|\bplus\b)\s*")
+_ADD_WORDS = re.compile(r"(?:and|also|plus|add|include|with)\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class ClarifyReply:
+    """How a message answers an open clarification."""
+
+    chosen: tuple[str, ...] = ()
+    # "last 4 quarters": a period for the held question; the metric is still open.
+    period_patch: SpecPatch | None = None
+    # "4" when three options were shown: ask again.
+    out_of_range: bool = False
+
+
+def _candidate_named_by_word(candidates: tuple[str, ...], message: str) -> str | None:
+    """ "net" or "per share" picks the one candidate whose name holds those words."""
+    words = set(re.findall(r"[a-z]+", message.casefold())) - _ANSWER_FILLER
+    if not words:
+        return None
+    named = [candidate for candidate in candidates if words <= set(candidate.split("_"))]
+    return named[0] if len(named) == 1 else None
+
+
+def match_clarification_answer(pending: PendingClarification, message: str) -> str | None:
+    """The one candidate the message chooses, or None."""
+    reply = clarification_reply(pending, message)
+    return reply.chosen[0] if reply is not None and len(reply.chosen) == 1 else None
+
+
+def clarification_reply(
+    pending: PendingClarification, message: str, index: Any = None
+) -> ClarifyReply | None:
+    """How the message answers the open question; None when it asks a new one."""
+    text = message.strip().casefold().rstrip(".!?")
+    plain = " ".join(word for word in text.split() if word not in _ANSWER_FILLER) or text
+    ordinal = _ORDINAL_ANSWER.fullmatch(plain) or _ORDINAL_ANSWER.fullmatch(text)
+    if ordinal is not None:
+        # "2" or "the second one" picks from the options as they were shown.
+        raw = ordinal.group(1) or ordinal.group(2)
+        position = int(raw) if raw.isdigit() else _ORDINAL_WORDS[raw]
+        if 1 <= position <= len(pending.candidates):
+            return ClarifyReply(chosen=(pending.candidates[position - 1],))
+        return ClarifyReply(out_of_range=True)
+    if pending.kind == "ambiguous_mode":
+        for candidate in pending.candidates:
+            if text == candidate.casefold():
+                return ClarifyReply(chosen=(candidate,))
+        return None
+    if pending.kind != "ambiguous_metric":
+        return None
+    if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
+        # "What was Microsoft's net income?" names a candidate but is a new
+        # question; answering the held patch would drop its company.
+        return None
+    find = getattr(index, "find", None)
+    if callable(find) and find(message):
+        # "Microsoft net margin" is a question about Microsoft.
+        return None
+    if _EVERY_ANSWER.fullmatch(plain) and (plain != "both" or len(pending.candidates) == 2):
+        return ClarifyReply(chosen=pending.candidates)
+    chosen = _metrics_named(pending.candidates, plain)
+    if chosen:
+        return ClarifyReply(chosen=chosen)
+    periods = bind_periods_from_message(SpecPatch(mode="extend"), message)
+    if periods != SpecPatch(mode="extend"):
+        return ClarifyReply(period_patch=periods)
+    return None
+
+
+def _metrics_named(candidates: tuple[str, ...], text: str) -> tuple[str, ...]:
+    """The metrics an answer names: "net", "gross and net", or any catalog name."""
+    resolved = resolve_metric_phrase(text)
+    if resolved.kind == "unique":
+        metrics = resolved.unique_metrics
+        if len(metrics) == 1 and metrics[0] not in candidates:
+            # "per share" names EPS on its own, but here it picks dividends per share.
+            named = _candidate_named_by_word(candidates, text)
+            if named is not None:
+                return (named,)
+        # Another catalog metric ("gross margin" when asked about profit) answers too.
+        return metrics
+    parts = [_candidate_named_by_word(candidates, part) for part in _ANSWER_PARTS.split(text)]
+    if parts and all(parts):
+        return tuple(dict.fromkeys(name for name in parts if name is not None))
+    return ()
+
+
+def pending_from_clarify(
+    result: TurnResult, patch: SpecPatch, question: str = ""
+) -> PendingClarification | None:
+    """The held analysis behind a CLARIFY answer; None for any other answer."""
+    if result.renderer is not RendererKind.CLARIFY or not result.candidates:
+        return None
+    if result.clarify_kind is None:
+        raise ValueError("clarify result is missing clarify_kind")
+    metric_role: Literal["add", "remove"] = (
+        "remove" if _REMOVE_METRIC_EDIT.match(question.strip()) else "add"
+    )
+    return PendingClarification(
+        kind=result.clarify_kind,
+        candidates=result.candidates,
+        patch=patch,
+        intent=result.intent,
+        metric_role=metric_role,
+        question=question,
+    )
+
+
+def resumed_request(
+    pending: PendingClarification,
+    chosen: tuple[str, ...],
+    message: str,
+    current_spec: AnalysisSpec | None,
+) -> StructuredRequest:
+    """The held analysis with the analyst's choice filled in, ready to resolve again."""
+    answer = chosen[0]
+    wording = message
+    if pending.kind == "ambiguous_metric" and resolve_metric_phrase(message).metrics != chosen:
+        # The turn reads its wording too: "2" or "net" names no one metric, the choice does.
+        wording = " and ".join(name.replace("_", " ") for name in chosen)
+    if pending.kind == "ambiguous_metric":
+        if pending.metric_role == "remove":
+            patch = pending.patch.model_copy(update={"remove_metrics": chosen, "add_metrics": ()})
+        else:
+            patch = pending.patch.model_copy(update={"add_metrics": chosen})
+            if patch.add_companies and not _ADD_WORDS.match(pending.question.strip()):
+                # "Apple margin" after Microsoft revenue is a question of its own:
+                # the chosen margin replaces revenue rather than joining it.
+                patch = patch.model_copy(update={"mode": "replace", "remove_companies": ()})
+        if patch.mode is None and current_spec is None:
+            patch = patch.model_copy(update={"mode": "replace"})
+    else:  # ambiguous_mode: the held question is what the chosen scope answers.
+        mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
+        patch = pending.patch.model_copy(update={"mode": mode})
+        wording = pending.question or message
+    return StructuredRequest(patch=patch, wording=wording, question=pending.question or message)
+
+
+def ask_again(
+    pending: PendingClarification,
+    reply: ClarifyReply,
+    message: str,
+    current_spec: AnalysisSpec | None,
+) -> Clarification:
+    """Keep the open question: a period noted for it, or an option out of range."""
+    if reply.period_patch is not None:
+        patch = bind_periods_from_message(pending.patch, message)
+        note = f"Noted “{message.strip()}”. Pick a metric to see it for that period."
+    else:
+        patch = pending.patch
+        count = len(pending.candidates)
+        note = f"There are {count} options: pick 1 to {count}, or type the metric's name."
+    result = TurnResult(
+        intent=pending.intent,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=pending.candidates,
+        clarify_kind=pending.kind,
+        banners=[note],
+    )
+    return Clarification(
+        pending=pending.model_copy(update={"patch": patch}),
+        result=result,
+        analysis_spec=current_spec,
+    )

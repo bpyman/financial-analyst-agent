@@ -1,7 +1,7 @@
-"""Structured workflows run through the parent graph (migration step 1).
+"""Each compiled task kind runs through its own deterministic workflow.
 
-Asserts the public graph entry returns the same TurnResult shape as today's
-workflows. Does not assert node names, channels, or LangGraph internals.
+``execute_compiled_task`` is how the structured-analysis subgraph runs one cell:
+a closed map from task kind to workflow, with no model and no nested graph.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from financial_analyst_agent.domain.enums import DataSourceKind, Metric
 from financial_analyst_agent.domain.models import FinancialFact
+from financial_analyst_agent.graph.analysis_spec import CompiledTask
 from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
@@ -73,7 +74,7 @@ class _CompareFacts:
 
 class _SilentCompleter:
     def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
-        raise AssertionError("structured graph entry must not re-plan")
+        raise AssertionError("a compiled task must not re-plan")
 
 
 def _runtime(*, facts: object, ranking: object | None = None) -> object:
@@ -86,12 +87,12 @@ def _runtime(*, facts: object, ranking: object | None = None) -> object:
     )
 
 
-def test_run_workflow_turn_lookup_returns_table() -> None:
+def test_compiled_task_lookup_returns_table() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind, TurnResult
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.graph.spec_turn import execute_compiled_task
 
-    plan = SimpleNamespace(intent=Intent.LOOKUP, company="Google", metric="net_income")
-    result = run_workflow_turn(plan, _runtime(facts=_LookupFacts()))  # type: ignore[arg-type]
+    task = CompiledTask(kind="lookup", company_queries=("Google",), metric="net_income")
+    result = execute_compiled_task(task, _runtime(facts=_LookupFacts()))  # type: ignore[arg-type]
 
     assert type(result).__name__ == TurnResult.__name__
     assert result.intent == Intent.LOOKUP
@@ -100,16 +101,14 @@ def test_run_workflow_turn_lookup_returns_table() -> None:
     assert result.tool_traces[0].tool == "get_financials"
 
 
-def test_run_workflow_turn_compare_returns_table() -> None:
+def test_compiled_task_compare_returns_table() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.graph.spec_turn import execute_compiled_task
 
-    plan = SimpleNamespace(
-        intent=Intent.COMPARE,
-        companies=["Microsoft", "Google"],
-        metric="operating_margin",
+    task = CompiledTask(
+        kind="compare", company_queries=("Microsoft", "Google"), metric="operating_margin"
     )
-    result = run_workflow_turn(plan, _runtime(facts=_CompareFacts()))  # type: ignore[arg-type]
+    result = execute_compiled_task(task, _runtime(facts=_CompareFacts()))  # type: ignore[arg-type]
 
     assert result.intent == Intent.COMPARE
     assert result.renderer == RendererKind.TABLE
@@ -117,14 +116,14 @@ def test_run_workflow_turn_compare_returns_table() -> None:
     assert result.tool_traces[0].tool == "compare_metrics"
 
 
-def test_run_workflow_turn_rank_returns_table() -> None:
+def test_compiled_task_rank_returns_table() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.graph.spec_turn import execute_compiled_task
 
     ranking = SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
-    plan = SimpleNamespace(intent=Intent.RANK, industry="healthcare", limit=3)
-    result = run_workflow_turn(
-        plan,
+    task = CompiledTask(kind="rank", industry="healthcare", limit=3)
+    result = execute_compiled_task(
+        task,
         _runtime(facts=_LookupFacts(), ranking=ranking),  # type: ignore[arg-type]
     )
 
@@ -134,19 +133,14 @@ def test_run_workflow_turn_rank_returns_table() -> None:
     assert result.tool_traces[0].tool == "rank_companies"
 
 
-def test_run_workflow_turn_rank_and_lookup_returns_table() -> None:
+def test_compiled_task_rank_and_lookup_returns_table() -> None:
     from financial_analyst_agent.contracts import Intent, RendererKind
-    from financial_analyst_agent.graph import run_workflow_turn
+    from financial_analyst_agent.graph.spec_turn import execute_compiled_task
 
     ranking = SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
-    plan = SimpleNamespace(
-        intent=Intent.RANK_AND_LOOKUP,
-        industry="healthcare",
-        limit=2,
-        metric="market_cap",
-    )
-    result = run_workflow_turn(
-        plan,
+    task = CompiledTask(kind="rank_and_lookup", industry="healthcare", limit=2, metric="market_cap")
+    result = execute_compiled_task(
+        task,
         _runtime(facts=_LookupFacts(), ranking=ranking),  # type: ignore[arg-type]
     )
 
