@@ -6,10 +6,11 @@ answer is about what was asked, and anything not answered is said.
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
 
 import pytest
+
+from conversation_replay import ask, column_of, replay, tickers_of
 
 if TYPE_CHECKING:
     from financial_analyst_agent.presentation import Presentation
@@ -20,42 +21,6 @@ def runtime():  # type: ignore[no-untyped-def]
     from financial_analyst_agent.runtime import recorded_runtime
 
     return recorded_runtime()
-
-
-def _thread(runtime, *messages: str) -> tuple[list[Presentation], tuple[str, ...], bool]:  # type: ignore[no-untyped-def]
-    """Each answer, the final chips, and whether a clarification is pending."""
-    from financial_analyst_agent.conversation import run_conversation_turn, start_thread
-    from financial_analyst_agent.presentation import present_turn, spec_chips
-    from financial_analyst_agent.runtime import RuntimeKind
-    from financial_analyst_agent.thread_store import EphemeralThreadStore
-
-    store = EphemeralThreadStore()
-    thread_id = uuid.uuid4().hex
-    start_thread(thread_id, RuntimeKind.RECORDED, store=store)
-    answers = [
-        present_turn(run_conversation_turn(thread_id, message, runtime, store=store).result)
-        for message in messages
-    ]
-    state = store.load(thread_id)
-    assert state is not None
-    chips = spec_chips(state.analysis_spec) if state.analysis_spec is not None else ()
-    return answers, chips, state.pending_clarification is not None
-
-
-def _answers(runtime, *messages: str) -> list[Presentation]:  # type: ignore[no-untyped-def]
-    return _thread(runtime, *messages)[0]
-
-
-def _column(answer: Presentation, header: str) -> list[str]:
-    assert answer.table is not None, answer.message
-    index = answer.table.headers.index(header)
-    return [row[index] for row in answer.table.rows]
-
-
-def _tickers(answer: Presentation) -> list[str]:
-    if answer.fact_card is not None:
-        return [answer.fact_card.ticker]
-    return list(dict.fromkeys(_column(answer, "Ticker")))
 
 
 def _metrics(answer: Presentation) -> set[str]:
@@ -80,7 +45,7 @@ PHARMA = {"LLY", "JNJ", "ABBV", "MRK", "PFE", "AMGN", "GILD"}
     "question", ["gross margin", "What is EBITDA?", "what was the revenue?", "What is P/E?"]
 )
 def test_no_company_asks_for_one(runtime, question: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.table is None and answer.fact_card is None
     assert answer.message is not None
     assert "unknown" not in answer.message and "“the”" not in answer.message
@@ -88,26 +53,26 @@ def test_no_company_asks_for_one(runtime, question: str) -> None:  # type: ignor
 
 
 def test_a_determiner_is_never_a_company(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, chips, _ = _thread(runtime, "what was the revenue?", "add Apple")
-    assert _tickers(answers[1]) == ["AAPL"]
+    answers, chips, _ = replay(runtime, "what was the revenue?", "add Apple")
+    assert tickers_of(answers[1]) == ["AAPL"]
     assert "the" not in chips
 
 
 def test_naming_the_company_completes_the_question(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "net margin", "for Apple")
+    answers = ask(runtime, "net margin", "for Apple")
     assert answers[1].fact_card is not None
     assert answers[1].fact_card.metric_header == "Net margin"
 
 
 def test_which_is_biggest_ranks_the_companies_on_screen(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Compare Tesla, Apple and Nvidia revenue", "which is biggest?")
+    answers = ask(runtime, "Compare Tesla, Apple and Nvidia revenue", "which is biggest?")
     assert answers[1].table is not None, answers[1].message
-    assert set(_tickers(answers[1])) - {""} == {"TSLA", "AAPL", "NVDA"}
+    assert set(tickers_of(answers[1])) - {""} == {"TSLA", "AAPL", "NVDA"}
     assert "unknown" not in _text(answers[1])
 
 
 def test_an_unknown_industry_is_never_called_unknown(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "top 5 by revenue")
+    (answer,) = ask(runtime, "top 5 by revenue")
     assert "unknown" not in _text(answer)
 
 
@@ -115,15 +80,15 @@ def test_an_unknown_industry_is_never_called_unknown(runtime) -> None:  # type: 
 
 
 def test_a_news_question_keeps_the_analysis(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Apple revenue", "latest news on Apple", "add Merck")
-    assert set(_tickers(answers[2])) == {"AAPL", "MRK"}
+    answers = ask(runtime, "Apple revenue", "latest news on Apple", "add Merck")
+    assert set(tickers_of(answers[2])) == {"AAPL", "MRK"}
 
 
 # M1
 
 
 def test_a_company_with_a_rank_word_is_looked_up(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple top line")
+    (answer,) = ask(runtime, "Apple top line")
     assert answer.fact_card is not None, answer.message
     assert answer.fact_card.metric_header == "Revenue"
 
@@ -146,22 +111,22 @@ def test_a_company_with_a_rank_word_is_looked_up(runtime) -> None:  # type: igno
     ],
 )
 def test_clarification_answers(runtime, question: str, answer: str, wanted: set[str]) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, question, answer)
+    answers = ask(runtime, question, answer)
     assert wanted <= _metrics(answers[1])
-    assert _tickers(answers[1]) == ["AAPL"]
+    assert tickers_of(answers[1]) == ["AAPL"]
     assert not any("set aside" in banner for banner in answers[1].banners)
 
 
 def test_a_period_answer_keeps_the_question_open(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, _, pending = _thread(runtime, "Apple margin", "last 4 quarters")
+    answers, _, pending = replay(runtime, "Apple margin", "last 4 quarters")
     assert answers[1].candidates
     assert pending
-    answers, chips, _ = _thread(runtime, "Apple margin", "last 4 quarters", "net")
+    answers, chips, _ = replay(runtime, "Apple margin", "last 4 quarters", "net")
     assert "Last 4 quarters" in chips and "Net margin" in chips
 
 
 def test_a_number_out_of_range_asks_again(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, _, pending = _thread(runtime, "Apple margin", "4")
+    answers, _, pending = replay(runtime, "Apple margin", "4")
     assert pending
     assert answers[1].candidates
     assert any("1 to 3" in banner for banner in answers[1].banners)
@@ -171,7 +136,7 @@ def test_a_number_out_of_range_asks_again(runtime) -> None:  # type: ignore[no-u
 
 
 def test_margins_compares_all_three(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Compare the margins of Apple and Microsoft")
+    (answer,) = ask(runtime, "Compare the margins of Apple and Microsoft")
     assert {"Gross margin", "Operating margin", "Net margin"} <= _metrics(answer)
 
 
@@ -187,7 +152,7 @@ def test_margins_compares_all_three(runtime) -> None:  # type: ignore[no-untyped
     ],
 )
 def test_an_unknown_word_is_named(runtime, question: str, word: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.table is None and answer.fact_card is None
     assert answer.message is not None and f"“{word}”" in answer.message
 
@@ -203,25 +168,25 @@ def test_an_unknown_word_is_named(runtime, question: str, word: str) -> None:  #
     ],
 )
 def test_everyday_wording_finds_the_metric(runtime, question: str, metric: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.fact_card is not None, answer.message
     # A trailing-year figure says so after its name ("P/E ratio (trailing year)").
     assert answer.fact_card.metric_header.removesuffix(" (trailing year)") == metric
 
 
 def test_how_much_money_did_apple_make_asks_which(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "How much money did Apple make last quarter?")
+    (answer,) = ask(runtime, "How much money did Apple make last quarter?")
     assert set(answer.candidates) == {"Revenue", "Net income"}
 
 
 def test_worth_is_market_cap(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "What's Apple worth?")
+    (answer,) = ask(runtime, "What's Apple worth?")
     assert "Market cap" in _metrics(answer)
 
 
 def test_the_overview_still_answers_how_is(runtime) -> None:  # type: ignore[no-untyped-def]
     for question in ("How is Apple doing?", "Apple", "Tell me about Nvidia"):
-        (answer,) = _answers(runtime, question)
+        (answer,) = ask(runtime, question)
         assert answer.table is not None, (question, answer.message)
         assert "Net margin" in answer.table.headers
 
@@ -230,17 +195,17 @@ def test_the_overview_still_answers_how_is(runtime) -> None:  # type: ignore[no-
 
 
 def test_an_unknown_name_in_a_list_is_said(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Compare Apple and Foobar revenue")
+    (answer,) = ask(runtime, "Compare Apple and Foobar revenue")
     assert any("Foobar" in banner for banner in answer.banners)
 
 
 def test_a_second_question_is_said(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Compare Apple and Microsoft revenue and rank the top 5 banks")
+    (answer,) = ask(runtime, "Compare Apple and Microsoft revenue and rank the top 5 banks")
     assert any("rank the top 5 banks" in banner for banner in answer.banners)
 
 
 def test_a_company_beside_a_ranking_is_said(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Top 5 banks and Apple revenue")
+    (answer,) = ask(runtime, "Top 5 banks and Apple revenue")
     assert any("Apple" in banner for banner in answer.banners)
 
 
@@ -248,25 +213,25 @@ def test_a_company_beside_a_ranking_is_said(runtime) -> None:  # type: ignore[no
 
 
 def test_compare_them_after_two_lookups(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Apple revenue", "Microsoft revenue", "compare them")
-    assert set(_tickers(answers[2])) == {"AAPL", "MSFT"}
+    answers = ask(runtime, "Apple revenue", "Microsoft revenue", "compare them")
+    assert set(tickers_of(answers[2])) == {"AAPL", "MSFT"}
 
 
 def test_compare_with_the_first_one(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(
+    answers = ask(
         runtime, "Apple revenue", "what about Microsoft?", "Nvidia", "compare with the first one"
     )
-    assert set(_tickers(answers[3])) == {"NVDA", "AAPL"}
+    assert set(tickers_of(answers[3])) == {"NVDA", "AAPL"}
 
 
 def test_what_was_it_last_quarter(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Microsoft revenue last 4 quarters", "what was it last quarter?")
+    answers = ask(runtime, "Microsoft revenue last 4 quarters", "what was it last quarter?")
     assert answers[1].fact_card is not None, answers[1].message
     assert answers[1].fact_card.ticker == "MSFT"
 
 
 def test_what_was_it_a_year_ago(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Microsoft revenue", "what was it a year ago?")
+    answers = ask(runtime, "Microsoft revenue", "what was it a year ago?")
     assert answers[1].headline is not None and "Year over year" in answers[1].headline
 
 
@@ -274,25 +239,25 @@ def test_what_was_it_a_year_ago(runtime) -> None:  # type: ignore[no-untyped-def
 
 
 def test_add_a_company_to_a_ranking(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "top 5 banks", "add Apple")
-    assert "AAPL" in _tickers(answers[1])
-    assert "JPM" in _tickers(answers[1])
+    answers = ask(runtime, "top 5 banks", "add Apple")
+    assert "AAPL" in tickers_of(answers[1])
+    assert "JPM" in tickers_of(answers[1])
 
 
 def test_remove_a_company_from_a_ranking(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "top 5 banks", "remove JPMorgan")
-    assert "JPM" not in _tickers(answers[1])
-    assert "BAC" in _tickers(answers[1])
+    answers = ask(runtime, "top 5 banks", "remove JPMorgan")
+    assert "JPM" not in tickers_of(answers[1])
+    assert "BAC" in tickers_of(answers[1])
 
 
 def test_sort_by_reranks_a_ranking(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "top 5 pharma companies by revenue", "sort by net income")
+    answers = ask(runtime, "top 5 pharma companies by revenue", "sort by net income")
     assert any("Ordered by net income" in banner for banner in answers[1].banners)
 
 
 def test_what_about_another_industry(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "top 5 banks", "what about pharma?")
-    assert set(_tickers(answers[1])) <= PHARMA
+    answers = ask(runtime, "top 5 banks", "what about pharma?")
+    assert set(tickers_of(answers[1])) <= PHARMA
 
 
 # M10–M12: periods
@@ -306,42 +271,42 @@ def test_what_about_another_industry(runtime) -> None:  # type: ignore[no-untype
     ],
 )
 def test_periods_are_read(runtime, question: str, chip: str) -> None:  # type: ignore[no-untyped-def]
-    _, chips, _ = _thread(runtime, question)
+    _, chips, _ = replay(runtime, question)
     assert chip in chips
 
 
 def test_last_n_years_asks_for_their_quarters(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue in the last 3 years")
+    (answer,) = ask(runtime, "Apple revenue in the last 3 years")
     assert any("of the 12 quarters" in banner for banner in answer.banners)
 
 
 def test_quarter_over_quarter_shows_sequential_change(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue quarter over quarter")
+    (answer,) = ask(runtime, "Apple revenue quarter over quarter")
     assert answer.table is not None, answer.message
     assert "QoQ change" in answer.table.headers
 
 
 def test_next_quarter_is_not_forecast(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue next quarter")
+    (answer,) = ask(runtime, "Apple revenue next quarter")
     assert answer.table is None and answer.fact_card is None
     assert answer.message is not None and "forecast" in answer.message
 
 
 def test_an_unread_period_is_said(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue for the quarter ended April 2026")
+    (answer,) = ask(runtime, "Apple revenue for the quarter ended April 2026")
     assert any("couldn't read" in banner for banner in answer.banners)
 
 
 def test_last_four_quarters_year_over_year_has_four_changes(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue last 4 quarters yoy")
-    changes = _column(answer, "YoY change")
+    (answer,) = ask(runtime, "Apple revenue last 4 quarters yoy")
+    changes = column_of(answer, "YoY change")
     # Four quarters, each with its change: not eight rows, half of them blank.
     assert len(changes) == 4
     assert all(changes)
 
 
 def test_a_future_quarter_is_not_reported_yet(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue Q4 2026")
+    (answer,) = ask(runtime, "Apple revenue Q4 2026")
     assert answer.message is not None and "not been reported yet" in answer.message
 
 
@@ -349,12 +314,12 @@ def test_a_future_quarter_is_not_reported_yet(runtime) -> None:  # type: ignore[
 
 
 def test_a_segment_is_said_not_covered(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple iPhone revenue")
+    (answer,) = ask(runtime, "Apple iPhone revenue")
     assert any("segment" in banner for banner in answer.banners)
 
 
 def test_a_kpi_alone_is_refused(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue per employee")
+    (answer,) = ask(runtime, "Apple revenue per employee")
     assert any("per employee" in banner for banner in answer.banners)
 
 
@@ -362,7 +327,7 @@ def test_a_kpi_alone_is_refused(runtime) -> None:  # type: ignore[no-untyped-def
 
 
 def test_dropping_the_only_metric_says_so(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, chips, _ = _thread(runtime, "Apple revenue", "drop revenue")
+    answers, chips, _ = replay(runtime, "Apple revenue", "drop revenue")
     assert answers[1].message is not None
     assert "Analysis has" not in answers[1].message
     assert "metric" in answers[1].message
@@ -370,13 +335,13 @@ def test_dropping_the_only_metric_says_so(runtime) -> None:  # type: ignore[no-u
 
 
 def test_removing_the_only_company_says_so(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, chips, _ = _thread(runtime, "Apple revenue", "remove Apple")
+    answers, chips, _ = replay(runtime, "Apple revenue", "remove Apple")
     assert answers[1].message is not None and "only company" in answers[1].message
     assert "AAPL" in chips
 
 
 def test_remove_one_metric_and_add_another(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Apple revenue", "remove revenue add net income")
+    answers = ask(runtime, "Apple revenue", "remove revenue add net income")
     assert answers[1].fact_card is not None, answers[1].message
     assert answers[1].fact_card.metric_header == "Net income"
 
@@ -385,34 +350,34 @@ def test_remove_one_metric_and_add_another(runtime) -> None:  # type: ignore[no-
 
 
 def test_since_a_year_says_the_cap(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue since 2015")
+    (answer,) = ask(runtime, "Apple revenue since 2015")
     assert any("since 2015" in banner for banner in answer.banners)
 
 
 def test_last_100_quarters_says_what_was_asked(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple revenue last 100 quarters")
+    (answer,) = ask(runtime, "Apple revenue last 100 quarters")
     assert any("100" in banner for banner in answer.banners)
 
 
 def test_latest_drops_the_year_over_year_chip(runtime) -> None:  # type: ignore[no-untyped-def]
-    _, chips, _ = _thread(runtime, "Apple revenue", "show year-over-year", "latest")
+    _, chips, _ = replay(runtime, "Apple revenue", "show year-over-year", "latest")
     assert "Year over year" not in chips
 
 
 @pytest.mark.parametrize("message", ["start over", "help", "hi", "banana"])
 def test_no_set_aside_note_on_a_reset_help_or_refusal(runtime, message: str) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Apple margin", message)
+    answers = ask(runtime, "Apple margin", message)
     assert not any("set aside" in banner for banner in answers[1].banners)
 
 
 def test_the_set_aside_note_shows_once(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers = _answers(runtime, "Apple margin", "Microsoft revenue", "add Apple")
+    answers = ask(runtime, "Apple margin", "Microsoft revenue", "add Apple")
     assert any("set aside" in banner for banner in answers[1].banners)
     assert not any("set aside" in banner for banner in answers[2].banners)
 
 
 def test_markdown_is_read_as_text(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "**Apple** _revenue_")
+    (answer,) = ask(runtime, "**Apple** _revenue_")
     assert answer.fact_card is not None, answer.message
     assert answer.fact_card.metric_header == "Revenue"
 
@@ -425,7 +390,7 @@ def test_markdown_is_read_as_text(runtime) -> None:  # type: ignore[no-untyped-d
     ["Best stock to buy?", "What stocks should I buy?", "Which stock to buy now", "stock tips"],
 )
 def test_stock_picks_are_declined(runtime, question: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.message is not None and "investment advice" in answer.message
     assert answer.suggestions
 
@@ -439,23 +404,23 @@ def test_stock_picks_are_declined(runtime, question: str) -> None:  # type: igno
     ],
 )
 def test_questions_are_read_in_english(runtime, question: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.message is not None and "English" in answer.message
 
 
 @pytest.mark.parametrize("question", ["top 5 SPACs", "top 5 ETFs", "biggest BDCs"])
 def test_non_operating_rankings_are_explained(runtime, question: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.message is not None and "operating companies" in answer.message
 
 
 def test_a_theme_is_not_an_industry(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "top 5 AI companies")
+    (answer,) = ask(runtime, "top 5 AI companies")
     assert answer.message is not None and "semiconductors" in answer.message
 
 
 def test_an_etf_ticker_is_explained(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "QQQ revenue")
+    (answer,) = ask(runtime, "QQQ revenue")
     assert answer.message is not None and "fund" in answer.message
 
 
@@ -463,65 +428,65 @@ def test_an_etf_ticker_is_explained(runtime) -> None:  # type: ignore[no-untyped
 
 
 def test_a_singular_industry_chip_reads_as_plural(runtime) -> None:  # type: ignore[no-untyped-def]
-    _, chips, _ = _thread(runtime, "Which bank has the highest net margin?")
+    _, chips, _ = replay(runtime, "Which bank has the highest net margin?")
     assert any(chip.startswith("Top 10 banks") for chip in chips), chips
 
 
 def test_market_data_chips_say_as_of(runtime) -> None:  # type: ignore[no-untyped-def]
-    _, chips, _ = _thread(runtime, "Apple market cap")
+    _, chips, _ = replay(runtime, "Apple market cap")
     assert "Latest quarter" not in chips
     assert any(chip.startswith("As of ") for chip in chips), chips
 
 
 def test_a_single_company_table_has_no_cik_or_currency(runtime) -> None:  # type: ignore[no-untyped-def]
     for question in ("Apple interest coverage", "Apple market cap"):
-        (answer,) = _answers(runtime, question)
+        (answer,) = ask(runtime, question)
         if answer.table is not None:
             assert "Cik" not in answer.table.headers and "CIK" not in answer.table.headers
             assert "Currency" not in answer.table.headers
 
 
 def test_the_correction_banner_comes_first(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Microsft vs Nvdia revenue")
+    (answer,) = ask(runtime, "Microsft vs Nvdia revenue")
     assert answer.banners[0].startswith("Showing ")
 
 
 def test_an_unknown_metric_refusal_is_short(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple happiness index")
+    (answer,) = ask(runtime, "Apple happiness index")
     assert answer.message is not None
     assert "Supported metrics" not in answer.message
     assert len(answer.message) < 220
 
 
 def test_a_named_period_chart_caption_does_not_say_latest(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Apple and Microsoft revenue Q2 2026")
+    (answer,) = ask(runtime, "Apple and Microsoft revenue Q2 2026")
     if answer.chart is not None:
         assert "Latest" not in answer.chart.caption
 
 
 def test_spy_overview_is_one_message(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "How is SPY doing?")
+    (answer,) = ask(runtime, "How is SPY doing?")
     assert answer.table is None
     assert answer.message is not None and "SPY" in answer.message
 
 
 def test_remove_both_says_it_would_empty_the_analysis(runtime) -> None:  # type: ignore[no-untyped-def]
-    answers, chips, _ = _thread(runtime, "Apple and Microsoft revenue", "remove both")
+    answers, chips, _ = replay(runtime, "Apple and Microsoft revenue", "remove both")
     assert answers[1].message is not None and "only company" in answers[1].message
     assert "AAPL" in chips and "MSFT" in chips
 
 
 def test_an_unknown_word_keeps_its_spelling(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "Who is Apple's CEO?")
+    (answer,) = ask(runtime, "Who is Apple's CEO?")
     assert answer.message is not None and "“CEO”" in answer.message
 
 
 @pytest.mark.parametrize("question", ["top five banks", "top 5 shell companies"])
 def test_a_ranking_word_is_not_an_unrecorded_company(runtime, question: str) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, question)
+    (answer,) = ask(runtime, question)
     assert answer.message is None or "recorded demo" not in answer.message
 
 
 def test_biggest_expense_asks_which_expense(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _answers(runtime, "What is Apple's biggest expense?")
+    (answer,) = ask(runtime, "What is Apple's biggest expense?")
     assert set(answer.candidates) == {"Cost of revenue", "Operating expenses"}
