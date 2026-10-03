@@ -45,7 +45,9 @@ _SYSTEM_PROMPT = (
     "set metric to the user's word; code asks which they mean. "
     "Give the first metric when several are named; code reads the rest from the question. "
     "Periods (last N quarters, Q3 FY2025, since 2024) and year-over-year growth are read "
-    "from the question by code: do not encode them. "
+    "from the question by code. When the question asks for a window of recent quarters or "
+    "years, also set recent_quarters to its length in quarters (a year is 4); code reads "
+    "the wording first and uses yours only when it cannot. Otherwise leave it null. "
     "Set order_by_metric true when the user wants companies ranked, sorted, or ordered by "
     "the metric (top 5 banks by net income; which has the highest margin), false when they "
     "only want the metric shown for each (top 5 banks and their net income). "
@@ -100,6 +102,8 @@ class _LookupPlan(BaseModel):
     company: NonEmptyText
     # A catalog slug, "overview", or the user's own word for a measure the catalog lacks.
     metric: NonEmptyText
+    # The window the question asks for, in quarters; code's reading of the words wins.
+    recent_quarters: PositiveLimit | None = None
 
 
 class _ComparePlan(BaseModel):
@@ -107,6 +111,7 @@ class _ComparePlan(BaseModel):
     companies: list[NonEmptyText]
     metric: NonEmptyText
     order_by_metric: bool = False
+    recent_quarters: PositiveLimit | None = None
     # One company against the largest in its industry; the conversation adds them.
     peers: bool = False
 
@@ -130,6 +135,7 @@ class _RankAndLookupPlan(BaseModel):
     limit: PositiveLimit = DEFAULT_RANK_LIMIT
     # "Top 5 banks by net income" orders by it; "and their net income" does not.
     order_by_metric: bool = False
+    recent_quarters: PositiveLimit | None = None
 
 
 class _ExplainPlan(BaseModel):
@@ -210,6 +216,11 @@ class Plan(_FlatActionModel):
         if isinstance(self.action, (_ComparePlan, _RankAndLookupPlan)):
             return self.action.order_by_metric
         return False
+
+    @property
+    def recent_quarters(self) -> int | None:
+        """The window the model read, in quarters; code's own reading comes first."""
+        return getattr(self.action, "recent_quarters", None)
 
     @property
     def peers(self) -> bool:

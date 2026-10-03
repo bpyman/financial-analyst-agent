@@ -72,6 +72,7 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
 from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.observability import log_event
 from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
@@ -259,6 +260,18 @@ ProgressCallback = Callable[[int, int], None]
 
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
     """Lift a one-shot closed Plan into a replace-mode spec patch."""
+    patch = _lifted_plan(plan)
+    window = getattr(plan, "recent_quarters", None)
+    if isinstance(window, int) and window >= 1 and plan.intent is not Intent.RANK:
+        # The model's reading of a window: used only where the wording's own
+        # reading finds none (see planner_window).
+        selection = PeriodSelection(kind="last_n_quarters", count=min(window, MAX_QUARTERS_ASKED))
+        patch = patch.model_copy(update={"set_periods": selection})
+    return patch
+
+
+def _lifted_plan(plan: Any) -> SpecPatch:
+    """The plan's companies, metric and ranking as a replace patch."""
     intent = plan.intent
     metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
     metrics = (metric,) if metric else ()
@@ -660,6 +673,39 @@ def _swap_pair(message: str) -> tuple[str, str] | None:
     if both is not None:
         return both.group(2).strip(" .,"), both.group(1).strip(" .,")
     return None
+
+
+# Words that ask about time at all. A planner's window stands only beside one:
+# "how is Nvidia doing" asks for no window, whatever the model proposed.
+_PERIOD_CUE = re.compile(
+    r"\b(?:quarters?|qtrs?|years?|yrs?|months?|annual(?:ly)?|window|period|periods"
+    r"|recent(?:ly)?|trailing|ttm|ltm|history|historical(?:ly)?|trends?|trending|over time"
+    r"|grow(?:th|n|ing)?|grew|since|yoy|qoq|sequential(?:ly)?|lately|so far)\b",
+    re.IGNORECASE,
+)
+
+
+def planner_window(patch: SpecPatch, message: str) -> SpecPatch:
+    """A planner's window, kept only where the wording asks about time but names no count.
+
+    The wording's grammar decides first: when it reads a window, that window
+    replaces the planner's (and a disagreement is logged). When it reads none,
+    the planner's stands only if the message has a period word at all.
+    """
+    proposed = patch.set_periods
+    if proposed is None or proposed.kind != "last_n_quarters":
+        return patch
+    read = asked_window(message)
+    if read is not None:
+        if read.quarters != proposed.count:
+            log_event(
+                "planner_window_overruled", proposed=proposed.count, read=read.quarters
+            )
+        return patch
+    if _PERIOD_CUE.search(message):
+        return patch
+    log_event("planner_window_dropped", proposed=proposed.count)
+    return patch.model_copy(update={"set_periods": None})
 
 
 def refine_patch_from_message(
