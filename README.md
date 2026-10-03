@@ -180,7 +180,15 @@ uv run python -m financial_analyst_agent.evaluation
 uv run python scripts/check_against_filings.py   # live: reads about 25 filings from SEC
 ```
 
-The scorecard runs the rules planner, so it says nothing about the LLM. [Rules planner vs LLM planner](docs/evaluation/planner-comparison.md) runs both on the same 78 conversations end to end, with only the planner swapped: the scorecard's questions and 50 held-out paraphrases labelled before either planner saw them ([cases](docs/evaluation/planner-cases.json)). It reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM. The rules planner scores 96% on the scorecard questions and 88% on the held-out ones; the LLM run calls OpenAI, so it takes prices and a budget:
+The scorecard runs the rules planner, so it says nothing about the LLM. [Rules planner vs LLM planner](docs/evaluation/planner-comparison.md) runs both on the same 78 conversations end to end, with only the planner swapped: the scorecard's questions and 50 held-out paraphrases labelled before either planner saw them ([cases](docs/evaluation/planner-cases.json)). It reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM.
+
+Over five runs:
+- **Rules planner:** 96% on the scorecard questions and 88% on the held-out ones, in about 1 ms a call.
+- **`gpt-5.6-terra`:** 96% and 92%, with a 0.6% spread between runs, at about one second and $0.003 a call ($1.31 for the whole comparison).
+
+Only seven cases separate the two planners: four the rules planner misses and three the LLM misses. On 78 cases that gap is within noise. Three more cases fail under both planners, in the period and company handling that runs after planning, so the next accuracy gain is there, not in the planner.
+
+The LLM run calls OpenAI, so it takes prices and a budget:
 
 ```text
 uv run python -m financial_analyst_agent.planner_evaluation                       # rules planner, free
