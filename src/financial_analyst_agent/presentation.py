@@ -17,6 +17,7 @@ from financial_analyst_agent.contracts import (
     MODEL_ANALYSIS_BANNER,
     MULTIPLE_FORMULAS,
     NEWS_SUMMARY_BANNER,
+    NO_DIVIDEND_THIS_QUARTER,
     PER_SHARE_METRICS,
     PERCENT_FORMULAS,
     REPORTED_METRICS,
@@ -376,6 +377,48 @@ def restated_banners(rows: list[TableRow]) -> list[str]:
         "change uses the restated figure that filing reports."
         for (owner, metric), ends in restated.items()
     )
+    return notes
+
+
+def declared_for_year_banners(rows: list[TableRow]) -> list[str]:
+    """Say when a quarter's declared dividend may be the year's, not one quarter's.
+
+    Walmart declares the year's dividend in its first quarter: that quarter
+    shows $0.99 and the next ones "No dividend declared this quarter". A company
+    that suspends its dividend files the same, so the note says "may". Beside
+    other companies' quarters, the figure is not one quarter's dividend.
+    """
+    series: dict[str, list[TableRow]] = {}
+    for row in rows:
+        if row.metric == "dividends_per_share" and row.comparison is None and row.end_date:
+            series.setdefault(row.cik or row.company_name.casefold(), []).append(row)
+    others = len({row.cik or row.company_name.casefold() for row in rows}) > 1
+    notes: list[str] = []
+    for quarters in series.values():
+        ordered = sorted(quarters, key=lambda row: row.end_date or date.min)
+        for at, declared in enumerate(ordered):
+            if declared.value is None or declared.value <= 0 or declared.end_date is None:
+                continue
+            after = 0
+            for row in ordered[at + 1 :]:
+                if row.value is not None or row.reason != NO_DIVIDEND_THIS_QUARTER:
+                    break
+                after += 1
+            if not after:
+                continue
+            following = "the quarter after" if after == 1 else f"the {after} quarters after"
+            notes.append(
+                f"{_owner(declared)} {format_per_share(declared.value)} dividend per share for "
+                f"the quarter ended {format_date(declared.end_date)} may cover the whole year: "
+                f"none was declared in {following}, as when a company declares a year's "
+                "dividend at once."
+                + (
+                    " Beside the other companies' quarters, it may be up to four quarters' "
+                    "worth, not one."
+                    if others
+                    else ""
+                )
+            )
     return notes
 
 
@@ -1501,6 +1544,7 @@ def present_turn(result: TurnResult) -> Presentation:
     if newer:
         banners.append(newer)
     banners.extend(restated_banners(result.table_rows))
+    banners.extend(declared_for_year_banners(result.table_rows))
     if result.ordered_by:
         label = _in_sentence(format_field_name(result.ordered_by))
         amount = (
