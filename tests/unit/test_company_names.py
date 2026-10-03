@@ -205,3 +205,40 @@ def test_a_shared_name_asks_which_company_then_answers(tmp_path: Path, answer: s
     assert answered.renderer is not RendererKind.CLARIFY
     assert [row.ticker for row in answered.table_rows] == ["LNC"]
     assert {company for company in facts.companies} == {"LNC"}
+
+
+class _ModelPlan:
+    """A model planner that names companies in full, as people do."""
+
+    def __init__(self, *companies: str) -> None:
+        self.companies = companies
+
+    def complete(self, query: str, current_spec: object = None) -> SimpleNamespace:
+        from financial_analyst_agent.contracts import Intent
+
+        return SimpleNamespace(
+            intent=Intent.COMPARE if len(self.companies) > 1 else Intent.LOOKUP,
+            company=self.companies[0],
+            companies=list(self.companies),
+            metric="net_income",
+            issuers=None,
+            industry=None,
+            limit=None,
+            topic=None,
+        )
+
+
+def test_facts_are_fetched_for_the_company_the_analysis_resolved(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from financial_analyst_agent.runtime import recorded_runtime
+
+    runtime = replace(recorded_runtime(), completer=_ModelPlan("Goldman Sachs", "JPMorgan"))
+    result = run_conversation_turn(
+        "t1", "Goldman Sachs vs JPMorgan net income", runtime, store=LocalThreadStore(tmp_path)
+    ).result
+
+    assert [(row.ticker, row.value is not None) for row in result.table_rows] == [
+        ("GS", True),
+        ("JPM", True),
+    ]

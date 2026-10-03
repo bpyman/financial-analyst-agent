@@ -2,6 +2,7 @@
 
 import json
 import threading
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 
@@ -176,6 +177,12 @@ def _listed_tickers(path: Path | None) -> dict[str, str]:
     }
 
 
+def _member_ticker(path: Path | None) -> Callable[[str], str]:
+    """The snapshot ticker a company name resolves to, for the facts lookup."""
+    ranking = _snapshot_ranking(path)
+    return lambda company: ranking.lookup_member(company).ticker
+
+
 def _snapshot_ranking(path: Path | None) -> SnapshotRanking:
     """The snapshot is immutable per file version; parse it once, not on every turn."""
     from financial_analyst_agent.universe import DEFAULT_SNAPSHOT_PATH
@@ -220,6 +227,7 @@ def recorded_runtime() -> Runtime:
             client=source,
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
             listed_tickers=_listed_tickers(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+            member_ticker=_member_ticker(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         ),
         ranking=_snapshot_ranking(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=RecordedNewsSearch(),
@@ -278,6 +286,7 @@ def live_runtime(
             client=client,
             display_names=_display_names(None),
             listed_tickers=_listed_tickers(None),
+            member_ticker=_member_ticker(None),
         ),
         ranking=_snapshot_ranking(None),
         news=news,
