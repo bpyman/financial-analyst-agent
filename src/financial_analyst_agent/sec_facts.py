@@ -11,6 +11,8 @@ from financial_analyst_agent.config import Settings
 from financial_analyst_agent.domain.enums import PERIODIC_FORMS, Metric
 from financial_analyst_agent.domain.errors import (
     SOURCE_FAILURES,
+    AmbiguousCompanyError,
+    CompanyNotFoundError,
     DataIntegrityError,
     FilingNotFoundError,
     IneligibleIssuerError,
@@ -270,7 +272,12 @@ class SecFactLookup:
         client: SECDataSource | None = None,
         display_names: Mapping[str, str] | None = None,
         listed_tickers: Mapping[str, str] | None = None,
+        member_ticker: Callable[[str], str] | None = None,
     ) -> None:
+        # The snapshot's reading of a company name ("Goldman Sachs" is GS), so a
+        # fact is fetched for the company the analysis resolved, not re-guessed
+        # from SEC titles ("Coca-Cola" is KO, not one of three bottlers).
+        self._member_ticker = member_ticker
         # SEC's ticker file titles companies "AMAZON COM INC"; the snapshot
         # knows them as "Amazon.com, Inc.". Keyed by 10-digit CIK.
         self._display_names: Mapping[str, str] = display_names or {}
@@ -324,9 +331,19 @@ class SecFactLookup:
         # metric, period, and formula component.
         resolved = self._resolved_by_query.get(company)
         if resolved is None:
-            resolved = resolve_company(company, self._cached_company_tickers())
+            asked = self._snapshot_ticker(company) or company
+            resolved = resolve_company(asked, self._cached_company_tickers())
             self._resolved_by_query[company] = resolved
         return resolved
+
+    def _snapshot_ticker(self, company: str) -> str | None:
+        if self._member_ticker is None:
+            return None
+        try:
+            return self._member_ticker(company)
+        except (CompanyNotFoundError, AmbiguousCompanyError):
+            # Not a snapshot member (a filer it leaves out): SEC's titles decide.
+            return None
 
     def _cached_submissions(self, cik: str) -> dict[str, Any]:
         payload = self._submissions_by_cik.get(cik)

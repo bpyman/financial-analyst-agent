@@ -44,6 +44,7 @@ from financial_analyst_agent.contracts import (
 )
 from financial_analyst_agent.domain.errors import (
     SOURCE_FAILURES,
+    AmbiguousCompanyError,
     CompanyNotFoundError,
     IneligibleIssuerError,
     ProviderError,
@@ -71,6 +72,8 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
 from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.observability import log_event
+from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import calendar_quarter, dates_for
@@ -86,6 +89,25 @@ _ADD_EDIT = re.compile(
     r"^\s*(?:now\s+)?(?:also\s+)?(?:add|include)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+# Words around the companies of an edit: "include Oracle too", "add Lilly as well".
+_EDIT_FILLER = re.compile(
+    r"\b(?:too|as well|also|please|pls|as a peer|in there"
+    r"|to (?:the|this) (?:table|list|comparison|chart|analysis))\b",
+    re.IGNORECASE,
+)
+# "Oracle too", "and Bank of America as well?": the companies join the analysis.
+_ALSO_EDIT = re.compile(
+    r"^\s*(?:and\s+|plus\s+)?(?:also\s+)?(?P<span>.+?)\s+(?:too|as well)\s*[?.!]*\s*$"
+    r"|^\s*(?:and|plus|also)\s+(?P<lead>.+?)\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
+# "what about Goldman?", "how about AMD", "same for Oracle": the named companies
+# take the place of the ones on screen; the metrics and window stay.
+_INSTEAD_EDIT = re.compile(
+    r"^\s*(?:and\s+|ok(?:ay)?,?\s+|now\s+)?(?:(?:what|how)\s+about|same\s+(?:thing\s+)?(?:for|with))"
+    r"\s+(?P<span>.+?)\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
 _DROP_EDIT = re.compile(
     r"^\s*(?:drop|remove|without)\s+(.+?)\s*$",
     re.IGNORECASE,
@@ -94,17 +116,29 @@ _SWAP_EDIT = re.compile(
     r"^\s*(?:use|swap)\s+(.+?)\s+instead of\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+# "swap Merck for AbbVie", "replace revenue with net income": out, then in.
+_SWAP_FOR_EDIT = re.compile(
+    r"^\s*(?:swap|replace|switch|exchange|trade)\s+(?:out\s+)?(?P<out>.+?)\s+(?:for|with)\s+"
+    r"(?P<in>.+?)\s*[.?!]*\s*$",
+    re.IGNORECASE,
+)
+# "switch the metric to free cash flow", "show net margin instead": what takes
+# the place of what is on screen.
+_SWITCH_TO_EDIT = re.compile(
+    r"^\s*(?:now\s+)?(?:switch|change|swap|turn)\s+(?:(?:the|that|this|it)\s+)?"
+    r"(?:(?:metric|measure|figure|number|company|companies)\s+)?(?:to|into|over to)\s+"
+    r"(?P<span>.+?)\s*[.?!]*\s*$"
+    r"|^\s*(?:now\s+)?(?:show|use|make it|do|give me)\s+(?P<instead>.+?)\s+instead\s*[.?!]*\s*$",
+    re.IGNORECASE,
+)
 _DROP_AND_ADD_EDIT = re.compile(
     r"^\s*(?:drop|remove)\s+(.+?)\s*,?\s+(?:and\s+)?(?:add|include|show)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
-_LAST_N_QUARTERS = re.compile(
-    r"\blast\s+(\d+|two|three|four|five|six|eight)\s+quarters?\b",
-    re.IGNORECASE,
-)
 _YOY = re.compile(
     r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year|(?:a|one) year ago"
-    r"|(?:over|in) the (?:last|past) year|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
+    # "over the past year" alone is the year's quarters; "grew over the past year" is growth.
+    r"|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
     r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?"
     r"|why did .+ (?:drop|fall|decline|rise|jump|increase|decrease|go (?:up|down)))\b",
     re.IGNORECASE,
@@ -180,10 +214,6 @@ _YEAR_RANGE = re.compile(
 _MAX_RANGE_YEARS = 10
 # "20 years ago" names that fiscal year; "a year ago" is a year-over-year change.
 _YEARS_AGO = re.compile(r"\b(?P<n>\d{1,2})\s+years?\s+ago\b", re.I)
-# "last 3 years": that many years of quarters.
-_LAST_N_YEARS = re.compile(
-    r"\b(?:last|past|previous|prior)\s+(\d+|two|three|four|five|six|eight|ten)\s+years\b", re.I
-)
 # "next quarter" asks for a forecast; filings only report what has happened.
 _FORECAST = re.compile(
     r"\bnext\s+(?:quarter|year|fiscal\s+year|fy)\b|\bforecasts?\b|\bprojected\b|\bpredict",
@@ -196,7 +226,26 @@ _EXPLICIT_YOY = re.compile(
     r"(?:a year ago|last year|the (?:prior|previous) year))\b",
     re.IGNORECASE,
 )
-_SEQUENTIAL = re.compile(r"\b(?:sequential|quarter[\s-]*over[\s-]*quarter|qoq)\b", re.IGNORECASE)
+_SEQUENTIAL = re.compile(
+    r"\b(?:sequential(?:ly)?|quarter[\s-]*(?:over|on)[\s-]*quarter|qoq"
+    r"|(?:from|since|vs\.?|versus|than|compared? (?:to|with)) (?:the )?"
+    r"(?:last|previous|prior|preceding) quarter)\b",
+    re.IGNORECASE,
+)
+# Growth is year over year by convention: analysts and 10-Q MD&A compare a quarter
+# with the same quarter a year before, which a season does not distort (ADR 0010).
+_GROWTH = re.compile(r"\b(?:grow(?:th|n|ing|s)?|grew|trend(?:s|ing)?)\b", re.IGNORECASE)
+# "changed over the last year": a change across a year is year over year.
+_YEAR_BASE = re.compile(
+    r"\b(?:over|in|during|across) the (?:last|past|previous|prior)"
+    r" (?:year|twelve months|12 months)\b",
+    re.IGNORECASE,
+)
+COMPARISON_CANDIDATES = ("year_over_year", "sequential")
+COMPARISON_LABELS = (
+    "The same quarter a year earlier (year over year)",
+    "The quarter before (sequential)",
+)
 # Four quarters, each with the quarter a year before it.
 _YOY_WINDOW = 8
 # "Q5 2025" names no quarter; answering the latest one instead would mislead.
@@ -233,19 +282,15 @@ _HALF_YEAR = re.compile(
     rf"{_FISCAL_WORD}{_YEAR}",
     re.I,
 )
+GROWTH_IS_YEAR_OVER_YEAR_BANNER = (
+    "Growth here is year over year: each quarter against the same quarter a year "
+    "earlier, as filings and analysts compare quarters. Ask for sequential growth to "
+    "compare each quarter with the one before."
+)
 TRAILING_YEAR_BANNER = (
     "Trailing twelve months: these are the four latest quarters, shown one by one "
     "rather than summed."
 )
-_NUMBER_WORDS = {
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "eight": 8,
-    "ten": 10,
-}
 
 # Bound concurrent provider fan-out so a wide window cannot flood SEC/EDGAR.
 DEFAULT_TASK_MAX_WORKERS = 8
@@ -255,6 +300,18 @@ ProgressCallback = Callable[[int, int], None]
 
 def plan_to_spec_patch(plan: Any) -> SpecPatch:
     """Lift a one-shot closed Plan into a replace-mode spec patch."""
+    patch = _lifted_plan(plan)
+    window = getattr(plan, "recent_quarters", None)
+    if isinstance(window, int) and window >= 1 and plan.intent is not Intent.RANK:
+        # The model's reading of a window: used only where the wording's own
+        # reading finds none (see planner_window).
+        selection = PeriodSelection(kind="last_n_quarters", count=min(window, MAX_QUARTERS_ASKED))
+        patch = patch.model_copy(update={"set_periods": selection})
+    return patch
+
+
+def _lifted_plan(plan: Any) -> SpecPatch:
+    """The plan's companies, metric and ranking as a replace patch."""
     intent = plan.intent
     metric = plan.metric if isinstance(getattr(plan, "metric", None), str) else None
     metrics = (metric,) if metric else ()
@@ -453,21 +510,28 @@ def _companies_named_in(companies: tuple[str, ...], text: str) -> tuple[str, ...
 
 
 def _company_tokens(text: str) -> tuple[str, ...]:
+    text = _EDIT_FILLER.sub(" ", text)
     parts = re.split(r"\s+and\s+|,\s*", text, flags=re.IGNORECASE)
-    return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
+    return tuple(part.strip(" .,?!") for part in parts if part.strip(" .,?!"))
 
 
-def _quarters_asked(raw: str) -> int:
-    """The window "last N quarters" names, kept between one and ``MAX_QUARTERS_ASKED``."""
-    raw = raw.casefold()
-    if raw in _NUMBER_WORDS:
-        return _NUMBER_WORDS[raw]
-    digits = raw.lstrip("0")
-    if not digits.isdigit():
-        return 1 if raw.isdigit() else 4
-    if len(digits) > len(str(MAX_QUARTERS_ASKED)):
-        return MAX_QUARTERS_ASKED
-    return min(int(digits), MAX_QUARTERS_ASKED)
+def _companies_in(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+    """The companies an edit's words name, read as the planner reads a question.
+
+    "Oracle too" is Oracle and "Goldman" is GS: the issuer index reads the
+    words, so filler never becomes a company. Words it cannot place fall back
+    to the planner's own companies, then to the words themselves, which the
+    resolver then reports as not found.
+    """
+    found = _named_by_index(text, patch, index)
+    if found:
+        return found
+    named = _companies_named_in(patch.add_companies, text)
+    if named:
+        return named
+    if _names_companies(patch):
+        return patch.add_companies
+    return _company_tokens(text)
 
 
 def parse_named_periods(message: str) -> tuple[NamedPeriodSpec, ...]:
@@ -551,15 +615,32 @@ def _with_year_earlier(named: tuple[NamedPeriodSpec, ...]) -> tuple[NamedPeriodS
     return tuple(dict.fromkeys([*named, *earlier]))
 
 
+
+
+def comparison_asked(message: str) -> str | None:
+    """What a change the message asks about is measured against.
+
+    "year_over_year" or "sequential" where the wording says (growth is year
+    over year by convention), "unclear" where it asks about a change but not
+    against what ("why did revenue drop?"), and None where it asks for no change.
+    """
+    if _YOY.search(message) is None and _SEQUENTIAL.search(message) is None:
+        return None
+    if _SEQUENTIAL.search(message) is not None:
+        return "sequential"
+    if (
+        _EXPLICIT_YOY.search(message) is not None
+        or _GROWTH.search(message) is not None
+        or _YEAR_BASE.search(message) is not None
+    ):
+        return "year_over_year"
+    return "unclear"
+
+
 def _window_asked(message: str) -> int | None:
-    """The quarters "last N quarters" or "last N years" asks for, or None."""
-    quarters = _LAST_N_QUARTERS.search(message)
-    if quarters is not None:
-        return _quarters_asked(quarters.group(1))
-    years = _LAST_N_YEARS.search(message)
-    if years is not None:
-        return min(4 * _quarters_asked(years.group(1)), MAX_QUARTERS_ASKED)
-    return None
+    """The quarters a window asks for ("past six quarters", "last 3 years"), or None."""
+    window = asked_window(message)
+    return window.quarters if window is not None else None
 
 
 def _since_quarters(since: re.Match[str]) -> int:
@@ -618,7 +699,9 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     operations = patch.add_operations
     if (yoy or sequential) and "across_periods" not in operations:
         operations = (*operations, "across_periods")
-    explicit_yoy = _EXPLICIT_YOY.search(message) is not None and not sequential
+    # Growth is year over year unless the analyst says sequential (ADR 0010); a
+    # change that names no base is asked about before the analysis runs.
+    explicit_yoy = comparison_asked(message) == "year_over_year"
     if explicit_yoy and "year_over_year" not in operations:
         operations = (*operations, "year_over_year")
     if asked is None and patch.set_periods is not None:
@@ -626,8 +709,8 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     count = asked if asked is not None else 5
     if (yoy or sequential) and count < 5:
         count = 5
-    if explicit_yoy:
-        # Each of the N quarters needs the one a year before it.
+    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None:
+        # "Year over year" by name: each of the N quarters needs the one a year before it.
         count = _YOY_WINDOW if asked is None else min(asked + 4, MAX_QUARTERS_ASKED)
     return patch.model_copy(
         update={
@@ -647,6 +730,9 @@ def _swap_pair(message: str) -> tuple[str, str] | None:
     swapped = _SWAP_EDIT.match(message)
     if swapped is not None:
         return swapped.group(1).strip(), swapped.group(2).strip()
+    swapped = _SWAP_FOR_EDIT.match(message)
+    if swapped is not None:
+        return swapped.group("in").strip(" .,"), swapped.group("out").strip(" .,")
     # "remove revenue add net income" is a swap, not the removal of both.
     both = _DROP_AND_ADD_EDIT.match(message)
     if both is not None:
@@ -654,12 +740,53 @@ def _swap_pair(message: str) -> tuple[str, str] | None:
     return None
 
 
+# Words that ask about time at all. A planner's window stands only beside one:
+# "how is Nvidia doing" asks for no window, whatever the model proposed.
+_PERIOD_CUE = re.compile(
+    r"\b(?:quarters?|qtrs?|years?|yrs?|months?|annual(?:ly)?|window|period|periods"
+    r"|recent(?:ly)?|trailing|ttm|ltm|history|historical(?:ly)?|trends?|trending|over time"
+    r"|grow(?:th|n|ing)?|grew|since|yoy|qoq|sequential(?:ly)?|lately|so far)\b",
+    re.IGNORECASE,
+)
+
+
+def planner_window(patch: SpecPatch, message: str) -> SpecPatch:
+    """A planner's window, kept only where the wording asks about time but names no count.
+
+    The wording's grammar decides first: when it reads a window, that window
+    replaces the planner's (and a disagreement is logged). When it reads none,
+    the planner's stands only if the message has a period word at all.
+    """
+    proposed = patch.set_periods
+    if proposed is None or proposed.kind != "last_n_quarters":
+        return patch
+    read = asked_window(message)
+    if read is not None:
+        if read.quarters != proposed.count:
+            log_event(
+                "planner_window_overruled", proposed=proposed.count, read=read.quarters
+            )
+        return patch
+    if _PERIOD_CUE.search(message):
+        return patch
+    log_event("planner_window_dropped", proposed=proposed.count)
+    return patch.model_copy(update={"set_periods": None})
+
+
 def refine_patch_from_message(
     patch: SpecPatch,
     message: str,
     current_spec: AnalysisSpec | None,
+    *,
+    index: Any = None,
 ) -> SpecPatch:
-    """Turn follow-up wording into an extend patch when the planner still replaced."""
+    """Turn follow-up wording into an extend patch when the planner still replaced.
+
+    The edit's own words decide, whichever planner proposed the patch: "add",
+    "include", "too" and "as well" add companies; "what about", "how about"
+    and "same for" put them in place of the ones on screen. ``index`` reads
+    which companies the words name.
+    """
     patch = bind_periods_from_message(patch, message)
     if current_spec is None:
         return patch
@@ -684,8 +811,23 @@ def refine_patch_from_message(
             add_metrics=(),
         )
 
+    switched = _SWITCH_TO_EDIT.match(message.strip())
+    if switched is not None:
+        span = (switched.group("span") or switched.group("instead")).strip(" .,")
+        metrics = _unique_metrics_from_phrase(span)
+        if metrics:
+            return _extend(
+                patch,
+                add_metrics=metrics,
+                remove_metrics=tuple(m for m in current_spec.metrics if m not in metrics),
+                add_companies=(),
+                remove_companies=(),
+            )
+
     added = _ADD_EDIT.match(message.strip())
     if added is not None:
+        # "now add operating margin": adding never takes anything away.
+        patch = patch.model_copy(update={"remove_metrics": (), "remove_companies": ()})
         token = added.group(1).strip(" .,")
         metrics = _unique_metrics_from_phrase(token)
         # "add Google margin" adds Google as well as the margin.
@@ -697,8 +839,12 @@ def refine_patch_from_message(
             return _extend(patch, add_companies=named)
         if patch.add_metrics and not patch.add_companies:
             return _extend(patch, add_companies=())
-        companies = _company_tokens(token)
+        companies = _companies_in(token, patch, index)
         return _extend(patch, add_companies=companies, add_metrics=())
+
+    companies_edit = _company_edit(message.strip(), patch, current_spec, index)
+    if companies_edit is not None:
+        return companies_edit
 
     dropped = _DROP_EDIT.match(message.strip())
     if dropped is not None:
@@ -709,7 +855,7 @@ def refine_patch_from_message(
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
             return _extend(patch, add_companies=(), remove_companies=(), add_metrics=())
-        companies = _company_tokens(token)
+        companies = _companies_in(token, patch, index)
         if re.fullmatch(r"(?:both|them|all|all of them|everything|every company)", token, re.I):
             # "remove both": every company on screen, which the turn then says it cannot.
             companies = tuple(company.query for company in current_spec.companies)
@@ -743,6 +889,53 @@ def refine_patch_from_message(
     return patch
 
 
+def _named_by_index(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+    """The companies the index finds in ``text``, in the planner's spelling where it has one."""
+    find = getattr(index, "find", None)
+    if not callable(find):
+        return ()
+    found = tuple(dict.fromkeys(mention.query for mention in find(text)))
+    named = getattr(index, "named", None)
+    spelled: dict[str, str] = {}
+    if callable(named):
+        # The planner's "Nvidia" stays "Nvidia" when it is the NVDA the words name.
+        spelled = {named(company) or company: company for company in patch.add_companies}
+    return tuple(spelled.get(query, query) for query in found)
+
+
+def _company_edit(
+    message: str, patch: SpecPatch, spec: AnalysisSpec, index: Any
+) -> SpecPatch | None:
+    """ "Oracle too" adds Oracle; "what about Goldman?" puts Goldman in their place.
+
+    Only an edit that names companies and no metric of its own: "what about
+    net margin?" and "what about over the past two years?" are other edits,
+    and a ranked list is left to the planner.
+    """
+    if spec.constituents is not None or not callable(getattr(index, "find", None)):
+        return None
+    instead = _INSTEAD_EDIT.match(message)
+    also = None if instead is not None else _ALSO_EDIT.match(message)
+    match = instead or also
+    if match is None:
+        return None
+    span = next(group for group in match.groups() if group)
+    named = _named_by_index(span, patch, index)
+    if not named or _unique_metrics_from_phrase(span):
+        return None
+    if instead is not None:
+        return _extend(
+            patch,
+            add_companies=named,
+            remove_companies=tuple(
+                company.query for company in spec.companies if company.query not in named
+            ),
+            add_metrics=(),
+            remove_metrics=(),
+        )
+    return _extend(patch, add_companies=named, remove_companies=(), add_metrics=())
+
+
 def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
     return tuple(listing(company, limit=count))
 
@@ -773,7 +966,10 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
         dates = _listed_dates(listing, queries[0], periods.count or 1)
         if not dates:
             return spec
-        periods = periods.model_copy(update={"count": len(dates), "report_dates": dates})
+        asked = periods.count if periods.count and len(dates) < periods.count else None
+        periods = periods.model_copy(
+            update={"count": len(dates), "report_dates": dates, "asked": asked}
+        )
         listed_first = True
     known = dict(periods.company_report_dates)
     if listed_first and spec.companies:
@@ -1383,6 +1579,30 @@ class Resolution:
     compiled: CompiledAnalysis | None = None
 
 
+def _with_comparison(spec: AnalysisSpec, comparison: str) -> AnalysisSpec:
+    """The analysis with its changes measured as the analyst chose."""
+    operations = [op for op in spec.operations if op != "year_over_year"]
+    if "across_periods" not in operations:
+        operations.append("across_periods")
+    if comparison == "year_over_year":
+        operations.append("year_over_year")
+    return spec.model_copy(update={"operations": tuple(operations)})
+
+
+def company_clarification(intent: Intent, exc: AmbiguousCompanyError) -> TurnResult:
+    """Ask which company a name means: "Coca-Cola" is KO, CCEP or COKE."""
+    matches = exc.details.get("matches", ())
+    return TurnResult(
+        intent=intent,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=tuple(str(match["ticker"]) for match in matches),
+        candidate_labels=tuple(f"{match['title']} ({match['ticker']})" for match in matches),
+        clarify_kind="ambiguous_company",
+        clarify_subject=str(exc.details.get("query", "")),
+    )
+
+
 def resolve_request(
     request: StructuredRequest, current_spec: AnalysisSpec | None, runtime: Runtime
 ) -> Resolution:
@@ -1418,7 +1638,9 @@ def resolve_request(
     forecast = _FORECAST.search(message)
     if forecast is not None:
         return answered(_refusal(intent, forecast_message(forecast.group(0))), current_spec)
-    patch = refine_patch_from_message(patch, message, current_spec)
+    patch = refine_patch_from_message(
+        patch, message, current_spec, index=getattr(runtime.ranking, "index", None)
+    )
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
@@ -1459,6 +1681,8 @@ def resolve_request(
         spec = resolve_spec(draft, ranking=runtime.ranking)
     except UnknownIndustryError as exc:
         return answered(_refusal(asked, str(exc)), None)
+    except AmbiguousCompanyError as exc:
+        return answered(company_clarification(asked, exc), current_spec)
     if not spec.companies and spec.constituents is None and spec.metrics:
         # "what was the revenue?": naming the company next ("for Apple") completes it.
         held = current_spec if current_spec is not None else spec
@@ -1466,6 +1690,23 @@ def resolve_request(
     outcome = validate_spec(spec)
     if outcome is not None:
         return answered(_rejection_result(outcome, asked), None)
+    if request.comparison is None and spec.constituents is None and (
+        comparison_asked(message) == "unclear"
+    ):
+        # "Why did revenue drop?": against the quarter before, or a year before?
+        return answered(
+            TurnResult(
+                intent=asked,
+                tool_traces=[],
+                renderer=RendererKind.CLARIFY,
+                candidates=COMPARISON_CANDIDATES,
+                candidate_labels=COMPARISON_LABELS,
+                clarify_kind="ambiguous_comparison",
+            ),
+            current_spec,
+        )
+    if request.comparison is not None:
+        spec = _with_comparison(spec, request.comparison)
 
     spec, annual_filers = drop_annual_filers(spec, runtime)
     if annual_filers and not spec.companies and spec.constituents is None:
@@ -2016,6 +2257,12 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         notes.append(YEAR_OF_QUARTERS_BANNER)
     if spec.periods.kind != "named" and _SUB_QUARTER.search(message):
         notes.append(f"Filings report quarters, not months or weeks, so this shows {window}.")
+    if (
+        "year_over_year" in spec.operations
+        and _GROWTH.search(message)
+        and not _EXPLICIT_YOY.search(message)
+    ):
+        notes.append(GROWTH_IS_YEAR_OVER_YEAR_BANNER)
     if _WHY_CHANGE.search(message):
         notes.append(WHY_CHANGE_BANNER)
     if _YEAR_TO_DATE.search(message):
@@ -2052,15 +2299,12 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
 def _window_notes(message: str, windows: list[tuple[date, ...]]) -> list[str]:
     """Say when a window is shorter than asked: capped, or more than the filings hold."""
     notes: list[str] = []
-    wanted = _window_asked(message)
-    typed = _LAST_N_QUARTERS.search(message)
+    window = asked_window(message)
+    wanted = window.quarters if window is not None else None
     since = _SINCE_YEAR.search(message)
-    if typed is not None and typed.group(1).isdigit() and int(typed.group(1)) > MAX_QUARTERS_ASKED:
-        notes.append(
-            f"A window shows at most {MAX_QUARTERS_ASKED} quarters, so this asks for "
-            f"{MAX_QUARTERS_ASKED} rather than {int(typed.group(1))}."
-        )
-    elif wanted is None and since is not None:
+    if window is not None:
+        notes.extend(window.notes())
+    elif since is not None:
         quarters = _since_quarters(since)
         wanted = min(quarters, _MAX_SINCE_QUARTERS)
         if quarters > _MAX_SINCE_QUARTERS:

@@ -2,6 +2,7 @@
 
 import json
 import threading
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 
@@ -158,7 +159,8 @@ class RecordedEssayCompleter:
 
 @lru_cache(maxsize=4)
 def _cached_ranking(path: Path | None, _mtime_ns: int) -> SnapshotRanking:
-    return SnapshotRanking.from_path(path)
+    # The planner's index: a company resolves the way the planner read it.
+    return SnapshotRanking.from_path(path, issuer_index(path))
 
 
 def _display_names(path: Path | None) -> dict[str, str]:
@@ -173,6 +175,12 @@ def _listed_tickers(path: Path | None) -> dict[str, str]:
     return {
         company.cik: company.ticker for company in _snapshot_ranking(path).snapshot_companies()
     }
+
+
+def _member_ticker(path: Path | None) -> Callable[[str], str]:
+    """The snapshot ticker a company name resolves to, for the facts lookup."""
+    ranking = _snapshot_ranking(path)
+    return lambda company: ranking.lookup_member(company).ticker
 
 
 def _snapshot_ranking(path: Path | None) -> SnapshotRanking:
@@ -219,6 +227,7 @@ def recorded_runtime() -> Runtime:
             client=source,
             display_names=_display_names(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
             listed_tickers=_listed_tickers(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
+            member_ticker=_member_ticker(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         ),
         ranking=_snapshot_ranking(FIXTURE_UNIVERSE_SNAPSHOT_PATH),
         news=RecordedNewsSearch(),
@@ -247,7 +256,7 @@ def live_runtime(
     budget: SessionBudget | None = None,
 ) -> Runtime:
     resolved = settings or get_settings()
-    # Without a key the rules planner plans the question, as on the public demo.
+    # Without an OpenAI key (or with public OpenAI turned off) the rules planner plans.
     use_openai = openai_enabled(resolved)
     use_tavily = tavily_enabled(resolved)
     completer = (
@@ -277,6 +286,7 @@ def live_runtime(
             client=client,
             display_names=_display_names(None),
             listed_tickers=_listed_tickers(None),
+            member_ticker=_member_ticker(None),
         ),
         ranking=_snapshot_ranking(None),
         news=news,

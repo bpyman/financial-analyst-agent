@@ -15,6 +15,7 @@ from financial_analyst_agent.domain.serialization import DecimalStr
 DEFAULT_SNAPSHOT_PATH = Path(__file__).parent / "data" / "universe_snapshot.json"
 _INELIGIBLE_ISSUERS_PATH = Path(__file__).parent / "data" / "ineligible_issuers.json"
 _SEC_FILER_NAMES_PATH = Path(__file__).parent / "data" / "sec_filer_names.json"
+_FORMER_NAMES_PATH = Path(__file__).parent / "data" / "former_names.json"
 
 US_EXCHANGES: frozenset[str] = frozenset(
     {
@@ -92,6 +93,15 @@ def sec_filer_names(path: Path = _SEC_FILER_NAMES_PATH) -> tuple[tuple[str, str]
     """
     payload = json.loads(path.read_text(encoding="utf-8"))
     return tuple((filer["ticker"], filer["name"]) for filer in payload["filers"])
+
+
+def former_names(path: Path = _FORMER_NAMES_PATH) -> tuple[tuple[str, str], ...]:
+    """(ticker, name) of names larger companies used to file under ("Facebook Inc").
+
+    scripts/build_former_names.py writes them from SEC submissions.
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return tuple((row["ticker"], row["name"]) for row in payload["names"])
 
 
 def ineligible_issuers(path: Path = _INELIGIBLE_ISSUERS_PATH) -> tuple[tuple[str, str], ...]:

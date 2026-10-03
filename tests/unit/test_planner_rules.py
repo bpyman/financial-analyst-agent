@@ -118,6 +118,8 @@ def test_growth_wording_asks_for_year_over_year() -> None:
 
     assert patch.set_periods is not None and patch.set_periods.count == 5
     assert "across_periods" in patch.add_operations
+    # Growth means year over year unless the analyst says sequential (ADR 0010).
+    assert "year_over_year" in patch.add_operations
 
 
 def test_rankings_read_industries_and_limits() -> None:

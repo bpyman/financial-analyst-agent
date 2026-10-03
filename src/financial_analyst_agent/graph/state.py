@@ -48,6 +48,10 @@ class PendingClarification(BaseModel):
     # The question that was held, so an answer like "replace" resumes it rather
     # than being read as a question of its own. Empty in threads saved before.
     question: str = ""
+    # For "which company": the name that was ambiguous, and how each candidate
+    # was shown ("Coca-Cola Consolidated (COKE)").
+    subject: str = ""
+    labels: tuple[str, ...] = ()
 
 
 class StructuredRequest(BaseModel):
@@ -67,6 +71,8 @@ class StructuredRequest(BaseModel):
     notes: tuple[str, ...] = ()
     # Companies the analyst named that the recorded runtime has no filings for.
     unrecorded: tuple[str, ...] = ()
+    # What a change is measured against, as the analyst chose when asked.
+    comparison: Literal["year_over_year", "sequential"] | None = None
 
 
 QualitativeIntent = Literal[Intent.EXPLAIN, Intent.NEWS_AND_EXPLAIN, Intent.EXPLORATORY_RESEARCH]

@@ -1572,7 +1572,9 @@ def test_a_ranking_shows_the_market_cap_it_is_ordered_by() -> None:
 
 
 def test_several_companies_grow_as_lines_and_mixed_changes_get_a_column_each() -> None:
-    answer = _answer("Compare Microsoft and Apple revenue growth over the last four quarters")
+    answer = _answer(
+        "Compare Microsoft and Apple revenue quarter over quarter for the last four quarters"
+    )
 
     assert answer.chart.kind == "line"
     assert answer.chart.title == "Growth"
@@ -1584,6 +1586,16 @@ def test_several_companies_grow_as_lines_and_mixed_changes_get_a_column_each() -
         "Company", "Ticker", "Revenue", "QoQ change", "YoY change", "Quarter ended",
     )
     assert answer.table.keys[3:5] == ("change:revenue:sequential", "change:revenue:yoy")
+
+
+def test_growth_is_year_over_year_and_says_so() -> None:
+    answer = _answer("Compare Microsoft and Apple revenue growth over the last four quarters")
+
+    assert answer.chart.metric_label == "Revenue growth, YoY"
+    assert answer.table.headers == (
+        "Company", "Ticker", "Revenue", "YoY change", "Quarter ended",
+    )  # fmt: skip
+    assert any(banner.startswith("Growth here is year over year") for banner in answer.banners)
 
 
 def test_several_metrics_chart_the_growth_of_the_first() -> None:

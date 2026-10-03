@@ -11,6 +11,7 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Iterable, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
@@ -187,6 +188,8 @@ _NICKNAMES: tuple[tuple[str, str], ...] = (
     ("royal caribbean", "RCL"),
     ("peloton", "PTON"),
 )
+# Words a company field holds beside the name: "Merck and Co", "Danaher Corp.".
+_FILLER_WORDS = _NAME_SUFFIXES | {"and", "&", "of", "s"}
 # Two-word starts of a longer name that are places or words, not that company:
 # "New York" Times, "Las Vegas" Sands.
 _NOT_SHORT_NAMES = frozenset({"las vegas", "grupo financiero", "super group"})
@@ -261,8 +264,22 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
+# A listing's description of the security, not part of the company's name:
+# "Pony AI Inc. American Depositary Shares", "Webull Corporation Class A Ordinary Shares".
+_SECURITY_TAIL = re.compile(
+    r"\s+(?:class\s+[a-z]\b|series\s+[a-z]\b|common\s+stock|ordinary\s+shares?"
+    r"|american\s+depositary|depositary\s+(?:shares?|receipts?)|(?:un)?sponsored\b"
+    r"|adss?\b|adrs?\b).*$",
+    re.IGNORECASE,
+)
+# Letters of a spelt-out legal form at the end of a name: "S.A.B. de C.V.",
+# "L.P.", "S.A.", "KGaA".
+_LEGAL_LETTERS = frozenset({"s", "a", "b", "c", "v", "l", "p", "sab", "cv", "sapi", "kgaa", "spa"})
+
+
 def _core_name(name: str, suffixes: frozenset[str] = _NAME_SUFFIXES) -> str:
-    words = normalize(name).split()
+    suffixes = suffixes | _LEGAL_LETTERS
+    words = normalize(_SECURITY_TAIL.sub("", name)).split()
     while words and words[-1] in suffixes:
         words.pop()
     while words and words[0] == "the":
@@ -292,6 +309,8 @@ class IssuerIndex:
     tickers: dict[str, str] = field(default_factory=dict)
     display_names: dict[str, str] = field(default_factory=dict)
     ciks: dict[str, str] = field(default_factory=dict)
+    # First words two large companies share ("lincoln"), by their tickers.
+    shared: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -332,6 +351,10 @@ class IssuerIndex:
                 index.phrases.setdefault(joined, ticker)
             if "&" in core:
                 index.phrases.setdefault(core.replace("&", "and"), ticker)
+            compound = normalize(company.name.split()[0])
+            if "-" in company.name.split()[0] and " " in compound and compound != core:
+                # "Take-Two" for Take-Two Interactive: a hyphened word is one name.
+                index.phrases.setdefault(compound, ticker)
             words = core.split()
             if (
                 rank < _FIRST_WORD_ALIAS_RANK
@@ -355,7 +378,25 @@ class IssuerIndex:
             # ("Bank" of America and "Bank" of New York) names neither.
             if len(owners) == 1 and word not in _NOT_SHORT_NAMES:
                 index.phrases.setdefault(word, owners[0])
+            elif " " not in word and word not in index.phrases and word not in _everyday_words():
+                index.shared[word] = tuple(owners)
         return index
+
+    def add_former(self, ticker: str, name: str) -> None:
+        """A name a snapshot company used to file under: "Facebook" is Meta.
+
+        It never takes a phrase a current name holds, so a name since reused
+        stays with its present owner, and a one-word former name must not be
+        an ordinary word: "Square" stays a word, while "Raytheon Technologies"
+        names RTX.
+        """
+        query = self.tickers.get(ticker.upper())
+        core = _core_name(_SEC_STATE.sub("", name))
+        if query is None or not core or any(char.isdigit() for char in core):
+            return
+        one_word_name = len(core) >= 4 and core not in _GENERIC_WORDS and not _ordinary(core)
+        if " " in core or one_word_name:
+            self.phrases.setdefault(core, query)
 
     def add_outside(self, ticker: str, name: str) -> None:
         """A listing outside the snapshot (a fund), named so a question can reach it.
@@ -386,8 +427,15 @@ class IssuerIndex:
         if self.phrases.setdefault(core, query) == query:
             self.display_names.setdefault(query, name)
 
-    def find(self, question: str) -> list[CompanyMention]:
-        """Companies named exactly, longest phrase first, in question order."""
+    def find(self, question: str, *, company_slot: bool = False) -> list[CompanyMention]:
+        """Companies named exactly, longest phrase first, in question order.
+
+        A one-word name that is also an everyday word ("target", "block", "gap")
+        counts only where the question uses it as a company: "Target's revenue",
+        "compare Target and Walmart", not "Nvidia's target margin" or "the gap".
+        ``company_slot`` says the whole text is already known to name a company
+        (a planner's company field), so no such reading is needed.
+        """
         normalized = normalize(question)
         words = normalized.split()
         offsets: list[int] = []
@@ -397,6 +445,18 @@ class IssuerIndex:
             position += len(word) + 1
         taken = [False] * len(words)
         found: dict[str, CompanyMention] = {}
+        typed_shapes = _word_shapes(question, len(words))
+        shapes = None if company_slot else typed_shapes
+        # "$TEAM" is Atlassian's ticker, whoever "team" names: the ticker pass reads it.
+        dollar = {
+            position
+            for position, shape in enumerate(typed_shapes or ())
+            if shape.before.endswith("$")
+        }
+        # One-word everyday names, judged once every other name is known.
+        tentative: list[tuple[int, str, CompanyMention]] = []
+        # Names several companies share: kept only where read as a company.
+        strict: set[int] = set()
 
         def note(query: str, mention: CompanyMention) -> None:
             shown = found.get(query)
@@ -408,17 +468,41 @@ class IssuerIndex:
                 # "GOOG vs GOOGL": one company, named twice; the planner says so.
                 found[query] = replace(shown, also_typed=(*shown.also_typed, mention.typed))
 
+        spans: list[tuple[int, int]] = []
         for size in range(min(_MAX_NGRAM, len(words)), 0, -1):
             for start in range(len(words) - size + 1):
                 if any(taken[start : start + size]):
                     continue
                 phrase = " ".join(words[start : start + size])
-                query = self.phrases.get(phrase)
-                if query is None:
+                if size == 1 and start in dollar:
+                    continue
+                shared = size == 1 and phrase not in self.phrases and phrase in self.shared
+                if shared:
+                    # "Lincoln": Lincoln Electric or Lincoln National. The
+                    # resolver finds both, and the analyst is asked which.
+                    owner = phrase.title()
+                    if shapes is not None:
+                        strict.add(start)
+                elif phrase in self.phrases:
+                    owner = self.phrases[phrase]
+                else:
                     continue
                 for slot in range(start, start + size):
                     taken[slot] = True
-                note(query, CompanyMention(query, offsets[start], phrase))
+                mention = CompanyMention(owner, offsets[start], phrase)
+                if shapes is not None and size == 1 and (shared or _ordinary(phrase)):
+                    tentative.append((start, owner, mention))
+                else:
+                    spans.append((start, start + size))
+                    note(owner, mention)
+        if shapes is not None:
+            kept = _as_companies(words, shapes, spans, tentative, strict)
+            for start, owner, mention in tentative:
+                if start in kept:
+                    note(owner, mention)
+                else:
+                    # An everyday word: free for the ticker pass, like any word.
+                    taken[start] = False
         for match in _CIK.finditer(question):
             # "CIK 320193" or SEC's ten-digit "0000320193".
             query = self.ciks.get((match.group(1) or match.group(2)).zfill(10))
@@ -430,24 +514,48 @@ class IssuerIndex:
         name_words = {word for word, used in zip(words, taken, strict=True) if used}
         for match in _TICKER.finditer(question):
             raw, share_class = match.group(1), match.group(2)
-            dollar = match.group(0).startswith("$")
-            if not dollar and (
+            dollar_typed = match.group(0).startswith("$")
+            before = normalize(question[: match.start()]).split()
+            if not dollar_typed and (
                 raw.casefold() in name_words
+                # "Novartis AG", "BioNTech SE": the legal form, not a ticker.
+                or (
+                    raw.casefold() in _NAME_SUFFIXES
+                    and bool(before)
+                    and (before[-1] in name_words or before[-1] in _NAME_SUFFIXES)
+                )
                 or not self._bare_ticker(question, match, named=named, shouted=shouted)
             ):
                 continue
             if share_class is not None:
                 # "BRK.B" is Berkshire's B shares; "P/E" and "U.S." name no class.
                 query = self._share_class(raw, share_class)
-            elif raw.casefold() in self.phrases:
+            elif raw.casefold() in self.phrases and not dollar_typed:
                 # "AAPL" is also an alias phrase; the phrase pass named it once.
                 continue
             else:
                 query = self.tickers.get(raw.upper())
             if query is not None:
                 start = _char_to_word_offset(question, match)
-                note(query, CompanyMention(query, start, raw, bare_ticker=not dollar))
+                note(query, CompanyMention(query, start, raw, bare_ticker=not dollar_typed))
         return sorted(found.values(), key=lambda mention: mention.start)
+
+    def named(self, company: str) -> str | None:
+        """The one company a company field names ("Goldman Sachs", "Merck & Co.", "$TMO").
+
+        None when the field names no company, several, or a company plus other
+        words: "Morgan Stanley Bank" is not a name this index holds whole.
+        """
+        mentions = self.find(company, company_slot=True)
+        if len({mention.query for mention in mentions}) != 1:
+            return None
+        left = normalize(company).split()
+        for mention in mentions:
+            for typed in (mention.typed, *mention.also_typed):
+                for word in normalize(typed).split():
+                    if word in left:
+                        left.remove(word)
+        return mentions[0].query if all(word in _FILLER_WORDS for word in left) else None
 
     def _bare_ticker(
         self, question: str, match: re.Match[str], *, named: bool, shouted: bool
@@ -481,8 +589,17 @@ class IssuerIndex:
     def correct(
         self, question: str, *, ignore: frozenset[str] = frozenset()
     ) -> list[CompanyMention]:
-        """Close misspellings of a company name ("Microsft", "Nvida")."""
+        """Close misspellings of a company name ("Microsft", "Nvida").
+
+        A word inside a hyphened phrase ("apples-to-apples", "year-over-year")
+        is that phrase's, not a misspelt name.
+        """
         candidates = [phrase for phrase in self.phrases if len(phrase) >= _TYPO_MIN_LENGTH]
+        ignore = ignore | {
+            part.casefold()
+            for compound in re.findall(r"\w+(?:-\w+)+", question)
+            for part in compound.split("-")
+        }
         mentions: list[CompanyMention] = []
         position = 0
         for word in normalize(question).split():
@@ -598,6 +715,203 @@ def _figure_follows(question: str, match: re.Match[str]) -> bool:
         return not question[: match.start()].strip(" $")
     after = _FIGURE_AFTER.match(rest.lstrip())
     return after is not None and after.group(1).casefold() in _figure_words()
+
+
+@dataclass(frozen=True)
+class _Shape:
+    """How a word of the question was typed: its case, a possessive, what came before."""
+
+    typed: str
+    possessive: bool
+    before: str
+
+
+def _word_shapes(question: str, count: int) -> list[_Shape] | None:
+    """The typed form of each of ``normalize(question)``'s words, or None if they differ."""
+    text = question.replace("’", "'")
+    shapes: list[_Shape] = []
+    end = 0
+    for match in re.finditer(r"[\w&]+", text):
+        word = match.group(0)
+        if word.casefold() == "s" and text[match.start() - 1 : match.start()] == "'":
+            # normalize() drops the "'s": the word before it is possessive.
+            if shapes and match.start() - 1 == end:
+                shapes[-1] = replace(shapes[-1], possessive=True)
+            end = match.end()
+            continue
+        shapes.append(_Shape(word, False, text[end : match.start()]))
+        end = match.end()
+    return shapes if len(shapes) == count else None
+
+
+def _ordinary(phrase: str) -> bool:
+    """Whether a one-word name is also a word people write ("target", "oracle")."""
+    return phrase in _everyday_words() or phrase in _common_words()
+
+
+# Words before an everyday word that make it the word, not the company:
+# "its target", "the gap", "any intel", "price target".
+_WORD_BEFORE = frozenset(
+    """
+    a an the its their our his her my your this that these those any some no every each
+    another such what which whose price key main
+    """.split()  # noqa: SIM905
+)
+# Words that join two companies: "Target and Walmart", "Block vs PayPal".
+_JOINS = frozenset({"and", "or", "&", "vs", "versus", "v", "against", "with", "to", "than"})
+# Legal-form words after a name typed in full: "match group", "gap inc".
+_NAME_ENDS = frozenset(
+    {"inc", "corp", "corporation", "company", "co", "ltd", "plc", "holdings", "group"}
+)
+# Words before a company in a question: "compare Target", "what about Block?".
+_COMPANY_BEFORE = frozenset({"compare", "about", "between", "versus", "vs"})
+# A company as the object of "for" or "of" closes its clause: "revenue for Target",
+# "revenue for Target last quarter", but not "a target of 30%".
+_OBJECT_BEFORE = frozenset({"for", "of", "at", "from"})
+_CLAUSE_AFTER = frozenset(
+    {
+        "last",
+        "past",
+        "previous",
+        "prior",
+        "trailing",
+        "recent",
+        "most",
+        "in",
+        "over",
+        "since",
+        "during",
+        "this",
+        "and",
+        "or",
+        "vs",
+        "versus",
+        "compared",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "fy",
+    }
+)
+# Verbs a company does in a question: "how did Target do", "is Block growing".
+_COMPANY_VERBS = frozenset(
+    """
+    do does did doing done perform performs performed performing earn earns earned earning
+    make makes made making report reports reported reporting grow grows grew growing
+    spend spends spent stack stacks stacked rank ranks ranked compare compares compared
+    """.split()  # noqa: SIM905
+)
+
+
+def _as_companies(
+    words: list[str],
+    shapes: list[_Shape],
+    spans: list[tuple[int, int]],
+    tentative: list[tuple[int, str, CompanyMention]],
+    strict: AbstractSet[int] = frozenset(),
+) -> set[int]:
+    """The everyday-word names in ``tentative`` the question uses as companies.
+
+    A name filings write capitalised ("Oracle", "Intel") is kept unless typed
+    in lower case after a determiner or possessive ("ask the oracle", "any
+    intel"). A word filings write in lower case ("target", "block", "gap") must
+    be read as a company. Kept are the words the question uses so: typed with a capital
+    mid-sentence ("is Target growing"), possessive ("target's margin"), listed
+    with another company ("Target and Walmart"), the object of a comparison
+    ("what about block?"), followed by a figure or a company's verb ("target
+    revenue", "how did gap do"), or the whole question. Dropped is the word
+    after a determiner or another word's possessive ("its target", "Nvidia's
+    target margin"), and a lower-case word where the question capitalises the
+    companies it names ("Nvidia target margin").
+    """
+    alphabetic = [shape.typed for shape in shapes if shape.typed.isalpha()]
+    capitals = sum(word[0].isupper() for word in alphabetic)
+    # A shouted or Title Case question says nothing by its capitals.
+    cased = not (
+        len(alphabetic) >= _SHOUTED_MIN_WORDS and capitals >= _SHOUTED_SHARE * len(alphabetic)
+    )
+    kept: set[int] = set()
+    everyday: list[int] = []
+    for start, _, _ in tentative:
+        if start in strict or words[start] in _everyday_words():
+            everyday.append(start)
+        elif not (shapes[start].typed.islower() and _word_before(words, shapes, start)):
+            # A name filings capitalise ("Nvidia", "Oracle") is a company unless
+            # the question plainly uses the word: "ask the oracle", "any intel".
+            kept.add(start)
+    company_words = {index for start, stop in spans for index in range(start, stop)} | kept
+    named_in_capitals = any(shapes[index].typed[0].isupper() for index in company_words)
+
+    def _sentence_start(index: int) -> bool:
+        return index == 0 or re.search(r"[.!?:;]\s*$", shapes[index].before) is not None
+
+    def _joined(index: int) -> bool:
+        for step in (-1, 1):
+            near, far = index + step, index + 2 * step
+            if not 0 <= near < len(words):
+                continue
+            if near in company_words:
+                # "Target, Walmart" or "Target/Walmart"
+                if re.search(r"[,/;]", shapes[max(near, index)].before):
+                    return True
+            elif words[near] in _JOINS and far in company_words:
+                return True
+        return False
+
+    def _as_company(start: int) -> bool:
+        shape = shapes[start]
+        previous = words[start - 1] if start else None
+        following = words[start + 1] if start + 1 < len(words) else None
+        lower = shape.typed.islower()
+        if len(words) == 1 or (
+            # A capital says a name, not which company: "banks in Texas".
+            cased and not lower and not _sentence_start(start) and start not in strict
+        ):
+            return True
+        if _joined(start) or following in _NAME_ENDS:
+            # "the Progressive Corporation": a legal form after the word makes it a name.
+            return True
+        if _word_before(words, shapes, start) or (cased and lower and named_in_capitals):
+            return False
+        return (
+            shape.possessive
+            or following in _figure_words()
+            or following in _COMPANY_VERBS
+            or previous in _COMPANY_BEFORE
+            or (previous in _OBJECT_BEFORE and (following is None or following in _CLAUSE_AFTER))
+            # "Target?" or "Revenue, Target" ends the question.
+            or (not lower and following is None)
+        )
+
+    # A company found here can join the next: "compare target and gap".
+    changed = True
+    while changed:
+        changed = False
+        for start in everyday:
+            if start not in company_words and _as_company(start):
+                kept.add(start)
+                company_words.add(start)
+                changed = True
+    return kept
+
+
+def _word_before(words: list[str], shapes: list[_Shape], start: int) -> bool:
+    """A determiner or another word's possessive before it: "its target", "Nvidia's target"."""
+    return start > 0 and (words[start - 1] in _WORD_BEFORE or shapes[start - 1].possessive)
+
+
+@lru_cache(maxsize=1)
+def _everyday_words() -> frozenset[str]:
+    """Words 10-Qs mostly write in lower case mid-sentence: English, not a name.
+
+    Built by scripts/build_everyday_words.py.
+    """
+    path = Path(__file__).parent / "data" / "everyday_words.txt"
+    try:
+        return frozenset(path.read_text(encoding="utf-8").split())
+    except OSError:
+        return frozenset()
 
 
 @lru_cache(maxsize=1)

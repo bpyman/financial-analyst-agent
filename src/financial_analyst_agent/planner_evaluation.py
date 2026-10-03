@@ -3,9 +3,12 @@
 Each case is a conversation run end to end on the recorded runtime: SEC facts,
 rankings and news are replayed, and only the planner changes. So a score is
 what a visitor would get from that planner, after the shared guards, period
-reading and resolution, not the planner's raw output. Each case is labelled in
-``docs/evaluation/planner-cases.json``; the held-out cases were labelled before
-either planner ran on them.
+reading and resolution, not the planner's raw output. Cases are labelled in
+``docs/evaluation/``: the scorecard's questions and the development cases in
+``planner-cases.json`` and ``planner-cases-v2.json``, and the held-out cases in
+``planner-cases-held-out.json``. Held-out cases were written by a separate
+session after the planner changes they measure, and nobody changing a planner
+read them before they were run.
 
 The rules planner is free and deterministic. The LLM planner calls OpenAI on
 the configured key, so it runs only when asked, with prices and a budget given
@@ -38,6 +41,12 @@ from financial_analyst_agent.runtime import recorded_runtime
 from financial_analyst_agent.thread_store import EphemeralThreadStore
 
 CASES_PATH = Path("docs/evaluation/planner-cases.json")
+CASE_PATHS = (
+    CASES_PATH,
+    Path("docs/evaluation/planner-cases-v2.json"),
+    Path("docs/evaluation/planner-cases-held-out.json"),
+)
+SPLITS = (("scorecard", "Scorecard"), ("dev", "Development"), ("held_out", "Held out"))
 REPORT_PATH = Path("docs/evaluation/planner-comparison.md")
 REPORT_JSON_PATH = Path("docs/evaluation/planner-comparison.json")
 FIELDS = (
@@ -117,8 +126,9 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
-def load_cases(path: Path = CASES_PATH) -> list[PlannerCase]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def load_cases(*paths: Path) -> list[PlannerCase]:
+    """The cases in ``paths``, or in every case file that exists."""
+    chosen = paths or tuple(path for path in CASE_PATHS if path.exists())
     cases = [
         PlannerCase(
             case_id=raw["id"],
@@ -127,8 +137,12 @@ def load_cases(path: Path = CASES_PATH) -> list[PlannerCase]:
             turns=tuple(raw["turns"]),
             expect=dict(raw["expect"]),
         )
-        for raw in payload["cases"]
+        for path in chosen
+        for raw in json.loads(path.read_text(encoding="utf-8"))["cases"]
     ]
+    splits = {case.split for case in cases} - {split for split, _ in SPLITS}
+    if splits:
+        raise ValueError(f"unknown splits: {sorted(splits)}")
     unknown = {key for case in cases for key in case.expect} - set(FIELDS)
     if unknown:
         raise ValueError(f"unknown expectation fields: {sorted(unknown)}")
@@ -159,7 +173,9 @@ def observe(turn: ConversationTurn) -> Observation:
     if spec is not None:
         tickers |= {company.ticker for company in spec.companies if company.ticker}
         metrics = set(spec.metrics) or metrics
-        periods = (spec.periods.kind, spec.periods.count)
+        # A window is scored as asked: the recording holds about nine quarters a
+        # company, and the answer says when it shows fewer than were asked for.
+        periods = (spec.periods.kind, spec.periods.asked or spec.periods.count)
         operations = frozenset(spec.operations)
     # A comparison shows growth as year-over-year rows rather than an operation.
     if any(row.comparison == "yoy" for row in result.table_rows):
@@ -327,7 +343,7 @@ def summarize(
     split_of = {case.case_id: case.split for case in cases}
     runs = sorted({result.run for result in results})
     splits: dict[str, Any] = {}
-    for split in ("scorecard", "held_out", "all"):
+    for split in (*(name for name, _ in SPLITS), "all"):
         chosen = [r for r in results if split == "all" or split_of[r.case_id] == split]
         if not chosen:
             continue
@@ -429,10 +445,15 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# Rules planner vs LLM planner",
         "",
-        f"Generated `{report['generated_at']}` on the recorded runtime. Cases: "
-        f"[`planner-cases.json`](planner-cases.json) ({report['case_count']}: "
-        f"{report['scorecard_count']} scorecard questions, {report['held_out_count']} held-out "
-        "paraphrases labelled before either planner ran on them).",
+        f"Generated `{report['generated_at']}` on the recorded runtime, over "
+        f"{report['case_count']} cases: {report['scorecard_count']} scorecard questions and "
+        f"{report['dev_count']} development cases ([`planner-cases.json`](planner-cases.json), "
+        "[`planner-cases-v2.json`](planner-cases-v2.json)), and "
+        f"{report['held_out_count']} held-out cases "
+        "([`planner-cases-held-out.json`](planner-cases-held-out.json)). Every case was "
+        "labelled before a planner ran on it. The held-out cases were written by a separate "
+        "session after the planner changes, and were not read by whoever changed a planner "
+        "until this run.",
         "",
         "Each case is a conversation run end to end with only the planner swapped, and is "
         "scored on the last turn's outcome (answer, clarify or refuse), intent, companies, "
@@ -450,7 +471,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             "| Split | Cases | Accuracy | Spread across runs (sd) | Agreement across runs |"
         )
         lines.append("| --- | ---: | ---: | ---: | ---: |")
-        for split, label in (("scorecard", "Scorecard"), ("held_out", "Held out"), ("all", "All")):
+        for split, label in (*SPLITS, ("all", "All")):
             row = planner["splits"].get(split)
             if row:
                 lines.append(
@@ -504,9 +525,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         )
         lines.append("")
     lines.append(
-        "The held-out cases measure how a planner generalises only while neither planner is "
-        "tuned on them: after changing a planner to pass them, write a fresh held-out set "
-        "before comparing again. "
+        "The held-out cases measure how a planner generalises only while no planner is "
+        "tuned on them: once a planner is changed because of them, they become development "
+        "cases and a fresh held-out set is written before comparing again. "
         "The rules planner is deterministic, so its spread is zero by construction. The "
         "recorded runtime replays SEC data, so the comparison isolates planning; it says "
         "nothing about EDGAR freshness. See [the scorecard](scorecard.md) and "
@@ -544,7 +565,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--planners", default="rules", help="rules, llm, or rules,llm")
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--split", choices=("all", "scorecard", "held_out"), default="all")
+    parser.add_argument(
+        "--split", choices=("all", *(name for name, _ in SPLITS)), default="all"
+    )
     parser.add_argument("--limit", type=int, default=0, help="only the first N cases (a pilot)")
     parser.add_argument("--input-price", type=float, help="USD per million input tokens")
     parser.add_argument("--output-price", type=float, help="USD per million output tokens")
@@ -573,6 +596,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "generated_at": datetime.now(UTC).isoformat(),
         "case_count": len(cases),
         "scorecard_count": sum(case.split == "scorecard" for case in cases),
+        "dev_count": sum(case.split == "dev" for case in cases),
         "held_out_count": sum(case.split == "held_out" for case in cases),
         "planners": {},
     }

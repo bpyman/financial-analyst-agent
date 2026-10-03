@@ -50,6 +50,7 @@ from financial_analyst_agent.graph.spec_turn import (
     is_qualitative_proposal,
     is_structured_proposal,
     plan_to_spec_patch,
+    planner_window,
     resolve_request,
 )
 from financial_analyst_agent.graph.state import (
@@ -147,7 +148,8 @@ def request_from_proposal(proposal: Any, message: str, deps: TurnDeps) -> Analys
         )
     if is_structured_proposal(proposal):
         planned = isinstance(proposal, SpecPatch)
-        patch = proposal if planned else plan_to_spec_patch(proposal)
+        # A planner's window stands only where the words ask about time.
+        patch = planner_window(proposal if planned else plan_to_spec_patch(proposal), message)
         intent = None if planned else getattr(proposal, "intent", None)
         notes = getattr(proposal, "notes", ()) or ()
         runtime = deps.runtime
