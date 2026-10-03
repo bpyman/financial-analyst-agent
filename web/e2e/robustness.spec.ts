@@ -116,6 +116,8 @@ test("a failed turn on a full conversation offers Start over, never Try again", 
     });
   });
   await page.getByRole("textbox", { name: "Ask a question" }).fill("add Apple");
+  // After a reload the window first checks for a turn still running; Send waits for it.
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   await page.keyboard.press("Enter");
 
   const failed = page.locator('[data-turn="pending"]');
