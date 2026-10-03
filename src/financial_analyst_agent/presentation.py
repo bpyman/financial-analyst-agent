@@ -32,7 +32,7 @@ from financial_analyst_agent.contracts import (
     split_between,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
-from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.guide import possessive, short_name
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     TRAILING_YEAR_LABEL,
@@ -306,7 +306,7 @@ def long_quarter_banner(rows: list[TableRow]) -> str:
         weeks = " or ".join(str(week) for week in sorted({round(days / 7) for _, days in quarters}))
         ends = _join_words([format_date(end) for end, _ in quarters])
         plural = "quarters" if len(quarters) > 1 else "quarter"
-        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        owner = possessive(name)
         notes.append(f"{owner} {plural} ended {ends} ran {weeks} weeks")
     if not notes:
         return ""
@@ -380,8 +380,7 @@ def restated_banners(rows: list[TableRow]) -> list[str]:
 
 
 def _owner(row: TableRow) -> str:
-    name = short_name(row.company_name) or row.company_name
-    return f"{name}'" if name.endswith("s") else f"{name}'s"
+    return possessive(short_name(row.company_name) or row.company_name)
 
 
 def _plural(word: str, items: list[str]) -> str:
@@ -2239,7 +2238,7 @@ def overview_headline(rows: list[TableRow]) -> str | None:
     if revenue is None or len({row.end_date for row in levels}) != 1 or len(by_metric) < 2:
         return None
     name = short_name(revenue.company_name) or revenue.company_name
-    owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+    owner = possessive(name)
     sentence = f"{owner} revenue was {_format_cell(revenue, 'value')}"
     if revenue.end_date is not None:
         sentence += f" in the quarter ended {format_date(revenue.end_date)}"
@@ -2283,7 +2282,7 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     for index, row in enumerate(ordered):
         percent = change_percent(row) or Decimal(0)
         name = short_name(row.company_name) or row.company_name
-        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        owner = possessive(name)
         subject = f"{owner} {label}" if index == 0 else owner
         mark = DERIVED_MARK if is_derived(row) else ""
         if percent == 0:

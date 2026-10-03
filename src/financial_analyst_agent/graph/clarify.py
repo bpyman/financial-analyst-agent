@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from financial_analyst_agent.contracts import RendererKind, TurnResult
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import bind_periods_from_message
+from financial_analyst_agent.graph.spec_turn import bind_periods_from_message, is_removal
 from financial_analyst_agent.graph.state import (
     Clarification,
     PendingClarification,
@@ -23,10 +23,6 @@ from financial_analyst_agent.graph.state import (
 )
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
-_REMOVE_METRIC_EDIT = re.compile(
-    r"^\s*(?:drop|remove|without)\s+",
-    re.IGNORECASE,
-)
 _NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
 _ASKS = re.compile(r"\b(?:what|which|how|why|compare)\b|['’]s\b", re.IGNORECASE)
 _MAX_ANSWER_WORDS = 6
@@ -214,7 +210,7 @@ def pending_from_clarify(
     if result.clarify_kind is None:
         raise ValueError("clarify result is missing clarify_kind")
     metric_role: Literal["add", "remove"] = (
-        "remove" if _REMOVE_METRIC_EDIT.match(question.strip()) else "add"
+        "remove" if is_removal(question) else "add"
     )
     return PendingClarification(
         kind=result.clarify_kind,

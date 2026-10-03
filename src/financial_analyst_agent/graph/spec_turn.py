@@ -71,7 +71,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     validate_spec,
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
-from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.guide import possessive, short_name
 from financial_analyst_agent.observability import log_event
 from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
@@ -726,6 +726,11 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
 def _extend(patch: SpecPatch, **fields: Any) -> SpecPatch:
     """The patch as an edit of the current analysis rather than a new ranking."""
     return patch.model_copy(update={"mode": "extend", "ranked_request": None, **fields})
+
+
+def is_removal(message: str) -> bool:
+    """ "drop revenue", "remove Apple", "without margins": an edit that takes away."""
+    return _DROP_EDIT.match(message.strip()) is not None
 
 
 def _swap_pair(message: str) -> tuple[str, str] | None:
@@ -2213,10 +2218,6 @@ def _already_present_notes(
     return [f"{' and '.join(names)} {'is' if len(names) == 1 else 'are'} already in this analysis."]
 
 
-def _possessive(name: str) -> str:
-    return f"{name}'" if name.endswith("s") else f"{name}'s"
-
-
 def _short_date(day: date) -> str:
     return f"{day:%b} {day.day}, {day.year}"
 
@@ -2242,12 +2243,12 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
     if single and not periods.named[0].calendar and len(dated) == 1:
         company = dated[0]
         notes.append(
-            f"{_possessive(short_name(company.name) or company.query)} {label} ended "
+            f"{possessive(short_name(company.name) or company.query)} {label} ended "
             f"{_short_date(own[company.query.casefold()][0])}."
         )
     elif single and not periods.named[0].calendar and dated:
         ends = [
-            f"{_possessive(short_name(company.name) or company.query)} ended "
+            f"{possessive(short_name(company.name) or company.query)} ended "
             f"{_short_date(own[company.query.casefold()][0])}"
             for company in spec.companies
             if own.get(company.query.casefold())

@@ -206,7 +206,7 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
             return _guide(STOCK_PICKS_MESSAGE, list(STARTER_QUESTIONS[:3]))
         name, _query = named
         return _guide(
-            ADVICE_MESSAGE.format(subject=f"{name}'s"),
+            ADVICE_MESSAGE.format(subject=possessive(name)),
             [
                 f"How is {name} doing?",
                 f"Show {name}'s revenue year over year",
@@ -370,6 +370,13 @@ _SUFFIX = re.compile(
     r"|& co|& company|and company|a/s|ag|s\.?a|n\.?v|se)\.?)+$",
     re.IGNORECASE,
 )
+
+
+def possessive(name: str) -> str:
+    """ "Apple's", "Abbott Laboratories'", and "Lowe's" left as it is."""
+    if name.endswith(("'s", "’s")):
+        return name
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
 
 
 def short_name(name: str) -> str:
