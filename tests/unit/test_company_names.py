@@ -264,3 +264,62 @@ def test_a_typed_ticker_is_that_listing_even_where_it_is_a_name(company: str, ti
 )
 def test_listing_names_read_as_their_company(question: str, companies: list[str]) -> None:
     assert _found(question) == companies
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("NVDA, AMD and INTC revenue", ["NVDA", "AMD", "INTC"]),
+        ("NVDA vs INTC", ["NVDA", "INTC"]),
+        ("MA vs AAPL", ["MA", "Apple"]),
+        ("AAPL vs ON", ["Apple", "ON"]),
+        ("COMPARE NVDA AND INTC REVENUE", ["NVDA", "INTC"]),
+        # Capitals as tone still read words as words.
+        ("WHAT IS NVIDIA NET MARGIN NOW?", ["NVDA"]),
+        ("Is Apple ON track?", ["Apple"]),
+    ],
+)
+def test_a_list_of_tickers_keeps_every_ticker(question: str, companies: list[str]) -> None:
+    assert _found(question) == companies
+
+
+@pytest.mark.parametrize(
+    ("question", "companies"),
+    [
+        ("TEAM revenue", ["TEAM"]),
+        ("COKE revenue", ["COKE"]),
+        ("Compare TEAM and MSFT revenue", ["TEAM", "Microsoft"]),
+        # Typed as a name, it is the name's company.
+        ("Team revenue", ["TISI"]),
+        ("Coke revenue", ["KO"]),
+        # Shouted, capitals say nothing: the name reading stands.
+        ("HOW IS TEAM DOING", ["TISI"]),
+    ],
+)
+def test_a_ticker_typed_in_a_question_is_that_listing(question: str, companies: list[str]) -> None:
+    assert _found(question) == companies
+
+
+@pytest.mark.parametrize(
+    ("turns", "tickers"),
+    [
+        (("Microsoft revenue", "add Lincoln", "1"), ["MSFT", "LECO"]),
+        (("Microsoft revenue", "add Lincoln", "Lincoln National"), ["MSFT", "LNC"]),
+        (("Microsoft revenue", "what about Lincoln?", "2"), ["LNC"]),
+    ],
+)
+def test_a_follow_ups_shared_name_is_asked_once(
+    tmp_path: Path, turns: tuple[str, ...], tickers: list[str]
+) -> None:
+    runtime = Runtime(
+        completer=DemoCompleter(issuer_index()),
+        facts=_Facts(),  # type: ignore[arg-type]
+        ranking=_ranking(),
+    )
+    store = LocalThreadStore(tmp_path)
+    for message in turns:
+        turn = run_conversation_turn("t1", message, runtime, store=store)
+
+    assert turn.result.renderer is not RendererKind.CLARIFY
+    assert turn.analysis_spec is not None
+    assert [company.ticker for company in turn.analysis_spec.companies] == tickers

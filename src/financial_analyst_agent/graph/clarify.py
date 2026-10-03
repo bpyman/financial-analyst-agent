@@ -250,7 +250,12 @@ def resumed_request(
         else:
             companies = (*companies, answer)
         patch = pending.patch.model_copy(update={"add_companies": companies})
-        wording = pending.question or message
+        return StructuredRequest(
+            patch=patch,
+            wording=pending.question or message,
+            question=pending.question or message,
+            company_choice=(pending.subject, answer),
+        )
     else:  # ambiguous_mode: the held question is what the chosen scope answers.
         mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
         patch = pending.patch.model_copy(update={"mode": mode})

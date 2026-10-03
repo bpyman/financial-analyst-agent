@@ -1581,6 +1581,17 @@ class Resolution:
     compiled: CompiledAnalysis | None = None
 
 
+def _with_company_choice(patch: SpecPatch, subject: str, ticker: str) -> SpecPatch:
+    """The patch with the chosen company wherever the shared name stood."""
+    named = subject.casefold()
+    companies = tuple(
+        ticker if company.casefold() == named else company for company in patch.add_companies
+    )
+    if ticker not in companies:
+        companies = (*companies, ticker)
+    return patch.model_copy(update={"add_companies": tuple(dict.fromkeys(companies))})
+
+
 def _with_comparison(spec: AnalysisSpec, comparison: str) -> AnalysisSpec:
     """The analysis with its changes measured as the analyst chose."""
     operations = [op for op in spec.operations if op != "year_over_year"]
@@ -1643,6 +1654,9 @@ def resolve_request(
     patch = refine_patch_from_message(
         patch, message, current_spec, index=getattr(runtime.ranking, "index", None)
     )
+    if request.company_choice is not None:
+        # The held wording reads "Lincoln" again; the analyst already chose which.
+        patch = _with_company_choice(patch, *request.company_choice)
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})

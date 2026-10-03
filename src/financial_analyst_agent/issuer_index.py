@@ -218,6 +218,10 @@ _TYPO_MIN_LENGTH = 5
 _SHORT_TYPO_LENGTH = 4
 # Words this long are corrected at one edit ("Nvidea", "Telsa", "Oracel").
 _EDIT_TYPO_LENGTHS = range(5, 8)
+# A ticker just before or after a list word: "AAPL vs ON", "ON, NVDA and AMD".
+_LIST_JOIN = r"(?:,|&|/|\band\b|\bor\b|\bvs\.?|\bversus\b|\bagainst\b|\bwith\b)"
+_TICKER_BEFORE = re.compile(rf"\$?\b([A-Z]{{1,5}})\s*{_LIST_JOIN}\s*$")
+_TICKER_AFTER = re.compile(rf"^\s*{_LIST_JOIN}\s*\$?([A-Z]{{1,5}})\b")
 # Most of a question's words in capitals: it is shouted, not a list of tickers.
 _SHOUTED_SHARE = 0.6
 _SHOUTED_MIN_WORDS = 3
@@ -457,6 +461,7 @@ class IssuerIndex:
         tentative: list[tuple[int, str, CompanyMention]] = []
         # Names several companies share: kept only where read as a company.
         strict: set[int] = set()
+        shouted = _shouted(question)
 
         def note(query: str, mention: CompanyMention) -> None:
             shown = found.get(query)
@@ -487,10 +492,27 @@ class IssuerIndex:
                     owner = self.phrases[phrase]
                 else:
                     continue
+                typed = typed_shapes[start].typed if typed_shapes and size == 1 else ""
+                ticker = self.tickers.get(typed) if typed.isupper() and len(typed) > 1 else None
+                as_ticker = (
+                    ticker is not None
+                    and not shouted
+                    and ticker != owner
+                    and (shared or owner in self.tickers)
+                    # "HP" is HP Inc.'s own name, written so: the name stands.
+                    and [word.strip(",.") for word in self.display_name(owner).split()[:1]]
+                    != [typed]
+                )
+                if as_ticker and ticker is not None:
+                    # "TEAM revenue" typed as a ticker is Atlassian, though "team"
+                    # names Team Inc; "COKE" is Coca-Cola Consolidated, not Coke.
+                    owner, shared = ticker, False
+                    strict.discard(start)
                 for slot in range(start, start + size):
                     taken[slot] = True
                 mention = CompanyMention(owner, offsets[start], phrase)
-                if shapes is not None and size == 1 and (shared or _ordinary(phrase)):
+                ordinary = shared or _ordinary(phrase)
+                if shapes is not None and size == 1 and ordinary and not as_ticker:
                     tentative.append((start, owner, mention))
                 else:
                     spans.append((start, start + size))
@@ -509,7 +531,6 @@ class IssuerIndex:
             if query is not None and query not in found:
                 found[query] = CompanyMention(query, _char_to_word_offset(question, match), query)
         named = bool(found)
-        shouted = _shouted(question)
         # The "J" of "J.P. Morgan" belongs to the name the phrase pass found.
         name_words = {word for word, used in zip(words, taken, strict=True) if used}
         for match in _TICKER.finditer(question):
@@ -569,13 +590,33 @@ class IssuerIndex:
         following = question[match.end() :].split(maxsplit=1)
         if following and following[0].casefold() in _METRIC_STARTS.get(raw, frozenset()):
             return False
-        if shouted and named:
-            # "WHAT IS NVIDIA NET MARGIN NOW?": capitals are the question's tone.
+        if (
+            shouted
+            and named
+            and _is_a_word(raw.casefold())
+            and not self._listed_beside_ticker(question, match)
+        ):
+            # "WHAT IS NVIDIA NET MARGIN NOW?": capitals are the question's tone, so a
+            # word is a word. "NVDA, AMD AND INTC REVENUE" still lists three tickers.
             return False
         if raw.casefold() in _ENGLISH_WORDS or raw.casefold() in _figure_words():
-            # "NOW revenue" is ServiceNow; "Apple, now and then" is not.
-            return not named and not shouted and _figure_follows(question, match)
+            # "NOW revenue" is ServiceNow; "Apple, now and then" is not; "AAPL vs ON"
+            # lists onsemi beside another ticker.
+            return (
+                not named and not shouted and _figure_follows(question, match)
+            ) or self._listed_beside_ticker(question, match)
         return True
+
+    def _listed_beside_ticker(self, question: str, match: re.Match[str]) -> bool:
+        """Whether the word sits in a list next to another ticker: "AAPL vs ON", "ON, NVDA"."""
+        before = _TICKER_BEFORE.search(question[: match.start()])
+        after = _TICKER_AFTER.match(question[match.end() :])
+        return any(
+            found is not None
+            and found.group(1) in self.tickers
+            and not _is_a_word(found.group(1).casefold())
+            for found in (before, after)
+        )
 
     def _share_class(self, raw: str, share_class: str) -> str | None:
         """ "BRK.B" as listed, or "BRK.A" as the class the snapshot keeps."""
@@ -742,6 +783,17 @@ def _word_shapes(question: str, count: int) -> list[_Shape] | None:
         shapes.append(_Shape(word, False, text[end : match.start()]))
         end = match.end()
     return shapes if len(shapes) == count else None
+
+
+def _is_a_word(word: str) -> bool:
+    """Whether a capitalised token is plausibly a word rather than a ticker."""
+    return (
+        word in _ENGLISH_WORDS
+        or word in _GENERIC_WORDS
+        or word in _figure_words()
+        or word in _common_words()
+        or word in _everyday_words()
+    )
 
 
 def _ordinary(phrase: str) -> bool:
