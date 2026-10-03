@@ -19,7 +19,7 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec
-from financial_analyst_agent.issuer_index import expand_groups
+from financial_analyst_agent.issuer_index import CompanyNames, expand_groups
 
 STARTER_QUESTIONS: tuple[str, ...] = (
     "How is Nvidia doing?",
@@ -187,7 +187,9 @@ def _spec_company(spec: AnalysisSpec | None) -> tuple[str, str] | None:
     return None
 
 
-def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> TurnResult | None:
+def guide_reply(
+    message: str, spec: AnalysisSpec | None, index: CompanyNames | None = None
+) -> TurnResult | None:
     """A guide answer when the message is not an analysis request, else None."""
     text = _normalized(message)
     if not text:
@@ -255,7 +257,7 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
     return None
 
 
-def _names_figure(message: str, index: Any) -> bool:
+def _names_figure(message: str, index: CompanyNames | None) -> bool:
     """Whether a message names a catalog metric or a company: an analysis, not a chat."""
     from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
@@ -274,14 +276,13 @@ def _not_english(text: str) -> bool:
     return foreign and resolve_metric_phrase(text).kind == "unknown"
 
 
-def _etf_ticker(message: str, index: Any) -> str | None:
+def _etf_ticker(message: str, index: CompanyNames | None) -> str | None:
     """A fund's ticker named on its own ("QQQ revenue"), which no company list holds."""
     found = [match.group(1) for match in _ETF_MENTION.finditer(message)]
     etf = next((ticker for ticker in found if ticker in _ETF_TICKERS), None)
     if etf is None:
         return None
-    find = getattr(index, "find", None)
-    return etf if not callable(find) or not find(message) else None
+    return etf if index is None or not index.find(message) else None
 
 
 def resets_analysis(message: str) -> bool:
@@ -305,7 +306,9 @@ def _joined(names: list[str]) -> str:
     return ", ".join(names[:-1]) + " or " + names[-1]
 
 
-def not_recorded_reply(message: str, index: Any, outside: Any) -> TurnResult | None:
+def not_recorded_reply(
+    message: str, index: CompanyNames | None, outside: CompanyNames | None
+) -> TurnResult | None:
     """A reply for a figures question naming only companies the recording left out.
 
     ``outside`` is the live snapshot's index on the recorded runtime. A company it
@@ -316,8 +319,7 @@ def not_recorded_reply(message: str, index: Any, outside: Any) -> TurnResult | N
     missing = unrecorded_companies(message, index, outside)
     if not missing:
         return None
-    find = getattr(index, "find", None)
-    if callable(find) and find(expand_groups(message)):
+    if index is not None and index.find(expand_groups(message)):
         return None
     return _guide(NOT_RECORDED_MESSAGE.format(name=missing[0]), list(STARTER_QUESTIONS[:3]))
 
@@ -336,32 +338,31 @@ def not_recorded_banner(missing: list[str]) -> str:
     )
 
 
-def unrecorded_companies(message: str, index: Any, outside: Any) -> list[str]:
+def unrecorded_companies(
+    message: str, index: CompanyNames | None, outside: CompanyNames | None
+) -> list[str]:
     """Display names of companies ``outside`` finds in the message but ``index`` lacks."""
-    find = getattr(index, "find", None)
-    outside_find = getattr(outside, "find", None)
-    if not callable(find) or not callable(outside_find):
+    if index is None or outside is None:
         return []
     missing: list[str] = []
-    for mention in outside_find(expand_groups(message)):
-        if find(mention.typed):
+    for mention in outside.find(expand_groups(message)):
+        if index.find(mention.typed):
             continue
-        display = getattr(outside, "display_name", lambda value: value)(mention.query)
+        display = outside.display_name(mention.query)
         name = short_name(display) or mention.typed
         if name not in missing:
             missing.append(name)
     return missing
 
 
-def _named_company(message: str, index: Any) -> tuple[str, str] | None:
-    find = getattr(index, "find", None)
-    if not callable(find):
+def _named_company(message: str, index: CompanyNames | None) -> tuple[str, str] | None:
+    if index is None:
         return None
-    mentions = find(message)
+    mentions = index.find(message)
     if not mentions:
         return None
     query = mentions[0].query
-    display = getattr(index, "display_name", lambda value: value)(query)
+    display = index.display_name(query)
     return short_name(display) or query, query
 
 

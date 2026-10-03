@@ -10,4 +10,8 @@ Spec: ADR 0010 ("One resolver").
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
+
+## Answer
+
+The index is typed as `issuer_index.CompanyNames` (a `Protocol`: `find`, `named`, `display_name`), and every `getattr(index, ...)` / `callable(find)` probe in `graph/clarify.py`, `graph/spec_turn.py`, `guide.py` and `graph/turn_graph.py` is gone; `turn_graph.names_index` is the one place a turn picks its index. `run_filing_change` and `_request_refusal` take the `FilingChangeRequest` their caller passes, and the filing-change tests build one. `MeteredCompleter.__getattr__` stays: it forwards more than the index (the recorded `outside_index`). The planner proposals still probed with `getattr` are ticket 02.

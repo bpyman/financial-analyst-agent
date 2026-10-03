@@ -17,6 +17,7 @@ from financial_analyst_agent.filing_change import (
     parse_sections,
     run_filing_change,
 )
+from financial_analyst_agent.graph.state import FilingChangeRequest
 
 OLDER_HTML = """
 <html><body>
@@ -331,19 +332,16 @@ def test_paragraph_diff_is_deterministic() -> None:
     assert "changed" in kinds or "added" in kinds
     assert all(item.older_accession == OLDER for item in changes)
     assert all(
-        item.newer_url.startswith("https://www.sec.gov/new.htm#:~:text=")
-        for item in changes
+        item.newer_url.startswith("https://www.sec.gov/new.htm#:~:text=") for item in changes
     )
     assert all(
-        item.older_url.startswith("https://www.sec.gov/old.htm#:~:text=")
-        for item in changes
+        item.older_url.startswith("https://www.sec.gov/old.htm#:~:text=") for item in changes
     )
 
 
 def test_run_filing_change_maps_both_reviewed_sections() -> None:
     result = run_filing_change(
-        SimpleNamespace(
-            intent=Intent.FILING_CHANGE,
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -370,7 +368,7 @@ def test_run_filing_change_resolves_actual_primary_document(
     monkeypatch.setattr(facts._client, "get_submissions", lambda cik: payload)
 
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -388,8 +386,10 @@ def test_run_filing_change_resolves_actual_primary_document(
         "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm"
     )
     assert all(
-        change.older_url.startswith(older_base) and "#:~:text=" in change.older_url
-        and change.newer_url.startswith(newer_base) and "#:~:text=" in change.newer_url
+        change.older_url.startswith(older_base)
+        and "#:~:text=" in change.older_url
+        and change.newer_url.startswith(newer_base)
+        and "#:~:text=" in change.newer_url
         for change in result.disclosure_changes
     )
 
@@ -441,7 +441,7 @@ def test_run_filing_change_refuses_unresolved_document(
 
     monkeypatch.setattr(facts._client, "get_filing_document", unexpected_download)
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -474,7 +474,7 @@ def test_a_filing_that_cannot_be_read_is_not_reported_as_missing_its_sections(
 
     monkeypatch.setattr(facts._client, "get_filing_document", unreadable)
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft", older_accession=OLDER, newer_accession=NEWER, section="mda"
         ),
         _runtime(facts),
@@ -492,8 +492,7 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
             return "Revenue jumped to 999 billion based on the filings."
 
     result = run_filing_change(
-        SimpleNamespace(
-            intent=Intent.FILING_CHANGE,
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -514,8 +513,7 @@ def test_numeral_lock_drops_invented_summary_numbers() -> None:
 def test_run_filing_change_refuses_without_a_company_or_with_one_accession() -> None:
     for company, older in (("", ""), ("Microsoft", "0000950170-25-061046")):
         result = run_filing_change(
-            SimpleNamespace(
-                intent=Intent.FILING_CHANGE,
+            FilingChangeRequest(
                 company=company,
                 older_accession=older,
                 newer_accession="",
@@ -530,8 +528,7 @@ def test_run_filing_change_refuses_without_a_company_or_with_one_accession() -> 
 
 def test_run_filing_change_without_accessions_picks_a_year_apart() -> None:
     result = run_filing_change(
-        SimpleNamespace(
-            intent=Intent.FILING_CHANGE,
+        FilingChangeRequest(
             company="Microsoft",
             older_accession="",
             newer_accession="",
@@ -550,8 +547,7 @@ def test_filing_change_banner_uses_the_snapshot_name() -> None:
             return "The Microsoft Company, Inc." if cik == CIK else fallback
 
     result = run_filing_change(
-        SimpleNamespace(
-            intent=Intent.FILING_CHANGE,
+        FilingChangeRequest(
             company="Microsoft",
             older_accession="",
             newer_accession="",
@@ -565,7 +561,7 @@ def test_filing_change_banner_uses_the_snapshot_name() -> None:
 
 def test_run_filing_change_orders_accessions_by_report_date() -> None:
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=NEWER,
             newer_accession=OLDER,
@@ -580,7 +576,7 @@ def test_run_filing_change_orders_accessions_by_report_date() -> None:
 
 def test_run_filing_change_uses_query_accessions_not_plan() -> None:
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession="0000000000-00-000000",
             newer_accession="1111111111-11-111111",
@@ -597,7 +593,7 @@ def test_run_filing_change_ignores_planner_accessions_absent_from_query() -> Non
     # The model never picks filings: accessions only it proposed are dropped and
     # deterministic code picks a year-apart pair instead, saying so.
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -621,7 +617,7 @@ def test_partial_section_failure_is_preserved(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(filing_change, "_section_from_text", missing_risk)
     result = filing_change.run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -660,7 +656,7 @@ def _without(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
 
 def _both_sections(facts: _Facts) -> Any:
     return run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -696,7 +692,7 @@ def test_unreadable_sections_are_not_reported_as_unchanged(
 def test_one_unreadable_section_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
     _without(monkeypatch, "risk_factors")
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -743,7 +739,7 @@ def test_a_summary_the_model_cannot_write_is_explained(raised: str, shown: str) 
             raise ProviderError("OpenAI 502 Bad Gateway")
 
     result = run_filing_change(
-        SimpleNamespace(
+        FilingChangeRequest(
             company="Microsoft",
             older_accession=OLDER,
             newer_accession=NEWER,
@@ -765,8 +761,7 @@ def test_run_filing_change_refuses_a_fund(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(universe, "INELIGIBLE_ISSUER_CIKS", frozenset({"0000789019"}))
 
     result = run_filing_change(
-        SimpleNamespace(
-            intent=Intent.FILING_CHANGE,
+        FilingChangeRequest(
             company="MSFT",
             older_accession="",
             newer_accession="",
@@ -806,16 +801,17 @@ def test_numeral_lock_treats_dates_as_dates_not_figures() -> None:
     assert _numeral_lock_extras("Revenue rose 31%.", grounding) == ["31"]
     assert _numeral_lock_extras("Margins moved 03 points.", grounding) == ["03"]
     # ...and a date written in the essay is not scanned as one.
-    assert _numeral_lock_extras(
-        "Revenue was 245122000000 in the quarter ended March 31, 2026.", grounding
-    ) == []
+    assert (
+        _numeral_lock_extras(
+            "Revenue was 245122000000 in the quarter ended March 31, 2026.", grounding
+        )
+        == []
+    )
     assert _numeral_lock_extras("In fiscal 2026 revenue rose.", grounding) == []
     # A list comma and the next word are not part of a number.
     assert _numeral_lock_extras("It grew 29, then 30.", grounding) == ["29", "30"]
     # A year is a date only beside a word that dates it; an amount stays an amount.
-    assert _numeral_lock_extras("Revenue was 2050 million dollars.", grounding) == [
-        "2050 million"
-    ]
+    assert _numeral_lock_extras("Revenue was 2050 million dollars.", grounding) == ["2050 million"]
     assert _numeral_lock_extras("USD 1999 million on buybacks", grounding) == ["1999 million"]
     assert _numeral_lock_extras("They plan to hire 2000 engineers.", grounding) == ["2000"]
     assert _numeral_lock_extras("Sales rose in March 12% year over year.", grounding) == ["12"]
@@ -939,7 +935,7 @@ def test_curly_quotes_and_renumbered_footnotes_are_not_changes() -> None:
     older = "\n".join(
         [
             "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION",
-            "The company's results reflect the \"core\" business across every segment.",
+            'The company\'s results reflect the "core" business across every segment.',
             "Net mortgage servicing revenue(c) rose on higher volumes this quarter.",
         ]
     )
@@ -956,9 +952,7 @@ def test_curly_quotes_and_renumbered_footnotes_are_not_changes() -> None:
 
 def test_a_page_number_and_company_name_footer_is_not_a_change() -> None:
     prose = "Demand for industrial automation products was steady in the quarter."
-    older = "\n".join(
-        [f"{page} Honeywell International Inc." for page in (35, 36, 37)] + [prose]
-    )
+    older = "\n".join([f"{page} Honeywell International Inc." for page in (35, 36, 37)] + [prose])
     newer = "\n".join(
         [f"{page} Honeywell International Inc." for page in (38, 39, 40, 41)] + [prose]
     )
