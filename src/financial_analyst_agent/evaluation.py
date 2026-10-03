@@ -55,6 +55,8 @@ class EvalCase:
     expect_citations: bool = False
     # Every row's quarter, as (start, end) ISO dates.
     expect_period: tuple[str, str] | None = None
+    # (ticker, value) pairs, each on one row: a figure on the wrong company fails.
+    expect_rows: tuple[tuple[str, str], ...] = ()
 
 
 class _InventingEssay:
@@ -87,7 +89,7 @@ def _cases() -> tuple[EvalCase, ...]:
             Intent.COMPARE,
             RendererKind.TABLE,
             expect_tickers=("TSLA", "GM"),
-            expect_values=("28236000000", "48026000000"),
+            expect_rows=(("TSLA", "28236000000"), ("GM", "48026000000")),
             expect_period=("2026-04-01", "2026-06-30"),
         ),
         EvalCase(
@@ -100,10 +102,13 @@ def _cases() -> tuple[EvalCase, ...]:
             expect_order=(
                 "NVDA", "AAPL", "MSFT", "AVGO", "MU", "AMD", "INTC", "PLTR", "CSCO", "ORCL",
             ),  # fmt: skip
-            expect_values=(
-                "7054000000", "11729000000", "9997000000", "2895000000", "1316000000",
-                "2528000000", "3368000000", "192513000", "2431000000", "2401000000",
+            expect_rows=(
+                ("NVDA", "7054000000"), ("AAPL", "11729000000"), ("MSFT", "9997000000"),
+                ("AVGO", "2895000000"), ("MU", "1316000000"), ("AMD", "2528000000"),
+                ("INTC", "3368000000"), ("PLTR", "192513000"), ("CSCO", "2431000000"),
+                ("ORCL", "2401000000"),
             ),  # fmt: skip
+            expect_banner="Universe snapshot as of",
         ),
         EvalCase(
             "refuse_unknown_metric",
@@ -354,6 +359,10 @@ def _check_result(case: EvalCase, result: Any) -> str:
     ]
     if missing_companies:
         return f"missing companies {missing_companies}"
+    have_rows = {(row.ticker, str(row.value)) for row in result.table_rows if row.value is not None}
+    missing_rows = [pair for pair in case.expect_rows if pair not in have_rows]
+    if missing_rows:
+        return f"missing rows {missing_rows}"
     have_values = {str(row.value) for row in result.table_rows if row.value is not None}
     missing_values = [value for value in case.expect_values if value not in have_values]
     if missing_values:

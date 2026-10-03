@@ -349,6 +349,10 @@ def resolve_spec(draft: SpecDraft, *, ranking: Any | None = None) -> AnalysisSpe
         operations.append("across_companies")
     if constituents is not None and "rank" not in operations:
         operations.append("rank")
+    if "year_over_year" in operations and "across_periods" not in operations:
+        # A change is drawn from the quarters' rows; year over year without them,
+        # as a model's follow-up may ask, would show no change at all.
+        operations.append("across_periods")
 
     return AnalysisSpec(
         companies=tuple(companies),

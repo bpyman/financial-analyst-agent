@@ -10,6 +10,7 @@ from financial_analyst_agent.contracts import (
     MARKET_FORMULAS,
     REPORTED_METRICS,
     SNAPSHOT_METRICS,
+    Runtime,
     TableRow,
     unknown_metric_message,
 )
@@ -46,8 +47,7 @@ def _catalog_metric(metric: str) -> str:
     return metric
 
 
-def _metric_rows(issuers: list[str], metric: str) -> list[TableRow]:
-    runtime = build_runtime()
+def _metric_rows(runtime: Runtime, issuers: list[str], metric: str) -> list[TableRow]:
     if metric in SNAPSHOT_METRICS or metric in MARKET_FORMULAS:
         if runtime.ranking is None:
             raise RuntimeError("ranking adapter is not configured")
@@ -66,14 +66,16 @@ def get_financials(company: str, metric: str) -> dict[str, object]:
     """
     _bounded("company", company)
     _catalog_metric(metric)
+    runtime = build_runtime()
     if metric not in REPORTED_METRICS:
-        [row] = _metric_rows([company], metric)
+        [row] = _metric_rows(runtime, [company], metric)
         payload = row.model_dump(mode="json")
     else:
-        payload = build_runtime().facts.get_financials(company, metric).model_dump(mode="json")
+        payload = runtime.facts.get_financials(company, metric).model_dump(mode="json")
     if not isinstance(payload, dict):
         raise TypeError("get_financials must serialize to an object")
-    return payload
+    # "recorded" or "live": a server without SEC_USER_AGENT answers from the recording.
+    return {**payload, "runtime": runtime.kind.value}
 
 
 @mcp.tool()
@@ -84,7 +86,9 @@ def compare_metrics(issuers: list[str], metric: str) -> dict[str, object]:
         raise ValueError(f"issuers must name 1 to {MAX_ISSUERS} companies")
     for issuer in issuers:
         _bounded("issuer", issuer)
-    return {"rows": [row.model_dump(mode="json") for row in _metric_rows(issuers, metric)]}
+    runtime = build_runtime()
+    rows = _metric_rows(runtime, issuers, metric)
+    return {"rows": [row.model_dump(mode="json") for row in rows], "runtime": runtime.kind.value}
 
 
 @mcp.tool()
@@ -106,6 +110,7 @@ def rank_companies(
     except UnknownIndustryError as exc:
         raise ValueError(str(exc)) from exc
     return {
+        "runtime": runtime.kind.value,
         "as_of": table.as_of,
         "source": table.source,
         "sector": table.sector,

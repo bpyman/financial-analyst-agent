@@ -322,7 +322,10 @@ def run_planner(
                 )
             )
             if error == "budget reached":
-                return results
+                # A run cut short would be averaged as if complete: keep only the
+                # complete runs, and one marker that says the budget ran out.
+                kept = [result for result in results if result.run != run]
+                return [*kept, replace(results[-1], checks={}, signature=None)]
     return results
 
 
@@ -341,6 +344,8 @@ def summarize(
 ) -> dict[str, Any]:
     """Accuracy per split, its spread across runs, field accuracy, agreement, time, cost."""
     split_of = {case.case_id: case.split for case in cases}
+    stopped = [result for result in results if result.error == "budget reached"]
+    results = [result for result in results if result.error != "budget reached"]
     runs = sorted({result.run for result in results})
     splits: dict[str, Any] = {}
     for split in (*(name for name, _ in SPLITS), "all"):
@@ -378,6 +383,8 @@ def summarize(
     return {
         "splits": splits,
         "runs": len(runs),
+        # The run the budget ran out in, left out of every figure above.
+        "stopped_in_run": stopped[0].run if stopped else None,
         "case_runs": len(results),
         "planner_calls": usage.calls,
         "planner_ms_p50": _percentile(usage.planner_ms, 0.5),
@@ -467,6 +474,10 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(planner["not_run"])
             lines.append("")
             continue
+        if "all" not in planner["splits"]:
+            lines.append("The budget ran out before one run was complete; nothing is scored.")
+            lines.append("")
+            continue
         lines.append(
             "| Split | Cases | Accuracy | Spread across runs (sd) | Agreement across runs |"
         )
@@ -485,6 +496,11 @@ def render_markdown(report: dict[str, Any]) -> str:
             + ", ".join(f"{field_name} {value:.0%}" for field_name, value in fields.items())
             + "."
         )
+        if planner.get("stopped_in_run") is not None:
+            lines.append(
+                f"The budget ran out during run {planner['stopped_in_run'] + 1}: that run is "
+                f"left out, and the figures count the {planner['runs']} complete runs only."
+            )
         cost = planner["cost_usd"]
         lines.append(
             f"Planner time p50 / p95: {planner['planner_ms_p50']:.0f} ms / "

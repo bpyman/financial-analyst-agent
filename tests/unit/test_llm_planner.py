@@ -148,19 +148,21 @@ def test_a_ranking_by_a_metric_is_ordered_by_it() -> None:
     assert _tickers(turn)[0] == "NVDA"
 
 
-def test_a_follow_up_can_ask_for_year_over_year() -> None:
+@pytest.mark.parametrize(("operations", "shown"), [(["year_over_year"], True), ([], False)])
+def test_a_follow_up_can_ask_for_year_over_year(operations: list[str], shown: bool) -> None:
+    # Wording the code does not read as year over year, so only the model's field asks.
     turn = _converse(
         (
             "Microsoft revenue over the last four quarters",
             {"intent": "lookup", "company": "Microsoft", "metric": "revenue"},
         ),
         (
-            "show year-over-year",
-            {"intent": "spec_patch", "mode": "extend", "add_operations": ["year_over_year"]},
+            "show me the other comparison",
+            {"intent": "spec_patch", "mode": "extend", "add_operations": operations},
         ),
     )
 
-    assert any(row.comparison == "yoy" for row in turn.result.table_rows)
+    assert any(row.comparison == "yoy" for row in turn.result.table_rows) is shown
 
 
 def test_a_follow_up_can_sort_by_a_metric() -> None:

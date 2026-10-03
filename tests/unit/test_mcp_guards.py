@@ -57,8 +57,18 @@ def test_get_financials_takes_the_metrics_compare_metrics_takes(metric: str) -> 
     compared = _tool(mcp_server.compare_metrics)(["MSFT"], metric)  # type: ignore[operator]
     fetched = _tool(mcp_server.get_financials)("MSFT", metric)  # type: ignore[operator]
 
-    assert fetched == compared["rows"][0]  # type: ignore[index]
+    # Each answer names the runtime it came from; the row is the same either way.
+    assert fetched == {**compared["rows"][0], "runtime": compared["runtime"]}  # type: ignore[index]
     assert fetched["value"] is not None  # type: ignore[index]
+
+
+def test_every_data_tool_names_the_runtime_that_answered() -> None:
+    from financial_analyst_agent.runtime import build_runtime
+
+    runtime = build_runtime().kind.value
+    assert _tool(mcp_server.get_financials)("MSFT", "revenue")["runtime"] == runtime  # type: ignore[operator,index]
+    assert _tool(mcp_server.compare_metrics)(["MSFT"], "revenue")["runtime"] == runtime  # type: ignore[operator,index]
+    assert _tool(mcp_server.rank_companies)("technology", 3)["runtime"] == runtime  # type: ignore[operator,index]
 
 
 def test_an_unknown_company_in_a_comparison_says_so() -> None:
