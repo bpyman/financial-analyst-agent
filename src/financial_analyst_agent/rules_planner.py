@@ -247,7 +247,10 @@ _FILING_WORDS = (
 def _is_filing_change_query(normalized: str) -> bool:
     asks_change = re.search(
         r"what(?:['’]?s| has| is)? (?:changed|new)|filing change|\bchanges? (?:in|to)\b"
-        r"|\bdiff(?:erence)?s? (?:in|between)\b|\bsummar(?:y|ise|ize)\b",
+        r"|\bdiff(?:erence)?s? (?:in|between)\b|\bsummar(?:y|ise|ize)\b"
+        # "how the newest 10-Q differs from the one before", "10-K vs the prior one"
+        r"|\bdiffer(?:s|ed|ent|ence|ences)?\b|\bcompared? (?:to|with|against)\b"
+        r"|\b(?:vs\.?|versus) (?:the )?(?:prior|previous|last|one before)\b|\bnew since\b",
         normalized,
     )
     return asks_change is not None and (
@@ -285,7 +288,11 @@ _PEERS = re.compile(
 )
 _SORT_BY = re.compile(r"^(?:sort|order|rank)(?:ed)?\s+(?:them\s+|it\s+|these\s+)?by\s+.+$")
 _LIST_WORDING = re.compile(r"\b(?:vs|versus|compare[ds]?|and|or|against)\b|,")
-_RANK_WORDS = re.compile(r"\b(?:top|biggest|largest|leading|rank|ranked|ranking)\b")
+_RANK_WORDS = re.compile(
+    r"\b(?:top|biggest|largest|leading|rank|ranked|ranking)\b"
+    # "worth the most", "most valuable": the largest by market cap.
+    r"|\bworth the most\b|\bmost valuable\b"
+)
 # "Which tech company has the highest net margin?" ranks an industry by a metric.
 _WHICH_HIGHEST = re.compile(
     r"\bwhich\s+(?P<group>[a-z&][a-z&\- ]*?)\s+"
@@ -322,6 +329,25 @@ _COUNT_WORDS = {
     "twenty": 20, "twenty five": 25, "twenty-five": 25, "a dozen": 12, "dozen": 12,
 }  # fmt: skip
 _COUNT_WORD = "|".join(sorted(map(re.escape, _COUNT_WORDS), key=len, reverse=True))
+# "which five banks", "the two largest", "list three chipmakers": a count of a
+# group. "One" is left alone: "which one is bigger" asks about the screen.
+# "The" counts a group only before a size word: "compare the two" is the screen.
+_GROUP_COUNTED_BY = (
+    r"(which|rank|list|show|name|the(?=\s+\S+\s+(?:largest|biggest|most|top|leading)\b))"
+)
+_GROUP_COUNT_WORD = re.compile(
+    rf"\b{_GROUP_COUNTED_BY}\s+"
+    rf"({'|'.join(word for word in sorted(_COUNT_WORDS, key=len, reverse=True) if word != 'one')})"
+    rf"\b(?!\s+(?:quarters?|years?|months?|of\b))",
+    re.IGNORECASE,
+)
+_GROUP_COUNT = re.compile(
+    rf"\b{_GROUP_COUNTED_BY}\s+(\d+)\b(?!\s+(?:quarters?|years?|months?))"
+)
+# Words before an industry that say how a ranking is cut, not which group it is.
+_GROUP_LEAD = re.compile(
+    r"^(?:(?:the|top|\d+|biggest|largest|leading|most valuable|best)\s+)+", re.IGNORECASE
+)
 # "top five banks" is five banks, not Five Below.
 _RANK_COUNT_WORD = re.compile(
     rf"\b(top|biggest|largest|leading)\s+({_COUNT_WORD})\b"
@@ -388,21 +414,36 @@ def recorded_issuer_index() -> IssuerIndex:
 
 
 def _count_words_as_digits(query: str) -> str:
-    """ "Top five banks" → "top 5 banks", so the count is read and Five Below is not."""
+    """ "Top five banks" → "top 5 banks", so the count is read and Five Below is not.
+
+    A count after "which", "the", "rank" or "list" counts a group too: "which
+    five banks", "the two largest banks", "list three chipmakers".
+    """
 
     def digits(match: re.Match[str]) -> str:
         if match.group(1):
             return f"{match.group(1)} {_COUNT_WORDS[match.group(2).casefold()]}"
         return f"{_COUNT_WORDS[match.group(3).casefold()]} {match.group(4)}"
 
-    return _RANK_COUNT_WORD.sub(digits, query)
+    def group_count(match: re.Match[str]) -> str:
+        return f"{match.group(1)} {_COUNT_WORDS[match.group(2).casefold()]}"
+
+    return _GROUP_COUNT_WORD.sub(group_count, _RANK_COUNT_WORD.sub(digits, query))
 
 
 def _limit(normalized: str) -> int:
     match = _LIMIT_WORDS.search(normalized)
-    if match is None:
-        return _limit_from_query(normalized)
-    return int(match.group(1) or match.group(2))
+    if match is not None:
+        return int(match.group(1) or match.group(2))
+    counted = _GROUP_COUNT.search(normalized)
+    if counted is not None:
+        return int(counted.group(2))
+    return _limit_from_query(normalized)
+
+
+def _clean_group(industry: str) -> str:
+    """The group alone: "5 banks" and "largest banks" rank banks."""
+    return _GROUP_LEAD.sub("", industry).strip() or industry
 
 
 _ODD_COUNT = re.compile(r"\b(top|biggest|largest|leading)\s+(-\s*\d+|\d+\.\d+|0+)(?=\s|$)", re.I)
@@ -459,11 +500,17 @@ def _ranked_industry(normalized: str) -> str:
     # "oil and gas" is one industry, not a list to cut at "and".
     text = re.sub(r"\boil and gas\b", "oil & gas", text)
     text = re.split(r"\s+(?:and|with|plus)\s+|,", text, maxsplit=1)[0]
-    match = re.search(
-        r"\b(?:top|biggest|largest|leading|rank(?:ed)?)\s+(?:the\s+)?(?:top\s+)?(?:\d+\s+)?"
-        r"(?:companies\s+in\s+(?:the\s+)?)?(.+)$",
-        text,
-    ) or re.search(r"\b\d+\s+(?:biggest|largest)\s+(.+)$", text)
+    match = (
+        re.search(
+            r"\b(?:top|biggest|largest|leading|most valuable|rank(?:ed)?)\s+(?:the\s+)?"
+            r"(?:top\s+)?(?:\d+\s+)?"
+            r"(?:companies\s+in\s+(?:the\s+)?)?(.+)$",
+            text,
+        )
+        or re.search(r"\b\d+\s+(?:biggest|largest)\s+(.+)$", text)
+        # "which 3 chipmakers are worth the most"
+        or re.search(r"\bwhich\s+(?:\d+\s+)?(.+?)\s+(?:are|is|has|have|had)\b", text)
+    )
     if match is None:
         match = re.search(r"\b(?:in|among|within|across)\s+(.+)$", text)
     if match is None:
@@ -580,6 +627,7 @@ class DemoCompleter:
                 industry = group if which.group("noun") else _plural_group(group)
             else:
                 industry = _ranked_industry(normalized)
+            industry = _clean_group(industry)
             industry = _INDUSTRY_WORDS.get(industry, industry)
             limit = _limit(normalized)
             notes = (

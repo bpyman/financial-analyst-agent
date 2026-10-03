@@ -50,6 +50,8 @@ class PeriodSelection(BaseModel):
     report_dates: tuple[date, ...] = ()
     company_report_dates: tuple[tuple[str, tuple[date, ...]], ...] = ()
     named: tuple[NamedPeriodSpec, ...] = ()
+    # The quarters the analyst asked for, when the filings hold fewer than that.
+    asked: int | None = None
 
     @property
     def label(self) -> str:

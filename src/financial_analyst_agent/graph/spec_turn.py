@@ -116,13 +116,29 @@ _SWAP_EDIT = re.compile(
     r"^\s*(?:use|swap)\s+(.+?)\s+instead of\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+# "swap Merck for AbbVie", "replace revenue with net income": out, then in.
+_SWAP_FOR_EDIT = re.compile(
+    r"^\s*(?:swap|replace|switch|exchange|trade)\s+(?:out\s+)?(?P<out>.+?)\s+(?:for|with)\s+"
+    r"(?P<in>.+?)\s*[.?!]*\s*$",
+    re.IGNORECASE,
+)
+# "switch the metric to free cash flow", "show net margin instead": what takes
+# the place of what is on screen.
+_SWITCH_TO_EDIT = re.compile(
+    r"^\s*(?:now\s+)?(?:switch|change|swap|turn)\s+(?:(?:the|that|this|it)\s+)?"
+    r"(?:(?:metric|measure|figure|number|company|companies)\s+)?(?:to|into|over to)\s+"
+    r"(?P<span>.+?)\s*[.?!]*\s*$"
+    r"|^\s*(?:now\s+)?(?:show|use|make it|do|give me)\s+(?P<instead>.+?)\s+instead\s*[.?!]*\s*$",
+    re.IGNORECASE,
+)
 _DROP_AND_ADD_EDIT = re.compile(
     r"^\s*(?:drop|remove)\s+(.+?)\s*,?\s+(?:and\s+)?(?:add|include|show)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
 _YOY = re.compile(
     r"\b(?:year[\s-]*over[\s-]*year|yoy|show yoy|compare to last year|(?:a|one) year ago"
-    r"|(?:over|in) the (?:last|past) year|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
+    # "over the past year" alone is the year's quarters; "grew over the past year" is growth.
+    r"|(?:from|since|vs\.?|versus) (?:a year ago|last year)"
     r"|grow(?:th|n|ing)?|grew|how (?:has|have|did) .+ change[d]?|trend(?:ing)?"
     r"|why did .+ (?:drop|fall|decline|rise|jump|increase|decrease|go (?:up|down)))\b",
     re.IGNORECASE,
@@ -668,6 +684,9 @@ def _swap_pair(message: str) -> tuple[str, str] | None:
     swapped = _SWAP_EDIT.match(message)
     if swapped is not None:
         return swapped.group(1).strip(), swapped.group(2).strip()
+    swapped = _SWAP_FOR_EDIT.match(message)
+    if swapped is not None:
+        return swapped.group("in").strip(" .,"), swapped.group("out").strip(" .,")
     # "remove revenue add net income" is a swap, not the removal of both.
     both = _DROP_AND_ADD_EDIT.match(message)
     if both is not None:
@@ -746,8 +765,23 @@ def refine_patch_from_message(
             add_metrics=(),
         )
 
+    switched = _SWITCH_TO_EDIT.match(message.strip())
+    if switched is not None:
+        span = (switched.group("span") or switched.group("instead")).strip(" .,")
+        metrics = _unique_metrics_from_phrase(span)
+        if metrics:
+            return _extend(
+                patch,
+                add_metrics=metrics,
+                remove_metrics=tuple(m for m in current_spec.metrics if m not in metrics),
+                add_companies=(),
+                remove_companies=(),
+            )
+
     added = _ADD_EDIT.match(message.strip())
     if added is not None:
+        # "now add operating margin": adding never takes anything away.
+        patch = patch.model_copy(update={"remove_metrics": (), "remove_companies": ()})
         token = added.group(1).strip(" .,")
         metrics = _unique_metrics_from_phrase(token)
         # "add Google margin" adds Google as well as the margin.
@@ -886,7 +920,10 @@ def materialize_period_dates(spec: AnalysisSpec, runtime: Runtime) -> AnalysisSp
         dates = _listed_dates(listing, queries[0], periods.count or 1)
         if not dates:
             return spec
-        periods = periods.model_copy(update={"count": len(dates), "report_dates": dates})
+        asked = periods.count if periods.count and len(dates) < periods.count else None
+        periods = periods.model_copy(
+            update={"count": len(dates), "report_dates": dates, "asked": asked}
+        )
         listed_first = True
     known = dict(periods.company_report_dates)
     if listed_first and spec.companies:

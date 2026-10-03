@@ -1,0 +1,109 @@
+"""Wording the planners misread on the development cases: rankings, swaps and filings."""
+
+from __future__ import annotations
+
+import pytest
+
+from financial_analyst_agent.contracts import Intent
+from financial_analyst_agent.graph.analysis_spec import (
+    PeriodSelection,
+    SpecPatch,
+    apply_patch,
+    resolve_spec,
+)
+from financial_analyst_agent.graph.spec_turn import (
+    bind_periods_from_message,
+    refine_patch_from_message,
+)
+from financial_analyst_agent.ranking import SnapshotRanking
+from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
+from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
+
+
+@pytest.mark.parametrize(
+    ("question", "industry", "limit"),
+    [
+        ("Which three chipmakers are worth the most?", "chipmakers", 3),
+        ("Rank the two largest banks by market value", "banks", 2),
+        ("Which five banks are the largest by market cap?", "banks", 5),
+        ("What are the 3 most valuable banks?", "banks", 3),
+        ("the most valuable healthcare companies", "healthcare", 10),
+    ],
+)
+def test_a_ranking_reads_its_group_and_count(question: str, industry: str, limit: int) -> None:
+    plan = DemoCompleter(issuer_index()).complete(question)
+
+    assert plan.intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)
+    assert (plan.industry, plan.limit) == (industry, limit)
+
+
+def test_the_two_largest_counts_a_group() -> None:
+    plan = DemoCompleter(issuer_index()).complete("Compare the two largest banks")
+
+    assert (plan.industry, plan.limit) == ("banks", 2)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Show me how Microsoft's newest 10-Q differs from the one before",
+        "Microsoft's latest 10-K compared to the prior one",
+    ],
+)
+def test_a_filing_comparison_in_other_words(question: str) -> None:
+    assert DemoCompleter(issuer_index()).complete(question).intent is Intent.FILING_CHANGE
+
+
+def test_a_hyphened_phrase_is_not_a_misspelt_name() -> None:
+    found = issuer_index().correct("an apples-to-apples comparison of Microsoft and Nvidia")
+
+    assert found == []
+
+
+def _spec(*companies: str, metrics: tuple[str, ...] = ("net_income",)):
+    ranking = SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
+    patch = SpecPatch(mode="replace", add_companies=companies, add_metrics=metrics)
+    return resolve_spec(apply_patch(None, patch), ranking=ranking), ranking.index
+
+
+@pytest.mark.parametrize("message", ["swap Merck for AbbVie", "replace Merck with AbbVie"])
+def test_swap_x_for_y_replaces_x(message: str) -> None:
+    spec, index = _spec("PFE", "MRK")
+    patch = refine_patch_from_message(SpecPatch(mode="replace"), message, spec, index=index)
+
+    assert (patch.add_companies, patch.remove_companies) == (("AbbVie",), ("Merck",))
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "switch the metric to free cash flow",
+        "change it to free cash flow",
+        "show free cash flow instead",
+    ],
+)
+def test_switching_the_metric_replaces_it(message: str) -> None:
+    spec, index = _spec("AMGN")
+    patch = refine_patch_from_message(
+        SpecPatch(mode="extend", add_metrics=("free_cash_flow",)), message, spec, index=index
+    )
+
+    assert (patch.add_metrics, patch.remove_metrics) == (("free_cash_flow",), ("net_income",))
+
+
+def test_adding_a_metric_never_removes_one() -> None:
+    spec, index = _spec("MSFT", "AAPL", metrics=("revenue",))
+    proposed = SpecPatch(
+        mode="extend", add_metrics=("operating_margin",), remove_metrics=("revenue",)
+    )
+    patch = refine_patch_from_message(proposed, "now add operating margin", spec, index=index)
+
+    assert (patch.add_metrics, patch.remove_metrics) == (("operating_margin",), ())
+
+
+def test_over_the_past_year_is_the_years_quarters_not_growth() -> None:
+    message = "Compare JPMorgan and Bank of America net income over the past year"
+    patch = bind_periods_from_message(SpecPatch(mode="replace"), message)
+
+    assert patch.set_periods == PeriodSelection(kind="last_n_quarters", count=4)
+    assert "year_over_year" not in patch.add_operations

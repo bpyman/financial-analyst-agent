@@ -559,8 +559,17 @@ class IssuerIndex:
     def correct(
         self, question: str, *, ignore: frozenset[str] = frozenset()
     ) -> list[CompanyMention]:
-        """Close misspellings of a company name ("Microsft", "Nvida")."""
+        """Close misspellings of a company name ("Microsft", "Nvida").
+
+        A word inside a hyphened phrase ("apples-to-apples", "year-over-year")
+        is that phrase's, not a misspelt name.
+        """
         candidates = [phrase for phrase in self.phrases if len(phrase) >= _TYPO_MIN_LENGTH]
+        ignore = ignore | {
+            part.casefold()
+            for compound in re.findall(r"\w+(?:-\w+)+", question)
+            for part in compound.split("-")
+        }
         mentions: list[CompanyMention] = []
         position = 0
         for word in normalize(question).split():
