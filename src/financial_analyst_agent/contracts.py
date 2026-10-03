@@ -348,8 +348,10 @@ class DisclosureChange(BaseModel):
 
 
 # What a CLARIFY result asks: pick one metric, extend vs replace the analysis,
-# or which of the companies a name could mean.
-ClarifyKind = Literal["ambiguous_metric", "ambiguous_mode", "ambiguous_company"]
+# which of the companies a name could mean, or what a change is measured against.
+ClarifyKind = Literal[
+    "ambiguous_metric", "ambiguous_mode", "ambiguous_company", "ambiguous_comparison"
+]
 
 
 class TurnResult(BaseModel):

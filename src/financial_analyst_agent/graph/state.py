@@ -71,6 +71,8 @@ class StructuredRequest(BaseModel):
     notes: tuple[str, ...] = ()
     # Companies the analyst named that the recorded runtime has no filings for.
     unrecorded: tuple[str, ...] = ()
+    # What a change is measured against, as the analyst chose when asked.
+    comparison: Literal["year_over_year", "sequential"] | None = None
 
 
 QualitativeIntent = Literal[Intent.EXPLAIN, Intent.NEWS_AND_EXPLAIN, Intent.EXPLORATORY_RESEARCH]

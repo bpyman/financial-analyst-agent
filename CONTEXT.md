@@ -64,6 +64,10 @@ _Avoid_: ambiguous company (in prose), alias collision
 A company name that 10-Q filings write in lower case mid-sentence as an ordinary word ("Target", "Block"). It names the company only where a question uses it as one (ADR 0010).
 _Avoid_: common-word company, stopword name
 
+**Comparison base**:
+What a change is measured against: the same quarter a year earlier (year over year) or the quarter before (sequential). Growth is year over year unless the analyst says sequential; a change that names neither is asked about (ADR 0010).
+_Avoid_: delta, period-over-period (unqualified)
+
 **Window**:
 A count of recent quarters the analyst asks for ("past six quarters", "last two years"), read by one grammar whichever planner proposed the analysis (ADR 0010).
 _Avoid_: lookback, range

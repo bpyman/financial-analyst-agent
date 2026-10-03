@@ -243,7 +243,7 @@ def test_quarter_lengths_are_not_misreported(runtime) -> None:  # type: ignore[n
 
 
 def test_a_change_from_a_derived_quarter_is_marked(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _conversation(runtime, "Apple revenue growth")
+    (answer,) = _conversation(runtime, "Apple revenue sequential growth")
     changes = _column(answer, "QoQ change")
     ends = _column(answer, "Quarter ended")
     # Dec 2025 against Apple's derived fiscal Q4 to Sep 2025.
@@ -287,8 +287,12 @@ def test_is_it_a_buy_gets_the_advice_reply(runtime) -> None:  # type: ignore[no-
     assert answer.message.startswith("I don't give investment advice")
 
 
-def test_why_did_it_drop_shows_the_change(runtime) -> None:  # type: ignore[no-untyped-def]
-    (answer,) = _conversation(runtime, "Why did Apple's revenue drop last quarter?")
+def test_why_did_it_drop_asks_against_what_then_shows_the_change(runtime) -> None:  # type: ignore[no-untyped-def]
+    asked, answer = _conversation(
+        runtime, "Why did Apple's revenue drop last quarter?", "the quarter before"
+    )
+    # A drop names no base: the quarter before, or the same quarter a year earlier?
+    assert asked.clarify_prompt == "Compared with what?"
     assert answer.table is not None
     assert any(change.startswith("-") for change in _column(answer, "QoQ change"))
 

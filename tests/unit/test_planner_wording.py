@@ -107,3 +107,52 @@ def test_over_the_past_year_is_the_years_quarters_not_growth() -> None:
 
     assert patch.set_periods == PeriodSelection(kind="last_n_quarters", count=4)
     assert "year_over_year" not in patch.add_operations
+
+
+@pytest.mark.parametrize(
+    ("message", "base"),
+    [
+        ("Apple revenue growth", "year_over_year"),
+        ("How fast did Nvidia's revenue grow?", "year_over_year"),
+        ("Microsoft net income trend", "year_over_year"),
+        ("How has Tesla's revenue changed over the last year?", "year_over_year"),
+        ("Apple revenue year over year", "year_over_year"),
+        ("Apple revenue sequential growth", "sequential"),
+        ("Apple revenue vs last quarter", "sequential"),
+        ("Apple revenue quarter-over-quarter", "sequential"),
+        ("Why did Apple's revenue drop last quarter?", "unclear"),
+        ("How has Microsoft revenue changed?", "unclear"),
+        ("Apple revenue last quarter", None),
+    ],
+)
+def test_what_a_change_is_measured_against(message: str, base: str | None) -> None:
+    from financial_analyst_agent.graph.spec_turn import comparison_asked
+
+    assert comparison_asked(message) == base
+
+
+@pytest.mark.parametrize(
+    ("answer", "base"),
+    [
+        ("year_over_year", "year_over_year"),
+        ("sequential", "sequential"),
+        ("1", "year_over_year"),
+        ("the quarter before", "sequential"),
+        ("same quarter a year earlier", "year_over_year"),
+        ("yoy", "year_over_year"),
+        ("vs the previous quarter", "sequential"),
+    ],
+)
+def test_an_answer_names_the_base_of_a_change(answer: str, base: str) -> None:
+    from financial_analyst_agent.graph.clarify import clarification_reply
+    from financial_analyst_agent.graph.spec_turn import COMPARISON_CANDIDATES
+    from financial_analyst_agent.graph.state import PendingClarification
+
+    pending = PendingClarification(
+        kind="ambiguous_comparison",
+        candidates=COMPARISON_CANDIDATES,
+        patch=SpecPatch(mode="replace"),
+    )
+    reply = clarification_reply(pending, answer)
+
+    assert reply is not None and reply.chosen == (base,)

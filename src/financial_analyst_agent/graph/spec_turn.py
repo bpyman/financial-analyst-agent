@@ -226,7 +226,26 @@ _EXPLICIT_YOY = re.compile(
     r"(?:a year ago|last year|the (?:prior|previous) year))\b",
     re.IGNORECASE,
 )
-_SEQUENTIAL = re.compile(r"\b(?:sequential|quarter[\s-]*over[\s-]*quarter|qoq)\b", re.IGNORECASE)
+_SEQUENTIAL = re.compile(
+    r"\b(?:sequential(?:ly)?|quarter[\s-]*(?:over|on)[\s-]*quarter|qoq"
+    r"|(?:from|since|vs\.?|versus|than|compared? (?:to|with)) (?:the )?"
+    r"(?:last|previous|prior|preceding) quarter)\b",
+    re.IGNORECASE,
+)
+# Growth is year over year by convention: analysts and 10-Q MD&A compare a quarter
+# with the same quarter a year before, which a season does not distort (ADR 0010).
+_GROWTH = re.compile(r"\b(?:grow(?:th|n|ing|s)?|grew|trend(?:s|ing)?)\b", re.IGNORECASE)
+# "changed over the last year": a change across a year is year over year.
+_YEAR_BASE = re.compile(
+    r"\b(?:over|in|during|across) the (?:last|past|previous|prior)"
+    r" (?:year|twelve months|12 months)\b",
+    re.IGNORECASE,
+)
+COMPARISON_CANDIDATES = ("year_over_year", "sequential")
+COMPARISON_LABELS = (
+    "The same quarter a year earlier (year over year)",
+    "The quarter before (sequential)",
+)
 # Four quarters, each with the quarter a year before it.
 _YOY_WINDOW = 8
 # "Q5 2025" names no quarter; answering the latest one instead would mislead.
@@ -262,6 +281,11 @@ _HALF_YEAR = re.compile(
     rf"\b{_CALENDAR_WORD}(?:h(?P<h>[12])|(?P<hw>first|second|1st|2nd)\s+half(?:\s+of)?)\s*"
     rf"{_FISCAL_WORD}{_YEAR}",
     re.I,
+)
+GROWTH_IS_YEAR_OVER_YEAR_BANNER = (
+    "Growth here is year over year: each quarter against the same quarter a year "
+    "earlier, as filings and analysts compare quarters. Ask for sequential growth to "
+    "compare each quarter with the one before."
 )
 TRAILING_YEAR_BANNER = (
     "Trailing twelve months: these are the four latest quarters, shown one by one "
@@ -593,6 +617,26 @@ def _with_year_earlier(named: tuple[NamedPeriodSpec, ...]) -> tuple[NamedPeriodS
 
 
 
+def comparison_asked(message: str) -> str | None:
+    """What a change the message asks about is measured against.
+
+    "year_over_year" or "sequential" where the wording says (growth is year
+    over year by convention), "unclear" where it asks about a change but not
+    against what ("why did revenue drop?"), and None where it asks for no change.
+    """
+    if _YOY.search(message) is None and _SEQUENTIAL.search(message) is None:
+        return None
+    if _SEQUENTIAL.search(message) is not None:
+        return "sequential"
+    if (
+        _EXPLICIT_YOY.search(message) is not None
+        or _GROWTH.search(message) is not None
+        or _YEAR_BASE.search(message) is not None
+    ):
+        return "year_over_year"
+    return "unclear"
+
+
 def _window_asked(message: str) -> int | None:
     """The quarters a window asks for ("past six quarters", "last 3 years"), or None."""
     window = asked_window(message)
@@ -655,7 +699,9 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     operations = patch.add_operations
     if (yoy or sequential) and "across_periods" not in operations:
         operations = (*operations, "across_periods")
-    explicit_yoy = _EXPLICIT_YOY.search(message) is not None and not sequential
+    # Growth is year over year unless the analyst says sequential (ADR 0010); a
+    # change that names no base is asked about before the analysis runs.
+    explicit_yoy = comparison_asked(message) == "year_over_year"
     if explicit_yoy and "year_over_year" not in operations:
         operations = (*operations, "year_over_year")
     if asked is None and patch.set_periods is not None:
@@ -663,8 +709,8 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     count = asked if asked is not None else 5
     if (yoy or sequential) and count < 5:
         count = 5
-    if explicit_yoy:
-        # Each of the N quarters needs the one a year before it.
+    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None:
+        # "Year over year" by name: each of the N quarters needs the one a year before it.
         count = _YOY_WINDOW if asked is None else min(asked + 4, MAX_QUARTERS_ASKED)
     return patch.model_copy(
         update={
@@ -1533,6 +1579,16 @@ class Resolution:
     compiled: CompiledAnalysis | None = None
 
 
+def _with_comparison(spec: AnalysisSpec, comparison: str) -> AnalysisSpec:
+    """The analysis with its changes measured as the analyst chose."""
+    operations = [op for op in spec.operations if op != "year_over_year"]
+    if "across_periods" not in operations:
+        operations.append("across_periods")
+    if comparison == "year_over_year":
+        operations.append("year_over_year")
+    return spec.model_copy(update={"operations": tuple(operations)})
+
+
 def company_clarification(intent: Intent, exc: AmbiguousCompanyError) -> TurnResult:
     """Ask which company a name means: "Coca-Cola" is KO, CCEP or COKE."""
     matches = exc.details.get("matches", ())
@@ -1634,6 +1690,23 @@ def resolve_request(
     outcome = validate_spec(spec)
     if outcome is not None:
         return answered(_rejection_result(outcome, asked), None)
+    if request.comparison is None and spec.constituents is None and (
+        comparison_asked(message) == "unclear"
+    ):
+        # "Why did revenue drop?": against the quarter before, or a year before?
+        return answered(
+            TurnResult(
+                intent=asked,
+                tool_traces=[],
+                renderer=RendererKind.CLARIFY,
+                candidates=COMPARISON_CANDIDATES,
+                candidate_labels=COMPARISON_LABELS,
+                clarify_kind="ambiguous_comparison",
+            ),
+            current_spec,
+        )
+    if request.comparison is not None:
+        spec = _with_comparison(spec, request.comparison)
 
     spec, annual_filers = drop_annual_filers(spec, runtime)
     if annual_filers and not spec.companies and spec.constituents is None:
@@ -2184,6 +2257,12 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
         notes.append(YEAR_OF_QUARTERS_BANNER)
     if spec.periods.kind != "named" and _SUB_QUARTER.search(message):
         notes.append(f"Filings report quarters, not months or weeks, so this shows {window}.")
+    if (
+        "year_over_year" in spec.operations
+        and _GROWTH.search(message)
+        and not _EXPLICIT_YOY.search(message)
+    ):
+        notes.append(GROWTH_IS_YEAR_OVER_YEAR_BANNER)
     if _WHY_CHANGE.search(message):
         notes.append(WHY_CHANGE_BANNER)
     if _YEAR_TO_DATE.search(message):

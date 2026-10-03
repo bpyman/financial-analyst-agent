@@ -97,6 +97,9 @@ def clarification_reply(
     if pending.kind == "ambiguous_company":
         named = _company_named(pending, text, index)
         return ClarifyReply(chosen=(named,)) if named is not None else None
+    if pending.kind == "ambiguous_comparison":
+        base = _comparison_named(text)
+        return ClarifyReply(chosen=(base,)) if base is not None else None
     if pending.kind != "ambiguous_metric":
         return None
     if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
@@ -116,6 +119,25 @@ def clarification_reply(
     if periods != SpecPatch(mode="extend"):
         return ClarifyReply(period_patch=periods)
     return None
+
+
+_YEAR_ANSWER = re.compile(r"\b(?:year|yoy|annual|annually|yearly)\b")
+_QUARTER_ANSWER = re.compile(r"\b(?:quarter|qoq|sequential|sequentially|before|previous|prior)\b")
+
+
+def _comparison_named(text: str) -> str | None:
+    """ "year over year", "the quarter before", "sequential": one base, or None."""
+    if text in ("year_over_year", "sequential"):
+        return text
+    if len(text.split()) > _MAX_ANSWER_WORDS:
+        return None
+    words = text.replace("-", " ").replace("_", " ")
+    year = _YEAR_ANSWER.search(words) is not None
+    # "the same quarter a year earlier" names a year; "the quarter before" does not.
+    quarter = _QUARTER_ANSWER.search(words) is not None and not year
+    if year:
+        return "year_over_year"
+    return "sequential" if quarter else None
 
 
 def _company_named(pending: PendingClarification, text: str, index: Any) -> str | None:
@@ -212,6 +234,14 @@ def resumed_request(
                 patch = patch.model_copy(update={"mode": "replace", "remove_companies": ()})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
+    elif pending.kind == "ambiguous_comparison":
+        # The held question again, its changes measured as chosen.
+        return StructuredRequest(
+            patch=pending.patch,
+            wording=pending.question or message,
+            question=pending.question or message,
+            comparison="year_over_year" if answer == "year_over_year" else "sequential",
+        )
     elif pending.kind == "ambiguous_company":
         # The held question again, with the chosen company for the ambiguous name.
         companies = pending.patch.add_companies

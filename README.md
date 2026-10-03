@@ -193,10 +193,10 @@ On the held-out cases, over five runs:
 
 Neither gain came from the planners. Both came from the code that runs after either one: one company resolver, one window grammar and one reading of follow-up edits.
 
-The three held-out cases both planners miss are not planning errors:
-- Amgen's quarterly R&D is not in the recording, and the harness counts that refusal against the planner.
-- "Growth" is shown as quarter-on-quarter change, where the label asked for year over year.
-- A question naming two metrics is answered with both, where [ADR 0004](docs/adr/0004-ambiguous-metric-clarify.md) says it should clarify.
+The three held-out cases both planners missed were not planning errors, and two were settled by product decisions after the run:
+- **Growth now means year over year,** the convention for quarterly figures, and a change that names no base ("why did revenue drop?") asks what to compare against.
+- **A question naming two metrics is answered with both.** [ADR 0004](docs/adr/0004-ambiguous-metric-clarify.md) had said it should clarify; the ADR and that case's label now say otherwise, and the label change is recorded in the case file.
+- **The third is a gap in the recording:** Amgen's quarterly R&D is missing from it, and the harness counts that refusal against the planner.
 
 [Company name coverage](docs/evaluation/company-coverage.md) asks about every one of the 5,161 snapshot companies in six forms of its name: 98.7–98.8% are found for each name form, and 100% as `$TICKER`. It needs no network and no model.
 

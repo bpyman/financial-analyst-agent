@@ -540,6 +540,7 @@ _BANNER_COPY = {
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
 _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
 _COMPANY_CLARIFY_PROMPT = "Which company do you mean by “{subject}”?"
+_COMPARISON_CLARIFY_PROMPT = "Compared with what?"
 
 
 @dataclass(frozen=True)
@@ -1689,6 +1690,8 @@ def _clarify_prompt(result: TurnResult) -> str | None:
         return None
     if result.clarify_kind == "ambiguous_mode":
         return _SCOPE_CLARIFY_PROMPT
+    if result.clarify_kind == "ambiguous_comparison":
+        return _COMPARISON_CLARIFY_PROMPT
     if result.clarify_kind == "ambiguous_company":
         return _COMPANY_CLARIFY_PROMPT.format(subject=result.clarify_subject or "that name")
     return _METRIC_CLARIFY_PROMPT

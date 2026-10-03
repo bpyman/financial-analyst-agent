@@ -1,6 +1,8 @@
 {
   "about": "Third held-out set for the planner comparison (financial_analyst_agent.planner_evaluation). Written and labelled blind: from the product rules (period windows, company name forms, follow-up add versus replace, ordinary-word company names, ADR 0004 ambiguous metrics, refusals) before any planner was run on these cases, without reading earlier held-out sets or planner code. Same format and label semantics as planner-cases.json: each case is a conversation, its expectations apply to the last turn, and fields a case leaves out are not scored. A window in years counts 4 quarters per year, 'past year' is 4, 'a few' and 'several' are 4, months are a third rounded up; 'add/include/also X' adds companies and 'what about/how about/same for X' replaces them, keeping metric and window. Alphabet is labelled GOOG, as in planner-cases.json.",
-  "label_changes": [],
+  "label_changes": [
+    {"id": "h3_amgn_two_metrics", "change": "outcome clarify -> answer with both metrics", "why": "Labelled from ADR 0004, which then said two catalog metrics in one question clarify. The product answers both, and the owner decided after the held-out run that answering both is right; ADR 0004 now says so."}
+  ],
   "cases": [
     {
       "id": "h3_pfe_rev_last3",
@@ -1270,7 +1272,14 @@
         "Show me Amgen's revenue and net income"
       ],
       "expect": {
-        "outcome": "clarify"
+        "outcome": "answer",
+        "tickers": [
+          "AMGN"
+        ],
+        "metrics": [
+          "revenue",
+          "net_income"
+        ]
       }
     }
   ]
