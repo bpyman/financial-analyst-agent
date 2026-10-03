@@ -16,6 +16,7 @@ from financial_analyst_agent.domain.errors import (
     DataIntegrityError,
     FilingNotFoundError,
     IneligibleIssuerError,
+    NoDividendThisQuarterError,
     PerShareNotDerivableError,
     ProviderError,
     UnsupportedQuarterlyFactError,
@@ -1011,7 +1012,7 @@ def _sales_revenue(
 
 
 DIVIDEND_DECLARED_EARLIER_MESSAGE = (
-    "This quarter's dividend was declared earlier in the fiscal year"
+    "No dividend was declared in this quarter; one was declared earlier in the fiscal year"
 )
 
 
@@ -1019,7 +1020,9 @@ def _refuse_dividend_declared_earlier(fact: FinancialFact, records: list[FactRec
     """Refuse a declared dividend of zero when the year to date declared one.
 
     Walmart declares the year's dividend in its first quarter; the next 10-Q
-    reports $0.00 declared for its quarter beside $0.99 for the six months.
+    reports $0.00 declared for its quarter beside $0.99 for the six months. A
+    company that suspends its dividend reports the same, so the refusal says
+    only what the filing does: none this quarter, one earlier in the year.
     """
     if fact.value != 0 or fact.concept != "CommonStockDividendsPerShareDeclared":
         return
@@ -1032,7 +1035,7 @@ def _refuse_dividend_declared_earlier(fact: FinancialFact, records: list[FactRec
         and record.value > 0
         for record in records
     ):
-        raise PerShareNotDerivableError(
+        raise NoDividendThisQuarterError(
             DIVIDEND_DECLARED_EARLIER_MESSAGE,
             details={"metric": fact.metric.value, "report_date": fact.end_date.isoformat()},
         )

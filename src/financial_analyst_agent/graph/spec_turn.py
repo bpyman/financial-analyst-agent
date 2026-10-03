@@ -707,11 +707,14 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     if asked is None and patch.set_periods is not None:
         return patch.model_copy(update={"add_operations": operations})
     count = asked if asked is not None else 5
-    if (yoy or sequential) and count < 5:
+    if (yoy or sequential) and count < 5 and not (explicit_yoy and asked is not None):
+        # A sequential change needs the quarter before the oldest one shown.
         count = 5
-    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None:
-        # "Year over year" by name: each of the N quarters needs the one a year before it.
-        count = _YOY_WINDOW if asked is None else min(asked + 4, MAX_QUARTERS_ASKED)
+    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None and asked is None:
+        # "Year over year" with no window: two years of quarters. A window the
+        # analyst names is shown as asked; each quarter's base is the comparative
+        # its own filing reports (ADR 0009), so no extra quarters are needed.
+        count = _YOY_WINDOW
     return patch.model_copy(
         update={
             "set_periods": PeriodSelection(kind="last_n_quarters", count=count),
@@ -2218,6 +2221,11 @@ def _short_date(day: date) -> str:
     return f"{day:%b} {day.day}, {day.year}"
 
 
+def _and_joined(parts: list[str]) -> str:
+    """ "Fiscal 2025 and Fiscal 2024", "A, B and C"."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
 def _named_period_notes(spec: AnalysisSpec) -> list[str]:
     """Say which quarter ends a named fiscal period stands for, and who has none."""
     notes: list[str] = []
@@ -2250,6 +2258,16 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
             )
     if missing and len(missing) < len(spec.companies):
         notes.append(f"No filing for {label} from {', '.join(missing)}.")
+    # "Apple revenue 2024" is four quarters; say when the filings here hold fewer.
+    expected = sum(4 if period.quarter is None else 1 for period in periods.named)
+    for company in dated:
+        held = len(own[company.query.casefold()])
+        if held < expected:
+            name = short_name(company.name) or company.query
+            notes.append(
+                f"The filings here hold {held} of the {expected} quarters in "
+                f"{_and_joined([period.label() for period in periods.named])} for {name}."
+            )
     return notes
 
 

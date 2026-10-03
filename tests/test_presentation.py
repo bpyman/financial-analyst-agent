@@ -109,7 +109,7 @@ def test_format_reason_domain_first() -> None:
     assert format_reason("missing_fact") == "Missing fact"
     assert format_reason("period_mismatch") == "Period mismatch"
     assert format_reason("ambiguous_concept") == "Ambiguous concept"
-    assert format_reason("zero_denominator") == "Zero denominator"
+    assert format_reason("zero_denominator") == "Not meaningful (zero base)"
     assert format_reason("not_reported_for_quarter") == "Reported for the year only"
 
 

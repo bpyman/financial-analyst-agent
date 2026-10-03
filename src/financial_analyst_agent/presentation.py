@@ -76,11 +76,12 @@ _REASON_LABELS = {
     "not_operating_company": "Not an operating company",
     "period_mismatch": "Period mismatch",
     "ambiguous_concept": "Ambiguous concept",
-    "zero_denominator": "Zero denominator",
+    "zero_denominator": "Not meaningful (zero base)",
     "source_unavailable": "Source unavailable",
     "lookup_failed": "Lookup failed",
     "company_not_found": "Company not found",
     "not_reported_for_quarter": "Reported for the year only",
+    "no_dividend_this_quarter": "No dividend declared this quarter",
     "not_meaningful": "Not meaningful (loss)",
     "negative_equity": "Not meaningful (negative equity)",
     "negative_revenue": "Not meaningful (negative revenue)",
@@ -1591,10 +1592,11 @@ _FRIENDLY_MESSAGES = {
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
         "6-K reports instead, which this app does not read yet."
     ),
-    "This quarter's dividend was declared earlier in the fiscal year": (
-        "This company declares its dividend for the whole year in an earlier quarter, "
-        "so the filing reports no dividend declared in this one; the year's dividend "
-        "is in the quarter it was declared."
+    "No dividend was declared in this quarter; one was declared earlier in the fiscal year": (
+        "The filing reports no dividend declared in this quarter and one declared "
+        "earlier in the fiscal year. Some companies declare the whole year's dividend "
+        "at once; a company that suspends its dividend reports the same way, so the "
+        "filing's text says which."
     ),
     "Per-share figures for this quarter are reported only for a longer period": (
         "Filings report per-share figures such as EPS for a fiscal fourth quarter "

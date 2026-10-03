@@ -24,6 +24,16 @@ class PerShareNotDerivableError(UnsupportedQuarterlyFactError):
     code = "not_reported_for_quarter"
 
 
+class NoDividendThisQuarterError(PerShareNotDerivableError):
+    """No dividend declared in this quarter, where one was declared earlier in the year.
+
+    The filing reads the same whether the company declares the year's dividend
+    at once (Walmart) or suspended it, so the answer says what was reported only.
+    """
+
+    code = "no_dividend_this_quarter"
+
+
 class AmbiguousFactError(FinancialAnalystError):
     code = "ambiguous_fact"
 

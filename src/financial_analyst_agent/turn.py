@@ -34,6 +34,7 @@ from financial_analyst_agent.contracts import (
     NEGATIVE_EQUITY,
     NEGATIVE_REVENUE,
     NEWS_SUMMARY_BANNER,
+    NO_DIVIDEND_THIS_QUARTER,
     NOT_MEANINGFUL,
     NOT_OPERATING_COMPANY,
     NOT_REPORTED_FOR_QUARTER,
@@ -65,6 +66,7 @@ from financial_analyst_agent.domain.errors import (
     AmbiguousFactError,
     CompanyNotFoundError,
     IneligibleIssuerError,
+    NoDividendThisQuarterError,
     PerShareNotDerivableError,
     ProviderError,
     ProviderRefusal,
@@ -676,6 +678,13 @@ def _same_fiscal_period(periods: set[tuple[date | None, date | None]]) -> bool:
     )
 
 
+def _per_share_reason(exc: PerShareNotDerivableError) -> str:
+    """Why a per-share cell is empty: none declared this quarter, or reported for the year."""
+    if isinstance(exc, NoDividendThisQuarterError):
+        return NO_DIVIDEND_THIS_QUARTER
+    return NOT_REPORTED_FOR_QUARTER
+
+
 def _partial_lookup_reason(exc: BaseException) -> str:
     if isinstance(exc, SOURCE_FAILURES):
         # EDGAR failed for this company; the filing may well report the fact.
@@ -684,7 +693,7 @@ def _partial_lookup_reason(exc: BaseException) -> str:
         # A typed miss: the row says why, rather than implying a missing filing.
         return NOT_OPERATING_COMPANY
     if isinstance(exc, PerShareNotDerivableError):
-        return NOT_REPORTED_FOR_QUARTER
+        return _per_share_reason(exc)
     if isinstance(exc, CompanyNotFoundError):
         return COMPANY_NOT_FOUND
     return AMBIGUOUS_CONCEPT if isinstance(exc, AmbiguousFactError) else MISSING_FACT
@@ -1113,7 +1122,7 @@ def lookup_task(task: CompiledTask, runtime: Runtime) -> TurnResult:
                         cik="",
                         metric=metric,
                         end_date=report_date,
-                        reason=NOT_REPORTED_FOR_QUARTER,
+                        reason=_per_share_reason(exc),
                     )
                 ],
             )

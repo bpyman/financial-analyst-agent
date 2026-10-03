@@ -162,6 +162,8 @@ ZERO_DENOMINATOR = "zero_denominator"
 # A per-share figure for a quarter the filings do not report on its own
 # (fiscal Q4 EPS lives only in the annual total; ADR 0007).
 NOT_REPORTED_FOR_QUARTER = "not_reported_for_quarter"
+# A quarter with no dividend declared, after one earlier in the fiscal year.
+NO_DIVIDEND_THIS_QUARTER = "no_dividend_this_quarter"
 # A ratio that means nothing for these inputs: a P/E on a trailing-year loss.
 NOT_MEANINGFUL = "not_meaningful"
 # Ratios over a negative denominator, which would mislead: McDonald's

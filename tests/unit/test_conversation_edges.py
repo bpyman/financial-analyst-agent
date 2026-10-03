@@ -112,3 +112,9 @@ def test_an_everyday_word_name_is_added_in_lower_case(edit: str) -> None:
     assert turn.analysis_spec is not None
     added = {"add target": "TGT", "include block too": "XYZ"}[edit]
     assert [company.ticker for company in turn.analysis_spec.companies] == ["WMT", added]
+
+
+def test_a_named_year_the_filings_hold_only_part_of_says_so() -> None:
+    (answer,) = _conversation(recorded_runtime(), "Apple revenue 2024")
+
+    assert "The filings here hold 2 of the 4 quarters in Fiscal 2024 for Apple." in answer.banners
