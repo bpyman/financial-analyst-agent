@@ -16,27 +16,42 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 
 _PLANNER_FAILED_MESSAGE = "LLM planner failed"
+_OVERVIEW = "overview"
 _SYSTEM_PROMPT = (
-    "Map the user question to a Plan. "
+    "Map the user's question about US public companies' SEC filings to a Plan. "
+    "Code fetches and computes every number; you only choose what to look up. "
     "intent must be one of lookup, compare, rank, rank_and_lookup, explain, "
     "news_and_explain, exploratory_research, filing_change. "
-    "Use lookup for a named company's latest quarterly reported metric. "
-    "Use compare for two or more issuers on a reported metric or formula. "
-    "Use rank for top-N industry market-cap ranking without a reported metric. "
-    "Use rank_and_lookup when the user wants top-N and a reported metric "
-    "or formula for each. "
+    "Use lookup for one named company's reported figures, whether the latest quarter, "
+    "a window of quarters, a named fiscal quarter, or growth. "
+    "Use compare for two or more named companies on a metric. "
+    "Use rank for the top N companies of an industry by market cap, with no other metric. "
+    "Use rank_and_lookup for the top N of an industry with a metric for each. "
     "Use explain for qualitative industry or AI-disruption questions with no retrieval. "
-    "Use news_and_explain for named-company current events (supply chain, what's going on). "
-    "Use exploratory_research for questions that no analysis spec expresses "
-    "(themes, open research drafts) that need cited news evidence rather than "
-    "structured financial rows. "
-    "Use filing_change when the user asks what changed in MD&A or Risk Factors "
-    "between two named 10-Q or 10-K accession numbers. Set company, older_accession, "
-    "newer_accession, and section (mda, risk_factors, or both). "
-    "Set summarize true only when they also ask for a summary. "
-    f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
-    "For explain, set topic to the user question. "
-    "For exploratory_research, set topic to the user question. "
+    "Use news_and_explain for a named company's current events (supply chain, what's going on). "
+    "Use exploratory_research for themes or open research that no figures answer and that "
+    "need cited news rather than financial rows. "
+    "Use filing_change when the user asks what changed in a company's 10-Q or 10-K, its "
+    "MD&A or its Risk Factors. Set company. Set older_accession and newer_accession only "
+    "when the user names accession numbers; leave them empty for the latest filing, and "
+    "code compares the latest with the one before. Set section to mda, risk_factors, or "
+    "both, as asked; both when the user names neither. Set summarize true only when they "
+    "also ask for a summary. "
+    'Name companies as the user wrote them ("Nvidia", "JPM"), never CIKs. '
+    f"metric is one of: {', '.join(ALLOWED_METRICS)}. "
+    f"Use {_OVERVIEW} when the user asks how a company is doing without naming a metric. "
+    "When the user names a measure the list lacks, set metric to their own words; code "
+    "refuses it by name. When the measure is ambiguous (profit, income, margin, earnings), "
+    "set metric to the user's word; code asks which they mean. "
+    "Give the first metric when several are named; code reads the rest from the question. "
+    "Periods (last N quarters, Q3 FY2025, since 2024) and year-over-year growth are read "
+    "from the question by code: do not encode them. "
+    "Set order_by_metric true when the user wants companies ranked, sorted, or ordered by "
+    "the metric (top 5 banks by net income; which has the highest margin), false when they "
+    "only want the metric shown for each (top 5 banks and their net income). "
+    "Set peers true, with the one company in companies, when the user compares a company "
+    "with its peers or competitors. "
+    "For explain and exploratory_research, set topic to the user question. "
     "Never calculate, select, or invent financial values."
 )
 _FOLLOW_UP_PROMPT = (
@@ -52,9 +67,14 @@ _FOLLOW_UP_PROMPT = (
     "Do not invent financial values. "
     "Use explain / news_and_explain / exploratory_research only for qualitative "
     "or current-event questions that are not a spec edit. "
-    "Use filing_change for MD&A or Risk Factors comparison between two accessions. "
+    "Use filing_change for what changed in a company's 10-Q, MD&A or Risk Factors. "
     f"Allowed metrics: {', '.join(ALLOWED_METRICS)}. "
-    "Allowed operations: across_companies, across_periods, rank."
+    "Operations: across_companies (several companies side by side), across_periods "
+    "(a window of quarters), rank (the top N of an industry), order_by_metric (sort the "
+    'companies by the metric: "sort by revenue", "which is biggest"), year_over_year '
+    '(growth against the same quarter a year earlier: "show year-over-year"). '
+    "Remove year_over_year when they ask for plain levels again. "
+    "Periods in the follow-up's wording are also read by code."
 )
 
 
@@ -65,12 +85,6 @@ def _nonempty_text(value: str) -> str:
     return normalized
 
 
-def _at_least_two_companies(value: list[str]) -> list[str]:
-    if len(value) < 2:
-        raise ValueError("companies must contain at least two issuers")
-    return value
-
-
 def _positive_limit(value: int) -> int:
     if value < 1:
         raise ValueError("limit must be positive")
@@ -78,20 +92,29 @@ def _positive_limit(value: int) -> int:
 
 
 NonEmptyText = Annotated[str, AfterValidator(_nonempty_text)]
-ComparedCompanies = Annotated[list[NonEmptyText], AfterValidator(_at_least_two_companies)]
 PositiveLimit = Annotated[int, AfterValidator(_positive_limit)]
 
 
 class _LookupPlan(BaseModel):
     intent: Literal[Intent.LOOKUP]
     company: NonEmptyText
+    # A catalog slug, "overview", or the user's own word for a measure the catalog lacks.
     metric: NonEmptyText
 
 
 class _ComparePlan(BaseModel):
     intent: Literal[Intent.COMPARE]
-    companies: ComparedCompanies
+    companies: list[NonEmptyText]
     metric: NonEmptyText
+    order_by_metric: bool = False
+    # One company against the largest in its industry; the conversation adds them.
+    peers: bool = False
+
+    @model_validator(mode="after")
+    def _two_companies_or_peers(self) -> "_ComparePlan":
+        if len(self.companies) < (1 if self.peers else 2):
+            raise ValueError("companies must contain at least two issuers, or one with peers")
+        return self
 
 
 class _RankPlan(BaseModel):
@@ -105,6 +128,8 @@ class _RankAndLookupPlan(BaseModel):
     industry: NonEmptyText
     metric: NonEmptyText
     limit: PositiveLimit = DEFAULT_RANK_LIMIT
+    # "Top 5 banks by net income" orders by it; "and their net income" does not.
+    order_by_metric: bool = False
 
 
 class _ExplainPlan(BaseModel):
@@ -124,9 +149,10 @@ class _ExploratoryResearchPlan(BaseModel):
 class _FilingChangePlan(BaseModel):
     intent: Literal[Intent.FILING_CHANGE]
     company: NonEmptyText
-    older_accession: NonEmptyText
-    newer_accession: NonEmptyText
-    section: NonEmptyText = "mda"
+    # Empty for the latest filing against the one before it.
+    older_accession: str = ""
+    newer_accession: str = ""
+    section: Literal["mda", "risk_factors", "both"] = "both"
     summarize: bool = False
 
 
@@ -162,7 +188,7 @@ class Plan(_FlatActionModel):
 
     @property
     def company(self) -> str | None:
-        if isinstance(self.action, _LookupPlan):
+        if isinstance(self.action, (_LookupPlan, _FilingChangePlan)):
             return self.action.company
         return None
 
@@ -171,6 +197,41 @@ class Plan(_FlatActionModel):
         if isinstance(self.action, _ComparePlan):
             return self.action.companies
         return []
+
+    def with_companies(self, companies: list[str]) -> "Plan":
+        """This comparison over ``companies``: the conversation adds a company's peers."""
+        if not isinstance(self.action, _ComparePlan):
+            return self
+        return Plan(action=self.action.model_copy(update={"companies": companies}))
+
+    # The pipeline reads these with getattr, as it does the rules planner's plans.
+    @property
+    def order_by_metric(self) -> bool:
+        if isinstance(self.action, (_ComparePlan, _RankAndLookupPlan)):
+            return self.action.order_by_metric
+        return False
+
+    @property
+    def peers(self) -> bool:
+        return isinstance(self.action, _ComparePlan) and self.action.peers
+
+    @property
+    def older_accession(self) -> str:
+        return self.action.older_accession if isinstance(self.action, _FilingChangePlan) else ""
+
+    @property
+    def newer_accession(self) -> str:
+        return self.action.newer_accession if isinstance(self.action, _FilingChangePlan) else ""
+
+    @property
+    def section(self) -> str:
+        if isinstance(self.action, _FilingChangePlan):
+            return self.action.section
+        return "both"
+
+    @property
+    def summarize(self) -> bool:
+        return isinstance(self.action, _FilingChangePlan) and self.action.summarize
 
     @property
     def metric(self) -> str | None:
@@ -197,6 +258,11 @@ class Plan(_FlatActionModel):
         return None
 
 
+Operation = Literal[
+    "across_companies", "across_periods", "rank", "order_by_metric", "year_over_year"
+]
+
+
 class _SpecPatchAction(BaseModel):
     intent: Literal["spec_patch"]
     mode: Literal["extend", "replace"] | None = None
@@ -206,8 +272,8 @@ class _SpecPatchAction(BaseModel):
     remove_metrics: tuple[str, ...] = ()
     period_kind: Literal["latest_quarter", "last_n_quarters"] | None = None
     period_count: int | None = None
-    add_operations: tuple[str, ...] = ()
-    remove_operations: tuple[str, ...] = ()
+    add_operations: tuple[Operation, ...] = ()
+    remove_operations: tuple[Operation, ...] = ()
     ranked_industry: str | None = None
     ranked_limit: PositiveLimit | None = None
 

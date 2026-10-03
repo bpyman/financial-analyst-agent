@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-02T23:22:18.595855+00:00",
+  "generated_at": "2026-10-02T23:38:52.846133+00:00",
   "case_count": 78,
   "scorecard_count": 28,
   "held_out_count": 50,
@@ -71,9 +71,9 @@
       "runs": 3,
       "case_runs": 234,
       "planner_calls": 258,
-      "planner_ms_p50": 1.716364000003523,
-      "planner_ms_p95": 3.804683999987901,
-      "turn_ms_p50": 8.119370000031267,
+      "planner_ms_p50": 1.5760439999894515,
+      "planner_ms_p95": 2.63113500000145,
+      "turn_ms_p50": 7.074660999990101,
       "input_tokens": 0,
       "output_tokens": 0,
       "reasoning_tokens": 0,
@@ -263,7 +263,7 @@
   },
   "estimate": {
     "planner_calls": 270,
-    "input_tokens": 321918,
+    "input_tokens": 414351,
     "output_tokens": 32400,
     "cost_usd": null,
     "note": "Input from prompt and schema size at ~4 characters a token; output assumed 120 tokens a call. Reasoning tokens, if the model spends them, are billed as output and are not included: run a small pilot (--limit) to measure them."
