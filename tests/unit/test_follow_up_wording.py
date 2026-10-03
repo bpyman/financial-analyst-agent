@@ -11,6 +11,8 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
 
@@ -261,7 +263,9 @@ def test_add_multiple_companies_and_unknown_metric_phrase(tmp_path: Path) -> Non
     names = [company.query for company in added.analysis_spec.companies]  # type: ignore[union-attr]
     assert "Google" in names
     assert any("Apple" in name for name in names)
-    assert any("Microsoft" in name for name in names)
+    # The planner named only Apple; the edit's own words add Microsoft too.
+    tickers = [company.ticker for company in added.analysis_spec.companies]  # type: ignore[union-attr]
+    assert "MSFT" in tickers
 
     refused = run_conversation_turn(
         "t2",
@@ -433,3 +437,76 @@ def test_openai_follow_up_schema_includes_current_spec() -> None:
     assert "net_income" in contents
     assert "Google" in contents or "Alphabet" in contents
     assert client_calls[0]["response_format"] is FollowUpPlan
+
+
+
+def _bank_spec():
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch, apply_patch, resolve_spec
+    from financial_analyst_agent.ranking import SnapshotRanking
+
+    ranking = SnapshotRanking.from_path(FIXTURE_UNIVERSE_SNAPSHOT_PATH)
+    patch = SpecPatch(mode="replace", add_companies=("JPM", "BAC"), add_metrics=("net_income",))
+    return resolve_spec(apply_patch(None, patch), ranking=ranking), ranking.index
+
+
+@pytest.mark.parametrize(
+    ("message", "proposed"),
+    [
+        # A model planner adds where the analyst asked for another company instead.
+        ("what about Goldman?", ("Goldman Sachs",)),
+        ("how about Goldman Sachs", ("GS",)),
+        ("same for Goldman", ()),
+        ("And what about Goldman Sachs?", ("JPM", "BAC", "GS")),
+    ],
+)
+def test_what_about_puts_the_company_in_place_of_those_on_screen(
+    message: str, proposed: tuple[str, ...]
+) -> None:
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+
+    spec, index = _bank_spec()
+    patch = refine_patch_from_message(
+        SpecPatch(mode="extend", add_companies=proposed), message, spec, index=index
+    )
+
+    assert patch.mode == "extend"
+    assert [index.named(company) for company in patch.add_companies] == ["GS"]
+    assert set(patch.remove_companies) == {"JPM", "BAC"}
+    assert patch.add_metrics == ()
+
+
+@pytest.mark.parametrize(
+    ("message", "proposed"),
+    [
+        ("include Goldman too", ("Goldman too",)),
+        ("Goldman Sachs too", ("GS",)),
+        ("and Goldman as well?", ()),
+        ("add Goldman Sachs as well", ("Goldman Sachs",)),
+    ],
+)
+def test_too_and_as_well_add_the_company(message: str, proposed: tuple[str, ...]) -> None:
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+
+    spec, index = _bank_spec()
+    patch = refine_patch_from_message(
+        SpecPatch(mode="replace", add_companies=proposed), message, spec, index=index
+    )
+
+    assert patch.mode == "extend"
+    assert [index.named(company) for company in patch.add_companies] == ["GS"]
+    assert patch.remove_companies == ()
+
+
+@pytest.mark.parametrize(
+    "message", ["what about net margin?", "what about over the past two years?"]
+)
+def test_what_about_without_a_company_is_left_to_the_other_edits(message: str) -> None:
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+
+    spec, index = _bank_spec()
+    patch = refine_patch_from_message(SpecPatch(mode="extend"), message, spec, index=index)
+
+    assert patch.remove_companies == ()

@@ -88,6 +88,25 @@ _ADD_EDIT = re.compile(
     r"^\s*(?:now\s+)?(?:also\s+)?(?:add|include)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+# Words around the companies of an edit: "include Oracle too", "add Lilly as well".
+_EDIT_FILLER = re.compile(
+    r"\b(?:too|as well|also|please|pls|as a peer|in there"
+    r"|to (?:the|this) (?:table|list|comparison|chart|analysis))\b",
+    re.IGNORECASE,
+)
+# "Oracle too", "and Bank of America as well?": the companies join the analysis.
+_ALSO_EDIT = re.compile(
+    r"^\s*(?:and\s+|plus\s+)?(?:also\s+)?(?P<span>.+?)\s+(?:too|as well)\s*[?.!]*\s*$"
+    r"|^\s*(?:and|plus|also)\s+(?P<lead>.+?)\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
+# "what about Goldman?", "how about AMD", "same for Oracle": the named companies
+# take the place of the ones on screen; the metrics and window stay.
+_INSTEAD_EDIT = re.compile(
+    r"^\s*(?:and\s+|ok(?:ay)?,?\s+|now\s+)?(?:(?:what|how)\s+about|same\s+(?:thing\s+)?(?:for|with))"
+    r"\s+(?P<span>.+?)\s*[?.!]*\s*$",
+    re.IGNORECASE,
+)
 _DROP_EDIT = re.compile(
     r"^\s*(?:drop|remove|without)\s+(.+?)\s*$",
     re.IGNORECASE,
@@ -438,8 +457,28 @@ def _companies_named_in(companies: tuple[str, ...], text: str) -> tuple[str, ...
 
 
 def _company_tokens(text: str) -> tuple[str, ...]:
+    text = _EDIT_FILLER.sub(" ", text)
     parts = re.split(r"\s+and\s+|,\s*", text, flags=re.IGNORECASE)
-    return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
+    return tuple(part.strip(" .,?!") for part in parts if part.strip(" .,?!"))
+
+
+def _companies_in(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+    """The companies an edit's words name, read as the planner reads a question.
+
+    "Oracle too" is Oracle and "Goldman" is GS: the issuer index reads the
+    words, so filler never becomes a company. Words it cannot place fall back
+    to the planner's own companies, then to the words themselves, which the
+    resolver then reports as not found.
+    """
+    found = _named_by_index(text, patch, index)
+    if found:
+        return found
+    named = _companies_named_in(patch.add_companies, text)
+    if named:
+        return named
+    if _names_companies(patch):
+        return patch.add_companies
+    return _company_tokens(text)
 
 
 def parse_named_periods(message: str) -> tuple[NamedPeriodSpec, ...]:
@@ -627,8 +666,16 @@ def refine_patch_from_message(
     patch: SpecPatch,
     message: str,
     current_spec: AnalysisSpec | None,
+    *,
+    index: Any = None,
 ) -> SpecPatch:
-    """Turn follow-up wording into an extend patch when the planner still replaced."""
+    """Turn follow-up wording into an extend patch when the planner still replaced.
+
+    The edit's own words decide, whichever planner proposed the patch: "add",
+    "include", "too" and "as well" add companies; "what about", "how about"
+    and "same for" put them in place of the ones on screen. ``index`` reads
+    which companies the words name.
+    """
     patch = bind_periods_from_message(patch, message)
     if current_spec is None:
         return patch
@@ -666,8 +713,12 @@ def refine_patch_from_message(
             return _extend(patch, add_companies=named)
         if patch.add_metrics and not patch.add_companies:
             return _extend(patch, add_companies=())
-        companies = _company_tokens(token)
+        companies = _companies_in(token, patch, index)
         return _extend(patch, add_companies=companies, add_metrics=())
+
+    companies_edit = _company_edit(message.strip(), patch, current_spec, index)
+    if companies_edit is not None:
+        return companies_edit
 
     dropped = _DROP_EDIT.match(message.strip())
     if dropped is not None:
@@ -678,7 +729,7 @@ def refine_patch_from_message(
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
             return _extend(patch, add_companies=(), remove_companies=(), add_metrics=())
-        companies = _company_tokens(token)
+        companies = _companies_in(token, patch, index)
         if re.fullmatch(r"(?:both|them|all|all of them|everything|every company)", token, re.I):
             # "remove both": every company on screen, which the turn then says it cannot.
             companies = tuple(company.query for company in current_spec.companies)
@@ -710,6 +761,53 @@ def refine_patch_from_message(
             }
         )
     return patch
+
+
+def _named_by_index(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+    """The companies the index finds in ``text``, in the planner's spelling where it has one."""
+    find = getattr(index, "find", None)
+    if not callable(find):
+        return ()
+    found = tuple(dict.fromkeys(mention.query for mention in find(text)))
+    named = getattr(index, "named", None)
+    spelled: dict[str, str] = {}
+    if callable(named):
+        # The planner's "Nvidia" stays "Nvidia" when it is the NVDA the words name.
+        spelled = {named(company) or company: company for company in patch.add_companies}
+    return tuple(spelled.get(query, query) for query in found)
+
+
+def _company_edit(
+    message: str, patch: SpecPatch, spec: AnalysisSpec, index: Any
+) -> SpecPatch | None:
+    """ "Oracle too" adds Oracle; "what about Goldman?" puts Goldman in their place.
+
+    Only an edit that names companies and no metric of its own: "what about
+    net margin?" and "what about over the past two years?" are other edits,
+    and a ranked list is left to the planner.
+    """
+    if spec.constituents is not None or not callable(getattr(index, "find", None)):
+        return None
+    instead = _INSTEAD_EDIT.match(message)
+    also = None if instead is not None else _ALSO_EDIT.match(message)
+    match = instead or also
+    if match is None:
+        return None
+    span = next(group for group in match.groups() if group)
+    named = _named_by_index(span, patch, index)
+    if not named or _unique_metrics_from_phrase(span):
+        return None
+    if instead is not None:
+        return _extend(
+            patch,
+            add_companies=named,
+            remove_companies=tuple(
+                company.query for company in spec.companies if company.query not in named
+            ),
+            add_metrics=(),
+            remove_metrics=(),
+        )
+    return _extend(patch, add_companies=named, remove_companies=(), add_metrics=())
 
 
 def _listed_dates(listing: Any, company: str, count: int) -> tuple[date, ...]:
@@ -1401,7 +1499,9 @@ def resolve_request(
     forecast = _FORECAST.search(message)
     if forecast is not None:
         return answered(_refusal(intent, forecast_message(forecast.group(0))), current_spec)
-    patch = refine_patch_from_message(patch, message, current_spec)
+    patch = refine_patch_from_message(
+        patch, message, current_spec, index=getattr(runtime.ranking, "index", None)
+    )
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
