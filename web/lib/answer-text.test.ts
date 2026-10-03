@@ -168,6 +168,19 @@ describe("answerMarkdown keeps text as text", () => {
     expect(text).not.toMatch(/<img|<b>|evil\.example/);
   });
 
+  it("drops a link whose text holds a bracket unless it is a cited source", () => {
+    const text = answerMarkdown("", {
+      ...EMPTY,
+      essay:
+        "See [a [b] c](javascript:alert(1)) and [the [full] call](https://evil.example/x), " +
+        "per [the [Q2] call](https://ok.example/a) [1].",
+      citations: [{ index: 1, title: "Q2 call", url: "https://ok.example/a", published: null }],
+    });
+    expect(text).not.toMatch(/\]\(javascript:|evil\.example/);
+    expect(text).toContain("See [a [b] c] and [the [full] call],");
+    expect(text).toContain("[the [Q2] call](https://ok.example/a)");
+  });
+
   it("escapes a headline and question that would read as markup", () => {
     const text = answerMarkdown("# Heading\n<x>", {
       ...EMPTY,

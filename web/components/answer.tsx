@@ -73,6 +73,7 @@ function subscribePhone(onChange: () => void) {
  */
 export function Answer({
   question = "",
+  conversation,
   presentation,
   clarify,
   onSuggest,
@@ -81,6 +82,8 @@ export function Answer({
 }: {
   /** The question as the thread shows it, heading a copied answer. */
   question?: string;
+  /** Every message sent up to this answer, for a shared link; the question alone by default. */
+  conversation?: string[];
   presentation: Presentation;
   clarify?: ClarifyControls;
   /** Set on the latest answer only: sends a suggested question. */
@@ -121,6 +124,7 @@ export function Answer({
           {hasTakeaway(presentation) && !demo && (
             <AnswerActions
               question={question}
+              conversation={conversation ?? [question]}
               presentation={presentation}
               table={shown}
               rowOrder={rowOrder}

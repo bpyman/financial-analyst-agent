@@ -131,6 +131,9 @@ function quote(text: string): string {
     .join("\n");
 }
 
+/** "](dest)" or "](<dest> "title")", the destination one level of parentheses deep. */
+const LINK_DESTINATION = /\]\(\s*<?((?:[^()\s<>]|\([^()\s]*\))*)>?(?:\s+"[^"]*")?\s*\)/g;
+
 /**
  * The essay under the window's rules (components/markdown.tsx): raw HTML is
  * dropped, an image is its alt text, and only a link to a cited source stays a
@@ -146,9 +149,17 @@ export function safeEssay(essay: string, cited: string[]): string {
       safeHref(href) && cited.includes(href) ? `[${text}](${destination(href)})` : text,
     )
     .replace(/<(https?:\/\/[^>\s]+)>/g, "$1")
+    // Any link the pass above could not read ("[a [b] c](javascript:…)": its
+    // text holds a bracket) loses its destination unless that is a cited source.
+    .replace(LINK_DESTINATION, (whole: string, href: string) =>
+      safeHref(href) && (cited.includes(href) || cited.some((url) => destination(url) === href))
+        ? whole
+        : "]",
+    )
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
 
 /**
  * Each filing the answer read, once, with what was taken from it. A link into

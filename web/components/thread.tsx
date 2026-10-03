@@ -56,6 +56,7 @@ export function Thread({
               <AnswerBoundary>
                 <Answer
                   question={shownMessage(item, turns[index - 1])}
+                  conversation={turns.slice(0, index + 1).map((sent) => sent.message)}
                   presentation={item.presentation}
                   runtime={runtime}
                   onSuggest={index === turns.length - 1 && turn.status === "idle" && !full ? onAsk : undefined}

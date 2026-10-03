@@ -595,6 +595,8 @@ class DisplayTable:
     evidence: tuple[tuple[int | None, ...], ...] = ()
     # Each cell exactly: amounts as unrounded decimals, dates as ISO days.
     raw: tuple[tuple[str, ...], ...] = ()
+    # A change cell's percent ("16.4"), beside its amount in raw; "" elsewhere.
+    raw_percent: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1970,6 +1972,7 @@ def _wide_table(
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
     raws: list[tuple[str, ...]] = []
+    percents: list[tuple[str, ...]] = []
     sources: list[list[TableRow | None]] = []
     identities: list[TableRow] = []
     for group in ordered:
@@ -2039,6 +2042,12 @@ def _wide_table(
                 for key, source, shown in zip(keys, cell_sources, text, strict=True)
             )
         )
+        percents.append(
+            tuple(
+                _raw_percent(source) if key.startswith(WIDE_CHANGE_PREFIX) and source else ""
+                for key, source in zip(keys, cell_sources, strict=True)
+            )
+        )
         latest_end = max(ends) if ends else None
         identities.append(identity.model_copy(update={"end_date": latest_end}))
     amounts = [index for index, key in enumerate(keys) if key.startswith(WIDE_VALUE_PREFIX)]
@@ -2051,13 +2060,35 @@ def _wide_table(
         numbers=tuple(numbers),
         row_keys=_row_keys(identities),
         raw=tuple(raws),
+        raw_percent=tuple(percents) if any(any(row) for row in percents) else (),
     )
     return table, sources
 
 
+# A computed ratio is exact to this many places in an export; amounts never reach it.
+_RAW_PLACES = Decimal("1e-10")
+_RAW_EXPONENT = -10
+
+
 def _raw_value(row: TableRow) -> str:
-    """A cell's amount unrounded, for export; a failed cell has none."""
-    return str(row.value) if row.value is not None else ""
+    """A cell's amount unrounded, for export; a failed cell has none.
+
+    A ratio (a margin, a P/E) is a quotient with no end, so it is cut at ten
+    decimal places rather than written to 28 digits.
+    """
+    if row.value is None:
+        return ""
+    value = row.value
+    exponent = value.as_tuple().exponent
+    if isinstance(exponent, int) and exponent < _RAW_EXPONENT:
+        value = value.quantize(_RAW_PLACES)
+    return str(value)
+
+
+def _raw_percent(row: TableRow) -> str:
+    """A change's percent for export, beside its amount; "" for a margin's points."""
+    percent = change_percent(row)
+    return str(percent) if percent is not None else ""
 
 
 def _raw_cell(row: TableRow, key: str, shown: str) -> str:

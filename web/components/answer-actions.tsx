@@ -17,17 +17,20 @@ type Copied = { what: "answer" | "link"; ok: boolean } | null;
 /**
  * Copy an answer, or save it as a Markdown file, with its sources: the figures
  * as shown (the table in its current order and layout) and a link to every
- * filing read. Copy link shares the question only; CSV saves the table's
+ * filing read. Copy link shares the conversation up to this answer; CSV saves the table's
  * exact amounts.
  */
 export function AnswerActions({
   question,
+  conversation,
   presentation,
   table,
   rowOrder,
   runtime,
 }: {
   question: string;
+  /** Every message sent up to this answer, which a shared link asks again in order. */
+  conversation: string[];
   presentation: Presentation;
   /** The table as on screen, when there is one. */
   table: DisplayTable | null;
@@ -47,7 +50,7 @@ export function AnswerActions({
     const text =
       what === "answer"
         ? answerMarkdown(question, presentation, rowOrder, table)
-        : shareLink(window.location.origin, question, runtime);
+        : shareLink(window.location.origin, conversation, runtime);
     try {
       await navigator.clipboard.writeText(text);
       setCopied({ what, ok: true });

@@ -3,14 +3,27 @@ import type { DisplayTable } from "./types";
 
 /**
  * An answer table as CSV, in the order on screen: exact amounts where the
- * server sent them (unrounded, no units), the shown text elsewhere.
+ * server sent them (unrounded, no units), the shown text elsewhere. A change
+ * column is followed by its percent ("YoY change %"), which its amount alone
+ * would not say.
  */
 export function tableCsv(table: DisplayTable, rowOrder: number[] | null): string {
   const order = rowOrder ?? table.rows.map((_, index) => index);
+  const withPercent = (column: number) =>
+    Boolean(table.keys[column]?.startsWith("change:") && table.raw_percent?.some((row) => row[column]));
+  const columns = table.headers.flatMap((_, column) =>
+    withPercent(column) ? [{ column, percent: false }, { column, percent: true }] : [{ column, percent: false }],
+  );
   const lines = [
-    table.headers.map(field),
+    columns.map(({ column, percent }) => field(percent ? `${table.headers[column]} %` : table.headers[column])),
     ...order.map((row) =>
-      table.headers.map((_, column) => field(table.raw?.[row]?.[column] ?? table.rows[row]?.[column] ?? "")),
+      columns.map(({ column, percent }) =>
+        field(
+          percent
+            ? (table.raw_percent?.[row]?.[column] ?? "")
+            : (table.raw?.[row]?.[column] ?? table.rows[row]?.[column] ?? ""),
+        ),
+      ),
     ),
   ];
   return lines.map((line) => line.join(",")).join("\r\n") + "\r\n";

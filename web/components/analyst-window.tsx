@@ -172,8 +172,9 @@ export function AnalystWindow() {
     return () => aborted.abort();
   }, [store, resumeAttempt]);
 
-  // A shared link (/?q=…&rt=…) asks its question in a new conversation once the
-  // saved one is back; the address is cleaned first, so a reload asks nothing.
+  // A shared link (/?q=…&q=…&rt=…) asks its questions, in order, in a new
+  // conversation once the saved one is back; the address is cleaned first, so a
+  // reload asks nothing.
   useEffect(() => {
     if (shared.current === undefined) {
       shared.current = parseShareLink(window.location.search, MAX_MESSAGE_CHARS_BEFORE_META);
@@ -182,8 +183,13 @@ export function AnalystWindow() {
     const link = shared.current;
     if (!link || resuming) return;
     shared.current = null;
-    void startOver(link.runtime, { keepPrevious: true }).then((started) => {
-      if (started) void ask(link.question, started);
+    void startOver(link.runtime, { keepPrevious: true }).then(async (started) => {
+      let current: ThreadView | null = started ?? null;
+      for (const question of link.questions) {
+        if (!current) return;
+        // Each follow-up is asked of the thread the previous answer left.
+        current = await ask(question, current);
+      }
     });
     // startOver and ask read the latest state when they run; only the resume gates this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -323,7 +329,8 @@ export function AnalystWindow() {
   }
 
   /** Asks `message` on the thread on screen, or on `fresh` when Start over just made one. */
-  async function ask(message: string, fresh?: ThreadView) {
+  /** Ask a question; the thread as its answer left it, or null when there is none. */
+  async function ask(message: string, fresh?: ThreadView): Promise<ThreadView | null> {
     inFlight.current = true;
     const controller = new AbortController();
     work.current = controller;
@@ -338,11 +345,12 @@ export function AnalystWindow() {
     let stale = false;
     let answered = false;
     let moved: string | null = null;
+    let latest: ThreadView | null = null;
     try {
       if (!threadId) {
         // Before the analyst picks a runtime, the server applies its deployment default.
         const started = await startThread(threadApi, store, chosenRuntime ?? undefined);
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return null;
         setView(started.view);
         threadId = started.view.thread_id;
         if (started.notice) setNotice({ kind: "info", text: started.notice });
@@ -368,6 +376,7 @@ export function AnalystWindow() {
         awake.current = true;
         if (event.event === "thread") {
           setView(event.data);
+          latest = event.data;
           answered = true;
         }
         if (event.event === "error") stale = true;
@@ -391,7 +400,7 @@ export function AnalystWindow() {
         inFlight.current = false;
       }
     }
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) return null;
     if (answered) setAnnouncement(ANSWER_READY);
     if (moved) {
       // Another tab's Start over replaced this thread: show that one, and hand the question back.
@@ -405,9 +414,10 @@ export function AnalystWindow() {
           composer.current?.fill(message);
         })
         .catch((error: unknown) => setNotice({ kind: "error", text: errorText(error) }));
-      return;
+      return null;
     }
     if (stale && threadId) refresh(threadId);
+    return stale ? null : latest;
   }
 
   /**

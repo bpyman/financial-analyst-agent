@@ -8,9 +8,20 @@ import type { UnifiedPiece } from "./word-diff";
  */
 
 const FIGURE = /\$?\d[\d,]*(?:\.\d+)?%?/g;
+const MONTH =
+  "(?:January|February|March|April|May|June|July|August|September|October|November|December" +
+  "|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\\.?";
+// Dates, years and page references move from one filing to the next without the
+// disclosure changing; the server masks the same ones (filing_change._DATES).
+const DATES = new RegExp(
+  `\\b${MONTH}\\s+\\d{1,2},?\\s+(?:19|20)\\d{2}(?!\\d)` +
+    "|(?<!\\d)(?:19|20)\\d{2}(?!\\d)" +
+    "|\\bpages?\\s+\\d{1,3}(?:\\s*[-–]\\s*\\d{1,3})?\\b",
+  "gi",
+);
 
 function figures(text: string): string[] {
-  return (text.match(FIGURE) ?? []).sort();
+  return (text.replace(DATES, " ").match(FIGURE) ?? []).sort();
 }
 
 /** Whether a changed paragraph's figures differ, not only its words. */
