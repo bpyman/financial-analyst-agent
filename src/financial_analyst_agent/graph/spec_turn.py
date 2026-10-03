@@ -1444,6 +1444,8 @@ def merge_task_results(
     for task, result in zip(tasks, results, strict=True):
         if result.renderer is RendererKind.REFUSE and not result.table_rows:
             rows.extend(_lookup_refuse_as_partial(task, result))
+            # The trace says why the cell is empty, as a single lookup's refusal does.
+            traces.extend(result.tool_traces)
             continue
         rows.extend(result.table_rows)
         traces.extend(result.tool_traces)

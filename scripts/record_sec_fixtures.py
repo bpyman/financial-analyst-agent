@@ -1,7 +1,8 @@
 """Refresh the recorded runtime's data: its ranking snapshot and SEC cassette.
 
-Run it after ``build-universe-snapshot`` so the public demo, which is locked to
-the recorded runtime, shows the same freeze as the live runtime.
+Run it after ``build-universe-snapshot``, and whenever the metric catalog starts
+reading a new concept, so the recorded runtime, which the public demo offers
+beside the live one, shows the same freeze and the same figures.
 
 First, ``fixture_universe_snapshot.json`` takes the freeze's ``as_of`` and each
 of its companies' market caps, sectors, industries, and ``files_quarterly`` flags
@@ -18,6 +19,8 @@ uses, so the cassette holds real EDGAR payloads, trimmed to what the demo reads:
   quarter, derived from it per ADR 0007.
 - ``company_facts``: the concepts in ``READ_CONCEPTS`` (every concept a metric
   or a check reads), only as reported in those filings.
+- ``read_concepts``: that concept list as it was when recorded. A test fails
+  when the catalog reads a concept the cassette was not recorded with.
 - ``filing_documents``: the Management's Discussion and Analysis and Risk
   Factors sections of each issuer's newest 10-Q and the 10-Q a year before it,
   the pair "What changed in X's latest 10-Q?" compares, as extracted by
@@ -275,6 +278,7 @@ def main() -> None:
     older, newer = pairs[MICROSOFT]
 
     cassette = {
+        "read_concepts": [f"{taxonomy}:{concept}" for taxonomy, concept in sorted(READ_CONCEPTS)],
         "company_tickers": {str(index): row for index, row in enumerate(ticker_rows)},
         "submissions": submissions,
         "company_facts": company_facts,

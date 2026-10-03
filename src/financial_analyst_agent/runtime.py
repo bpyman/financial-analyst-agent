@@ -58,12 +58,17 @@ RECORDED_DISCLOSURE_SUMMARIES = {
         "Management's highlights now report faster Microsoft Cloud and Azure growth "
         "and add the commercial remaining performance obligation, while Windows OEM "
         "and Devices and Xbox content and services revenue now fell where a year "
-        "earlier they grew."
+        "earlier they grew. The MD&A adds the extended OpenAI partnership, and "
+        "currency movements now raised reported revenue and expenses rather than "
+        "lowering them."
     ),
     (RECORDED_FILING_OLDER, RECORDED_FILING_NEWER, "risk_factors"): (
-        "The Risk Factors edits are small: competition now “could” rather than "
-        "“may” affect results, and the platform risk adds that scale is needed to "
-        "meet consumer demand."
+        "Across the Risk Factors, competition and other risks now “could” rather "
+        "than “may” affect results; the platform risk adds that scale is needed to "
+        "meet consumer demand; the investment risks are reworded around AI-based "
+        "products; OpenAI is now described as a long-term strategic partnership; "
+        "the impairment risk says such charges have been recorded; and the security "
+        "risk names cybercriminal groups."
     ),
 }
 RECORDED_SUMMARY_MISSING = (

@@ -196,7 +196,7 @@ Neither gain came from the planners. Both came from the code that runs after eit
 The three held-out cases both planners missed were not planning errors, and two were settled by product decisions after the run:
 - **Growth now means year over year,** the convention for quarterly figures, and a change that names no base ("why did revenue drop?") asks what to compare against.
 - **A question naming two metrics is answered with both.** [ADR 0004](docs/adr/0004-ambiguous-metric-clarify.md) had said it should clarify; the ADR and that case's label now say otherwise, and the label change is recorded in the case file.
-- **The third is a gap in the recording:** Amgen's quarterly R&D is missing from it, and the harness counts that refusal against the planner.
+- **The third was a gap in the recording.** The recorded SEC data predated concepts the catalog had started reading, so the recorded runtime refused Amgen's quarterly R&D, and JPMorgan's revenue, while the live runtime answered. It is re-recorded, a test now fails when the catalog reads a concept the recording lacks, and a refusal for a fact the filings lack scores as missing data, not a planning error.
 
 [Company name coverage](docs/evaluation/company-coverage.md) asks about every one of the 5,161 snapshot companies in six forms of its name: 98.7–98.8% are found for each name form, and 100% as `$TICKER`. It needs no network and no model.
 
