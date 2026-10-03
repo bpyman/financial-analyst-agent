@@ -2243,7 +2243,8 @@
    "presentation": {
     "intent": "filing_change",
     "banners": [
-     "Comparing Microsoft's latest 10-Q (quarter ended Mar 31, 2026) with the one for Mar 31, 2025."
+     "Comparing Microsoft's latest 10-Q (quarter ended Mar 31, 2026) with the one for Mar 31, 2025.",
+     "Showing the first 30 of 160 in Management's Discussion and Analysis and the first 30 of 63 in Risk Factors changes, in the order they appear in the filing."
     ],
     "traces": [
      {
@@ -2269,7 +2270,7 @@
       "outputs": [
        [
         "Change Count",
-        "15"
+        "223"
        ],
        [
         "CIK",
@@ -2421,6 +2422,204 @@
       "subsection": "Overview"
      },
      {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "We have a long-term strategic partnership with OpenAI which was originally established in 2019. In October 2025 and April 2026, we extended this partnership and continue to build on our shared vision to advance artificial intelligence responsibly and make its benefits broadly accessible. Microsoft is a major investor in OpenAI and will continue to receive revenue-sharing payments. We hold rights to OpenAI’s intellectual property, including models and infrastructure, for integration into our products.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20have%20a%20long-term%20strategic%20partnership%20with%20OpenAI%20which%20was%20originally%20established%20in%202019.%20",
+      "subsection": "Industry Trends and Opportunities"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "The investments we are making in cloud and AI infrastructure and devices will continue to increase our operating costs and may decrease our operating margins. We continue to identify and evaluate opportunities to expand our datacenter locations and increase our server capacity to meet the evolving needs of our customers, particularly given the growing demand for AI services. Our datacenters depend on the availability of permitted and buildable land, predictable energy, networking supplies, and servers, including graphics processing units (“GPUs”) and other components. Our devices are primarily manufactured by third-party contract manufacturers. For the majority of our products, we have the ability to use other manufacturers if a current vendor becomes unavailable or unable to meet our requirements. However, some of our products contain certain components for which there are very few qualified suppliers. Extended disruptions at these suppliers could impact our ability to manufacture devices on time to meet consumer demand.",
+      "after_text": "The investments we are making in cloud and AI infrastructure and devices will continue to increase our operating costs and may decrease our operating margins. We continue to identify and evaluate opportunities to expand our datacenter locations and increase our server capacity to meet the evolving needs of our customers, particularly given the growing demand for AI services. Our datacenters depend on the availability of permitted and buildable land, predictable energy, networking supplies, and servers, including graphics processing units and other components. Our devices are primarily manufactured by third-party contract manufacturers. For the majority of our products, we have the ability to use other manufacturers if a current vendor becomes unavailable or unable to meet our requirements. However, some of our products contain certain components for which there are very few qualified suppliers. Extended disruptions at these suppliers could impact our ability to manufacture devices on time to meet consumer demand.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20investments%20we%20are%20making%20in%20cloud%20and%20AI%20infrastructure%20and%20devices%20will%20continue%20to%20increa",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=The%20investments%20we%20are%20making%20in%20cloud%20and%20AI%20infrastructure%20and%20devices%20will%20continue%20to%20increa",
+      "subsection": "Economic Conditions, Challenges, and Risks"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Our international operations provide a significant portion of our total revenue and expenses. Many of these revenue and expenses are denominated in currencies other than the U.S. dollar. As a result, changes in foreign exchange rates may significantly affect revenue and expenses. Fluctuations in the U.S. dollar relative to certain foreign currencies decreased reported revenue and expenses from our international operations for the three months ended March 31, 2025, and did not have a material impact on reported revenue and expenses from our international operations for the nine months ended March 31, 2025.",
+      "after_text": "Our international operations provide a significant portion of our total revenue and expenses. Many of these revenue and expenses are denominated in currencies other than the U.S. dollar. As a result, changes in foreign exchange rates may significantly affect revenue and expenses. Fluctuations in the U.S. dollar relative to certain foreign currencies increased reported revenue and expenses from our international operations for the three and nine months ended March 31, 2026.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20international%20operations%20provide%20a%20significant%20portion%20of%20our%20total%20revenue%20and%20expenses.%20Ma",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20international%20operations%20provide%20a%20significant%20portion%20of%20our%20total%20revenue%20and%20expenses.%20Ma",
+      "subsection": "Economic Conditions, Challenges, and Risks"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "removed",
+      "before_text": "In August 2024, we announced changes to the composition of our segments. These changes align our segments with how we currently manage our business, most notably bringing the commercial components of Microsoft 365 together in the Productivity and Business Processes segment. Beginning in fiscal year 2025, the information that our chief operating decision maker is regularly provided and reviews for purposes of allocating resources and assessing performance reflects these segment changes. Prior period segment information has been recast to conform to the way we internally manage and monitor our business during fiscal year 2025.",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=In%20August%202024%2C%20we%20announced%20changes%20to%20the%20composition%20of%20our%20segments.%20These%20changes%20align%20our",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "subsection": "Reportable Segments"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Additional information on our reportable segments is contained in Note 17 – Segment Information and Geographic Data of the Notes to Financial Statements (Part I, Item 1 of this Form 10-Q).",
+      "after_text": "Additional information on our reportable segments is contained in Note 16 – Segment Information and Geographic Data of the Notes to Financial Statements (Part I, Item 1 of this Form 10-Q).",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Additional%20information%20on%20our%20reportable%20segments%20is%20contained%20in%20Note%2017%20%E2%80%93%20Segment%20Information%20",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Additional%20information%20on%20our%20reportable%20segments%20is%20contained%20in%20Note%2016%20%E2%80%93%20Segment%20Information%20",
+      "subsection": "Reportable Segments"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "In the first quarter of fiscal year 2025, we made updates to our metrics in connection with the segment changes described above. These changes align our metrics with how we manage and monitor certain businesses. The key change was bringing the commercial components of Microsoft 365 together and creating a new Microsoft 365 Commercial cloud revenue growth metric. Other changes include combining Windows OEM and Devices into a single revenue growth metric that brings revenue from PC market-driven businesses together, as well as elevating our cloud revenue growth metrics to align to our strategic focus on cloud growth.",
+      "after_text": "In the first quarter of fiscal year 2026, we made updates to our metrics to align with how we manage and monitor certain businesses. As part of these updates, Microsoft 365 Consumer subscribers was removed as a metric.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=In%20the%20first%20quarter%20of%20fiscal%20year%202025%2C%20we%20made%20updates%20to%20our%20metrics%20in%20connection%20with%20the%20",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=In%20the%20first%20quarter%20of%20fiscal%20year%202026%2C%20we%20made%20updates%20to%20our%20metrics%20to%20align%20with%20how%20we%20ma",
+      "subsection": "Metrics"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Our commercial business primarily consists of Server products and cloud services, Microsoft 365 Commercial products and cloud services, the commercial portion of LinkedIn, Enterprise and partner services, and Dynamics products and cloud services. Our commercial metrics allow management and investors to assess the overall health of our commercial business and include leading indicators of future performance.",
+      "after_text": "Our commercial business primarily consists of Server products and cloud services, Microsoft 365 Commercial products and cloud services, the commercial portion of LinkedIn, Dynamics products and cloud services, and Enterprise and partner services. Our commercial metrics allow management and investors to assess the overall health of our commercial business and include leading indicators of future performance.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20commercial%20business%20primarily%20consists%20of%20Server%20products%20and%20cloud%20services%2C%20Microsoft%20365%20",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20commercial%20business%20primarily%20consists%20of%20Server%20products%20and%20cloud%20services%2C%20Microsoft%20365%20",
+      "subsection": "Commercial"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Revenue from Microsoft 365 Commercial subscriptions, comprising Microsoft 365 Commercial, Enterprise Mobility + Security, the cloud portion of Windows Commercial, the per-user portion of Power BI, Exchange, SharePoint, Microsoft Teams, Microsoft 365 Security and Compliance, Microsoft Viva, and Microsoft 365 Copilot",
+      "after_text": "Revenue from Microsoft 365 Commercial subscriptions, comprising Microsoft 365 Commercial, Enterprise Mobility + Security, the cloud portion of Windows Commercial, the per-user portion of Power BI, Exchange, SharePoint, Microsoft Teams, Microsoft 365 Security and Compliance, and Microsoft 365 Copilot",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Revenue%20from%20Microsoft%20365%20Commercial%20subscriptions%2C%20comprising%20Microsoft%20365%20Commercial%2C%20Enterp",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Revenue%20from%20Microsoft%20365%20Commercial%20subscriptions%2C%20comprising%20Microsoft%20365%20Commercial%2C%20Enterp",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "removed",
+      "before_text": "Microsoft 365 Consumer subscribers",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Microsoft%20365%20Consumer%20subscribers",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "removed",
+      "before_text": "The number of Microsoft 365 Consumer subscribers at end of period",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20number%20of%20Microsoft%20365%20Consumer%20subscribers%20at%20end%20of%20period",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Revenue from sales of Windows Pro and non-Pro licenses sold through the OEM channel and sales of first-party Devices, including Surface, HoloLens, and PC accessories",
+      "after_text": "Revenue from sales of Windows Pro and non-Pro licenses sold through the OEM channel and sales of first-party Devices, including Surface and PC accessories",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Revenue%20from%20sales%20of%20Windows%20Pro%20and%20non-Pro%20licenses%20sold%20through%20the%20OEM%20channel%20and%20sales%20of",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Revenue%20from%20sales%20of%20Windows%20Pro%20and%20non-Pro%20licenses%20sold%20through%20the%20OEM%20channel%20and%20sales%20of",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Revenue from Xbox content and services, comprising first- and third-party content (including games and in-game content), Xbox Game Pass and other subscriptions, Xbox Cloud Gaming, advertising, third-party disc royalties, and other cloud services",
+      "after_text": "Revenue from Xbox content and services, comprising first- and third-party content (including games and in-game content), Xbox Game Pass and other subscriptions, Xbox Cloud Gaming, advertising, and other cloud services",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Revenue%20from%20Xbox%20content%20and%20services%2C%20comprising%20first-%20and%20third-party%20content%20%28including%20gam",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Revenue%20from%20Xbox%20content%20and%20services%2C%20comprising%20first-%20and%20third-party%20content%20%28including%20gam",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Search and news advertising revenue (ex TAC) growth",
+      "after_text": "Search advertising revenue (ex TAC) growth",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Search%20and%20news%20advertising%20revenue%20%28ex%20TAC%29%20growth",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Search%20advertising%20revenue%20%28ex%20TAC%29%20growth",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Revenue from search and news advertising excluding traffic acquisition costs (“TAC”) paid to Bing Ads network publishers and news partners",
+      "after_text": "Revenue from search advertising excluding traffic acquisition costs (“TAC”) paid to Bing Ads network publishers and content partners",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Revenue%20from%20search%20and%20news%20advertising%20excluding%20traffic%20acquisition%20costs%20%28%E2%80%9CTAC%E2%80%9D%29%20paid%20to%20Bin",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Revenue%20from%20search%20advertising%20excluding%20traffic%20acquisition%20costs%20%28%E2%80%9CTAC%E2%80%9D%29%20paid%20to%20Bing%20Ads%20net",
+      "subsection": "Productivity and Business Processes and Intelligent Cloud"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Adjusted net income (non-GAAP)",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Adjusted%20net%20income%20%28non-GAAP%29",
+      "subsection": "Summary Results of Operations"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Adjusted diluted earnings per share (non-GAAP)",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Adjusted%20diluted%20earnings%20per%20share%20%28non-GAAP%29",
+      "subsection": "Summary Results of Operations"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Adjusted net income and adjusted diluted earnings per share (“EPS”) are non-GAAP financial measures. These non-GAAP financial measures exclude net gains and losses from investments in OpenAI. Refer to the Non-GAAP Financial Measures section below for a reconciliation of our financial results reported in accordance with GAAP to non-GAAP financial results.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Management%27s%20Discussion%20and%20Analysis",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Adjusted%20net%20income%20and%20adjusted%20diluted%20earnings%20per%20share%20%28%E2%80%9CEPS%E2%80%9D%29%20are%20non-GAAP%20financial%20measu",
+      "subsection": "Summary Results of Operations"
+     },
+     {
+      "section_label": "Management's Discussion and Analysis",
+      "change_kind": "changed",
+      "before_text": "Revenue increased $8.2 billion or 13% with growth across each of our segments. Intelligent Cloud revenue increased driven by Azure. Productivity and Business Processes revenue increased driven by Microsoft 365 Commercial cloud. More Personal Computing revenue increased driven by Search and news advertising.",
+      "after_text": "Revenue increased $12.8 billion or 18% driven by growth in Microsoft Cloud. Intelligent Cloud revenue increased driven by Azure. Productivity and Business Processes revenue increased driven by Microsoft 365 Commercial cloud. More Personal Computing revenue decreased with lower hardware sales across Devices and Gaming, offset in part by growth in Search advertising.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Revenue%20increased%20%248.2%20billion%20or%2013%25%20with%20growth%20across%20each%20of%20our%20segments.%20Intelligent%20Cloud",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Revenue%20increased%20%2412.8%20billion%20or%2018%25%20driven%20by%20growth%20in%20Microsoft%20Cloud.%20Intelligent%20Cloud%20re",
+      "subsection": "Summary Results of Operations"
+     },
+     {
       "section_label": "Risk Factors",
       "change_kind": "changed",
       "before_text": "We face intense competition across all markets for our products and services, which may adversely affect our results of operations.",
@@ -2452,6 +2651,303 @@
       "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=An%20important%20element%20of%20our%20business%20model%20has%20been%20to%20create%20platform-based%20ecosystems%20on%20which",
       "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=An%20important%20element%20of%20our%20business%20model%20has%20been%20to%20create%20platform-based%20ecosystems%20on%20which",
       "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "For all of these reasons, we may not be able to compete successfully against our current and future competitors, which may adversely affect our business, operations, financial condition, and results of operations.",
+      "after_text": "For all of these reasons, we may not be able to compete successfully against our current and future competitors, which could adversely affect our business, operations, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=For%20all%20of%20these%20reasons%2C%20we%20may%20not%20be%20able%20to%20compete%20successfully%20against%20our%20current%20and%20fut",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=For%20all%20of%20these%20reasons%2C%20we%20may%20not%20be%20able%20to%20compete%20successfully%20against%20our%20current%20and%20fut",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "A material part of our business involves cloud-based services available across the spectrum of computing devices. Our competitors continue to develop and deploy cloud-based services for consumers and business customers, and pricing and delivery models are evolving. We and our competitors are devoting significant resources to develop and deploy our cloud-based strategies.",
+      "after_text": "A material part of our business involves cloud-based services available across the spectrum of computing devices. We and our competitors continue to devote significant resources to developing and deploying cloud-based strategies and services for consumers and business customers, and pricing and delivery models are evolving.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=A%20material%20part%20of%20our%20business%20involves%20cloud-based%20services%20available%20across%20the%20spectrum%20of%20c",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=A%20material%20part%20of%20our%20business%20involves%20cloud-based%20services%20available%20across%20the%20spectrum%20of%20c",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "We are investing in artificial intelligence (“AI”) across the entire company and infusing generative AI capabilities into our consumer and commercial offerings. AI technology and services are a highly competitive and rapidly evolving market, and new competitors continue to enter the market. We will bear significant development and operational costs to build and support the AI models, services, platforms, and infrastructure necessary to meet the needs of our customers. To compete effectively we must also be responsive to technological change, new and potential regulatory developments, and public scrutiny.",
+      "after_text": "We are investing in artificial intelligence (“AI”) across the entire company and infusing AI capabilities into our consumer and commercial offerings. AI technology and services are a highly competitive and rapidly evolving market, and new competitors continue to enter the market. We will bear significant development and operational costs to build and support the AI models, services, platforms, and infrastructure necessary to meet the needs of our customers. To compete effectively we must also be responsive to technological change, new and potential regulatory developments, and public scrutiny.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=We%20are%20investing%20in%20artificial%20intelligence%20%28%E2%80%9CAI%E2%80%9D%29%20across%20the%20entire%20company%20and%20infusing%20genera",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20are%20investing%20in%20artificial%20intelligence%20%28%E2%80%9CAI%E2%80%9D%29%20across%20the%20entire%20company%20and%20infusing%20AI%20cap",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Some companies compete with us by modifying and then distributing open source software at little or no cost to end users, developing, making available, or using AI models that are open, and earning revenue on advertising or integrated products and services. These firms do not bear the full costs of research and development for the open source products. Some open source products mimic the features and functionality of our products.",
+      "after_text": "Some companies compete with us by modifying and then distributing open-source software at little or no cost to end users, developing, making available, or using AI models that are open, and earning revenue on advertising or integrated products and services. These firms do not bear the full costs of research and development for the open-source products. Some open-source products mimic the features and functionality of our products.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Some%20companies%20compete%20with%20us%20by%20modifying%20and%20then%20distributing%20open%20source%20software%20at%20little",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Some%20companies%20compete%20with%20us%20by%20modifying%20and%20then%20distributing%20open-source%20software%20at%20little",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "The competitive pressures described above may cause decreased sales volumes, price reductions, and/or increased operating costs, such as for research and development, marketing, and sales incentives, which may adversely affect our financial condition and results of operations.",
+      "after_text": "The competitive pressures described above may cause decreased sales volumes, price reductions, and/or increased operating costs, such as for research and development, marketing, and sales incentives, which could adversely affect our financial condition and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20competitive%20pressures%20described%20above%20may%20cause%20decreased%20sales%20volumes%2C%20price%20reductions%2C%20a",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=The%20competitive%20pressures%20described%20above%20may%20cause%20decreased%20sales%20volumes%2C%20price%20reductions%2C%20a",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our focus on cloud-based and AI services presents execution and competitive risks. We are incurring significant costs to build and maintain infrastructure to support cloud-based and AI services. These costs will reduce the operating margins. Whether we succeed in cloud-based and AI services depends on our execution in several areas, including:",
+      "after_text": "Our focus on cloud-based and AI services presents execution and competitive risks. We are incurring significant costs to build and maintain infrastructure to support cloud-based and AI services, reducing operating margins. Whether we succeed in cloud-based and AI services depends on our execution in several areas, including:",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20focus%20on%20cloud-based%20and%20AI%20services%20presents%20execution%20and%20competitive%20risks.%20We%20are%20incurr",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20focus%20on%20cloud-based%20and%20AI%20services%20presents%20execution%20and%20competitive%20risks.%20We%20are%20incurr",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "It is uncertain whether our strategies will continue to attract users or generate the revenue required to succeed. If we are not effective in executing organizational and technical changes to increase efficiency and accelerate innovation, or if we fail to generate sufficient usage of our new products and services, we may not grow revenue in line with the infrastructure and development investments described above. This may adversely affect our operations, financial condition, and results of operations.",
+      "after_text": "It is uncertain whether our strategies will continue to attract users or generate the revenue required to succeed. If we are not effective in executing organizational and technical changes to increase efficiency and accelerate innovation, or if we fail to generate sufficient usage of our new products and services, we may not grow revenue in line with the infrastructure and development investments described above. This could adversely affect our operations, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=It%20is%20uncertain%20whether%20our%20strategies%20will%20continue%20to%20attract%20users%20or%20generate%20the%20revenue%20re",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=It%20is%20uncertain%20whether%20our%20strategies%20will%20continue%20to%20attract%20users%20or%20generate%20the%20revenue%20re",
+      "subsection": "Strategic and Competitive Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "We make significant investments in products and services that may not achieve expected returns. We will continue to make significant investments in research, development, and marketing for existing products, services, and technologies. In addition, we are focused on developing new AI platform services and incorporating AI into existing products and services. We also invest in the development and acquisition of a variety of hardware for productivity, communication, and entertainment, including PCs, tablets, and gaming devices. Investments in new technology are speculative. Commercial success depends on many factors, including innovation, developer support, and effective distribution and marketing. If customers do not perceive our latest offerings as providing significant new functionality or other value, they may reduce their purchases of new software and hardware products or upgrades, unfavorably affecting revenue. We may not achieve significant revenue from new product, service, and distribution channel investments for several years, if at all. New products and services may not be profitable or may not achieve operating margins as high as we have experienced historically. We may not get engagement in certain features that drive post-sale monetization opportunities. Our data-handling practices across our products and services will continue to be under scrutiny. Perceptions of mismanagement, driven by regulatory activity or negative public reaction to our practices or product experiences, could negatively impact product and feature adoption. Developing new technologies is complex. It can require long development and testing periods. We could experience significant delays in new releases or significant problems in creating new products or services. These factors could adversely affect our business, financial condition, and results of operations.",
+      "after_text": "We make significant investments in products and services that may not achieve expected returns. We will continue to make significant investments in research, development, and marketing for existing products, services, and technologies, including AI-based products and services. We also invest in the development and acquisition of a variety of hardware for productivity, communication, and entertainment, including PCs, tablets, and gaming devices. Investments in new technology are speculative. Commercial success depends on many factors, including innovation, developer support, and effective distribution and marketing. If customers do not perceive our latest offerings as providing significant new functionality or other value, they may reduce their purchases of new software and hardware products or upgrades, unfavorably affecting revenue. We may not achieve significant revenue from new product, service, and distribution channel investments for several years, if at all. New products and services may not be profitable or may not achieve operating margins as high as we have experienced historically. We may not get engagement in certain features that drive post-sale monetization opportunities. Our data-handling practices across our products and services will continue to be under scrutiny. Perceptions of mismanagement, driven by regulatory activity or negative public reaction to our practices or product experiences, could negatively impact product and feature adoption. Developing new technologies is complex. It can require long development and testing periods. We could experience significant delays in new releases or significant problems in creating new products or services. These factors could adversely affect our business, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=We%20make%20significant%20investments%20in%20products%20and%20services%20that%20may%20not%20achieve%20expected%20returns.%20",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20make%20significant%20investments%20in%20products%20and%20services%20that%20may%20not%20achieve%20expected%20returns.%20",
+      "subsection": "Risks Relating to the Evolution of Our Business"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Acquisitions, joint ventures, and strategic alliances may have an adverse effect on our business. We expect to continue making acquisitions and entering into joint ventures and strategic alliances as part of our long-term business strategy. For example, in March 2022 we completed our acquisition of Nuance Communications, Inc., and in October 2023 we completed our acquisition of Activision Blizzard, Inc. (“Activision Blizzard”). In January 2023 we announced the third phase of our OpenAI strategic partnership. Acquisitions and other transactions and arrangements involve significant challenges and risks, including that they do not advance our business strategy, that we get an unsatisfactory return on our investment, that they raise new compliance-related obligations and challenges, that we have difficulty integrating and retaining new employees, business systems, and technology, that they distract management from our other businesses, or that announced transactions may not be completed. If an arrangement fails to adequately anticipate changing circumstances and interests of a party, it may result in early termination or renegotiation of the arrangement. We also have limited ability to control or influence third parties with whom we have arrangements, which may impact our ability to realize the anticipated benefits. The success of these transactions and arrangements depend in part on our ability to leverage them to enhance our existing products and services or develop compelling new ones, as well as the acquired companies’ ability to meet our policies and processes in areas such as data governance, privacy, and cybersecurity. It may take longer than expected to realize the full benefits from these transactions and arrangements, such as increased revenue or enhanced efficiencies, or the benefits may ultimately be smaller than we expected. In addition, an acquisition may be subject to challenge even after it has been completed. For example, the Federal Trade Commission continues to challenge our Activision Blizzard acquisition and could, if successful, alter or unwind the transaction. These events could adversely affect our business, operations, financial condition, and results of operations.",
+      "after_text": "Acquisitions, joint ventures, and strategic alliances could have an adverse effect on our business. We expect to continue making acquisitions and entering into joint ventures and strategic alliances as part of our long-term business strategy. For example, in October 2023 we completed our acquisition of Activision Blizzard, Inc. Additionally, we have a long-term strategic partnership with OpenAI. Acquisitions and other transactions and arrangements involve significant challenges and risks, including that they do not advance our business strategy, that we get an unsatisfactory return on our investment, that they raise new compliance-related obligations and challenges, that we have difficulty integrating and retaining new employees, business systems, and technology, that they distract management from our other businesses, or that announced transactions may not be completed. If an arrangement fails to adequately anticipate changing circumstances and interests of a party, it may result in early termination or renegotiation of the arrangement. We also have limited ability to control or influence third parties with whom we have arrangements, which may impact our ability to realize the anticipated benefits. The success of these transactions and arrangements depend in part on our ability to leverage them to enhance our existing products and services or develop compelling new ones, as well as the acquired companies’ ability to meet our policies and processes in areas such as data governance, privacy, digital safety, responsible AI, and cybersecurity. It may take longer than expected to realize the full economic benefits from these transactions and arrangements, such as increased revenue or enhanced efficiencies, or the benefits may ultimately be smaller than we expected, which could cause an impairment of goodwill or intangibles.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Acquisitions%2C%20joint%20ventures%2C%20and%20strategic%20alliances%20may%20have%20an%20adverse%20effect%20on%20our%20business",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Acquisitions%2C%20joint%20ventures%2C%20and%20strategic%20alliances%20could%20have%20an%20adverse%20effect%20on%20our%20busine",
+      "subsection": "Risks Relating to the Evolution of Our Business"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "removed",
+      "before_text": "If our goodwill or amortizable intangible assets become impaired, we may be required to record a significant charge to earnings. We acquire other companies and intangible assets and may not realize all the economic benefit from those acquisitions, which could cause an impairment of goodwill or intangibles. We review our amortizable intangible assets for impairment when events or changes in circumstances indicate the carrying value may not be recoverable. We test goodwill for impairment at least annually. Factors that may be a change in circumstances, indicating that the carrying value of our goodwill or amortizable intangible assets may not be recoverable, include a decline in our stock price and market capitalization, reduced future cash flow estimates, and slower growth rates in industry segments in which we participate. We have recorded, and may in the future be required to record, a significant charge in our consolidated financial statements during the period in which any impairment of our goodwill or amortizable intangible assets is determined, negatively affecting our results of operations.",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=If%20our%20goodwill%20or%20amortizable%20intangible%20assets%20become%20impaired%2C%20we%20may%20be%20required%20to%20record%20a",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Risk%20Factors",
+      "subsection": "Risks Relating to the Evolution of Our Business"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "We have recorded, and may in the future be required to record, a significant charge in our consolidated financial statements during the period in which any impairment of our goodwill or amortizable intangible assets is determined, negatively affecting our results of operations. In addition, these transactions and arrangements have been and may be subject to legal and regulatory challenge. These events could adversely affect our business, operations, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Risk%20Factors",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20have%20recorded%2C%20and%20may%20in%20the%20future%20be%20required%20to%20record%2C%20a%20significant%20charge%20in%20our%20conso",
+      "subsection": "Risks Relating to the Evolution of Our Business"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Threats to security can take a variety of forms. Threat actors, including individual and groups of hackers and sophisticated organizations, including nation-states or state-sponsored organizations, continuously undertake attacks that pose threats to our customers and our internal infrastructure, and we have experienced cybersecurity incidents in which such actors have gained unauthorized access to our systems and data, including customer systems and data. These actors use a wide variety of methods, which include developing and deploying malicious software; exploiting known and potential vulnerabilities or intentionally designed processes in hardware, software, or other infrastructure to attack our products and services or gain access to our networks and datacenters; using social engineering techniques to induce our employees, users, partners, or customers to disclose sensitive information, such as passwords, or take other actions to gain access to our data or our users’ or customers’ data; or acting in a coordinated manner or conducting coordinated attacks. For example, as previously disclosed in our Form 8-K filed with the Securities and Exchange Commission on January 19, 2024 and amended on March 8, 2024, beginning in late November 2023, a nation-state associated threat actor used a password spray attack to compromise a legacy test account and, in turn, gain access to Microsoft email accounts. The threat actor used information it obtained to gain unauthorized access to some of our source code repositories and internal systems, and the threat actor may continue to utilize this and other information to attempt to gain access to our systems or otherwise adversely affect our business and results of operations. This incident has and may continue to result in harm to our reputation and customer relationships. Nation-state and state-sponsored actors can sustain malicious activities for extended periods and deploy significant resources to plan and carry out attacks. Nation-state attacks against us, our customers, or our partners have and may continue to intensify due to our transparency to our customers, other stakeholders, and the public about cyberattacks, and during elections or periods of intense diplomatic or armed conflict. Challenges or failures in applying security patches to all hardware and devices connected to our systems, including end-of-life and end-of-support equipment, have and may continue to result in unauthorized access to our systems and data in the future. Cyber incidents and attacks, individually or in the aggregate, could adversely affect our financial condition, results of operations, competitive position, and reputation, or expose us to legal or regulatory risk.",
+      "after_text": "Threats to security can take a variety of forms. Threat actors, including individual and groups of hackers and sophisticated organizations, including nation-states, state-sponsored organizations, or cybercriminal groups, continuously undertake attacks that pose threats to our customers and our internal infrastructure, and we have experienced cybersecurity incidents in which such actors have gained unauthorized access to our systems and data, including customer systems and data. These actors use a wide variety of methods, which include developing and deploying malicious software; exploiting known and potential vulnerabilities or intentionally designed processes in our or third-party hardware, software, or other infrastructure to attack our products and services or gain access to our networks and datacenters; using social engineering techniques to induce our employees, users, partners, or customers to disclose sensitive information, such as passwords, or take other actions to gain access to our data or our users’ or customers’ data; or acting in a coordinated manner or conducting coordinated attacks. For example, as previously disclosed in our Form 8-K filed with the Securities and Exchange Commission on January 19, 2024 and amended on March 8, 2024, beginning in late November 2023, a nation-state associated threat actor used a password spray attack to compromise a legacy test account and, in turn, gain access to Microsoft email accounts. The threat actor used information it obtained to gain unauthorized access to some of our source code repositories and internal systems, and the threat actor could continue to utilize this and other information to attempt to gain access to our systems or otherwise adversely affect our business and results of operations. This incident has and may continue to result in harm to our reputation and customer relationships. Nation-state and state-sponsored actors can sustain malicious activities for extended periods and deploy significant resources to plan and carry out attacks. Nation-state attacks against us, our customers, or our partners have and may continue to intensify due to our transparency to our customers, other stakeholders, and the public about cyberattacks, and during elections or periods of intense diplomatic or armed conflict. Challenges or failures to update or apply security patches to all hardware and devices connected to our systems, including end-of-life and end-of-support equipment, have and may continue to result in unauthorized access to our systems and data in the future. Cyber incidents and attacks, individually or in the aggregate, could adversely affect our financial condition, results of operations, competitive position, and reputation, or expose us to legal or regulatory risk.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Threats%20to%20security%20can%20take%20a%20variety%20of%20forms.%20Threat%20actors%2C%20including%20individual%20and%20groups%20",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Threats%20to%20security%20can%20take%20a%20variety%20of%20forms.%20Threat%20actors%2C%20including%20individual%20and%20groups%20",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "removed",
+      "before_text": "Inadequate account security or organizational security practices, including those of companies we have acquired or those of the third parties we utilize, have resulted and may result in unauthorized access to our systems and data, including customer systems and data. For example, system administrators may fail to timely remove employee account access when no longer appropriate. Employees or third parties may intentionally compromise our or our users’ security or systems or reveal confidential information, and laws in foreign jurisdictions may compel actions by such parties against our interests and could limit our recourse. Malicious actors may employ the supply chain to introduce malware through software updates or compromised supplier accounts or hardware.",
+      "after_text": "",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Inadequate%20account%20security%20or%20organizational%20security%20practices%2C%20including%20those%20of%20companies%20w",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Risk%20Factors",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Cyberthreats are constantly evolving and becoming increasingly sophisticated and complex, increasing the difficulty of detecting and successfully defending against them. Threat actors may also utilize emerging technologies, such as AI and machine learning. Our current capabilities may not detect certain vulnerabilities or new attack methods, which may allow them to persist in the environment over long periods of time. It may be difficult to determine the best way to investigate, mitigate, contain, and remediate the harm caused by a cyber incident. Such efforts may not be successful, and we may make errors or fail to take necessary actions. It is possible that threat actors may gain undetected access to other networks and systems after establishing a foothold on an internal system. Cyber incidents and attacks can have cascading impacts that unfold with increasing speed across our internal networks and systems, as well as those of our partners and customers. In addition, it may take considerable time for us to investigate and evaluate the full impact of incidents, particularly for sophisticated attacks. As a result of these and other factors, we may not be able to provide prompt, full, and reliable information about the incident to our customers, partners, regulators, and the public. Breaches of our facilities, network, or data security can disrupt the security of our systems and business applications, impair our ability to provide services to our customers and protect the privacy of their data, result in product development delays, compromise confidential or technical business information, result in theft or misuse of our intellectual property or other assets, subject us to ransomware attacks, require us to allocate more resources to improve technologies or remediate the impacts of attacks, or otherwise adversely affect our business. In addition, actions taken to remediate an incident could result in outages, data losses, and disruptions of our services.",
+      "after_text": "Cyberthreats are constantly evolving and becoming increasingly sophisticated and complex, increasing the difficulty of detecting and successfully defending against them. Threat actors also utilize emerging technologies such as AI and machine learning to, among other things, increase the speed and scale of attacks by generating and refining malicious content and code, automate reconnaissance and targeting, and rapidly iterate on attack techniques, which can broaden the scope, intensity, and sophistication of campaigns and reduce the time we have to identify and mitigate emerging threats. Our current capabilities may not detect certain vulnerabilities or new attack methods, which may allow them to persist in the environment over long periods of time. It may be difficult to determine the best way to investigate, mitigate, contain, and remediate the harm caused by a cyber incident. Such efforts may not be successful, and we may make errors or fail to take necessary actions. It is possible that threat actors may gain undetected access to other networks and systems after establishing a foothold on an internal system. Cyber incidents and attacks can have cascading impacts that unfold with increasing speed across our internal networks and systems, as well as those of our partners and customers. In addition, it may take considerable time for us to investigate and evaluate the full impact of incidents, particularly for sophisticated attacks. As a result of these and other factors, we may not be able to provide prompt, full, and reliable information about the incident to our customers, partners, regulators, and the public. Breaches of our facilities, network, or data security can disrupt the security of our systems and business applications, impair our ability to provide services to our customers and protect the privacy of their data, result in product development delays, compromise confidential or technical business information, result in theft or misuse of our intellectual property or other assets, subject us to ransomware attacks, require us to allocate more resources to improve technologies or remediate the impacts of attacks, or otherwise adversely affect our business. In addition, actions taken to remediate an incident could result in outages, data losses, and disruptions of our services.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Cyberthreats%20are%20constantly%20evolving%20and%20becoming%20increasingly%20sophisticated%20and%20complex%2C%20increa",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Cyberthreats%20are%20constantly%20evolving%20and%20becoming%20increasingly%20sophisticated%20and%20complex%2C%20increa",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our internal environment continues to evolve. Often, we are early adopters of new devices and technologies. We embrace new ways of sharing data and communicating internally and with partners and customers using methods such as social networking and other consumer-oriented technologies. Increasing use of generative AI models in our internal systems may create new attack surfaces or methods for adversaries. Our business policies and internal security controls may not keep pace with these changes as new threats emerge or the emerging cybersecurity regulations in jurisdictions worldwide.",
+      "after_text": "Our internal environment continues to evolve. Often, we are early adopters of new devices and technologies. We embrace new ways of sharing data and communicating internally and with partners and customers using methods such as social networking and other consumer-oriented technologies. Increasing use of AI, including models, algorithms, copilots, and autonomous or semi-autonomous agents, in our internal or third-party systems may create new attack surfaces or methods for adversaries. Our business policies and internal security controls may not keep pace with these changes as new threats emerge or the emerging cybersecurity regulations in jurisdictions worldwide.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20internal%20environment%20continues%20to%20evolve.%20Often%2C%20we%20are%20early%20adopters%20of%20new%20devices%20and%20te",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20internal%20environment%20continues%20to%20evolve.%20Often%2C%20we%20are%20early%20adopters%20of%20new%20devices%20and%20te",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "added",
+      "before_text": "",
+      "after_text": "Inadequate account security or organizational security practices, including those of companies we have acquired or those of the third parties we utilize, have resulted and may result in unauthorized access to our systems and data, including customer systems and data. For example, passwords may not be rotated and employee access may not be updated or removed on a timely basis. Further, third parties that we utilize may also face the AI-based enhanced cybersecurity risk as described elsewhere in these risk factors. Employees or third parties may intentionally compromise our or our users’ security or systems or reveal confidential information, and laws in foreign jurisdictions may compel actions by such parties against our interests and could limit our recourse. Malicious actors may exploit the supply chain by introducing malware through software updates or compromised supplier accounts or hardware.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Risk%20Factors",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Inadequate%20account%20security%20or%20organizational%20security%20practices%2C%20including%20those%20of%20companies%20w",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "The security of our products and services is important in our customers’ decisions to purchase or use our products or services across cloud and on-premises environments. Security threats are a significant challenge to companies like us, whose business is providing technology products and services to others. Threats to or attacks on our own infrastructure, such as the nation-state attack described in the prior risk factor, have also affected our customers and may do so in the future. Customers using our cloud-based services rely on the security of our infrastructure, including hardware and other elements provided by third parties, to ensure the reliability of our services and the protection of their data. Adversaries tend to focus their efforts on the most popular operating systems, programs, and services, including many of ours, as well as customers with sensitive data, and we expect that to continue. In addition, adversaries can attack our customers’ on-premises or cloud environments, sometimes exploiting previously unknown (“zero-day”) vulnerabilities, such as the attack in early calendar year 2021 with several of our Exchange Server on-premises products. Vulnerabilities in these or any product can persist even after we have issued security patches if customers have not installed the most recent updates, or if the attackers exploited the vulnerabilities before patching to install additional malware to further compromise customers’ systems. Adversaries will continue to attack customers using our cloud services as customers embrace digital transformation. Adversaries that acquire user account information can use that information to compromise our users’ accounts, including where accounts share the same attributes such as passwords. Inadequate account security practices may also result in unauthorized access, and user activity may result in ransomware or other malicious software impacting a customer’s use of our products or services. There may be vulnerabilities in open source software that may make our products susceptible to cyberattacks as we increasingly incorporate open source software into our products. Additionally, features that rely on generative AI may be susceptible to unanticipated security threats from adversaries as we add new generative AI features to our services while continuously developing our understanding of security risks and protection methods in the new field of generative AI.",
+      "after_text": "The security of our products and services is important in our customers’ decisions to purchase or use our products or services across cloud and on-premises environments. Security threats are a significant challenge to companies like us, whose business is providing technology products and services to others. Threats to or attacks on our own infrastructure, such as the nation-state attack described in the prior risk factor, have also affected our customers and may do so in the future. The reliability of our cloud-based services and the protection of customer data depend on the security of our infrastructure, which includes hardware, software, and other elements provided by third parties. Adversaries tend to focus their efforts on the most popular operating systems, programs, and services, including many of ours, as well as customers with sensitive data, and we expect that to continue. In addition, adversaries can attack our customers’ on-premises or cloud environments, sometimes exploiting previously unknown (“zero-day”) vulnerabilities. Product vulnerabilities can persist even after we have issued security patches if customers have not installed the most recent updates, or if the attackers exploited the vulnerabilities before patching to install additional malware to further compromise customers’ systems. Adversaries will continue to attack customers using our cloud services as customers embrace digital transformation. Adversaries that acquire user account information can use that information to compromise our users’ accounts, including where accounts share the same attributes such as passwords. Inadequate account security practices may also result in unauthorized access, and user activity may result in ransomware or other malicious software impacting a customer’s use of our products or services. Weaknesses in our development processes can result in vulnerabilities in our products. Open-source software can also contain vulnerabilities that may make our products susceptible to cyberattacks as we increasingly incorporate open-source software into our products. Additionally, software, including features that rely on or were generated by AI can be susceptible to cyberattacks.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20security%20of%20our%20products%20and%20services%20is%20important%20in%20our%20customers%E2%80%99%20decisions%20to%20purchase%20o",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=The%20security%20of%20our%20products%20and%20services%20is%20important%20in%20our%20customers%E2%80%99%20decisions%20to%20purchase%20o",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our customers operate complex systems with third-party hardware and software from multiple vendors that may include systems acquired over many years. They expect our products and services to support all these systems and products, including those that no longer incorporate the strongest current security advances or standards. As a result, we may not be able to discontinue support in our services for a product, service, standard, or feature solely because a more secure alternative is available. Failure to utilize the most current security advances and standards can increase our customers’ vulnerability to attack. Further, customers of widely varied sizes and technical sophistication use our technology, and consequently may still have limited capabilities and resources to help them adopt and implement state-of-the-art cybersecurity practices and technologies. In addition, we must account for this wide variation of technical sophistication when defining default settings for our products and services, including security default settings, as these settings may limit or otherwise impact other aspects of operations and some customers may have limited capability to review and reset these defaults.",
+      "after_text": "Our customers operate complex systems with third-party hardware and software from multiple vendors that may include systems acquired over many years. They expect our products and services to support all these systems and products, including those that no longer incorporate the strongest current security advances or standards. As a result, we may not be able to discontinue support of our services for a product, service, standard, or feature solely because a more secure alternative is available. Failure to utilize the most current security advances and standards can increase our customers’ vulnerability to attack. Further, the rapid evolution of AI technologies and use cases may outpace the development, deployment, and effectiveness of security products, controls, and industry standards, particularly in complex customer environments, increasing the risk that security measures will be insufficient to address newly emerging threats. Customers of widely varied sizes and technical sophistication use our technology, and consequently may still have limited capabilities and resources to help them adopt and implement state-of-the-art cybersecurity practices and technologies. In addition, we must account for this wide variation of technical sophistication when defining default settings for our products and services, including security default settings, as these settings may limit or otherwise impact other aspects of operations and some customers may have limited capability to review and reset these defaults.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20customers%20operate%20complex%20systems%20with%20third-party%20hardware%20and%20software%20from%20multiple%20vendo",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20customers%20operate%20complex%20systems%20with%20third-party%20hardware%20and%20software%20from%20multiple%20vendo",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Cyberattacks may adversely impact our customers even if our production services are not directly compromised. We are committed to notifying our customers whose systems have been impacted as we become aware and have actionable information for customers to help protect themselves. We are also committed to providing guidance and support on detection, tracking, and remediation. We may not be able to detect the existence or extent of these attacks for all of our customers or have information on how to detect or track an attack, especially where an attack involves on-premises software such as Exchange Server where we may have no or limited visibility into our customers’ computing environments.",
+      "after_text": "Cyberattacks could adversely impact our customers even if our production services are not directly compromised. We are committed to notifying our customers whose systems have been impacted as we become aware and have actionable information for customers to help protect themselves. We are also committed to providing guidance and support on detection, tracking, and remediation. We may not be able to detect the existence or extent of these attacks for all of our customers or have information on how to detect or track an attack, especially where an attack involves on-premises software such as Exchange Server where we may have no or limited visibility into our customers’ computing environments.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Cyberattacks%20may%20adversely%20impact%20our%20customers%20even%20if%20our%20production%20services%20are%20not%20directly",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Cyberattacks%20could%20adversely%20impact%20our%20customers%20even%20if%20our%20production%20services%20are%20not%20direct",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "To defend against security threats to our internal infrastructure, our cloud-based services, and our customers’ systems, we must continuously engineer more secure products and services, enhance security, threat detection, and reliability features, escalate and improve the deployment of software updates to address security vulnerabilities in our own products as well as those provided by others in a timely manner, develop mitigation technologies that help to secure customers from attacks even when software updates are not deployed, maintain the digital security infrastructure that protects the integrity of our network, products, and services, and provide security tools such as firewalls, anti-virus software, and advanced security and information about the need to deploy security measures and the impact of doing so.",
+      "after_text": "To defend against security threats to our internal infrastructure, our cloud-based services, and our customers’ systems, we must take a complex and multifaceted approach. This includes continuously engineering more secure products and services, and enhancing security, threat detection, and reliability features, including through the deployment of AI-based and automated defenses. We must also escalate and improve our development processes and the deployment of software updates to address security vulnerabilities in our own products as well as those provided by others in a timely manner. In addition, we must develop mitigation technologies that help to secure customers from attacks even when software updates are not deployed, and maintain the digital security infrastructure that protects the integrity of our network, products, and services. Further, we must provide security tools such as firewalls, anti-virus software, and advanced security and information about the need to deploy security measures and the impact of doing so.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=To%20defend%20against%20security%20threats%20to%20our%20internal%20infrastructure%2C%20our%20cloud-based%20services%2C%20and",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=To%20defend%20against%20security%20threats%20to%20our%20internal%20infrastructure%2C%20our%20cloud-based%20services%2C%20and",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "The cost of measures to protect products and customer-facing services could reduce our operating margins. If we fail to do these things well, actual or perceived security vulnerabilities in our products and services, data corruption issues, or reduced performance could harm our reputation and lead customers to reduce or delay future purchases of products or subscriptions to services, or to use competing products or services. Customers may also spend more on protecting their existing computer systems from attack, which could delay adoption of additional products or services. Customers in certain industries such as financial services, health care, and government may have enhanced or specialized expectations and requirements to which we must engineer our products and services. Customers and third parties granted access to their systems may fail to update their systems, continue to run software or operating systems we no longer support, or may fail to timely install or enable security patches, or may otherwise fail to adopt adequate security practices. Any of these could adversely affect our reputation and results of operations. Actual or perceived vulnerabilities may lead to claims against us. Our license agreements typically contain provisions that eliminate or limit our exposure to liability, but there is no assurance these provisions will withstand legal challenges. At times, to achieve commercial objectives, we may enter into agreements with larger liability exposure to customers.",
+      "after_text": "The cost of these measures to protect products and customer-facing services could reduce our operating margins. If we fail to do these things well, actual or perceived security vulnerabilities in our processes, products, and services, data corruption issues, or reduced performance could harm our reputation and lead customers to exercise contractual or other remedies against us, reduce or delay future purchases of products or subscriptions to services, or to use competing products or services. Customers and third parties granted access to customer systems may fail to update their systems, continue to run software or operating systems we no longer support, may fail to timely install or enable security patches, or may otherwise fail to adopt adequate security practices, including in response to enhanced AI-based threats. Customers may also spend more on protecting their existing computer systems from attack, which could delay adoption of additional products or services. Customers in certain industries such as financial services, health care, and government have enhanced or specialized expectations and requirements to which we must develop and engineer our products and services. Any of these could adversely affect our reputation and results of operations. Actual or perceived vulnerabilities may lead to claims against us. Our license agreements typically contain provisions that eliminate or limit our exposure to liability, but there is no assurance these provisions will withstand legal challenges. At times, to achieve commercial objectives, we may enter into agreements with larger liability exposure to customers.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=The%20cost%20of%20measures%20to%20protect%20products%20and%20customer-facing%20services%20could%20reduce%20our%20operating",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=The%20cost%20of%20these%20measures%20to%20protect%20products%20and%20customer-facing%20services%20could%20reduce%20our%20ope",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our products operate in conjunction with and are dependent on products and components across a broad ecosystem of third parties. If there is a security vulnerability in one of these components, and if there is a security exploit targeting it, we may experience adverse impacts to our results of operations, reputation, or competitive position.",
+      "after_text": "Our products operate in conjunction with and are dependent on products and components across a broad ecosystem of third parties. If there is a security vulnerability in one of these components, and if there is a security exploit targeting it, we could experience adverse impacts to our results of operations, reputation, or competitive position.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20products%20operate%20in%20conjunction%20with%20and%20are%20dependent%20on%20products%20and%20components%20across%20a%20b",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20products%20operate%20in%20conjunction%20with%20and%20are%20dependent%20on%20products%20and%20components%20across%20a%20b",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our consumer services as well as our enterprise services may be used to find, generate, store, or disseminate harmful or illegal content in violation of our terms or applicable law. We may not proactively discover such content due to scale, the limitations of existing technologies, and conflicting legal frameworks. When discovered by users and others, such content may negatively affect our reputation, our brands, and user engagement. Regulations and other initiatives have been enacted to make platforms responsible for preventing or eliminating harmful content online, and we expect this to continue. At the same time, regulations and other initiatives regarding freedom of expression may conflict with such content moderation regulations. Failure to comply with content requirements may subject us to enhanced regulatory oversight, civil or criminal liability, or reputational damage, which could adversely affect our business, financial condition, and results of operations.",
+      "after_text": "Our consumer services as well as our enterprise services may be used to find, generate, store, or disseminate harmful or illegal content in violation of our terms or applicable law. We may not proactively discover such content due to scale, the limitations of existing technologies, and conflicting legal frameworks. This content may negatively affect users, and may negatively affect our reputation, our brands, and user engagement, or could result in legal liability. Regulations and other initiatives have been enacted to make platforms responsible for preventing or eliminating harmful content online and for taking actions against user accounts responsible for such content. At the same time, regulations and other initiatives protecting freedom of expression and user privacy may conflict with these platform regulations. Duties to reduce risks to children are driving new obligations for effective age-assurance systems and parental controls across the online ecosystem, including within app stores and operating systems. The legal and regulatory environment in this area is complex and is not harmonized across jurisdictions. Failure to comply with content requirements may subject us to enhanced regulatory oversight, civil or criminal liability, or reputational damage, which could adversely affect our business, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20consumer%20services%20as%20well%20as%20our%20enterprise%20services%20may%20be%20used%20to%20find%2C%20generate%2C%20store%2C%20o",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20consumer%20services%20as%20well%20as%20our%20enterprise%20services%20may%20be%20used%20to%20find%2C%20generate%2C%20store%2C%20o",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Our products and services, how they are used by customers, and how third-party products and services interact with them, may present security, privacy, and execution risks. Our products and services may contain defects in design, manufacture, or operation that make them insecure or ineffective for their intended purposes. For example, an Internet of Things solution may have multiple layers of hardware, sensors, processors, software, and firmware, several of which we may not develop or control, and may have limited ability to be updated or patched. Further, customers control our products and services, including our AI products, within their environments, and may deploy them in high-risk scenarios or utilize them inappropriately. As a result, our products and services may increasingly affect personal health and safety. Our products may also collect large amounts of data in manners which may not satisfy customers or regulatory requirements. Our customers also operate complex systems with third-party hardware and software from multiple vendors whose products or personnel may take or fail to take actions which impact the reliability or security of our products and services. If our products and services do not work as intended, are utilized in methods not intended, violate the law, or harm individuals or businesses, we may be subject to legal claims or enforcement actions. These risks, if realized, may increase our costs, damage our reputation, or adversely affect our results of operations.",
+      "after_text": "Our products and services, how they are used by customers, and how third-party products and services interact with them, may present security, privacy, and execution risks. Our products and services may contain defects in design, manufacture, or operation that make them insecure or ineffective for their intended purposes. For example, customers control our products and services, including our AI products, within their environments, and may deploy them in high-risk scenarios or utilize them inappropriately. Our products may also collect large amounts of data in manners which may not satisfy customers or regulatory requirements. Our customers also operate complex systems with third-party hardware and software from multiple vendors whose products or personnel may take or fail to take actions which impact the reliability or security of our products and services. If our products and services do not work as intended, are utilized in methods not intended, violate the law, or harm individuals or businesses, we may be subject to legal claims or enforcement actions. These risks, if realized, may increase our costs, damage our reputation, or adversely affect our results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Our%20products%20and%20services%2C%20how%20they%20are%20used%20by%20customers%2C%20and%20how%20third-party%20products%20and%20serv",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Our%20products%20and%20services%2C%20how%20they%20are%20used%20by%20customers%2C%20and%20how%20third-party%20products%20and%20serv",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "Issues in the development, deployment, and use of AI may result in reputational or competitive harm or liability. We are building AI into many of our offerings, including our productivity services, and we are also making AI available for our customers to use in solutions that they build. This AI may be developed by Microsoft or others, including our strategic partner, OpenAI. We expect these elements of our business to grow. We envision a future in which AI operating in devices, applications, and the cloud helps our customers be more productive in their work and personal lives. As with many innovations, AI presents risks and challenges that could affect its adoption, and therefore our business. AI algorithms or training methodologies may be flawed. Datasets may be overbroad, insufficient, or contain biased or inaccurate information. Content generated by AI systems may be offensive, illegal, inaccurate, or otherwise harmful. Ineffective or inadequate AI development or deployment practices by Microsoft or others could result in incidents that impair the acceptance of AI solutions, cause harm to individuals, customers, or society, or result in our products and services not working as intended. Human review of certain inputs and outputs may be required, including for agentic AI systems that can take actions autonomously. Our implementation of AI systems could result in legal liability, regulatory action, brand, reputational, or competitive harm, or other adverse impacts. These risks may arise from intellectual property, data privacy, and other claims related to AI training and output, new and proposed legislation and regulations, such as the European Union’s (“EU”) AI Act, and new applications of data protection, privacy, consumer protection, intellectual property, and other laws. Some AI scenarios present ethical issues or may have broad impacts on society. There is also rising divergence globally in how to address these issues and impacts, with the result that we will need to navigate a web of different obligations in different geographies. Finally, if we enable or offer AI solutions that have unintended consequences, unintended usage or customization by our customers and partners, are contrary to our responsible AI policies and practices, or are otherwise controversial because of their impact on human rights, privacy, employment, or other social, economic, or political issues, our reputation, competitive position, business, financial condition, and results of operations may be adversely affected.",
+      "after_text": "Issues in the development, deployment, and use of AI may result in reputational or competitive harm or liability. We are building AI into many of our offerings, including our productivity services, and we are also making AI available for our customers to use in solutions that they build. This AI may be developed by Microsoft or others, including our strategic partner, OpenAI. We expect these elements of our business to grow. We envision a future in which AI operating in devices, applications, and the cloud helps our customers be more productive in their work and personal lives. As with many innovations, AI presents risks and challenges that could affect its adoption, and therefore our business. AI algorithms or training methodologies may be flawed. Datasets may be overbroad, insufficient, or contain biased or inaccurate information. Content generated by AI systems may be offensive, illegal, inaccurate, or otherwise harmful. Ineffective or inadequate AI development or deployment practices by Microsoft or others could result in incidents that impair the acceptance of AI solutions, cause harm to individuals, customers, or society, or result in our products and services not working as intended. Human review of certain inputs and outputs or other forms of human oversight may be required, including for agentic AI systems that can take actions autonomously. Companion or highly-personalized AI systems may result in over-reliance or dependence by users that is harmful. Our implementation of AI systems could result in legal liability, regulatory action, litigation, brand, reputational, or competitive harm, or other adverse impacts. These risks may stem from issues related to AI model and system capabilities, intellectual property, data privacy, product liability, and other claims associated with AI training, outputs, and system behavior. They are further compounded by the evolving regulatory landscape, with new laws emerging globally and increased scrutiny from regulators and lawmakers. Certain AI technologies and use cases present ethical issues or may have broad or uneven impacts on society or vulnerable groups within society. There is also rising divergence globally in how to address these issues and impacts, with the result that we will need to navigate a web of different tensions across geographies. If we enable or offer AI solutions that have unintended consequences, unintended usage or customization by our customers and partners, are contrary to our responsible AI policies and practices, or are otherwise controversial because of the impact on human rights, privacy, employment, or other social, economic, or political issues, our reputation, competitive position, business, financial condition, and results of operations could be adversely affected.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=Issues%20in%20the%20development%2C%20deployment%2C%20and%20use%20of%20AI%20may%20result%20in%20reputational%20or%20competitive%20h",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=Issues%20in%20the%20development%2C%20deployment%2C%20and%20use%20of%20AI%20may%20result%20in%20reputational%20or%20competitive%20h",
+      "subsection": "Cybersecurity, Data Privacy, and Platform Abuse Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "We may have excessive outages, data losses, and disruptions of our online services if we fail to maintain an adequate operations infrastructure. Our increasing user traffic, growth in services, and the complexity of our products and services demand more computing power. We spend substantial amounts to build, purchase, or lease datacenters and equipment and to upgrade our technology and network infrastructure to handle more traffic on our websites and in our datacenters. Our datacenters depend on the availability of permitted and buildable land, predictable energy, networking supplies, and servers, including graphics processing units and other components. The cost or availability of these dependencies could be adversely affected by a variety of factors, including the transition to a clean energy economy, local and regional environmental regulations, and geopolitical disruptions. These demands continue to increase as we introduce new products and services and support the growth and the augmentation of existing services, including through the incorporation of AI features and/or functionality. We are rapidly growing our business of providing a platform and back-end hosting for services provided by third parties to their end users. Maintaining, securing, and expanding this infrastructure is expensive and complex, and requires development of principles for datacenter builds in geographies with higher safety and reliability risks. It requires that we maintain an Internet connectivity infrastructure and storage and compute capacity that is robust and reliable within competitive and regulatory constraints that continue to evolve. Inefficiencies or operational failures, including temporary or permanent loss of customer data, outages, insufficient Internet connectivity, insufficient or unavailable power or water supply, or inadequate storage and compute capacity could diminish the quality of our products, services, and user experience, resulting in contractual liability, claims by customers and other third parties, regulatory actions, damage to our reputation, and loss of current and potential users, subscribers, and advertisers, each of which may adversely affect our business, operations, financial condition, and results of operations.",
+      "after_text": "We may have excessive outages, data losses, and disruptions of our online services if we fail to maintain an adequate operations infrastructure. Our increasing user traffic, growth in services, and the complexity of our products and services demand more computing power. We spend substantial amounts to build, purchase, or lease datacenters and equipment and to upgrade our technology and network infrastructure to handle more traffic. Our datacenters depend on the availability of permitted and buildable land, predictable energy, networking supplies, and servers, including graphics processing units and other components. The cost or availability of these dependencies could be adversely affected by a variety of factors, including the transition to a clean energy economy, local and regional environmental regulations, and geopolitical disruptions. These demands continue to increase as we introduce new products and services and support the growth and the augmentation of existing services, and scale further the incorporation of AI features and/or functionality. We are rapidly growing our business of providing a platform and back-end hosting for services provided by third parties to their end users. Maintaining, securing, and expanding this infrastructure is expensive and complex, and requires development of principles for datacenter builds in geographies with higher safety and reliability risks. It requires that we maintain an Internet connectivity infrastructure and storage and compute capacity that is robust and reliable within competitive and regulatory constraints that continue to evolve. We also face community opposition, local moratoriums, and hyper-local dissent that may impede or delay infrastructure development. Inefficiencies or operational failures, including temporary or permanent loss of customer data, outages, insufficient Internet connectivity, insufficient or unavailable power or water supply, or inadequate storage and compute capacity could diminish the quality of our products, services, and user experience, resulting in contractual liability, claims by customers and other third parties, regulatory actions, damage to our reputation, and loss of current and potential users, subscribers, and advertisers, each of which could adversely affect our business, operations, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=We%20may%20have%20excessive%20outages%2C%20data%20losses%2C%20and%20disruptions%20of%20our%20online%20services%20if%20we%20fail%20to",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20may%20have%20excessive%20outages%2C%20data%20losses%2C%20and%20disruptions%20of%20our%20online%20services%20if%20we%20fail%20to",
+      "subsection": "Operational Risks"
+     },
+     {
+      "section_label": "Risk Factors",
+      "change_kind": "changed",
+      "before_text": "We may experience supply or quality problems. There are limited suppliers for certain device and datacenter components. We continue to identify and evaluate opportunities to expand our datacenter locations and increase our server capacity to meet the evolving needs of our customers, particularly given the growing demand for AI services. Capacity available to us may be affected as competitors use some of the same suppliers and materials for hardware components. If components are delayed or become unavailable, whether because of supplier capacity constraint, industry shortages, legal or regulatory changes that restrict supply sources, or other reasons, we may not obtain timely replacement supplies, resulting in reduced sales or inadequate datacenter capacity to support the delivery and continued development of our products and services. Component shortages, excess or obsolete inventory, or price reductions resulting in inventory adjustments may increase our cost of revenue. Datacenter servers, Xbox consoles, Surface devices, and other hardware are assembled in Asia and other geographies that may be subject to disruptions in the supply chain, resulting in shortages which may adversely affect our business, operations, financial condition, and results of operations.",
+      "after_text": "We may experience supply or quality problems. There are limited suppliers for certain device and datacenter components. We continue to identify and evaluate opportunities to expand our datacenter locations and increase our server capacity to meet the evolving needs of our customers, particularly given the growing demand for AI services. Capacity available to us may be affected as competitors use some of the same suppliers and materials for hardware components. As components are delayed or become unavailable or more expensive, whether because of supplier capacity constraint, industry shortages, legal or regulatory changes that restrict supply sources, or other reasons, we may not obtain timely replacement supplies, resulting in reduced sales, higher costs, or inadequate datacenter capacity to support the delivery and continued development of our products and services. Component shortages, excess or obsolete inventory, or price reductions resulting in inventory adjustments have and may increase our cost of revenue. Datacenter servers, Xbox consoles, Surface devices, and other hardware are assembled in Asia and other geographies that may be subject to disruptions in the supply chain, resulting in shortages which could adversely affect our business, operations, financial condition, and results of operations.",
+      "older_accession": "0000950170-25-061046",
+      "newer_accession": "0001193125-26-191507",
+      "older_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm#:~:text=We%20may%20experience%20supply%20or%20quality%20problems.%20There%20are%20limited%20suppliers%20for%20certain%20device%20and",
+      "newer_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm#:~:text=We%20may%20experience%20supply%20or%20quality%20problems.%20There%20are%20limited%20suppliers%20for%20certain%20device%20and",
+      "subsection": "Operational Risks"
      }
     ],
     "clarify_prompt": null,

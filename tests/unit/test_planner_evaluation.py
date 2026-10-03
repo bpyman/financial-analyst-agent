@@ -103,7 +103,9 @@ def test_observing_a_recorded_turn_reads_its_window_and_growth() -> None:
 
 
 def test_a_fact_missing_from_the_recorded_filings_is_no_data() -> None:
-    assert _ask("what did Pfizer spend on R&D in its latest quarter").outcome == "no_data"
+    assert _ask("what did Goldman Sachs spend on R&D in its latest quarter").outcome == "no_data"
+    # A window of quarters the filings lack says why too, not only a single quarter.
+    assert _ask("Goldman Sachs R&D over the last three quarters").outcome == "no_data"
 
 
 class _FakeCompletions:

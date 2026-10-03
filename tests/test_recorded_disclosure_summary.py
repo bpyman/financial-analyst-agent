@@ -97,7 +97,8 @@ def test_the_summary_is_keyed_by_the_evidence_not_the_prompt() -> None:
     }
     completer = RecordedEssayCompleter()
 
-    assert completer.complete_essay(topic, json.dumps([change])).startswith("The Risk Factors")
+    summary = completer.complete_essay(topic, json.dumps([change]))
+    assert summary.startswith("Across the Risk Factors")
     for evidence in (
         [{**change, "newer_accession": "0000731766-26-000197"}],
         [change, {**change, "older_accession": "0000731766-25-000236"}],

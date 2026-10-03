@@ -648,18 +648,20 @@ def _rejoin_moved(
     return [item for item in joined if item is not None]
 
 
-def cap_changes(changes: list[DisclosureChange]) -> tuple[list[DisclosureChange], str]:
-    """The changes shown, at most ``MAX_CHANGES_SHOWN``, shared among the sections.
+def cap_changes(
+    changes: list[DisclosureChange], limit: int = MAX_CHANGES_SHOWN
+) -> tuple[list[DisclosureChange], str]:
+    """The changes shown, at most ``limit``, shared among the sections.
 
     Capped in filing order across the whole filing, a long MD&A (JPMorgan's 274
     changes) left Risk Factors none. Each section gets an equal share; what one
     leaves unused goes to the others. The banner says what was left out.
     """
     counts = Counter(item.section for item in changes)
-    if len(changes) <= MAX_CHANGES_SHOWN:
+    if len(changes) <= limit:
         return changes, ""
     budget = dict.fromkeys(counts, 0)
-    left = MAX_CHANGES_SHOWN
+    left = limit
     while left > 0:
         open_sections = [section for section in counts if budget[section] < counts[section]]
         if not open_sections:
@@ -1113,7 +1115,9 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     changes, capped = cap_changes(changes)
     if capped:
         banners.append(capped)
-    # The model reads the first changes, each cut to a length it can weigh.
+    # The model reads the first changes of each section, shared as the list is,
+    # each cut to a length it can weigh: a long MD&A must not crowd out Risk Factors.
+    summarized, _ = cap_changes(changes, _SUMMARIZED_CHANGES)
     grounding = json.dumps(
         [
             item.model_copy(
@@ -1122,7 +1126,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
                     "after_text": item.after_text[:_SUMMARY_TEXT_CHARS],
                 }
             ).model_dump(mode="json")
-            for item in changes[:_SUMMARIZED_CHANGES]
+            for item in summarized
         ],
         default=str,
     )
