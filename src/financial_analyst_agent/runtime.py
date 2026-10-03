@@ -256,7 +256,7 @@ def live_runtime(
     budget: SessionBudget | None = None,
 ) -> Runtime:
     resolved = settings or get_settings()
-    # Without a key the rules planner plans the question, as on the public demo.
+    # Without an OpenAI key (or with public OpenAI turned off) the rules planner plans.
     use_openai = openai_enabled(resolved)
     use_tavily = tavily_enabled(resolved)
     completer = (

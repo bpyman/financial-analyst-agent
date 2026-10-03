@@ -26,7 +26,7 @@ The planner comparison found three cases that both planners failed, and three mo
 
 ## Considered options
 
-- **Teach the LLM planner more aliases in its prompt.** Rejected: the failures were after planning, and the rules planner, the public demo's default, would not benefit.
+- **Teach the LLM planner more aliases in its prompt.** Rejected: the failures were after planning, and the rules planner, which plans wherever no OpenAI key is set, would not benefit.
 - **Resolve every name to the largest matching company.** Rejected: it answers "Lincoln revenue" for a company the analyst may not mean, with no sign that it chose.
 - **A hand-written list of everyday-word company names.** Rejected: it goes stale as the snapshot changes. Case in filings is measured, and rebuilt by a script.
 - **Show both changes whenever the base is unclear.** Rejected: a table with both columns still leaves the analyst to work out which one answers the question. One short question is clearer, and the answer then leads with the change that was asked about.
