@@ -837,7 +837,11 @@ def refine_patch_from_message(
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
             return _extend(patch, add_companies=named)
-        if patch.add_metrics and not patch.add_companies:
+        if (
+            patch.add_metrics
+            and all(metric in ALLOWED_METRICS for metric in patch.add_metrics)
+            and not patch.add_companies
+        ):
             return _extend(patch, add_companies=())
         companies = _companies_in(token, patch, index)
         return _extend(patch, add_companies=companies, add_metrics=())

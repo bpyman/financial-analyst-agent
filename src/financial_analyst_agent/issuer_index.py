@@ -816,7 +816,11 @@ _NAME_ENDS = frozenset(
     {"inc", "corp", "corporation", "company", "co", "ltd", "plc", "holdings", "group"}
 )
 # Words before a company in a question: "compare Target", "what about Block?".
-_COMPANY_BEFORE = frozenset({"compare", "about", "between", "versus", "vs"})
+_COMPANY_BEFORE = frozenset(
+    {"compare", "about", "between", "versus", "vs", "add", "include", "plus"}
+)
+# Words after a company in a follow-up: "target too", "block as well".
+_COMPANY_AFTER = frozenset({"too", "also", "as"})
 # A company as the object of "for" or "of" closes its clause: "revenue for Target",
 # "revenue for Target last quarter", but not "a target of 30%".
 _OBJECT_BEFORE = frozenset({"for", "of", "at", "from"})
@@ -930,6 +934,7 @@ def _as_companies(
             shape.possessive
             or following in _figure_words()
             or following in _COMPANY_VERBS
+            or following in _COMPANY_AFTER
             or previous in _COMPANY_BEFORE
             or (previous in _OBJECT_BEFORE and (following is None or following in _CLAUSE_AFTER))
             # "Target?" or "Revenue, Target" ends the question.

@@ -28,6 +28,7 @@ _REMOVE_METRIC_EDIT = re.compile(
     re.IGNORECASE,
 )
 _NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
+_ASKS = re.compile(r"\b(?:what|which|how|why|compare)\b|['’]s\b", re.IGNORECASE)
 _MAX_ANSWER_WORDS = 6
 _ORDINAL_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "one": 1, "two": 2, "three": 3}
 _ORDINAL_ANSWER = re.compile(
@@ -98,6 +99,9 @@ def clarification_reply(
         named = _company_named(pending, text, index)
         return ClarifyReply(chosen=(named,)) if named is not None else None
     if pending.kind == "ambiguous_comparison":
+        if _asks_anew(message, index):
+            # "Microsoft net income last quarter" names a quarter, but is a new question.
+            return None
         base = _comparison_named(text)
         return ClarifyReply(chosen=(base,)) if base is not None else None
     if pending.kind != "ambiguous_metric":
@@ -123,6 +127,19 @@ def clarification_reply(
 
 _YEAR_ANSWER = re.compile(r"\b(?:year|yoy|annual|annually|yearly)\b")
 _QUARTER_ANSWER = re.compile(r"\b(?:quarter|qoq|sequential|sequentially|before|previous|prior)\b")
+
+
+def _asks_anew(message: str, index: Any) -> bool:
+    """Whether a reply is a question of its own: it asks, names a company or a metric.
+
+    "vs the previous quarter" answers "Compared with what?", so "vs" alone asks nothing.
+    """
+    if _ASKS.search(message):
+        return True
+    if resolve_metric_phrase(message).kind != "unknown":
+        return True
+    find = getattr(index, "find", None)
+    return callable(find) and bool(find(message))
 
 
 def _comparison_named(text: str) -> str | None:
@@ -276,8 +293,11 @@ def ask_again(
     else:
         patch = pending.patch
         count = len(pending.candidates)
-        named = "company's ticker" if pending.kind == "ambiguous_company" else "metric's name"
-        note = f"There are {count} options: pick 1 to {count}, or type the {named}."
+        named = {
+            "ambiguous_company": "or type the company's ticker",
+            "ambiguous_comparison": "or say “year over year” or “the quarter before”",
+        }.get(pending.kind, "or type the metric's name")
+        note = f"There are {count} options: pick 1 to {count}, {named}."
     result = TurnResult(
         intent=pending.intent,
         tool_traces=[],

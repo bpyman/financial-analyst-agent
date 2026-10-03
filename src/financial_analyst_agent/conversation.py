@@ -72,8 +72,8 @@ class ConversationTurn(BaseModel):
 
 
 def _says_set_aside(result: TurnResult, previous: TurnResult | None) -> bool:
-    """The set-aside note goes on an answer, once: not on a refusal, guide or repeat."""
-    if result.renderer is RendererKind.REFUSE or result.guide:
+    """The set-aside note goes on an answer, once: not on a refusal, guide, question or repeat."""
+    if result.renderer in (RendererKind.REFUSE, RendererKind.CLARIFY) or result.guide:
         return False
     return previous is None or DISCARDED_CLARIFICATION_BANNER not in previous.banners
 
