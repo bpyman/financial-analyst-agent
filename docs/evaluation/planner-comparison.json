@@ -1,21 +1,22 @@
 {
-  "generated_at": "2026-10-03T12:54:21.199566+00:00",
-  "case_count": 78,
+  "generated_at": "2026-10-03T18:33:09.678331+00:00",
+  "case_count": 219,
   "scorecard_count": 28,
-  "held_out_count": 50,
+  "dev_count": 122,
+  "held_out_count": 69,
   "planners": {
     "rules": {
       "label": "Rules planner",
       "splits": {
         "scorecard": {
           "cases": 28,
-          "accuracy": 0.9642857142857143,
+          "accuracy": 1,
           "accuracy_by_run": [
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143
+            1,
+            1,
+            1,
+            1,
+            1
           ],
           "accuracy_sd": 0.0,
           "fields": {
@@ -23,63 +24,85 @@
             "intent": 1,
             "tickers": 1,
             "tickers_include": 1,
-            "metrics": 0.9333333333333333,
+            "metrics": 1,
+            "periods": 1,
+            "operations_include": 1
+          },
+          "agreement": 1
+        },
+        "dev": {
+          "cases": 122,
+          "accuracy": 1,
+          "accuracy_by_run": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "accuracy_sd": 0.0,
+          "fields": {
+            "outcome": 1,
+            "intent": 1,
+            "tickers": 1,
+            "tickers_include": 1,
+            "metrics": 1,
             "periods": 1,
             "operations_include": 1
           },
           "agreement": 1
         },
         "held_out": {
-          "cases": 50,
-          "accuracy": 0.88,
+          "cases": 69,
+          "accuracy": 0.9130434782608695,
           "accuracy_by_run": [
-            0.88,
-            0.88,
-            0.88,
-            0.88,
-            0.88
+            0.9130434782608695,
+            0.9130434782608695,
+            0.9130434782608695,
+            0.9130434782608695,
+            0.9130434782608695
           ],
           "accuracy_sd": 0.0,
           "fields": {
-            "outcome": 0.9574468085106383,
-            "intent": 0.9583333333333334,
-            "tickers": 0.9411764705882353,
-            "tickers_include": 0.8,
-            "metrics": 1,
-            "periods": 0.75,
-            "operations_include": 1
+            "outcome": 0.9420289855072463,
+            "intent": 1,
+            "tickers": 0.9807692307692307,
+            "tickers_include": 0.6,
+            "metrics": 0.9821428571428571,
+            "periods": 1,
+            "operations_include": 0.5
           },
           "agreement": 1
         },
         "all": {
-          "cases": 78,
-          "accuracy": 0.9102564102564102,
+          "cases": 219,
+          "accuracy": 0.9726027397260274,
           "accuracy_by_run": [
-            0.9102564102564102,
-            0.9102564102564102,
-            0.9102564102564102,
-            0.9102564102564102,
-            0.9102564102564102
+            0.9726027397260274,
+            0.9726027397260274,
+            0.9726027397260274,
+            0.9726027397260274,
+            0.9726027397260274
           ],
           "accuracy_sd": 0.0,
           "fields": {
-            "outcome": 0.972972972972973,
-            "intent": 0.9714285714285714,
-            "tickers": 0.9574468085106383,
-            "tickers_include": 0.8888888888888888,
-            "metrics": 0.9803921568627451,
-            "periods": 0.8333333333333334,
-            "operations_include": 1
+            "outcome": 0.9813953488372092,
+            "intent": 1,
+            "tickers": 0.9935064935064936,
+            "tickers_include": 0.9,
+            "metrics": 0.9939393939393939,
+            "periods": 1,
+            "operations_include": 0.875
           },
           "agreement": 1
         }
       },
       "runs": 5,
-      "case_runs": 390,
-      "planner_calls": 430,
-      "planner_ms_p50": 1.1412000167183578,
-      "planner_ms_p95": 2.0237000135239214,
-      "turn_ms_p50": 7.411500002490357,
+      "case_runs": 1095,
+      "planner_calls": 1265,
+      "planner_ms_p50": 1.3686000020243227,
+      "planner_ms_p95": 2.897300000768155,
+      "turn_ms_p50": 10.089499992318451,
       "input_tokens": 0,
       "output_tokens": 0,
       "reasoning_tokens": 0,
@@ -87,31 +110,23 @@
       "cost_per_planner_call_usd": null,
       "failures": [
         {
-          "id": "follow_up_metric_and_company",
+          "id": "h3_what_about_keeps_window",
           "run": 0,
           "error": "",
           "wrong": [
-            "metrics"
+            "outcome"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_apples_to_apples",
           "run": 0,
           "error": "",
           "wrong": [
-            "periods"
+            "tickers"
           ]
         },
         {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 0,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_banks_market_cap",
+          "id": "h3_healthcare_market_cap",
           "run": 0,
           "error": "",
           "wrong": [
@@ -120,56 +135,49 @@
           ]
         },
         {
-          "id": "ho_follow_include_oracle",
+          "id": "h3_tech_top_ten_revenue",
           "run": 0,
           "error": "",
           "wrong": [
-            "tickers"
+            "metrics",
+            "outcome",
+            "tickers_include"
           ]
         },
         {
-          "id": "ho_follow_swap_abbvie",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 0,
           "error": "",
           "wrong": [
-            "outcome",
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_msft_filing_paraphrase",
+          "id": "h3_amgn_two_metrics",
           "run": 0,
           "error": "",
           "wrong": [
-            "intent"
+            "outcome"
           ]
         },
         {
-          "id": "follow_up_metric_and_company",
+          "id": "h3_what_about_keeps_window",
           "run": 1,
           "error": "",
           "wrong": [
-            "metrics"
+            "outcome"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_apples_to_apples",
           "run": 1,
           "error": "",
           "wrong": [
-            "periods"
+            "tickers"
           ]
         },
         {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 1,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_banks_market_cap",
+          "id": "h3_healthcare_market_cap",
           "run": 1,
           "error": "",
           "wrong": [
@@ -178,56 +186,49 @@
           ]
         },
         {
-          "id": "ho_follow_include_oracle",
+          "id": "h3_tech_top_ten_revenue",
           "run": 1,
           "error": "",
           "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "ho_follow_swap_abbvie",
-          "run": 1,
-          "error": "",
-          "wrong": [
+            "metrics",
             "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "h3_bac_jpm_ni_growth",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "operations_include"
+          ]
+        },
+        {
+          "id": "h3_amgn_two_metrics",
+          "run": 1,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_what_about_keeps_window",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_apples_to_apples",
+          "run": 2,
+          "error": "",
+          "wrong": [
             "tickers"
           ]
         },
         {
-          "id": "ho_msft_filing_paraphrase",
-          "run": 1,
-          "error": "",
-          "wrong": [
-            "intent"
-          ]
-        },
-        {
-          "id": "follow_up_metric_and_company",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "metrics"
-          ]
-        },
-        {
-          "id": "ho_nvda_past_four",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_banks_market_cap",
+          "id": "h3_healthcare_market_cap",
           "run": 2,
           "error": "",
           "wrong": [
@@ -236,56 +237,49 @@
           ]
         },
         {
-          "id": "ho_follow_include_oracle",
+          "id": "h3_tech_top_ten_revenue",
           "run": 2,
           "error": "",
           "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "ho_follow_swap_abbvie",
-          "run": 2,
-          "error": "",
-          "wrong": [
+            "metrics",
             "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "h3_bac_jpm_ni_growth",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "operations_include"
+          ]
+        },
+        {
+          "id": "h3_amgn_two_metrics",
+          "run": 2,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_what_about_keeps_window",
+          "run": 3,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_apples_to_apples",
+          "run": 3,
+          "error": "",
+          "wrong": [
             "tickers"
           ]
         },
         {
-          "id": "ho_msft_filing_paraphrase",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "intent"
-          ]
-        },
-        {
-          "id": "follow_up_metric_and_company",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "metrics"
-          ]
-        },
-        {
-          "id": "ho_nvda_past_four",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_banks_market_cap",
+          "id": "h3_healthcare_market_cap",
           "run": 3,
           "error": "",
           "wrong": [
@@ -294,56 +288,49 @@
           ]
         },
         {
-          "id": "ho_follow_include_oracle",
+          "id": "h3_tech_top_ten_revenue",
           "run": 3,
           "error": "",
           "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "ho_follow_swap_abbvie",
-          "run": 3,
-          "error": "",
-          "wrong": [
+            "metrics",
             "outcome",
+            "tickers_include"
+          ]
+        },
+        {
+          "id": "h3_bac_jpm_ni_growth",
+          "run": 3,
+          "error": "",
+          "wrong": [
+            "operations_include"
+          ]
+        },
+        {
+          "id": "h3_amgn_two_metrics",
+          "run": 3,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_what_about_keeps_window",
+          "run": 4,
+          "error": "",
+          "wrong": [
+            "outcome"
+          ]
+        },
+        {
+          "id": "h3_apples_to_apples",
+          "run": 4,
+          "error": "",
+          "wrong": [
             "tickers"
           ]
         },
         {
-          "id": "ho_msft_filing_paraphrase",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "intent"
-          ]
-        },
-        {
-          "id": "follow_up_metric_and_company",
-          "run": 4,
-          "error": "",
-          "wrong": [
-            "metrics"
-          ]
-        },
-        {
-          "id": "ho_nvda_past_four",
-          "run": 4,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 4,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_banks_market_cap",
+          "id": "h3_healthcare_market_cap",
           "run": 4,
           "error": "",
           "wrong": [
@@ -352,28 +339,29 @@
           ]
         },
         {
-          "id": "ho_follow_include_oracle",
+          "id": "h3_tech_top_ten_revenue",
           "run": 4,
           "error": "",
           "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "ho_follow_swap_abbvie",
-          "run": 4,
-          "error": "",
-          "wrong": [
+            "metrics",
             "outcome",
-            "tickers"
+            "tickers_include"
           ]
         },
         {
-          "id": "ho_msft_filing_paraphrase",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 4,
           "error": "",
           "wrong": [
-            "intent"
+            "operations_include"
+          ]
+        },
+        {
+          "id": "h3_amgn_two_metrics",
+          "run": 4,
+          "error": "",
+          "wrong": [
+            "outcome"
           ]
         }
       ]
@@ -383,20 +371,42 @@
       "splits": {
         "scorecard": {
           "cases": 28,
-          "accuracy": 0.9642857142857143,
+          "accuracy": 1,
           "accuracy_by_run": [
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143,
-            0.9642857142857143
+            1,
+            1,
+            1,
+            1,
+            1
           ],
           "accuracy_sd": 0.0,
           "fields": {
             "outcome": 1,
             "intent": 1,
             "tickers": 1,
-            "tickers_include": 0.75,
+            "tickers_include": 1,
+            "metrics": 1,
+            "periods": 1,
+            "operations_include": 1
+          },
+          "agreement": 1
+        },
+        "dev": {
+          "cases": 122,
+          "accuracy": 1,
+          "accuracy_by_run": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "accuracy_sd": 0.0,
+          "fields": {
+            "outcome": 1,
+            "intent": 1,
+            "tickers": 1,
+            "tickers_include": 1,
             "metrics": 1,
             "periods": 1,
             "operations_include": 1
@@ -404,268 +414,180 @@
           "agreement": 1
         },
         "held_out": {
-          "cases": 50,
-          "accuracy": 0.916,
+          "cases": 69,
+          "accuracy": 0.9565217391304348,
           "accuracy_by_run": [
-            0.9,
-            0.92,
-            0.92,
-            0.92,
-            0.92
+            0.9565217391304348,
+            0.9565217391304348,
+            0.9565217391304348,
+            0.9565217391304348,
+            0.9565217391304348
           ],
-          "accuracy_sd": 0.008944271909999166,
+          "accuracy_sd": 0.0,
           "fields": {
-            "outcome": 1,
+            "outcome": 0.9710144927536232,
             "intent": 1,
-            "tickers": 0.9352941176470588,
+            "tickers": 1,
             "tickers_include": 1,
             "metrics": 1,
-            "periods": 0.75,
-            "operations_include": 1
+            "periods": 1,
+            "operations_include": 0.5
           },
-          "agreement": 0.98
+          "agreement": 1
         },
         "all": {
-          "cases": 78,
-          "accuracy": 0.9333333333333333,
+          "cases": 219,
+          "accuracy": 0.9863013698630136,
           "accuracy_by_run": [
-            0.9230769230769231,
-            0.9358974358974359,
-            0.9358974358974359,
-            0.9358974358974359,
-            0.9358974358974359
+            0.9863013698630136,
+            0.9863013698630136,
+            0.9863013698630136,
+            0.9863013698630136,
+            0.9863013698630136
           ],
-          "accuracy_sd": 0.005733507634614825,
+          "accuracy_sd": 0.0,
           "fields": {
-            "outcome": 1,
+            "outcome": 0.9906976744186047,
             "intent": 1,
-            "tickers": 0.9531914893617022,
-            "tickers_include": 0.8888888888888888,
+            "tickers": 1,
+            "tickers_include": 1,
             "metrics": 1,
-            "periods": 0.8333333333333334,
-            "operations_include": 1
+            "periods": 1,
+            "operations_include": 0.875
           },
-          "agreement": 0.9871794871794872
+          "agreement": 1
         }
       },
       "runs": 5,
-      "case_runs": 390,
-      "planner_calls": 430,
-      "planner_ms_p50": 1019.1214999940712,
-      "planner_ms_p95": 1364.394700009143,
-      "turn_ms_p50": 1009.0722999884747,
-      "input_tokens": 564360,
-      "output_tokens": 15111,
-      "reasoning_tokens": 278,
-      "cost_usd": 1.310052,
-      "cost_per_planner_call_usd": 0.0030466325581395347,
+      "case_runs": 1095,
+      "planner_calls": 1265,
+      "planner_ms_p50": 1045.6993999832775,
+      "planner_ms_p95": 1382.368899998255,
+      "turn_ms_p50": 1051.8102000060026,
+      "input_tokens": 1772155,
+      "output_tokens": 51680,
+      "reasoning_tokens": 114,
+      "cost_usd": 4.16447,
+      "cost_per_planner_call_usd": 0.003292071146245059,
       "failures": [
         {
-          "id": "follow_up_swap_company",
+          "id": "h3_what_about_keeps_window",
           "run": 0,
           "error": "",
           "wrong": [
-            "tickers_include"
+            "outcome"
           ]
         },
         {
-          "id": "ho_gs_jpm_net_income",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 0,
           "error": "",
           "wrong": [
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_tmo_dhr_stack_up",
+          "id": "h3_amgn_two_metrics",
           "run": 0,
           "error": "",
           "wrong": [
-            "tickers"
+            "outcome"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
-          "run": 0,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 0,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_follow_include_oracle",
-          "run": 0,
-          "error": "",
-          "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "follow_up_swap_company",
+          "id": "h3_what_about_keeps_window",
           "run": 1,
           "error": "",
           "wrong": [
-            "tickers_include"
+            "outcome"
           ]
         },
         {
-          "id": "ho_gs_jpm_net_income",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 1,
           "error": "",
           "wrong": [
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_amgn_two_metrics",
           "run": 1,
           "error": "",
           "wrong": [
-            "periods"
+            "outcome"
           ]
         },
         {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 1,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_follow_include_oracle",
-          "run": 1,
-          "error": "",
-          "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "follow_up_swap_company",
+          "id": "h3_what_about_keeps_window",
           "run": 2,
           "error": "",
           "wrong": [
-            "tickers_include"
+            "outcome"
           ]
         },
         {
-          "id": "ho_gs_jpm_net_income",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 2,
           "error": "",
           "wrong": [
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_amgn_two_metrics",
           "run": 2,
           "error": "",
           "wrong": [
-            "periods"
+            "outcome"
           ]
         },
         {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_follow_include_oracle",
-          "run": 2,
-          "error": "",
-          "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "follow_up_swap_company",
+          "id": "h3_what_about_keeps_window",
           "run": 3,
           "error": "",
           "wrong": [
-            "tickers_include"
+            "outcome"
           ]
         },
         {
-          "id": "ho_gs_jpm_net_income",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 3,
           "error": "",
           "wrong": [
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_amgn_two_metrics",
           "run": 3,
           "error": "",
           "wrong": [
-            "periods"
+            "outcome"
           ]
         },
         {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_follow_include_oracle",
-          "run": 3,
-          "error": "",
-          "wrong": [
-            "tickers"
-          ]
-        },
-        {
-          "id": "follow_up_swap_company",
+          "id": "h3_what_about_keeps_window",
           "run": 4,
           "error": "",
           "wrong": [
-            "tickers_include"
+            "outcome"
           ]
         },
         {
-          "id": "ho_gs_jpm_net_income",
+          "id": "h3_bac_jpm_ni_growth",
           "run": 4,
           "error": "",
           "wrong": [
-            "tickers"
+            "operations_include"
           ]
         },
         {
-          "id": "ho_nvda_past_four",
+          "id": "h3_amgn_two_metrics",
           "run": 4,
           "error": "",
           "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_pfe_mrk_six_quarters",
-          "run": 4,
-          "error": "",
-          "wrong": [
-            "periods"
-          ]
-        },
-        {
-          "id": "ho_follow_include_oracle",
-          "run": 4,
-          "error": "",
-          "wrong": [
-            "tickers"
+            "outcome"
           ]
         }
       ]

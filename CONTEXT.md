@@ -56,6 +56,18 @@ _Avoid_: metric collision, unknown metric
 A user metric phrase that names nothing in the closed catalog.
 _Avoid_: ambiguous metric
 
+**Shared name**:
+A company name two or more snapshot members answer to ("Lincoln"). The analyst is asked which one; the largest is not assumed (ADR 0010).
+_Avoid_: ambiguous company (in prose), alias collision
+
+**Everyday-word name**:
+A company name that 10-Q filings write in lower case mid-sentence as an ordinary word ("Target", "Block"). It names the company only where a question uses it as one (ADR 0010).
+_Avoid_: common-word company, stopword name
+
+**Window**:
+A count of recent quarters the analyst asks for ("past six quarters", "last two years"), read by one grammar whichever planner proposed the analysis (ADR 0010).
+_Avoid_: lookback, range
+
 **Conversation thread**:
 One analyst investigation, identified and persisted. It carries the analysis spec, any pending clarification, the last result, and evidence references, and is bound to one runtime for its whole life. Threads do not share state.
 _Avoid_: session, chat, conversation history, memory

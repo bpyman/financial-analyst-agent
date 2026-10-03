@@ -180,13 +180,25 @@ uv run python -m financial_analyst_agent.evaluation
 uv run python scripts/check_against_filings.py   # live: reads about 25 filings from SEC
 ```
 
-The scorecard runs the rules planner, so it says nothing about the LLM. [Rules planner vs LLM planner](docs/evaluation/planner-comparison.md) runs both on the same 78 conversations end to end, with only the planner swapped: the scorecard's questions and 50 held-out paraphrases labelled before either planner saw them ([cases](docs/evaluation/planner-cases.json)). It reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM.
+The scorecard runs the rules planner, so it says nothing about the LLM. [Rules planner vs LLM planner](docs/evaluation/planner-comparison.md) runs both planners on the same 219 conversations, end to end, with only the planner swapped. The cases:
+- **28** are the scorecard's questions.
+- **122** are development cases: two earlier held-out sets, which the latest planner changes were diagnosed on.
+- **69** are held out. A separate session wrote and labelled them after those changes, and nobody changing the planner read them before the run.
 
-Over five runs:
-- **Rules planner:** 96% on the scorecard questions and 88% on the held-out ones, in about 1 ms a call.
-- **`gpt-5.6-terra`:** 96% and 92%, with a 0.6% spread between runs, at about one second and $0.003 a call ($1.31 for the whole comparison).
+The comparison reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM.
 
-Only seven cases separate the two planners: four the rules planner misses and three the LLM misses. On 78 cases that gap is within noise. Three more cases fail under both planners, in the period and company handling that runs after planning, so the next accuracy gain is there, not in the planner.
+On the held-out cases, over five runs:
+- **Rules planner:** 91%, in about 1 ms a call. Before [ADR 0010](docs/adr/0010-one-reading-of-names-and-windows.md) it scored 58%; scored the old way, which counted a window by the quarters the recording holds, it is now 86%.
+- **`gpt-5.6-terra`:** 96%, up from 62%, identical across all five runs, at about one second and $0.0033 a call ($4.16 for the whole comparison).
+
+Neither gain came from the planners. Both came from the code that runs after either one: one company resolver, one window grammar and one reading of follow-up edits.
+
+The three held-out cases both planners miss are not planning errors:
+- Amgen's quarterly R&D is not in the recording, and the harness counts that refusal against the planner.
+- "Growth" is shown as quarter-on-quarter change, where the label asked for year over year.
+- A question naming two metrics is answered with both, where [ADR 0004](docs/adr/0004-ambiguous-metric-clarify.md) says it should clarify.
+
+[Company name coverage](docs/evaluation/company-coverage.md) asks about every one of the 5,161 snapshot companies in six forms of its name: 98.7–98.8% are found for each name form, and 100% as `$TICKER`. It needs no network and no model.
 
 The LLM run calls OpenAI, so it takes prices and a budget:
 
@@ -251,6 +263,13 @@ Bugs the second red-team round found:
   - Derived fourth quarters ignored nine-month figures the 10-K had revised: Rapid7's net income read −$1.48M instead of +$2.17M.
 - **A slow SEC response froze the service.** A response dripping one byte at a time kept a turn open and its thread locked, and four of them made every visitor "busy". A turn now ends with "Source unavailable" and frees its slot. [#47](https://github.com/bpyman/onfile/pull/47).
 - **Capitalised words were read as tickers.** "WHAT IS NVIDIA NET MARGIN NOW?" added ServiceNow. Ordinary words and finance acronyms no longer resolve as tickers; real ones like `NOW revenue` still do. [#46](https://github.com/bpyman/onfile/pull/46).
+
+What the planner comparison found ([ADR 0010](docs/adr/0010-one-reading-of-names-and-windows.md)):
+
+- **Three resolvers for one name.** The rules planner read names with its issuer index, spec resolution used a narrower resolver, and the facts lookup resolved the words again from SEC titles. "Goldman Sachs" from the LLM planner was resolved to GS and then shown as "company not found". Live, "Coca-Cola" came back ambiguous between three bottlers. There is now one reading of a name.
+- **A period reader that knew six numbers.** "Past six quarters" and "previous nine quarters" fell back to the latest quarter. One grammar now reads any recency word, count and unit.
+- **"Target" the word.** "Nvidia's target margin" added Target. Whether a name is also an everyday word now comes from case in 10-Q text, and the word counts as the company only where the question uses it as one.
+- **A held-out set I had read.** My brief asked the first blind labelling session to return its cases, so I saw them while changing the planner. They became development cases, and a second session wrote the held-out set, reporting only counts.
 
 As an independent check outside the XBRL data the app reads, [the filing check](docs/evaluation/filing-check.md) opens the 10-Q each figure cites and looks for the number in the filing's own text: **25 of 25** figures were found.
 

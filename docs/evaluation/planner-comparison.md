@@ -1,6 +1,6 @@
 # Rules planner vs LLM planner
 
-Generated `2026-10-03T12:54:21.199566+00:00` on the recorded runtime. Cases: [`planner-cases.json`](planner-cases.json) (78: 28 scorecard questions, 50 held-out paraphrases labelled before either planner ran on them).
+Generated `2026-10-03T18:33:09.678331+00:00` on the recorded runtime, over 219 cases: 28 scorecard questions and 122 development cases ([`planner-cases.json`](planner-cases.json), [`planner-cases-v2.json`](planner-cases-v2.json)), and 69 held-out cases ([`planner-cases-held-out.json`](planner-cases-held-out.json)). Every case was labelled before a planner ran on it. The held-out cases were written by a separate session after the planner changes, and were not read by whoever changed a planner until this run.
 
 Each case is a conversation run end to end with only the planner swapped, and is scored on the last turn's outcome (answer, clarify or refuse), intent, companies, metrics, period and operations. A case passes when every labelled field is right.
 
@@ -8,50 +8,46 @@ Each case is a conversation run end to end with only the planner swapped, and is
 
 | Split | Cases | Accuracy | Spread across runs (sd) | Agreement across runs |
 | --- | ---: | ---: | ---: | ---: |
-| Scorecard | 28 | 96% | 0.0% | 100% |
-| Held out | 50 | 88% | 0.0% | 100% |
-| All | 78 | 91% | 0.0% | 100% |
+| Scorecard | 28 | 100% | 0.0% | 100% |
+| Development | 122 | 100% | 0.0% | 100% |
+| Held out | 69 | 91% | 0.0% | 100% |
+| All | 219 | 97% | 0.0% | 100% |
 
-Field accuracy: outcome 97%, intent 97%, tickers 96%, tickers_include 89%, metrics 98%, periods 83%, operations_include 100%.
-Planner time p50 / p95: 1 ms / 2 ms over 430 calls.
+Field accuracy: outcome 98%, intent 100%, tickers 99%, tickers_include 90%, metrics 99%, periods 100%, operations_include 88%.
+Planner time p50 / p95: 1 ms / 3 ms over 1265 calls.
 
 <details><summary>Cases it got wrong</summary>
 
-- `follow_up_metric_and_company` (run 1): metrics
-- `ho_nvda_past_four` (run 1): periods
-- `ho_pfe_mrk_six_quarters` (run 1): periods
-- `ho_banks_market_cap` (run 1): outcome, tickers_include
-- `ho_follow_include_oracle` (run 1): tickers
-- `ho_follow_swap_abbvie` (run 1): outcome, tickers
-- `ho_msft_filing_paraphrase` (run 1): intent
-- `follow_up_metric_and_company` (run 2): metrics
-- `ho_nvda_past_four` (run 2): periods
-- `ho_pfe_mrk_six_quarters` (run 2): periods
-- `ho_banks_market_cap` (run 2): outcome, tickers_include
-- `ho_follow_include_oracle` (run 2): tickers
-- `ho_follow_swap_abbvie` (run 2): outcome, tickers
-- `ho_msft_filing_paraphrase` (run 2): intent
-- `follow_up_metric_and_company` (run 3): metrics
-- `ho_nvda_past_four` (run 3): periods
-- `ho_pfe_mrk_six_quarters` (run 3): periods
-- `ho_banks_market_cap` (run 3): outcome, tickers_include
-- `ho_follow_include_oracle` (run 3): tickers
-- `ho_follow_swap_abbvie` (run 3): outcome, tickers
-- `ho_msft_filing_paraphrase` (run 3): intent
-- `follow_up_metric_and_company` (run 4): metrics
-- `ho_nvda_past_four` (run 4): periods
-- `ho_pfe_mrk_six_quarters` (run 4): periods
-- `ho_banks_market_cap` (run 4): outcome, tickers_include
-- `ho_follow_include_oracle` (run 4): tickers
-- `ho_follow_swap_abbvie` (run 4): outcome, tickers
-- `ho_msft_filing_paraphrase` (run 4): intent
-- `follow_up_metric_and_company` (run 5): metrics
-- `ho_nvda_past_four` (run 5): periods
-- `ho_pfe_mrk_six_quarters` (run 5): periods
-- `ho_banks_market_cap` (run 5): outcome, tickers_include
-- `ho_follow_include_oracle` (run 5): tickers
-- `ho_follow_swap_abbvie` (run 5): outcome, tickers
-- `ho_msft_filing_paraphrase` (run 5): intent
+- `h3_what_about_keeps_window` (run 1): outcome
+- `h3_apples_to_apples` (run 1): tickers
+- `h3_healthcare_market_cap` (run 1): outcome, tickers_include
+- `h3_tech_top_ten_revenue` (run 1): metrics, outcome, tickers_include
+- `h3_bac_jpm_ni_growth` (run 1): operations_include
+- `h3_amgn_two_metrics` (run 1): outcome
+- `h3_what_about_keeps_window` (run 2): outcome
+- `h3_apples_to_apples` (run 2): tickers
+- `h3_healthcare_market_cap` (run 2): outcome, tickers_include
+- `h3_tech_top_ten_revenue` (run 2): metrics, outcome, tickers_include
+- `h3_bac_jpm_ni_growth` (run 2): operations_include
+- `h3_amgn_two_metrics` (run 2): outcome
+- `h3_what_about_keeps_window` (run 3): outcome
+- `h3_apples_to_apples` (run 3): tickers
+- `h3_healthcare_market_cap` (run 3): outcome, tickers_include
+- `h3_tech_top_ten_revenue` (run 3): metrics, outcome, tickers_include
+- `h3_bac_jpm_ni_growth` (run 3): operations_include
+- `h3_amgn_two_metrics` (run 3): outcome
+- `h3_what_about_keeps_window` (run 4): outcome
+- `h3_apples_to_apples` (run 4): tickers
+- `h3_healthcare_market_cap` (run 4): outcome, tickers_include
+- `h3_tech_top_ten_revenue` (run 4): metrics, outcome, tickers_include
+- `h3_bac_jpm_ni_growth` (run 4): operations_include
+- `h3_amgn_two_metrics` (run 4): outcome
+- `h3_what_about_keeps_window` (run 5): outcome
+- `h3_apples_to_apples` (run 5): tickers
+- `h3_healthcare_market_cap` (run 5): outcome, tickers_include
+- `h3_tech_top_ten_revenue` (run 5): metrics, outcome, tickers_include
+- `h3_bac_jpm_ni_growth` (run 5): operations_include
+- `h3_amgn_two_metrics` (run 5): outcome
 
 </details>
 
@@ -59,42 +55,32 @@ Planner time p50 / p95: 1 ms / 2 ms over 430 calls.
 
 | Split | Cases | Accuracy | Spread across runs (sd) | Agreement across runs |
 | --- | ---: | ---: | ---: | ---: |
-| Scorecard | 28 | 96% | 0.0% | 100% |
-| Held out | 50 | 92% | 0.9% | 98% |
-| All | 78 | 93% | 0.6% | 99% |
+| Scorecard | 28 | 100% | 0.0% | 100% |
+| Development | 122 | 100% | 0.0% | 100% |
+| Held out | 69 | 96% | 0.0% | 100% |
+| All | 219 | 99% | 0.0% | 100% |
 
-Field accuracy: outcome 100%, intent 100%, tickers 95%, tickers_include 89%, metrics 100%, periods 83%, operations_include 100%.
-Planner time p50 / p95: 1019 ms / 1364 ms over 430 calls; 564,360 input and 15,111 output tokens (278 reasoning), $1.31 in all, $0.0030 a call.
+Field accuracy: outcome 99%, intent 100%, tickers 100%, tickers_include 100%, metrics 100%, periods 100%, operations_include 88%.
+Planner time p50 / p95: 1046 ms / 1382 ms over 1265 calls; 1,772,155 input and 51,680 output tokens (114 reasoning), $4.16 in all, $0.0033 a call.
 
 <details><summary>Cases it got wrong</summary>
 
-- `follow_up_swap_company` (run 1): tickers_include
-- `ho_gs_jpm_net_income` (run 1): tickers
-- `ho_tmo_dhr_stack_up` (run 1): tickers
-- `ho_nvda_past_four` (run 1): periods
-- `ho_pfe_mrk_six_quarters` (run 1): periods
-- `ho_follow_include_oracle` (run 1): tickers
-- `follow_up_swap_company` (run 2): tickers_include
-- `ho_gs_jpm_net_income` (run 2): tickers
-- `ho_nvda_past_four` (run 2): periods
-- `ho_pfe_mrk_six_quarters` (run 2): periods
-- `ho_follow_include_oracle` (run 2): tickers
-- `follow_up_swap_company` (run 3): tickers_include
-- `ho_gs_jpm_net_income` (run 3): tickers
-- `ho_nvda_past_four` (run 3): periods
-- `ho_pfe_mrk_six_quarters` (run 3): periods
-- `ho_follow_include_oracle` (run 3): tickers
-- `follow_up_swap_company` (run 4): tickers_include
-- `ho_gs_jpm_net_income` (run 4): tickers
-- `ho_nvda_past_four` (run 4): periods
-- `ho_pfe_mrk_six_quarters` (run 4): periods
-- `ho_follow_include_oracle` (run 4): tickers
-- `follow_up_swap_company` (run 5): tickers_include
-- `ho_gs_jpm_net_income` (run 5): tickers
-- `ho_nvda_past_four` (run 5): periods
-- `ho_pfe_mrk_six_quarters` (run 5): periods
-- `ho_follow_include_oracle` (run 5): tickers
+- `h3_what_about_keeps_window` (run 1): outcome
+- `h3_bac_jpm_ni_growth` (run 1): operations_include
+- `h3_amgn_two_metrics` (run 1): outcome
+- `h3_what_about_keeps_window` (run 2): outcome
+- `h3_bac_jpm_ni_growth` (run 2): operations_include
+- `h3_amgn_two_metrics` (run 2): outcome
+- `h3_what_about_keeps_window` (run 3): outcome
+- `h3_bac_jpm_ni_growth` (run 3): operations_include
+- `h3_amgn_two_metrics` (run 3): outcome
+- `h3_what_about_keeps_window` (run 4): outcome
+- `h3_bac_jpm_ni_growth` (run 4): operations_include
+- `h3_amgn_two_metrics` (run 4): outcome
+- `h3_what_about_keeps_window` (run 5): outcome
+- `h3_bac_jpm_ni_growth` (run 5): operations_include
+- `h3_amgn_two_metrics` (run 5): outcome
 
 </details>
 
-The held-out cases measure how a planner generalises only while neither planner is tuned on them: after changing a planner to pass them, write a fresh held-out set before comparing again. The rules planner is deterministic, so its spread is zero by construction. The recorded runtime replays SEC data, so the comparison isolates planning; it says nothing about EDGAR freshness. See [the scorecard](scorecard.md) and [figures checked against their filings](filing-check.md).
+The held-out cases measure how a planner generalises only while no planner is tuned on them: once a planner is changed because of them, they become development cases and a fresh held-out set is written before comparing again. The rules planner is deterministic, so its spread is zero by construction. The recorded runtime replays SEC data, so the comparison isolates planning; it says nothing about EDGAR freshness. See [the scorecard](scorecard.md) and [figures checked against their filings](filing-check.md).
