@@ -347,8 +347,9 @@ class DisclosureChange(BaseModel):
     )
 
 
-# What a CLARIFY result asks: pick one metric, or extend vs replace the analysis.
-ClarifyKind = Literal["ambiguous_metric", "ambiguous_mode"]
+# What a CLARIFY result asks: pick one metric, extend vs replace the analysis,
+# or which of the companies a name could mean.
+ClarifyKind = Literal["ambiguous_metric", "ambiguous_mode", "ambiguous_company"]
 
 
 class TurnResult(BaseModel):
@@ -363,6 +364,11 @@ class TurnResult(BaseModel):
     citations: list[NewsHit] = Field(default_factory=list)
     candidates: tuple[str, ...] = ()
     clarify_kind: ClarifyKind | None = None
+    # How each candidate is shown ("Coca-Cola Consolidated (COKE)"); empty when
+    # the candidate's own name reads well.
+    candidate_labels: tuple[str, ...] = ()
+    # The words a clarification asks about: the company name that was ambiguous.
+    clarify_subject: str | None = None
     disclosure_changes: list[DisclosureChange] = Field(default_factory=list)
     # Questions the window offers next, phrased so the planner reads them.
     suggestions: list[str] = Field(default_factory=list)

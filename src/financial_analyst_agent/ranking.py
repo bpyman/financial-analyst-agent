@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from financial_analyst_agent.domain.errors import CompanyNotFoundError, UnknownIndustryError
+from financial_analyst_agent.domain.errors import (
+    AmbiguousCompanyError,
+    CompanyNotFoundError,
+    UnknownIndustryError,
+)
+from financial_analyst_agent.issuer_index import IssuerIndex
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.universe import (
     UniverseCompany,
@@ -15,6 +20,9 @@ from financial_analyst_agent.universe import (
     preferred_listing,
     resolve_industry_group,
 )
+
+# Companies a clarification offers for an ambiguous name.
+_MAX_CHOICES = 4
 
 
 @dataclass(frozen=True)
@@ -28,8 +36,10 @@ class RankTable:
 class SnapshotRanking:
     """Sort a checked-in snapshot. Membership does not change at request time."""
 
-    def __init__(self, snapshot: UniverseSnapshot) -> None:
+    def __init__(self, snapshot: UniverseSnapshot, index: IssuerIndex | None = None) -> None:
         self._snapshot = snapshot
+        # The planner's index, so a company resolves as the planner read it.
+        self._index = index
         # The snapshot is immutable, so the operating-listing views are built once
         # instead of rescanning thousands of rows on every lookup.
         self._operating = tuple(
@@ -38,6 +48,7 @@ class SnapshotRanking:
         self._listings_by_cik: dict[str, list[UniverseCompany]] = {}
         for company in self._operating:
             self._listings_by_cik.setdefault(company.cik, []).append(company)
+        self._by_ticker = {company.ticker.upper(): company for company in self._operating}
         self._ticker_payload: dict[str, Any] = {
             str(index): {
                 "ticker": company.ticker,
@@ -49,8 +60,17 @@ class SnapshotRanking:
         }
 
     @classmethod
-    def from_path(cls, path: Path | None = None) -> "SnapshotRanking":
-        return cls(load_universe_snapshot(path))
+    def from_path(
+        cls, path: Path | None = None, index: IssuerIndex | None = None
+    ) -> "SnapshotRanking":
+        return cls(load_universe_snapshot(path), index)
+
+    @property
+    def index(self) -> IssuerIndex:
+        """The names that reach a member: the given index, or one built from the snapshot."""
+        if self._index is None:
+            self._index = IssuerIndex.build(self._snapshot.companies)
+        return self._index
 
     def rank_companies(self, industry: str, limit: int) -> RankTable:
         group = resolve_industry_group(industry, self._snapshot)
@@ -87,7 +107,21 @@ class SnapshotRanking:
         return self._snapshot.source
 
     def lookup_member(self, company: str) -> UniverseCompany:
-        resolved = resolve_company(company, self._ticker_payload)
+        """The snapshot listing ``company`` names.
+
+        The issuer index reads the name first, as the planner does: "Goldman
+        Sachs", "Lilly", "Merck & Co." and "$TMO" each name one member. A name
+        it does not hold whole goes to the SEC-style resolver, which may find
+        it ambiguous.
+        """
+        query = self.index.named(company)
+        listing = self._by_ticker.get(query.upper()) if query is not None else None
+        if listing is not None:
+            return preferred_listing(self._listings_by_cik[listing.cik])
+        try:
+            resolved = resolve_company(query or company, self._ticker_payload)
+        except AmbiguousCompanyError as exc:
+            return self._one_of(company, exc)
         listings = self._listings_by_cik.get(resolved.cik)
         if not listings:
             raise CompanyNotFoundError(
@@ -95,6 +129,36 @@ class SnapshotRanking:
                 details={"query": company},
             )
         return preferred_listing(listings)
+
+    def _one_of(self, company: str, exc: AmbiguousCompanyError) -> UniverseCompany:
+        """The member an ambiguous name means, or the members to ask between.
+
+        The matches are re-raised as the snapshot's listings, largest first, so
+        a clarification can offer "KO, CCEP or COKE" by name.
+        """
+        ciks = dict.fromkeys(str(match["cik"]) for match in exc.details.get("matches", ()))
+        members = [
+            preferred_listing(self._listings_by_cik[cik])
+            for cik in ciks
+            if cik in self._listings_by_cik
+        ]
+        if len(members) == 1:
+            return members[0]
+        if not members:
+            raise CompanyNotFoundError(
+                f"Company not found for query '{company}'", details={"query": company}
+            ) from exc
+        members.sort(key=lambda member: member.market_cap, reverse=True)
+        raise AmbiguousCompanyError(
+            f"“{company}” names more than one company",
+            details={
+                "query": company,
+                "matches": [
+                    {"cik": member.cik, "ticker": member.ticker, "title": member.name}
+                    for member in members[:_MAX_CHOICES]
+                ],
+            },
+        ) from exc
 
     def peers(
         self, cik: str, *, exclude: frozenset[str] = frozenset(), limit: int = 3

@@ -158,7 +158,8 @@ class RecordedEssayCompleter:
 
 @lru_cache(maxsize=4)
 def _cached_ranking(path: Path | None, _mtime_ns: int) -> SnapshotRanking:
-    return SnapshotRanking.from_path(path)
+    # The planner's index: a company resolves the way the planner read it.
+    return SnapshotRanking.from_path(path, issuer_index(path))
 
 
 def _display_names(path: Path | None) -> dict[str, str]:

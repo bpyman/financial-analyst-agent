@@ -539,6 +539,7 @@ _BANNER_COPY = {
 }
 _METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
 _SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
+_COMPANY_CLARIFY_PROMPT = "Which company do you mean by “{subject}”?"
 
 
 @dataclass(frozen=True)
@@ -1540,7 +1541,8 @@ def present_turn(result: TurnResult) -> Presentation:
             if result.renderer is not RendererKind.CLARIFY
             else None
         ),
-        candidates=tuple(format_field_name(name) for name in result.candidates),
+        candidates=result.candidate_labels
+        or tuple(format_field_name(name) for name in result.candidates),
         clarify_prompt=_clarify_prompt(result),
         suggestions=tuple(result.suggestions),
         message_tone="info" if result.guide else "warning",
@@ -1687,6 +1689,8 @@ def _clarify_prompt(result: TurnResult) -> str | None:
         return None
     if result.clarify_kind == "ambiguous_mode":
         return _SCOPE_CLARIFY_PROMPT
+    if result.clarify_kind == "ambiguous_company":
+        return _COMPANY_CLARIFY_PROMPT.format(subject=result.clarify_subject or "that name")
     return _METRIC_CLARIFY_PROMPT
 
 

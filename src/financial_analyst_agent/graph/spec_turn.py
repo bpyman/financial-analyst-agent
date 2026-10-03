@@ -44,6 +44,7 @@ from financial_analyst_agent.contracts import (
 )
 from financial_analyst_agent.domain.errors import (
     SOURCE_FAILURES,
+    AmbiguousCompanyError,
     CompanyNotFoundError,
     IneligibleIssuerError,
     ProviderError,
@@ -1383,6 +1384,20 @@ class Resolution:
     compiled: CompiledAnalysis | None = None
 
 
+def company_clarification(intent: Intent, exc: AmbiguousCompanyError) -> TurnResult:
+    """Ask which company a name means: "Coca-Cola" is KO, CCEP or COKE."""
+    matches = exc.details.get("matches", ())
+    return TurnResult(
+        intent=intent,
+        tool_traces=[],
+        renderer=RendererKind.CLARIFY,
+        candidates=tuple(str(match["ticker"]) for match in matches),
+        candidate_labels=tuple(f"{match['title']} ({match['ticker']})" for match in matches),
+        clarify_kind="ambiguous_company",
+        clarify_subject=str(exc.details.get("query", "")),
+    )
+
+
 def resolve_request(
     request: StructuredRequest, current_spec: AnalysisSpec | None, runtime: Runtime
 ) -> Resolution:
@@ -1459,6 +1474,8 @@ def resolve_request(
         spec = resolve_spec(draft, ranking=runtime.ranking)
     except UnknownIndustryError as exc:
         return answered(_refusal(asked, str(exc)), None)
+    except AmbiguousCompanyError as exc:
+        return answered(company_clarification(asked, exc), current_spec)
     if not spec.companies and spec.constituents is None and spec.metrics:
         # "what was the revenue?": naming the company next ("for Apple") completes it.
         held = current_spec if current_spec is not None else spec

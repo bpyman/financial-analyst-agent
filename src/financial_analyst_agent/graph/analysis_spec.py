@@ -13,7 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from financial_analyst_agent.contracts import ALLOWED_METRICS, unknown_metric_message
-from financial_analyst_agent.domain.errors import AmbiguousCompanyError, CompanyNotFoundError
+from financial_analyst_agent.domain.errors import CompanyNotFoundError
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 
 
@@ -371,8 +371,9 @@ def _resolve_company(query: str, *, ranking: Any | None) -> ResolvedCompany:
                 ticker=member.ticker,
                 query=query,
             )
-        except (CompanyNotFoundError, AmbiguousCompanyError):
+        except CompanyNotFoundError:
             # Lookup does not require freeze presence; keep the query token.
+            # An ambiguous name is raised: the analyst picks the company.
             pass
     return ResolvedCompany(cik="", name=query, ticker="", query=query)
 

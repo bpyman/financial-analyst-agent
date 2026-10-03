@@ -94,6 +94,9 @@ def clarification_reply(
             if text == candidate.casefold():
                 return ClarifyReply(chosen=(candidate,))
         return None
+    if pending.kind == "ambiguous_company":
+        named = _company_named(pending, text, index)
+        return ClarifyReply(chosen=(named,)) if named is not None else None
     if pending.kind != "ambiguous_metric":
         return None
     if _NEW_QUESTION.search(message) or len(message.split()) > _MAX_ANSWER_WORDS:
@@ -113,6 +116,36 @@ def clarification_reply(
     if periods != SpecPatch(mode="extend"):
         return ClarifyReply(period_patch=periods)
     return None
+
+
+def _company_named(pending: PendingClarification, text: str, index: Any) -> str | None:
+    """The one offered company an answer names: "COKE", "Coca-Cola Consolidated".
+
+    An answer naming none of them, or more than one, is a new question.
+    """
+    if len(text.split()) > _MAX_ANSWER_WORDS:
+        return None
+    for ticker in pending.candidates:
+        if text == ticker.casefold():
+            return ticker
+    find = getattr(index, "find", None)
+    if callable(find):
+        named = {mention.query for mention in find(text, company_slot=True)}
+        offered = [ticker for ticker in pending.candidates if ticker in named]
+        if len(offered) == 1 and named <= set(pending.candidates):
+            return offered[0]
+    # "the consolidated one": words only one candidate's name holds.
+    words = set(re.findall(r"[a-z0-9]+", text)) - _ANSWER_FILLER
+    words -= set(re.findall(r"[a-z0-9]+", pending.subject.casefold()))
+    if not words:
+        return None
+    labels = pending.labels or pending.candidates
+    holding = [
+        ticker
+        for ticker, label in zip(pending.candidates, labels, strict=False)
+        if words <= set(re.findall(r"[a-z0-9]+", label.casefold()))
+    ]
+    return holding[0] if len(holding) == 1 else None
 
 
 def _metrics_named(candidates: tuple[str, ...], text: str) -> tuple[str, ...]:
@@ -151,6 +184,8 @@ def pending_from_clarify(
         intent=result.intent,
         metric_role=metric_role,
         question=question,
+        subject=result.clarify_subject or "",
+        labels=result.candidate_labels,
     )
 
 
@@ -177,6 +212,15 @@ def resumed_request(
                 patch = patch.model_copy(update={"mode": "replace", "remove_companies": ()})
         if patch.mode is None and current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
+    elif pending.kind == "ambiguous_company":
+        # The held question again, with the chosen company for the ambiguous name.
+        companies = pending.patch.add_companies
+        if pending.subject in companies:
+            companies = tuple(answer if name == pending.subject else name for name in companies)
+        else:
+            companies = (*companies, answer)
+        patch = pending.patch.model_copy(update={"add_companies": companies})
+        wording = pending.question or message
     else:  # ambiguous_mode: the held question is what the chosen scope answers.
         mode: Literal["extend", "replace"] = "extend" if answer == "extend" else "replace"
         patch = pending.patch.model_copy(update={"mode": mode})
@@ -197,13 +241,16 @@ def ask_again(
     else:
         patch = pending.patch
         count = len(pending.candidates)
-        note = f"There are {count} options: pick 1 to {count}, or type the metric's name."
+        named = "company's ticker" if pending.kind == "ambiguous_company" else "metric's name"
+        note = f"There are {count} options: pick 1 to {count}, or type the {named}."
     result = TurnResult(
         intent=pending.intent,
         tool_traces=[],
         renderer=RendererKind.CLARIFY,
         candidates=pending.candidates,
         clarify_kind=pending.kind,
+        candidate_labels=pending.labels,
+        clarify_subject=pending.subject or None,
         banners=[note],
     )
     return Clarification(
