@@ -10,10 +10,12 @@
              ├─ asked again ─→ clarify      (a period noted, or an option out of range)
              └─ set aside ───→ interpret    (a new question; the held one is discarded)
 
-``interpret`` is the only step that calls the model: it proposes a request
+``interpret`` is the only step where the model chooses: it proposes a request
 (a spec patch, an essay, or a filing comparison) from a closed set and never
-picks nodes. ``resolve`` decides identity, catalog membership, and periods
-deterministically, and either refuses, asks one question, or compiles tasks.
+picks nodes. The model writes an essay or a filing summary later, inside a
+step ``interpret`` chose, and that text never routes the turn. ``resolve``
+decides identity, catalog membership, and periods deterministically, and
+either refuses, asks one question, or compiles tasks.
 Figures come only from the deterministic workflows (``structured_analysis``);
 the essay nodes are held to the numeral lock. Edges are fixed; routing reads
 typed state.

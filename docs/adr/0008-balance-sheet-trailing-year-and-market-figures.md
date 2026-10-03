@@ -23,7 +23,7 @@ A derived trailing year is marked † like any derived quarter, and all three fa
 | `shareholders_equity` | `StockholdersEquity`, else the total including noncontrolling interest | USD, at the date |
 | `depreciation_amortization` | the cash-flow statement's D&A line. For filers without one (Microsoft, Alphabet), `Depreciation` plus `AmortizationOfIntangibleAssets` for the same period | USD, derived like cash flow |
 | `dividends_paid` | `PaymentsOfDividendsCommonStock`, `PaymentsOfDividends` | USD, derived like cash flow |
-| `dividends_per_share` | paid, else declared, per share; a quarter whose dividend was declared earlier in the year says so rather than showing $0.00 | USD/share, never derived |
+| `dividends_per_share` | paid, else declared, per share (*revised:* first written as declared, else paid; Walmart declares the year's dividend in one quarter, so declared first showed $0.00 in the others). A quarter with none declared, after one earlier in the year, reads "No dividend declared this quarter" rather than $0.00: the filing reads the same for a year's dividend declared at once and for a suspension | USD/share, never derived |
 | `ebitda` | operating income plus D&A | USD |
 | `return_on_equity` | trailing-year net income divided by equity at the year's end | percent |
 | `pe_ratio` | snapshot market cap divided by trailing-year net income | multiple |

@@ -187,7 +187,7 @@ The scorecard runs the rules planner, so it says nothing about the LLM. [Rules p
 The comparison reports accuracy per field, the spread and agreement across repeated runs, planner latency, and tokens and dollars for the LLM.
 
 On the held-out cases, over five runs:
-- **Rules planner:** 91%, in about 1 ms a call. Before [ADR 0010](docs/adr/0010-one-reading-of-names-and-windows.md) it scored 58%; scored the old way, which counted a window by the quarters the recording holds, it is now 86%.
+- **Rules planner:** 91% in the blind run, in about 1 ms a call. Before [ADR 0010](docs/adr/0010-one-reading-of-names-and-windows.md) it scored 58%; scored the old way, which counted a window by the quarters the recording holds, it is now 86%. After the product decisions below and the refreshed recording, the same cases score 96%; that later figure is no longer blind.
 - **`gpt-5.6-terra`:** 96%, up from 62%, identical across all five runs, at about one second and $0.0033 a call ($4.16 for the whole comparison).
 
 Neither gain came from the planners. Both came from the code that runs after either one: one company resolver, one window grammar and one reading of follow-up edits.
