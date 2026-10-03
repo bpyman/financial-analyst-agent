@@ -368,6 +368,22 @@ class IssuerIndex:
                 index.shared[word] = tuple(owners)
         return index
 
+    def add_former(self, ticker: str, name: str) -> None:
+        """A name a snapshot company used to file under: "Facebook" is Meta.
+
+        It never takes a phrase a current name holds, so a name since reused
+        stays with its present owner, and a one-word former name must not be
+        an ordinary word: "Square" stays a word, while "Raytheon Technologies"
+        names RTX.
+        """
+        query = self.tickers.get(ticker.upper())
+        core = _core_name(_SEC_STATE.sub("", name))
+        if query is None or not core or any(char.isdigit() for char in core):
+            return
+        one_word_name = len(core) >= 4 and core not in _GENERIC_WORDS and not _ordinary(core)
+        if " " in core or one_word_name:
+            self.phrases.setdefault(core, query)
+
     def add_outside(self, ticker: str, name: str) -> None:
         """A listing outside the snapshot (a fund), named so a question can reach it.
 

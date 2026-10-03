@@ -72,6 +72,7 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
 from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
 from financial_analyst_agent.services.filing_selector import FISCAL_WEEK_TOLERANCE
 from financial_analyst_agent.services.fiscal_periods import calendar_quarter, dates_for
@@ -97,10 +98,6 @@ _SWAP_EDIT = re.compile(
 )
 _DROP_AND_ADD_EDIT = re.compile(
     r"^\s*(?:drop|remove)\s+(.+?)\s*,?\s+(?:and\s+)?(?:add|include|show)\s+(.+?)\s*$",
-    re.IGNORECASE,
-)
-_LAST_N_QUARTERS = re.compile(
-    r"\blast\s+(\d+|two|three|four|five|six|eight)\s+quarters?\b",
     re.IGNORECASE,
 )
 _YOY = re.compile(
@@ -181,10 +178,6 @@ _YEAR_RANGE = re.compile(
 _MAX_RANGE_YEARS = 10
 # "20 years ago" names that fiscal year; "a year ago" is a year-over-year change.
 _YEARS_AGO = re.compile(r"\b(?P<n>\d{1,2})\s+years?\s+ago\b", re.I)
-# "last 3 years": that many years of quarters.
-_LAST_N_YEARS = re.compile(
-    r"\b(?:last|past|previous|prior)\s+(\d+|two|three|four|five|six|eight|ten)\s+years\b", re.I
-)
 # "next quarter" asks for a forecast; filings only report what has happened.
 _FORECAST = re.compile(
     r"\bnext\s+(?:quarter|year|fiscal\s+year|fy)\b|\bforecasts?\b|\bprojected\b|\bpredict",
@@ -238,15 +231,6 @@ TRAILING_YEAR_BANNER = (
     "Trailing twelve months: these are the four latest quarters, shown one by one "
     "rather than summed."
 )
-_NUMBER_WORDS = {
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "eight": 8,
-    "ten": 10,
-}
 
 # Bound concurrent provider fan-out so a wide window cannot flood SEC/EDGAR.
 DEFAULT_TASK_MAX_WORKERS = 8
@@ -458,19 +442,6 @@ def _company_tokens(text: str) -> tuple[str, ...]:
     return tuple(part.strip(" .,") for part in parts if part.strip(" .,"))
 
 
-def _quarters_asked(raw: str) -> int:
-    """The window "last N quarters" names, kept between one and ``MAX_QUARTERS_ASKED``."""
-    raw = raw.casefold()
-    if raw in _NUMBER_WORDS:
-        return _NUMBER_WORDS[raw]
-    digits = raw.lstrip("0")
-    if not digits.isdigit():
-        return 1 if raw.isdigit() else 4
-    if len(digits) > len(str(MAX_QUARTERS_ASKED)):
-        return MAX_QUARTERS_ASKED
-    return min(int(digits), MAX_QUARTERS_ASKED)
-
-
 def parse_named_periods(message: str) -> tuple[NamedPeriodSpec, ...]:
     """Every period the message names, in the order named, without repeats."""
     found: list[tuple[int, NamedPeriodSpec]] = []
@@ -552,15 +523,12 @@ def _with_year_earlier(named: tuple[NamedPeriodSpec, ...]) -> tuple[NamedPeriodS
     return tuple(dict.fromkeys([*named, *earlier]))
 
 
+
+
 def _window_asked(message: str) -> int | None:
-    """The quarters "last N quarters" or "last N years" asks for, or None."""
-    quarters = _LAST_N_QUARTERS.search(message)
-    if quarters is not None:
-        return _quarters_asked(quarters.group(1))
-    years = _LAST_N_YEARS.search(message)
-    if years is not None:
-        return min(4 * _quarters_asked(years.group(1)), MAX_QUARTERS_ASKED)
-    return None
+    """The quarters a window asks for ("past six quarters", "last 3 years"), or None."""
+    window = asked_window(message)
+    return window.quarters if window is not None else None
 
 
 def _since_quarters(since: re.Match[str]) -> int:
@@ -2069,15 +2037,12 @@ def _period_notes(message: str, spec: AnalysisSpec) -> list[str]:
 def _window_notes(message: str, windows: list[tuple[date, ...]]) -> list[str]:
     """Say when a window is shorter than asked: capped, or more than the filings hold."""
     notes: list[str] = []
-    wanted = _window_asked(message)
-    typed = _LAST_N_QUARTERS.search(message)
+    window = asked_window(message)
+    wanted = window.quarters if window is not None else None
     since = _SINCE_YEAR.search(message)
-    if typed is not None and typed.group(1).isdigit() and int(typed.group(1)) > MAX_QUARTERS_ASKED:
-        notes.append(
-            f"A window shows at most {MAX_QUARTERS_ASKED} quarters, so this asks for "
-            f"{MAX_QUARTERS_ASKED} rather than {int(typed.group(1))}."
-        )
-    elif wanted is None and since is not None:
+    if window is not None:
+        notes.extend(window.notes())
+    elif since is not None:
         quarters = _since_quarters(since)
         wanted = min(quarters, _MAX_SINCE_QUARTERS)
         if quarters > _MAX_SINCE_QUARTERS:
