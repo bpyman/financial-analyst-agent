@@ -31,6 +31,7 @@ from financial_analyst_agent.issuer_index import (
 )
 from financial_analyst_agent.request_wording import (
     OVERVIEW_PLAN,
+    asks_to_swap,
     implied_metrics,
     parse_named_periods,
 )
@@ -315,10 +316,6 @@ _COMPARE_THEM = re.compile(
     r"(?:\s+side\s+by\s+side)?"
 )
 _LEADING_AND = re.compile(r"^\s*(?:and|also|plus|add)\b")
-_SWAP_WORDING = re.compile(
-    r"^\s*(?:what about|how about|and what about|same for|now|ok|okay)\b"
-    r"|\binstead\b|^\s*(?:just|only)\b|^\s*by\b"
-)
 _TOP_N = re.compile(r"\b(?:only |just )?(?:the )?top\s+(\d+)\b")
 _LIMIT_WORDS = re.compile(
     r"\b(?:top|biggest|largest|leading)\s+(\d+)\b|\b(\d+)\s+(?:biggest|largest)\b"
@@ -986,7 +983,7 @@ def _follow_up(
     if companies and metric == "unknown" and spec.companies:
         if _ADD_WORDING.search(normalized) or _COMPARE_TO_WORDING.search(normalized):
             return SpecPatch(mode="extend", add_companies=tuple(companies))
-        if _SWAP_WORDING.search(normalized) or len(normalized.split()) <= 2:
+        if asks_to_swap(normalized) or len(normalized.split()) <= 2:
             return SpecPatch(
                 mode="extend",
                 remove_companies=tuple(company.query for company in spec.companies),
@@ -1013,10 +1010,6 @@ def _follow_up(
         return None
     if not (spec.companies or spec.constituents is not None):
         return None
-    if _SWAP_WORDING.search(normalized) and not re.search(r"\b(?:their|its)\b", normalized):
-        return SpecPatch(
-            mode="extend",
-            add_metrics=(metric,),
-            remove_metrics=tuple(m for m in spec.metrics if m != metric),
-        )
+    # "what about net income" swaps rather than adds: the shared edit reading
+    # decides that for both planners (request_wording).
     return SpecPatch(mode="extend", add_metrics=(metric,))
