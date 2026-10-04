@@ -53,6 +53,16 @@ _ALSO_EDIT = re.compile(
 )
 
 
+# "what about net income", "just revenue", "net income instead", "by revenue": what
+# the follow-up names takes the place of what is on screen instead of joining it.
+# One reading for both planners' edits (ADR 0010, ADR 0011).
+_SWAP_CUE = re.compile(
+    r"^\s*(?:what about|how about|and what about|same for|now|ok|okay)\b"
+    r"|\binstead\b|^\s*(?:just|only)\b|^\s*by\b",
+    re.IGNORECASE,
+)
+# "what about their net income" asks about the companies on screen: it adds.
+_POSSESSIVE = re.compile(r"\b(?:their|its)\b", re.IGNORECASE)
 # "what about Goldman?", "how about AMD", "same for Oracle": the named companies
 # take the place of the ones on screen; the metrics and window stay.
 _INSTEAD_EDIT = re.compile(
@@ -724,6 +734,11 @@ def drops_comparison(message: str) -> bool:
     return _DROP_COMPARISON.match(message) is not None
 
 
+def asks_to_swap(message: str) -> bool:
+    """Whether a follow-up puts what it names in place of what is on screen."""
+    return _SWAP_CUE.search(message) is not None
+
+
 def is_removal(message: str) -> bool:
     """ "drop revenue", "remove Apple", "without margins": an edit that takes away."""
     return _DROP_EDIT.match(message.strip()) is not None
@@ -833,6 +848,10 @@ def refine_patch_from_message(
                 remove_companies=(),
             )
 
+    metric_swap = _metric_swap(message, patch, current_spec, index)
+    if metric_swap is not None:
+        return metric_swap
+
     added = _ADD_EDIT.match(message.strip())
     if added is not None:
         # "now add operating margin": adding never takes anything away.
@@ -900,6 +919,38 @@ def refine_patch_from_message(
             }
         )
     return patch
+
+
+def _metric_swap(
+    message: str,
+    patch: SpecPatch,
+    current_spec: AnalysisSpec,
+    index: CompanyNames | None,
+) -> SpecPatch | None:
+    """ "what about net income" after revenue: net income in revenue's place.
+
+    Only where the follow-up names metrics and no company: "what about Microsoft
+    net income" is a company edit, read by ``_company_edit``.
+    """
+    if not asks_to_swap(message) or _POSSESSIVE.search(message) is not None:
+        return None
+    if _ADD_EDIT.match(message.strip()) or _ALSO_EDIT.match(message.strip()):
+        # "now add net income", "ok, net income too": adding never takes away.
+        return None
+    if not current_spec.metrics or not (
+        current_spec.companies or current_spec.constituents is not None
+    ):
+        return None
+    metrics = unique_metrics_from_phrase(message)
+    if not metrics or (index is not None and index.find(message)):
+        return None
+    return _extend(
+        patch,
+        add_metrics=metrics,
+        remove_metrics=tuple(m for m in current_spec.metrics if m not in metrics),
+        add_companies=(),
+        remove_companies=(),
+    )
 
 
 def _named_by_index(

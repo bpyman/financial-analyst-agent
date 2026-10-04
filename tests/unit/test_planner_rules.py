@@ -31,6 +31,7 @@ from financial_analyst_agent.request_wording import (
     OVERVIEW_METRICS,
     bind_metrics_from_message,
     bind_periods_from_message,
+    refine_patch_from_message,
 )
 from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
 from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
@@ -274,13 +275,22 @@ def test_short_follow_ups_lean_on_the_current_analysis() -> None:
     spec = _spec("MSFT")
 
     add_metric = planner.complete("and net margin", current_spec=spec)
-    swap_metric = planner.complete("what about net income?", current_spec=spec)
+    # The planner proposes the metric; the shared edit reading puts it in
+    # revenue's place, for either planner (request_wording).
+    swap_metric = refine_patch_from_message(
+        planner.complete("what about net income?", current_spec=spec),
+        "what about net income?",
+        spec,
+        index=planner.index,
+    )
     swap_company = planner.complete("what about Apple?", current_spec=spec)
     add_company = planner.complete("and Nvidia", current_spec=spec)
 
     assert add_metric == SpecPatch(mode="extend", add_metrics=("net_margin",))
-    assert swap_metric == SpecPatch(
-        mode="extend", add_metrics=("net_income",), remove_metrics=("revenue",)
+    assert (swap_metric.mode, swap_metric.add_metrics, swap_metric.remove_metrics) == (
+        "extend",
+        ("net_income",),
+        ("revenue",),
     )
     assert swap_company == SpecPatch(
         mode="extend", remove_companies=("MSFT",), add_companies=("Apple",)

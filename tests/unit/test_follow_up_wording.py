@@ -510,3 +510,40 @@ def test_what_about_without_a_company_is_left_to_the_other_edits(message: str) -
     patch = refine_patch_from_message(SpecPatch(mode="extend"), message, spec, index=index)
 
     assert patch.remove_companies == ()
+
+
+@pytest.mark.parametrize(
+    ("follow_up", "metrics"),
+    [
+        # The planner proposes the metric; the wording says it takes revenue's
+        # place, whichever planner proposed it (ADR 0011).
+        ("what about net income?", ("net_income",)),
+        ("how about operating margin", ("operating_margin",)),
+        ("just net income", ("net_income",)),
+        ("net income instead", ("net_income",)),
+        # Adding never takes away, and "their" asks about the same companies.
+        ("now add net income", ("revenue", "net_income")),
+        ("what about their net income", ("revenue", "net_income")),
+    ],
+)
+def test_a_metric_named_after_what_about_takes_the_place_of_the_one_on_screen(
+    tmp_path: Path, follow_up: str, metrics: tuple[str, ...]
+) -> None:
+    from financial_analyst_agent.conversation import run_conversation_turn
+    from financial_analyst_agent.graph.analysis_spec import SpecPatch
+    from financial_analyst_agent.thread_store import LocalThreadStore
+
+    store = LocalThreadStore(tmp_path)
+    # An LLM planner's reading of the follow-up: add the metric, keep the rest.
+    completer = _RecordingCompleter(
+        [
+            _lookup_plan("Apple", "revenue"),
+            SpecPatch(mode="extend", add_metrics=(metrics[-1],)),
+        ]
+    )
+    runtime = _runtime(completer)
+    run_conversation_turn("t1", "Apple revenue", runtime, store=store)
+    turn = run_conversation_turn("t1", follow_up, runtime, store=store)
+    assert turn.analysis_spec is not None
+    assert turn.analysis_spec.metrics == metrics
+    assert [company.query for company in turn.analysis_spec.companies] == ["Apple"]
