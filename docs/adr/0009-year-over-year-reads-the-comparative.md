@@ -6,7 +6,7 @@ A year-over-year change subtracted the year-earlier quarter as first filed from 
 
 ## Decision
 
-Every 10-Q and 10-K reports the same line a year earlier beside the current one, on the current basis. That **comparative** (same concept, same filing, ending a year earlier within a week, of the same length within a week) is the base of a year-over-year change. A derived quarter's comparative is the same subtraction over each part's own comparative; a formula's is the formula over its components' comparatives. The year-earlier row as first filed is the base only when the filing reports no comparative.
+Every 10-Q and 10-K reports the same income-statement and cash-flow line a year earlier beside the current one, on the current basis (a 10-Q's balance sheet is compared with the fiscal year-end instead). That **comparative** (same concept, same filing, ending a year earlier within a week, of the same length within a week) is the base of a year-over-year change. A derived quarter's comparative is the same subtraction over each part's own comparative; a formula's is the formula over its components' comparatives. The year-earlier row as first filed is the base only when the filing reports no comparative. A fact card's year-over-year chip follows the same order, fetching the year-earlier quarter when there is no comparative, and its title says which base it used.
 
 When the analyst asks for year over year alone, every quarter in the window gets its change from its own comparative, so an eight-quarter window no longer leaves its older half blank. Otherwise a change is shown only where the year-earlier quarter is in the window, as before.
 

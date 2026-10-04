@@ -396,6 +396,9 @@ class TurnResult(BaseModel):
     trend_rows: list[TableRow] = Field(default_factory=list)
     # The quarter before a lone fact, for its quarter-over-quarter change.
     prior_quarter_rows: list[TableRow] = Field(default_factory=list)
+    # The same quarter a year earlier as first filed, for a lone fact whose own
+    # filing reports no year-earlier figure (ADR 0009).
+    year_earlier_rows: list[TableRow] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _infer_clarify_kind(self) -> Self:

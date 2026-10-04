@@ -1018,7 +1018,7 @@ def add_history(
     *,
     max_workers: int = DEFAULT_TASK_MAX_WORKERS,
 ) -> TurnResult:
-    """An overview's trend rows and a lone fact's prior quarter, when the answer has them."""
+    """An overview's trend rows and a lone fact's earlier quarters, when the answer has them."""
     spec = compiled.spec
     trend = overview_trend(spec, runtime, max_workers=max_workers)
     if trend is not None:
@@ -1028,12 +1028,13 @@ def add_history(
                 "tool_traces": [*merged.tool_traces, *trend.tool_traces],
             }
         )
-    prior = prior_quarter(spec, merged, runtime)
-    if prior is not None:
+    earlier = earlier_quarters(spec, merged, runtime)
+    if earlier is not None:
         merged = merged.model_copy(
             update={
-                "prior_quarter_rows": prior.table_rows,
-                "tool_traces": [*merged.tool_traces, *prior.tool_traces],
+                "prior_quarter_rows": earlier.prior,
+                "year_earlier_rows": earlier.year_earlier,
+                "tool_traces": [*merged.tool_traces, *earlier.tool_traces],
             }
         )
     return merged
@@ -1229,16 +1230,30 @@ def overview_trend(
     return merged.model_copy(update={"table_rows": levels})
 
 
-def prior_quarter(
+@dataclass(frozen=True)
+class EarlierQuarters:
+    """The quarters a lone fact's change chips are measured against."""
+
+    prior: list[TableRow]
+    year_earlier: list[TableRow]
+    tool_traces: list[ToolTrace]
+
+
+def earlier_quarters(
     spec: AnalysisSpec,
     result: TurnResult,
     runtime: Runtime,
-) -> TurnResult | None:
-    """The quarter before a lone latest-quarter fact, for its quarter-over-quarter chip.
+) -> EarlierQuarters | None:
+    """The quarter before a lone latest-quarter fact, and the quarter a year earlier.
 
-    Only a fact card gets it: one company, one filed metric, its latest quarter.
-    The year-over-year chip needs no fetch, since the fact's own filing reports
-    the comparative. A lookup that fails leaves the chip out and the answer as it was.
+    Only a fact card gets them: one company, one filed metric, its latest quarter.
+    The quarter before is for the quarter-over-quarter chip. The year-over-year
+    chip reads the comparative the fact's own filing reports; when there is none
+    (a 10-Q's balance sheet compares with the fiscal year-end, not a year
+    earlier), the quarter a year earlier as first filed is fetched instead
+    (ADR 0009). Both come from the company's facts and filing list that the fact
+    itself was read from, so neither costs another SEC download while those are
+    cached. A lookup that fails leaves its chip out and the answer as it was.
     """
     rows = result.table_rows
     if (
@@ -1254,23 +1269,33 @@ def prior_quarter(
     ):
         return None
     current = rows[0]
-    assert current.end_date is not None
+    end = current.end_date
+    assert end is not None
+    year_target = _yoy_prior_date(end) if current.year_earlier is None else None
+
+    def a_year_before(day: date) -> bool:
+        return year_target is not None and abs(day - year_target) <= FISCAL_WEEK_TOLERANCE
+
+    # Four quarters back reach a year earlier; the quarter before needs one.
+    count = 5 if year_target is not None else 2
     window = spec.model_copy(
-        update={"periods": PeriodSelection(kind="last_n_quarters", count=2)}
+        update={"periods": PeriodSelection(kind="last_n_quarters", count=count)}
     )
     try:
         window = materialize_period_dates(window, runtime)
-        dates = window.periods.report_dates
-        if len(dates) != 2 or not adjacent_quarters(current.end_date, dates[1]):
+        dates = window.periods.report_dates[1:]
+        wanted = [day for day in dates[:1] if adjacent_quarters(end, day)]
+        wanted += [day for day in dates if a_year_before(day)][:1]
+        if not wanted:
             return None
         key = spec.companies[0].query.casefold()
         window = window.model_copy(
             update={
                 "periods": window.periods.model_copy(
                     update={
-                        "count": 1,
-                        "report_dates": (dates[1],),
-                        "company_report_dates": ((key, (dates[1],)),),
+                        "count": len(wanted),
+                        "report_dates": tuple(wanted),
+                        "company_report_dates": ((key, tuple(wanted)),),
                     }
                 )
             }
@@ -1282,18 +1307,23 @@ def prior_quarter(
     if not tasks:
         return None
     merged = merge_task_results(tasks, results, across_periods=False)
-    earlier = [
+    levels = [
         row
         for row in merged.table_rows
         if row.comparison is None
         and row.value is not None
         and row.end_date is not None
-        and adjacent_quarters(current.end_date, row.end_date)
         and not split_between(current, row)
     ]
-    if len(earlier) != 1:
+    prior = [row for row in levels if row.end_date and adjacent_quarters(end, row.end_date)]
+    year = [row for row in levels if row.end_date and a_year_before(row.end_date)]
+    if len(prior) != 1 and len(year) != 1:
         return None
-    return merged.model_copy(update={"table_rows": earlier})
+    return EarlierQuarters(
+        prior=prior if len(prior) == 1 else [],
+        year_earlier=year if len(year) == 1 else [],
+        tool_traces=merged.tool_traces,
+    )
 
 
 def _identity_from_rows(spec: AnalysisSpec, result: TurnResult) -> AnalysisSpec:

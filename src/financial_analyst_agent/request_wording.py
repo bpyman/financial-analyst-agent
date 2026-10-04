@@ -66,6 +66,14 @@ _DROP_EDIT = re.compile(
     r"^\s*(?:drop|remove|without)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+# "remove year over year": the change goes, the quarters on screen stay. Read
+# before the year-over-year wording, which would otherwise ask for it.
+_DROP_COMPARISON = re.compile(
+    r"^\s*(?:drop|remove|without|no|hide)\s+(?:the\s+)?"
+    r"(?:year[\s-]*over[\s-]*year|yoy)(?:\s+(?:change|changes|growth|comparison|column))?"
+    r"\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
 
 
 _SWAP_EDIT = re.compile(
@@ -617,6 +625,20 @@ def since_quarters(since: re.Match[str]) -> int:
 
 def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     """Period windows come from the analyst's wording, not a model slug."""
+    if drops_comparison(message):
+        return patch.model_copy(
+            update={
+                "set_periods": None,
+                "add_operations": tuple(
+                    operation
+                    for operation in patch.add_operations
+                    if operation not in _CHANGE_OPERATIONS
+                ),
+                "remove_operations": tuple(
+                    dict.fromkeys([*patch.remove_operations, *_CHANGE_OPERATIONS])
+                ),
+            }
+        )
     asked = _window_asked(message)
     yoy = YOY.search(message) is not None
     # "quarter over quarter" is a window of sequential changes.
@@ -694,6 +716,14 @@ def _extend(patch: SpecPatch, **fields: Any) -> SpecPatch:
     return patch.model_copy(update={"mode": "extend", "ranked_request": None, **fields})
 
 
+_CHANGE_OPERATIONS = ("across_periods", "year_over_year")
+
+
+def drops_comparison(message: str) -> bool:
+    """ "remove year over year", "no YoY": take the change away, keep the quarters."""
+    return _DROP_COMPARISON.match(message) is not None
+
+
 def is_removal(message: str) -> bool:
     """ "drop revenue", "remove Apple", "without margins": an edit that takes away."""
     return _DROP_EDIT.match(message.strip()) is not None
@@ -764,6 +794,11 @@ def refine_patch_from_message(
     patch = bind_periods_from_message(patch, message)
     if current_spec is None:
         return patch
+    if drops_comparison(message):
+        # Nothing else on screen changes: not a company called "year over year".
+        return _extend(
+            patch, add_companies=(), remove_companies=(), add_metrics=(), remove_metrics=()
+        )
 
     swap = _swap_pair(message.strip())
     if swap is not None:
