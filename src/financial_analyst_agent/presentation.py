@@ -34,6 +34,7 @@ from financial_analyst_agent.contracts import (
     split_between,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
+from financial_analyst_agent.graph.clarify import clarify_prompt
 from financial_analyst_agent.guide import possessive, short_name
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
@@ -581,12 +582,6 @@ _BANNER_COPY = {
         "filings. Check a source before relying on it."
     ),
 }
-_METRIC_CLARIFY_PROMPT = "Which metric do you mean?"
-_SCOPE_CLARIFY_PROMPT = "Add to the current analysis, or start a new one?"
-_COMPANY_CLARIFY_PROMPT = "Which company do you mean by “{subject}”?"
-_COMPARISON_CLARIFY_PROMPT = "Compared with what?"
-
-
 @dataclass(frozen=True)
 class ChangeChip:
     """A fact's change on its card: "▲17.7% YoY", and what it was measured against."""
@@ -1755,13 +1750,7 @@ def _friendly_message(message: str | None) -> str | None:
 def _clarify_prompt(result: TurnResult) -> str | None:
     if result.renderer is not RendererKind.CLARIFY or not result.candidates:
         return None
-    if result.clarify_kind == "ambiguous_mode":
-        return _SCOPE_CLARIFY_PROMPT
-    if result.clarify_kind == "ambiguous_comparison":
-        return _COMPARISON_CLARIFY_PROMPT
-    if result.clarify_kind == "ambiguous_company":
-        return _COMPANY_CLARIFY_PROMPT.format(subject=result.clarify_subject or "that name")
-    return _METRIC_CLARIFY_PROMPT
+    return clarify_prompt(result.clarify_kind, result.clarify_subject)
 
 
 _INPUT_NAMES = {"net_income_ttm": "trailing-year net income"}
