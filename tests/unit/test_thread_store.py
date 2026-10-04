@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -179,3 +180,29 @@ def test_a_thread_dated_in_the_future_expires(tmp_path: Path) -> None:
     store.save(ThreadState(thread_id="t", updated_at=now + timedelta(days=365)))
 
     assert store.load("t", now=now, ttl_seconds=7200) is None
+
+
+def test_a_result_stored_when_a_change_row_said_yoy_still_loads() -> None:
+    # The comparison base once had two spellings; a thread saved then holds "yoy".
+    from financial_analyst_agent.contracts import TurnResult
+
+    stored = json.dumps(
+        {
+            "intent": "lookup",
+            "tool_traces": [],
+            "renderer": "table",
+            "table_rows": [
+                {
+                    "company_name": "Apple Inc.",
+                    "ticker": "AAPL",
+                    "cik": "0000320193",
+                    "metric": "revenue",
+                    "value": "10",
+                    "comparison": "yoy",
+                }
+            ],
+        }
+    )
+
+    (row,) = TurnResult.model_validate_json(stored).table_rows
+    assert row.comparison == "year_over_year"

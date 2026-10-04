@@ -10,4 +10,8 @@ Spec: `CONTEXT.md` (Comparison base), ADR 0009, ADR 0010.
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
+
+## Answer
+
+The comparison base is `contracts.ComparisonBase`, `Literal["year_over_year", "sequential"]`, used by `StructuredRequest.comparison`, `TableRow.comparison`, `comparison_asked`, `_with_comparison`, the change rows and the clarification answer. Change rows now say `"year_over_year"`, so `planner_evaluation.observe` reads them without translating, and the presentation's change labels, column order and wide-table keys (`change:revenue:year_over_year`) are typed by it; the fallbacks for an unknown kind are gone. `TableRow` reads the old `"yoy"` of a stored thread as `"year_over_year"` (tested in `tests/unit/test_thread_store.py`).

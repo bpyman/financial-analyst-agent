@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from financial_analyst_agent.answer_notes import FISCAL_Q4_GAP_BANNER, period_notes
 from financial_analyst_agent.contracts import (
     ComponentProvenance,
     Intent,
@@ -14,7 +15,6 @@ from financial_analyst_agent.contracts import (
     TurnResult,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, PeriodSelection
-from financial_analyst_agent.graph.spec_turn import FISCAL_Q4_GAP_BANNER, _period_notes
 from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.runtime import DemoCompleter, _companies_from_query
 from financial_analyst_agent.universe import allowed_industry_names, load_universe_snapshot
@@ -138,11 +138,11 @@ def test_period_notes_flag_named_periods_and_fiscal_q4_gaps() -> None:
         }
     )
 
-    assert _period_notes("Microsoft revenue last 3 quarters", spec) == []
-    assert FISCAL_Q4_GAP_BANNER in _period_notes("Microsoft revenue", gap)
-    named = _period_notes("What was Microsoft revenue in Q3 2024?", AnalysisSpec())
+    assert period_notes("Microsoft revenue last 3 quarters", spec) == []
+    assert FISCAL_Q4_GAP_BANNER in period_notes("Microsoft revenue", gap)
+    named = period_notes("What was Microsoft revenue in Q3 2024?", AnalysisSpec())
     assert named and "Q3 2024" in named[0] and "latest quarter" in named[0]
-    assert _period_notes("Microsoft revenue for fiscal 2025", AnalysisSpec())
+    assert period_notes("Microsoft revenue for fiscal 2025", AnalysisSpec())
 
 
 def test_recorded_planner_knows_every_recorded_company_in_the_order_named() -> None:

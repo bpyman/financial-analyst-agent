@@ -6,7 +6,7 @@ Resolve a snapshot miss through SEC identity (the runtime's `filings` port has t
 
 Found by the 2026-10-01 PRD/ADR review (Standards S2). A trial that only compiled `company.cik or company.query` regressed the recorded demo (the four-quarter comparison lost its quarters; charts and traces changed), because per-company state is keyed on the query text. The work is:
 
-- Key per-company state on CIK, not `company.query.casefold()`: `PeriodSelection.company_report_dates`, `calendar_groups`, `materialize_period_dates`, `_fill_identity`, `_companies_named_in`, and the trend/overview helpers in `graph/spec_turn.py`.
+- Key per-company state on CIK, not `company.query.casefold()`: `PeriodSelection.company_report_dates`, `calendar_groups`, `materialize_period_dates`, `_fill_identity` and the trend/overview helpers in `graph/spec_turn.py`, and `_companies_named_in` in `request_wording.py`.
 - Name a failed cell from the spec's resolved company, not from the task's query string.
 - Key `evidence_store.fact_evidence_id` on CIK, so "Google" and "GOOGL" share evidence (review smell: evidence keyed on query text).
 - Bundle the identity that travels positionally through `services/fact_selector.py` (`company_name, ticker, cik`, plus `currency`) into one type while those signatures are open (review smell: data clump).

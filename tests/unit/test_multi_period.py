@@ -246,7 +246,7 @@ def test_across_periods_sequential_and_yoy(tmp_path: Path) -> None:
     assert turn.result.renderer is RendererKind.TABLE
     levels = [r for r in turn.result.table_rows if r.comparison is None]
     sequential = [r for r in turn.result.table_rows if r.comparison == "sequential"]
-    yoy = [r for r in turn.result.table_rows if r.comparison == "yoy"]
+    yoy = [r for r in turn.result.table_rows if r.comparison == "year_over_year"]
 
     assert len(levels) == 5
     assert {r.end_date for r in levels} == set(FIVE_QUARTERS)

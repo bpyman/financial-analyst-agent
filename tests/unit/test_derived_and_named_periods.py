@@ -21,8 +21,8 @@ from financial_analyst_agent.graph.analysis_spec import (
     ResolvedCompany,
     compile_tasks,
 )
-from financial_analyst_agent.graph.spec_turn import bind_periods_from_message, parse_named_periods
 from financial_analyst_agent.presentation import format_metric_value, present_turn
+from financial_analyst_agent.request_wording import bind_periods_from_message, parse_named_periods
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     YEAR_TO_DATE_LABEL,

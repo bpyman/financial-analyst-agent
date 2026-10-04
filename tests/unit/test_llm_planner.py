@@ -162,7 +162,7 @@ def test_a_follow_up_can_ask_for_year_over_year(operations: list[str], shown: bo
         ),
     )
 
-    assert any(row.comparison == "yoy" for row in turn.result.table_rows) is shown
+    assert any(row.comparison == "year_over_year" for row in turn.result.table_rows) is shown
 
 
 def test_a_follow_up_can_sort_by_a_metric() -> None:

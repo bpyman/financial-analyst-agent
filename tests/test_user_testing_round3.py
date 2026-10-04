@@ -124,7 +124,7 @@ def test_a_derived_fiscal_q4_inside_gross_profit_keeps_its_filings(runtime) -> N
 
 def test_a_margin_change_row_keeps_both_formula_inputs(runtime) -> None:  # type: ignore[no-untyped-def]
     rows = last_result(runtime, "Apple operating margin year over year").table_rows
-    change = next(row for row in rows if row.comparison == "yoy")
+    change = next(row for row in rows if row.comparison == "year_over_year")
     for level in change.components:
         assert level.metric == "operating_margin"
         assert {part.metric for part in level.derived_from} == {"operating_income", "revenue"}

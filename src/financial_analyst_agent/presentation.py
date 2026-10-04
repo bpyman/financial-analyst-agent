@@ -26,6 +26,7 @@ from financial_analyst_agent.contracts import (
     SPLIT_RATIO,
     SUM_FORMULAS,
     TRAILING_YEAR_FORMULAS,
+    ComparisonBase,
     Intent,
     RendererKind,
     TableRow,
@@ -326,7 +327,7 @@ def restated_banners(rows: list[TableRow]) -> list[str]:
     splits: dict[tuple[str, str], list[str]] = {}
     restated: dict[tuple[str, str], list[str]] = {}
     for row in rows:
-        if row.comparison != "yoy" or len(row.components) != 2:
+        if row.comparison != "year_over_year" or len(row.components) != 2:
             continue
         before, after = row.components
         if before.accession_number != after.accession_number:
@@ -561,7 +562,7 @@ _RANK_TABLE_KEYS = (
 # A change row sits in the same value column as the levels it is derived from, so
 # it must say what it is and carry an explicit sign.
 _COMPARISON_LABELS = {
-    "yoy": "Year over year",
+    "year_over_year": "Year over year",
     "sequential": "Quarter over quarter",
 }
 _LEVEL_LABEL = "Reported"
@@ -1094,17 +1095,11 @@ def _growth_chart(
         return None
     # Quarter over quarter across a window with the latest year over year beside
     # it: chart the kind that covers more quarters.
-    counts = Counter(row.comparison for row in changes)
-    kind = max(counts, key=lambda kind: (counts[kind], _COMPARISON_ORDER.get(kind, 0)))
-    if kind not in _CHANGE_COLUMN_LABELS:
-        return None
+    counts = Counter(row.comparison for row in changes if row.comparison is not None)
+    kind = max(counts, key=lambda kind: (counts[kind], _COMPARISON_ORDER[kind]))
     extras = [
         *(["the other metrics"] if len({row.metric for row in changes}) > 1 else []),
-        *(
-            f"the {_CHANGE_COLUMN_LABELS.get(other or '', 'other')} change"
-            for other in counts
-            if other != kind
-        ),
+        *(f"the {_CHANGE_COLUMN_LABELS[other]} change" for other in counts if other != kind),
     ]
     changes = [row for row in changes if row.comparison == kind]
     metric = next((row.metric for row in changes if change_percent(row) is not None), None)
@@ -1298,7 +1293,7 @@ def _selection_rule(row: TableRow) -> str:
 
 def _change_rule(row: TableRow) -> str:
     """A change, with the period and filing of each level it compares."""
-    kind = "Year-over-year" if row.comparison == "yoy" else "Quarter-over-quarter"
+    kind = "Year-over-year" if row.comparison == "year_over_year" else "Quarter-over-quarter"
     if len(row.components) != 2:
         return f"{kind} change between two reported periods."
     before, after = row.components
@@ -1915,14 +1910,18 @@ def _dated_key(row: TableRow) -> str:
 
 WIDE_VALUE_PREFIX = "value:"
 WIDE_CHANGE_PREFIX = "change:"
-_CHANGE_COLUMN_LABELS = {"yoy": "YoY", "sequential": "QoQ"}
+_CHANGE_COLUMN_LABELS: dict[ComparisonBase, str] = {"year_over_year": "YoY", "sequential": "QoQ"}
 
 
-_COMPARISON_ORDER = {None: 0, "sequential": 1, "yoy": 2}
+_COMPARISON_ORDER: dict[ComparisonBase | None, int] = {
+    None: 0,
+    "sequential": 1,
+    "year_over_year": 2,
+}
 
 
-def _change_key(metric: str, kind: str | None) -> str:
-    """ "change:revenue", or "change:revenue:yoy" when a table has two kinds of change."""
+def _change_key(metric: str, kind: ComparisonBase | None) -> str:
+    """ "change:revenue", or "change:revenue:sequential" when a table has two kinds of change."""
     return f"{WIDE_CHANGE_PREFIX}{metric}" + (f":{kind}" if kind else "")
 
 
@@ -1939,9 +1938,9 @@ def _wide_table(
     metrics = list(dict.fromkeys(row.metric for row in rows if row.metric))
     if len(metrics) < 2 and (len(rows) < 2 or intent in (Intent.RANK, Intent.RANK_AND_LOOKUP)):
         return None
-    cells: dict[tuple[str, date | None, str | None], dict[str, TableRow]] = {}
+    cells: dict[tuple[str, date | None, ComparisonBase | None], dict[str, TableRow]] = {}
     for row in rows:
-        place: tuple[str, date | None, str | None] = (
+        place: tuple[str, date | None, ComparisonBase | None] = (
             row.cik or row.company_name,
             row.end_date,
             row.comparison,
@@ -1958,10 +1957,10 @@ def _wide_table(
     # change (quarter over quarter, year over year) in its own column.
     kinds = sorted(
         {slot[2] for slot in cells if slot[2] is not None},
-        key=lambda kind: _COMPARISON_ORDER.get(kind, 3),
+        key=lambda kind: _COMPARISON_ORDER[kind],
     )
     change_headers: dict[str, str] = {}
-    if kinds and all(kind in _CHANGE_COLUMN_LABELS for kind in kinds):
+    if kinds:
         for metric in metrics:
             for kind in kinds:
                 label = _CHANGE_COLUMN_LABELS[kind]
@@ -1980,9 +1979,9 @@ def _wide_table(
         cells,
         key=lambda slot: (
             entities.index(slot[0]),
-            _COMPARISON_ORDER.get(slot[2], 3) > 0,
+            _COMPARISON_ORDER[slot[2]] > 0,
             -(slot[1].toordinal() if slot[1] else 0),
-            _COMPARISON_ORDER.get(slot[2], 3),
+            _COMPARISON_ORDER[slot[2]],
         ),
     )
     ranked = intent in (Intent.RANK, Intent.RANK_AND_LOOKUP) and any(
@@ -2305,12 +2304,12 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     Each company's latest year-over-year change of the one amount the table
     shows, fastest first; None when there is no such change to state.
     """
-    metrics = {row.metric for row in rows if row.comparison == "yoy"}
+    metrics = {row.metric for row in rows if row.comparison == "year_over_year"}
     if len(metrics) != 1:
         return None
     latest: dict[str, TableRow] = {}
     for row in rows:
-        if row.comparison != "yoy" or change_percent(row) is None:
+        if row.comparison != "year_over_year" or change_percent(row) is None:
             continue
         key = row.cik or row.company_name
         shown = latest.get(key)

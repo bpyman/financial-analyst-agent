@@ -938,7 +938,7 @@ def test_trend_chart_excludes_period_change_rows() -> None:
                 metric="revenue",
                 value=Decimal("50"),
                 end_date=date(2026, 3, 31),
-                comparison="yoy",
+                comparison="year_over_year",
             ),
         ],
         tool_traces=[],
@@ -1585,7 +1585,7 @@ def test_several_companies_grow_as_lines_and_mixed_changes_get_a_column_each() -
     assert answer.table.headers == (
         "Company", "Ticker", "Revenue", "QoQ change", "YoY change", "Quarter ended",
     )
-    assert answer.table.keys[3:5] == ("change:revenue:sequential", "change:revenue:yoy")
+    assert answer.table.keys[3:5] == ("change:revenue:sequential", "change:revenue:year_over_year")
 
 
 def test_growth_is_year_over_year_and_says_so() -> None:
@@ -1630,7 +1630,7 @@ def test_one_quarter_each_draws_a_growth_bar_per_company() -> None:
             value=Decimal(delta),
             start_date=date(2026, 4, 1),
             end_date=end,
-            comparison="yoy",
+            comparison="year_over_year",
             components=[prior],
         )
 

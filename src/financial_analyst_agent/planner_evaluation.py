@@ -178,7 +178,7 @@ def observe(turn: ConversationTurn) -> Observation:
         periods = (spec.periods.kind, spec.periods.asked or spec.periods.count)
         operations = frozenset(spec.operations)
     # A comparison shows growth as year-over-year rows rather than an operation.
-    if any(row.comparison == "yoy" for row in result.table_rows):
+    if any(row.comparison == "year_over_year" for row in result.table_rows):
         operations |= {"year_over_year"}
     return Observation(
         outcome=outcome,

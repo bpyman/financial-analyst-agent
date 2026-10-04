@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from financial_analyst_agent.answer_notes import capped_ranking_notes
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
 from financial_analyst_agent.conversation import run_conversation_turn, start_thread
 from financial_analyst_agent.domain.errors import UnknownIndustryError
@@ -21,18 +22,16 @@ from financial_analyst_agent.graph.analysis_spec import (
     apply_patch,
     resolve_spec,
 )
-from financial_analyst_agent.graph.spec_turn import (
-    OVERVIEW_METRICS,
-    _capped_ranking_notes,
-    _order_by_metric,
-    bind_metrics_from_message,
-    bind_periods_from_message,
-    plan_to_spec_patch,
-)
+from financial_analyst_agent.graph.spec_turn import _order_by_metric, plan_to_spec_patch
 from financial_analyst_agent.guide import guide_reply, short_name, suggest_follow_ups
 from financial_analyst_agent.issuer_index import IssuerIndex
 from financial_analyst_agent.presentation import present_turn
 from financial_analyst_agent.ranking import SnapshotRanking
+from financial_analyst_agent.request_wording import (
+    OVERVIEW_METRICS,
+    bind_metrics_from_message,
+    bind_periods_from_message,
+)
 from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
 from financial_analyst_agent.runtime import RuntimeKind, recorded_runtime
 from financial_analyst_agent.thread_store import EphemeralThreadStore
@@ -210,10 +209,10 @@ def test_a_ranking_lists_at_most_25_companies() -> None:
 
     assert spec.constituents is not None
     assert len(spec.constituents.members) == spec.constituents.limit == 25
-    assert _capped_ranking_notes(patch) == [
+    assert capped_ranking_notes(patch) == [
         "A ranking lists at most 25 companies, so this shows the top 25 rather than 1000."
     ]
-    assert _capped_ranking_notes(SpecPatch(mode="replace", ranked_request=("tech", 5))) == []
+    assert capped_ranking_notes(SpecPatch(mode="replace", ranked_request=("tech", 5))) == []
 
 
 def test_gics_sector_names_and_common_industry_words_resolve() -> None:
@@ -444,8 +443,8 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
         row("net_margin", new, "0.27"),
         row("revenue", old, "100"),
         row("net_margin", old, "0.25"),
-        row("revenue", new, "10", "yoy"),
-        row("net_margin", new, "0.02", "yoy"),
+        row("revenue", new, "10", "year_over_year"),
+        row("net_margin", new, "0.02", "year_over_year"),
     ]
     result = TurnResult(
         intent=Intent.LOOKUP, renderer=RendererKind.TABLE, table_rows=rows, tool_traces=[]

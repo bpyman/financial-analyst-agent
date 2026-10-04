@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from financial_analyst_agent.graph.analysis_spec import PeriodSelection, SpecPatch
-from financial_analyst_agent.graph.spec_turn import bind_periods_from_message
 from financial_analyst_agent.period_window import asked_window
+from financial_analyst_agent.request_wording import bind_periods_from_message
 from financial_analyst_agent.rules_planner import issuer_index
 
 

@@ -51,7 +51,7 @@ def test_yoy_matches_a_52_53_week_fiscal_calendar() -> None:
     # Apple's June quarter ended Jun 27, 2026 and Jun 28, 2025: not the same date.
     rows = [_level(date(2026, 6, 27), "100"), _level(date(2025, 6, 28), "90")]
 
-    yoy = [row for row in across_period_change_rows(rows) if row.comparison == "yoy"]
+    yoy = [row for row in across_period_change_rows(rows) if row.comparison == "year_over_year"]
 
     assert len(yoy) == 1
     assert yoy[0].value == Decimal("10")

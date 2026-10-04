@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+from financial_analyst_agent.answer_notes import CALENDARS_DIFFER_BANNER, period_notes
 from financial_analyst_agent.api import _Throttle
 from financial_analyst_agent.contracts import Intent, RendererKind, TableRow, TurnResult
 from financial_analyst_agent.graph.analysis_spec import (
@@ -15,11 +16,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     compile_tasks,
 )
 from financial_analyst_agent.graph.clarify import match_clarification_answer
-from financial_analyst_agent.graph.spec_turn import (
-    CALENDARS_DIFFER_BANNER,
-    _period_notes,
-    materialize_period_dates,
-)
+from financial_analyst_agent.graph.spec_turn import materialize_period_dates
 from financial_analyst_agent.presentation import format_usd, present_turn
 from financial_analyst_agent.thread_store import PendingClarification
 
@@ -83,7 +80,7 @@ def test_each_fiscal_calendar_asks_for_its_own_quarters() -> None:
         *((("Microsoft", "Apple"), day) for day in _MSFT),
         *((("Nvidia",), day) for day in _NVDA),
     }
-    assert CALENDARS_DIFFER_BANNER in _period_notes("revenue", spec)
+    assert CALENDARS_DIFFER_BANNER in period_notes("revenue", spec)
 
 
 def test_adding_a_company_lists_only_that_company() -> None:
@@ -106,7 +103,7 @@ def test_one_calendar_compiles_as_before() -> None:
     spec = materialize_period_dates(_window("Microsoft", "Apple"), _Runtime())  # type: ignore[arg-type]
 
     assert [task.report_date for task in compile_tasks(spec)] == list(_MSFT)
-    assert CALENDARS_DIFFER_BANNER not in _period_notes("revenue", spec)
+    assert CALENDARS_DIFFER_BANNER not in period_notes("revenue", spec)
 
 
 def _row(name: str, end: date, value: str) -> TableRow:
