@@ -22,7 +22,7 @@ def _yoy(rows: list[TableRow], end: date, *, sequential: bool = True) -> TableRo
     (change,) = [
         row
         for row in across_period_change_rows(rows, sequential=sequential)
-        if row.comparison == "yoy" and row.end_date == end
+        if row.comparison == "year_over_year" and row.end_date == end
     ]
     return change
 

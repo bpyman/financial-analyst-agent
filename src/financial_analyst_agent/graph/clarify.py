@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from financial_analyst_agent.contracts import RendererKind, TurnResult
+from financial_analyst_agent.contracts import ComparisonBase, RendererKind, TurnResult
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
 from financial_analyst_agent.graph.spec_turn import bind_periods_from_message, is_removal
 from financial_analyst_agent.graph.state import (
@@ -137,10 +137,12 @@ def _asks_anew(message: str, index: CompanyNames | None) -> bool:
     return index is not None and bool(index.find(message))
 
 
-def _comparison_named(text: str) -> str | None:
+def _comparison_named(text: str) -> ComparisonBase | None:
     """ "year over year", "the quarter before", "sequential": one base, or None."""
-    if text in ("year_over_year", "sequential"):
-        return text
+    if text == "year_over_year":
+        return "year_over_year"
+    if text == "sequential":
+        return "sequential"
     if len(text.split()) > _MAX_ANSWER_WORDS:
         return None
     words = text.replace("-", " ").replace("_", " ")
@@ -209,9 +211,7 @@ def pending_from_clarify(
         return None
     if result.clarify_kind is None:
         raise ValueError("clarify result is missing clarify_kind")
-    metric_role: Literal["add", "remove"] = (
-        "remove" if is_removal(question) else "add"
-    )
+    metric_role: Literal["add", "remove"] = "remove" if is_removal(question) else "add"
     return PendingClarification(
         kind=result.clarify_kind,
         candidates=result.candidates,

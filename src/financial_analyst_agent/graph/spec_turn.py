@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from functools import partial
-from typing import Any
+from typing import Any, Literal
 
 from financial_analyst_agent.contracts import (
     ALLOWED_METRICS,
@@ -31,6 +31,7 @@ from financial_analyst_agent.contracts import (
     SOURCE_UNAVAILABLE,
     STRUCTURED_INTENTS,
     TRAILING_YEAR_FORMULAS,
+    ComparisonBase,
     ComponentProvenance,
     Intent,
     RendererKind,
@@ -242,7 +243,7 @@ _YEAR_BASE = re.compile(
     r" (?:year|twelve months|12 months)\b",
     re.IGNORECASE,
 )
-COMPARISON_CANDIDATES = ("year_over_year", "sequential")
+COMPARISON_CANDIDATES: tuple[ComparisonBase, ...] = ("year_over_year", "sequential")
 COMPARISON_LABELS = (
     "The same quarter a year earlier (year over year)",
     "The quarter before (sequential)",
@@ -620,7 +621,7 @@ def _with_year_earlier(named: tuple[NamedPeriodSpec, ...]) -> tuple[NamedPeriodS
 
 
 
-def comparison_asked(message: str) -> str | None:
+def comparison_asked(message: str) -> ComparisonBase | Literal["unclear"] | None:
     """What a change the message asks about is measured against.
 
     "year_over_year" or "sequential" where the wording says (growth is year
@@ -1331,7 +1332,7 @@ def _subtracted_level_provenance(row: TableRow) -> ComponentProvenance:
 
 
 def _change_row(
-    current: TableRow, prior: ComponentProvenance, *, comparison: str
+    current: TableRow, prior: ComponentProvenance, *, comparison: ComparisonBase
 ) -> TableRow:
     assert current.value is not None
     return TableRow(
@@ -1344,7 +1345,7 @@ def _change_row(
         start_date=prior.start_date,
         end_date=current.end_date,
         components=[prior, _subtracted_level_provenance(current)],
-        comparison=comparison,  # type: ignore[arg-type]
+        comparison=comparison,
     )
 
 
@@ -1436,7 +1437,7 @@ def across_period_change_rows(
         for row in ordered:
             prior = _year_earlier_level(row, ordered, comparatives_only=not sequential)
             if prior is not None:
-                changes.append(_change_row(row, prior, comparison="yoy"))
+                changes.append(_change_row(row, prior, comparison="year_over_year"))
     return changes
 
 
@@ -1605,7 +1606,7 @@ def _with_company_choice(patch: SpecPatch, subject: str, ticker: str) -> SpecPat
     return patch.model_copy(update={"add_companies": tuple(dict.fromkeys(companies))})
 
 
-def _with_comparison(spec: AnalysisSpec, comparison: str) -> AnalysisSpec:
+def _with_comparison(spec: AnalysisSpec, comparison: ComparisonBase) -> AnalysisSpec:
     """The analysis with its changes measured as the analyst chose."""
     operations = [op for op in spec.operations if op != "year_over_year"]
     if "across_periods" not in operations:

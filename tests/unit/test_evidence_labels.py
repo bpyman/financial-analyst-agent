@@ -101,7 +101,7 @@ def test_a_change_names_both_quarters_and_both_filings() -> None:
         "5760000000",
         (_Q4_BEFORE[0], _Q4[1]),
         components=[prior, current],
-        comparison="yoy",
+        comparison="year_over_year",
     )
     level = _row(
         "revenue",
@@ -179,7 +179,7 @@ def test_a_share_price_beside_a_trailing_year_is_dated_by_the_snapshot() -> None
 def test_headline_names_a_metric_in_its_own_case_and_says_unchanged() -> None:
     def change(ticker: str, value: str) -> TableRow:
         base = _provenance("eps_diluted", "0.32", _Q4_BEFORE)
-        return _row("eps_diluted", value, _Q4, components=[base], comparison="yoy", ticker=ticker)
+        return _row("eps_diluted", value, _Q4, components=[base], comparison="year_over_year", ticker=ticker)
 
     headline = growth_headline([change("CMG", "0")])
 

@@ -16,7 +16,13 @@ from typing import Literal, TypedDict
 
 from pydantic import BaseModel
 
-from financial_analyst_agent.contracts import ClarifyKind, Intent, Runtime, TurnResult
+from financial_analyst_agent.contracts import (
+    ClarifyKind,
+    ComparisonBase,
+    Intent,
+    Runtime,
+    TurnResult,
+)
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, CompiledTask, SpecPatch
 
 
@@ -72,7 +78,7 @@ class StructuredRequest(BaseModel):
     # Companies the analyst named that the recorded runtime has no filings for.
     unrecorded: tuple[str, ...] = ()
     # What a change is measured against, as the analyst chose when asked.
-    comparison: Literal["year_over_year", "sequential"] | None = None
+    comparison: ComparisonBase | None = None
     # A shared name the analyst was asked about, and the ticker they chose
     # ("Lincoln", "LNC"): the held wording names the company again on resume.
     company_choice: tuple[str, str] | None = None

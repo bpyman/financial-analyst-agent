@@ -444,8 +444,8 @@ def test_a_window_of_several_metrics_reads_one_row_per_quarter_and_change() -> N
         row("net_margin", new, "0.27"),
         row("revenue", old, "100"),
         row("net_margin", old, "0.25"),
-        row("revenue", new, "10", "yoy"),
-        row("net_margin", new, "0.02", "yoy"),
+        row("revenue", new, "10", "year_over_year"),
+        row("net_margin", new, "0.02", "year_over_year"),
     ]
     result = TurnResult(
         intent=Intent.LOOKUP, renderer=RendererKind.TABLE, table_rows=rows, tool_traces=[]

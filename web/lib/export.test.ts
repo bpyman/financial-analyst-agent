@@ -23,7 +23,7 @@ describe("tableCsv", () => {
     const csv = tableCsv(
       {
         headers: ["Company", "Revenue", "YoY change", "Quarter ended"],
-        keys: ["company_name", "value:revenue", "change:revenue:yoy", "end_date"],
+        keys: ["company_name", "value:revenue", "change:revenue:year_over_year", "end_date"],
         rows: [["Apple Inc.", "$109.42 B", "+$15.38 B (+16.4%)", "Jun 27, 2026"]],
         numbers: [[null, 109417000000, 16.4, 739794]],
         raw: [["Apple Inc.", "109417000000", "15381000000", "2026-06-27"]],

@@ -10,7 +10,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from financial_analyst_agent.domain.models import FinancialFact
 from financial_analyst_agent.domain.serialization import DecimalStr
@@ -284,6 +284,12 @@ class ComponentProvenance(BaseModel):
     derived_from: list["ComponentProvenance"] = Field(default_factory=list)
 
 
+# What a change is measured against (CONTEXT.md, Comparison base): the same
+# quarter a year earlier, or the quarter before. One spelling for the analyst's
+# choice, the analysis and the change rows it produces.
+ComparisonBase = Literal["year_over_year", "sequential"]
+
+
 class TableRow(BaseModel):
     company_name: str
     ticker: str
@@ -301,7 +307,7 @@ class TableRow(BaseModel):
     source_url: str | None = None
     components: list[ComponentProvenance] = Field(default_factory=list)
     reason: str | None = None
-    comparison: Literal["sequential", "yoy"] | None = None
+    comparison: ComparisonBase | None = None
     # A derived quarter (ADR 0007): how it was computed, and the facts it came from.
     derivation: str | None = None
     derived_from: list[ComponentProvenance] = Field(default_factory=list)
@@ -315,6 +321,12 @@ class TableRow(BaseModel):
     # Weighted diluted shares behind a per-share figure, so a split between two
     # quarters shows.
     diluted_shares: DecimalStr | None = None
+
+    @field_validator("comparison", mode="before")
+    @classmethod
+    def _read_stored_comparison(cls, value: object) -> object:
+        """Threads stored before the comparison base had one spelling say "yoy"."""
+        return "year_over_year" if value == "yoy" else value
 
 
 # Weighted diluted shares moving by half again or more between quarters is a split,
