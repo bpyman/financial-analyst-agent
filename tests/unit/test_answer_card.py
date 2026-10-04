@@ -98,6 +98,29 @@ def test_fact_card_change_chip_falls_and_skips_what_is_not_meaningful() -> None:
     assert bare is not None and bare.changes == ()
 
 
+def test_with_no_comparative_the_year_over_year_chip_reads_the_quarter_as_first_filed() -> None:
+    # A balance sheet's comparative is the fiscal year-end, so the year-earlier
+    # quarter comes from its own filing (ADR 0009), and the chip says so.
+    first_filed = _fact("1000", year_earlier=None, end=date(2025, 3, 31))
+    result = _lookup(_fact(year_earlier=None)).model_copy(
+        update={"year_earlier_rows": [first_filed]}
+    )
+    card = present_turn(result).fact_card
+    assert card is not None
+    assert [chip.label for chip in card.changes] == ["▲17.7% YoY"]
+    assert "as first filed in 10-Q" in card.changes[0].title
+    assert "reports no year-earlier figure" in card.changes[0].title
+
+
+def test_a_comparative_comes_before_the_quarter_as_first_filed() -> None:
+    first_filed = _fact("1100", year_earlier=None, end=date(2025, 3, 31))
+    result = _lookup(_fact()).model_copy(update={"year_earlier_rows": [first_filed]})
+    card = present_turn(result).fact_card
+    assert card is not None
+    assert [chip.label for chip in card.changes] == ["▲17.7% YoY"]
+    assert "reports it" in card.changes[0].title
+
+
 def test_fact_card_margin_changes_in_points() -> None:
     row = _fact("0.3", metric="net_margin", year_earlier="0.25", components=[])
     card = present_turn(_lookup(row)).fact_card

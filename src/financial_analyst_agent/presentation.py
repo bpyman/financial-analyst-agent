@@ -1495,7 +1495,9 @@ def present_turn(result: TurnResult) -> Presentation:
         and result.table_rows[0].start_date is not None
         and result.table_rows[0].end_date is not None
     ):
-        fact_card = _fact_card(result.table_rows[0], result.prior_quarter_rows)
+        fact_card = _fact_card(
+            result.table_rows[0], result.prior_quarter_rows, result.year_earlier_rows
+        )
     cell_rows: list[list[TableRow | None]] = []
     if fact_card is None and result.renderer is RendererKind.TABLE and result.table_rows:
         table, cell_rows = _display_table(
@@ -1767,7 +1769,11 @@ def _metric_heading(metric: str) -> str:
     return f"{label} (trailing year)" if metric in TRAILING_YEAR_FORMULAS else label
 
 
-def _fact_card(row: TableRow, prior_quarter: list[TableRow] | None = None) -> QuarterlyFactCard:
+def _fact_card(
+    row: TableRow,
+    prior_quarter: list[TableRow] | None = None,
+    year_earlier: list[TableRow] | None = None,
+) -> QuarterlyFactCard:
     assert row.start_date is not None
     assert row.end_date is not None
     concept, form, accession_number, source_url = _row_provenance(row)
@@ -1790,7 +1796,7 @@ def _fact_card(row: TableRow, prior_quarter: list[TableRow] | None = None) -> Qu
     return QuarterlyFactCard(
         kind_label=kind,
         concept_short=_short_concept(concept),
-        changes=_change_chips(row, prior_quarter or []),
+        changes=_change_chips(row, prior_quarter or [], year_earlier or []),
         company_name=row.company_name,
         ticker=row.ticker,
         metric_header=_metric_heading(row.metric),
@@ -1820,10 +1826,16 @@ def _short_concept(concept: str) -> str:
     return (kept or concept[: _SHORT_CONCEPT_CHARS - 1]).rstrip(" /") + "…"
 
 
-def _change_chips(row: TableRow, prior_quarter: list[TableRow]) -> tuple[ChangeChip, ...]:
-    """Year over year from the comparative the fact's own filing reports (ADR 0009),
-    then quarter over quarter from the quarter before. A trailing-year or snapshot
-    figure gets none, and neither does a base at or below zero."""
+def _change_chips(
+    row: TableRow, prior_quarter: list[TableRow], year_earlier: list[TableRow]
+) -> tuple[ChangeChip, ...]:
+    """Year over year, then quarter over quarter from the quarter before.
+
+    Year over year starts from the comparative the fact's own filing reports, or,
+    when it reports none, from the quarter a year earlier as first filed, and the
+    chip's title says which (ADR 0009). A trailing-year or snapshot figure gets
+    none, and neither does a base at or below zero.
+    """
     if row.value is None or row.metric in (*TRAILING_YEAR_FORMULAS, *SNAPSHOT_METRICS):
         return ()
     now = Decimal(str(row.value))
@@ -1840,6 +1852,20 @@ def _change_chips(row: TableRow, prior_quarter: list[TableRow]) -> tuple[ChangeC
                 "YoY",
                 f"Against {format_metric_value(row.metric, base)} for "
                 f"{_period_label(before.start_date, before.end_date)}, as {filing} reports it",
+            )
+        )
+    elif len(year_earlier) == 1 and year_earlier[0].value is not None:
+        first = year_earlier[0]
+        filing = f"{first.form} {first.accession_number}".strip()
+        chips.append(
+            _change_chip(
+                row.metric,
+                now,
+                Decimal(str(first.value)),
+                "YoY",
+                f"Against {_format_cell(first, 'value')} for "
+                f"{_period_label(first.start_date, first.end_date)}, as first filed in "
+                f"{filing}: the latest filing reports no year-earlier figure",
             )
         )
     earlier = prior_quarter[0] if len(prior_quarter) == 1 else None

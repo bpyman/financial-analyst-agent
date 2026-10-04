@@ -119,3 +119,22 @@ def test_a_company_outside_the_snapshot_gets_its_ticker_chip(runtime) -> None:  
 def test_reusing_fetched_figures_is_not_announced(runtime) -> None:  # type: ignore[no-untyped-def]
     answers = ask(runtime, "Apple revenue", "add net margin")
     assert not any("fetched earlier" in banner for banner in answers[1].banners)
+
+
+def test_cash_a_year_earlier_comes_from_that_quarter_s_own_filing(runtime) -> None:  # type: ignore[no-untyped-def]
+    # Apple's 10-Q balance sheet compares with the fiscal year-end, so the June
+    # 2025 cash ($36.27 B) is read as first filed in that summer's 10-Q (ADR 0009).
+    (answer,) = ask(runtime, "Apple cash")
+    assert answer.fact_card is not None
+    year, quarter = answer.fact_card.changes
+    assert year.label == "▲9.0% YoY"
+    assert year.title.startswith("Against $36.27 B for At Jun 28, 2025, as first filed in 10-Q")
+    assert quarter.label == "▼13.2% QoQ"
+
+
+def test_a_comparative_still_comes_first_for_a_quarter_s_results(runtime) -> None:  # type: ignore[no-untyped-def]
+    (answer,) = ask(runtime, "Apple revenue")
+    assert answer.fact_card is not None
+    year = answer.fact_card.changes[0]
+    assert year.label == "▲16.4% YoY"
+    assert year.title.endswith("as 10-Q 0000320193-26-000020 reports it")
