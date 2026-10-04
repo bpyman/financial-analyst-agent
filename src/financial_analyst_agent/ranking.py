@@ -9,7 +9,7 @@ from financial_analyst_agent.domain.errors import (
     CompanyNotFoundError,
     UnknownIndustryError,
 )
-from financial_analyst_agent.issuer_index import IssuerIndex
+from financial_analyst_agent.issuer_index import IssuerIndex, normalize
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
 from financial_analyst_agent.universe import (
     UniverseCompany,
@@ -124,10 +124,18 @@ class SnapshotRanking:
         listing = self._by_ticker.get(query.upper()) if query is not None else None
         if listing is not None:
             return preferred_listing(self._listings_by_cik[listing.cik])
+        shared = self.index.shared.get(normalize(company))
+        if shared:
+            # "Charles" is Charles Schwab or Charles River: the analyst picks, from
+            # every company the index holds the name for, the largest first.
+            return self._one_of(
+                company, [self._by_ticker[t].cik for t in shared if t in self._by_ticker]
+            )
         try:
             resolved = resolve_company(query or company, self._ticker_payload)
         except AmbiguousCompanyError as exc:
-            return self._one_of(company, exc)
+            matches = exc.details.get("matches", ())
+            return self._one_of(company, [str(match["cik"]) for match in matches], exc)
         listings = self._listings_by_cik.get(resolved.cik)
         if not listings:
             raise CompanyNotFoundError(
@@ -136,16 +144,17 @@ class SnapshotRanking:
             )
         return preferred_listing(listings)
 
-    def _one_of(self, company: str, exc: AmbiguousCompanyError) -> UniverseCompany:
+    def _one_of(
+        self, company: str, ciks: list[str], cause: Exception | None = None
+    ) -> UniverseCompany:
         """The member an ambiguous name means, or the members to ask between.
 
-        The matches are re-raised as the snapshot's listings, largest first, so
+        The matches are raised as the snapshot's listings, largest first, so
         a clarification can offer "KO, CCEP or COKE" by name.
         """
-        ciks = dict.fromkeys(str(match["cik"]) for match in exc.details.get("matches", ()))
         members = [
             preferred_listing(self._listings_by_cik[cik])
-            for cik in ciks
+            for cik in dict.fromkeys(ciks)
             if cik in self._listings_by_cik
         ]
         if len(members) == 1:
@@ -153,7 +162,7 @@ class SnapshotRanking:
         if not members:
             raise CompanyNotFoundError(
                 f"Company not found for query '{company}'", details={"query": company}
-            ) from exc
+            ) from cause
         members.sort(key=lambda member: member.market_cap, reverse=True)
         raise AmbiguousCompanyError(
             f"“{company}” names more than one company",
@@ -164,7 +173,7 @@ class SnapshotRanking:
                     for member in members[:_MAX_CHOICES]
                 ],
             },
-        ) from exc
+        ) from cause
 
     def peers(
         self, cik: str, *, exclude: frozenset[str] = frozenset(), limit: int = 3

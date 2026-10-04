@@ -378,6 +378,9 @@ function readTable(raw: Raw): DisplayTable {
     ...(Array.isArray(raw.row_keys) ? { row_keys: texts(raw.row_keys) } : {}),
     ...(Array.isArray(raw.evidence) ? { evidence: raw.evidence.map(indices) } : {}),
     ...(Array.isArray(raw.raw) ? { raw: raw.raw.map((row) => (Array.isArray(row) ? row.map(text) : [])) } : {}),
+    ...(Array.isArray(raw.raw_percent)
+      ? { raw_percent: raw.raw_percent.map((row) => (Array.isArray(row) ? row.map(text) : [])) }
+      : {}),
   };
 }
 

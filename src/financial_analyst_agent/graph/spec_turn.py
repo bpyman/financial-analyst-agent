@@ -71,7 +71,7 @@ from financial_analyst_agent.graph.analysis_spec import (
     validate_spec,
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
-from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.guide import possessive, short_name
 from financial_analyst_agent.observability import log_event
 from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
@@ -707,11 +707,14 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
     if asked is None and patch.set_periods is not None:
         return patch.model_copy(update={"add_operations": operations})
     count = asked if asked is not None else 5
-    if (yoy or sequential) and count < 5:
+    if (yoy or sequential) and count < 5 and not (explicit_yoy and asked is not None):
+        # A sequential change needs the quarter before the oldest one shown.
         count = 5
-    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None:
-        # "Year over year" by name: each of the N quarters needs the one a year before it.
-        count = _YOY_WINDOW if asked is None else min(asked + 4, MAX_QUARTERS_ASKED)
+    if explicit_yoy and _EXPLICIT_YOY.search(message) is not None and asked is None:
+        # "Year over year" with no window: two years of quarters. A window the
+        # analyst names is shown as asked; each quarter's base is the comparative
+        # its own filing reports (ADR 0009), so no extra quarters are needed.
+        count = _YOY_WINDOW
     return patch.model_copy(
         update={
             "set_periods": PeriodSelection(kind="last_n_quarters", count=count),
@@ -723,6 +726,11 @@ def bind_periods_from_message(patch: SpecPatch, message: str) -> SpecPatch:
 def _extend(patch: SpecPatch, **fields: Any) -> SpecPatch:
     """The patch as an edit of the current analysis rather than a new ranking."""
     return patch.model_copy(update={"mode": "extend", "ranked_request": None, **fields})
+
+
+def is_removal(message: str) -> bool:
+    """ "drop revenue", "remove Apple", "without margins": an edit that takes away."""
+    return _DROP_EDIT.match(message.strip()) is not None
 
 
 def _swap_pair(message: str) -> tuple[str, str] | None:
@@ -837,7 +845,11 @@ def refine_patch_from_message(
         resolved = resolve_metric_phrase(token)
         if resolved.kind == "ambiguous":
             return _extend(patch, add_companies=named)
-        if patch.add_metrics and not patch.add_companies:
+        if (
+            patch.add_metrics
+            and all(metric in ALLOWED_METRICS for metric in patch.add_metrics)
+            and not patch.add_companies
+        ):
             return _extend(patch, add_companies=())
         companies = _companies_in(token, patch, index)
         return _extend(patch, add_companies=companies, add_metrics=())
@@ -1581,6 +1593,17 @@ class Resolution:
     compiled: CompiledAnalysis | None = None
 
 
+def _with_company_choice(patch: SpecPatch, subject: str, ticker: str) -> SpecPatch:
+    """The patch with the chosen company wherever the shared name stood."""
+    named = subject.casefold()
+    companies = tuple(
+        ticker if company.casefold() == named else company for company in patch.add_companies
+    )
+    if ticker not in companies:
+        companies = (*companies, ticker)
+    return patch.model_copy(update={"add_companies": tuple(dict.fromkeys(companies))})
+
+
 def _with_comparison(spec: AnalysisSpec, comparison: str) -> AnalysisSpec:
     """The analysis with its changes measured as the analyst chose."""
     operations = [op for op in spec.operations if op != "year_over_year"]
@@ -1643,6 +1666,9 @@ def resolve_request(
     patch = refine_patch_from_message(
         patch, message, current_spec, index=getattr(runtime.ranking, "index", None)
     )
+    if request.company_choice is not None:
+        # The held wording reads "Lincoln" again; the analyst already chose which.
+        patch = _with_company_choice(patch, *request.company_choice)
     if patch.mode is None:
         if current_spec is None:
             patch = patch.model_copy(update={"mode": "replace"})
@@ -2192,12 +2218,13 @@ def _already_present_notes(
     return [f"{' and '.join(names)} {'is' if len(names) == 1 else 'are'} already in this analysis."]
 
 
-def _possessive(name: str) -> str:
-    return f"{name}'" if name.endswith("s") else f"{name}'s"
-
-
 def _short_date(day: date) -> str:
     return f"{day:%b} {day.day}, {day.year}"
+
+
+def _and_joined(parts: list[str]) -> str:
+    """ "Fiscal 2025 and Fiscal 2024", "A, B and C"."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def _named_period_notes(spec: AnalysisSpec) -> list[str]:
@@ -2216,12 +2243,12 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
     if single and not periods.named[0].calendar and len(dated) == 1:
         company = dated[0]
         notes.append(
-            f"{_possessive(short_name(company.name) or company.query)} {label} ended "
+            f"{possessive(short_name(company.name) or company.query)} {label} ended "
             f"{_short_date(own[company.query.casefold()][0])}."
         )
     elif single and not periods.named[0].calendar and dated:
         ends = [
-            f"{_possessive(short_name(company.name) or company.query)} ended "
+            f"{possessive(short_name(company.name) or company.query)} ended "
             f"{_short_date(own[company.query.casefold()][0])}"
             for company in spec.companies
             if own.get(company.query.casefold())
@@ -2232,6 +2259,16 @@ def _named_period_notes(spec: AnalysisSpec) -> list[str]:
             )
     if missing and len(missing) < len(spec.companies):
         notes.append(f"No filing for {label} from {', '.join(missing)}.")
+    # "Apple revenue 2024" is four quarters; say when the filings here hold fewer.
+    expected = sum(4 if period.quarter is None else 1 for period in periods.named)
+    for company in dated:
+        held = len(own[company.query.casefold()])
+        if held < expected:
+            name = short_name(company.name) or company.query
+            notes.append(
+                f"The filings here hold {held} of the {expected} quarters in "
+                f"{_and_joined([period.label() for period in periods.named])} for {name}."
+            )
     return notes
 
 

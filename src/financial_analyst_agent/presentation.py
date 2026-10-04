@@ -32,7 +32,7 @@ from financial_analyst_agent.contracts import (
     split_between,
 )
 from financial_analyst_agent.evidence_store import THREAD_EVIDENCE_BANNER
-from financial_analyst_agent.guide import short_name
+from financial_analyst_agent.guide import possessive, short_name
 from financial_analyst_agent.services.fact_selector import (
     FOURTH_QUARTER_LABEL,
     TRAILING_YEAR_LABEL,
@@ -76,11 +76,12 @@ _REASON_LABELS = {
     "not_operating_company": "Not an operating company",
     "period_mismatch": "Period mismatch",
     "ambiguous_concept": "Ambiguous concept",
-    "zero_denominator": "Zero denominator",
+    "zero_denominator": "Not meaningful (zero base)",
     "source_unavailable": "Source unavailable",
     "lookup_failed": "Lookup failed",
     "company_not_found": "Company not found",
     "not_reported_for_quarter": "Reported for the year only",
+    "no_dividend_this_quarter": "No dividend declared this quarter",
     "not_meaningful": "Not meaningful (loss)",
     "negative_equity": "Not meaningful (negative equity)",
     "negative_revenue": "Not meaningful (negative revenue)",
@@ -305,7 +306,7 @@ def long_quarter_banner(rows: list[TableRow]) -> str:
         weeks = " or ".join(str(week) for week in sorted({round(days / 7) for _, days in quarters}))
         ends = _join_words([format_date(end) for end, _ in quarters])
         plural = "quarters" if len(quarters) > 1 else "quarter"
-        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        owner = possessive(name)
         notes.append(f"{owner} {plural} ended {ends} ran {weeks} weeks")
     if not notes:
         return ""
@@ -379,8 +380,7 @@ def restated_banners(rows: list[TableRow]) -> list[str]:
 
 
 def _owner(row: TableRow) -> str:
-    name = short_name(row.company_name) or row.company_name
-    return f"{name}'" if name.endswith("s") else f"{name}'s"
+    return possessive(short_name(row.company_name) or row.company_name)
 
 
 def _plural(word: str, items: list[str]) -> str:
@@ -594,6 +594,8 @@ class DisplayTable:
     evidence: tuple[tuple[int | None, ...], ...] = ()
     # Each cell exactly: amounts as unrounded decimals, dates as ISO days.
     raw: tuple[tuple[str, ...], ...] = ()
+    # A change cell's percent ("16.4"), beside its amount in raw; "" elsewhere.
+    raw_percent: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1591,10 +1593,11 @@ _FRIENDLY_MESSAGES = {
         "This company has no 10-Q filings. Foreign private issuers file 20-F and "
         "6-K reports instead, which this app does not read yet."
     ),
-    "This quarter's dividend was declared earlier in the fiscal year": (
-        "This company declares its dividend for the whole year in an earlier quarter, "
-        "so the filing reports no dividend declared in this one; the year's dividend "
-        "is in the quarter it was declared."
+    "No dividend was declared in this quarter; one was declared earlier in the fiscal year": (
+        "The filing reports no dividend declared in this quarter and one declared "
+        "earlier in the fiscal year. Some companies declare the whole year's dividend "
+        "at once; a company that suspends its dividend reports the same way, so the "
+        "filing's text says which."
     ),
     "Per-share figures for this quarter are reported only for a longer period": (
         "Filings report per-share figures such as EPS for a fiscal fourth quarter "
@@ -1968,6 +1971,7 @@ def _wide_table(
     rendered: list[tuple[str, ...]] = []
     numbers: list[tuple[int | float | None, ...]] = []
     raws: list[tuple[str, ...]] = []
+    percents: list[tuple[str, ...]] = []
     sources: list[list[TableRow | None]] = []
     identities: list[TableRow] = []
     for group in ordered:
@@ -2037,6 +2041,12 @@ def _wide_table(
                 for key, source, shown in zip(keys, cell_sources, text, strict=True)
             )
         )
+        percents.append(
+            tuple(
+                _raw_percent(source) if key.startswith(WIDE_CHANGE_PREFIX) and source else ""
+                for key, source in zip(keys, cell_sources, strict=True)
+            )
+        )
         latest_end = max(ends) if ends else None
         identities.append(identity.model_copy(update={"end_date": latest_end}))
     amounts = [index for index, key in enumerate(keys) if key.startswith(WIDE_VALUE_PREFIX)]
@@ -2049,13 +2059,35 @@ def _wide_table(
         numbers=tuple(numbers),
         row_keys=_row_keys(identities),
         raw=tuple(raws),
+        raw_percent=tuple(percents) if any(any(row) for row in percents) else (),
     )
     return table, sources
 
 
+# A computed ratio is exact to this many places in an export; amounts never reach it.
+_RAW_PLACES = Decimal("1e-10")
+_RAW_EXPONENT = -10
+
+
 def _raw_value(row: TableRow) -> str:
-    """A cell's amount unrounded, for export; a failed cell has none."""
-    return str(row.value) if row.value is not None else ""
+    """A cell's amount unrounded, for export; a failed cell has none.
+
+    A ratio (a margin, a P/E) is a quotient with no end, so it is cut at ten
+    decimal places rather than written to 28 digits.
+    """
+    if row.value is None:
+        return ""
+    value = row.value
+    exponent = value.as_tuple().exponent
+    if isinstance(exponent, int) and exponent < _RAW_EXPONENT:
+        value = value.quantize(_RAW_PLACES)
+    return str(value)
+
+
+def _raw_percent(row: TableRow) -> str:
+    """A change's percent for export, beside its amount; "" for a margin's points."""
+    percent = change_percent(row)
+    return str(percent) if percent is not None else ""
 
 
 def _raw_cell(row: TableRow, key: str, shown: str) -> str:
@@ -2206,7 +2238,7 @@ def overview_headline(rows: list[TableRow]) -> str | None:
     if revenue is None or len({row.end_date for row in levels}) != 1 or len(by_metric) < 2:
         return None
     name = short_name(revenue.company_name) or revenue.company_name
-    owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+    owner = possessive(name)
     sentence = f"{owner} revenue was {_format_cell(revenue, 'value')}"
     if revenue.end_date is not None:
         sentence += f" in the quarter ended {format_date(revenue.end_date)}"
@@ -2250,7 +2282,7 @@ def growth_headline(rows: list[TableRow]) -> str | None:
     for index, row in enumerate(ordered):
         percent = change_percent(row) or Decimal(0)
         name = short_name(row.company_name) or row.company_name
-        owner = f"{name}'" if name.endswith("s") else f"{name}'s"
+        owner = possessive(name)
         subject = f"{owner} {label}" if index == 0 else owner
         mark = DERIVED_MARK if is_derived(row) else ""
         if percent == 0:

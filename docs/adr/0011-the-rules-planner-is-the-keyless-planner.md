@@ -4,7 +4,7 @@
 
 Onfile has two planners that propose the same thing: a spec patch, an essay request, or a filing comparison. The LLM planner (`planner.py`) runs whenever an OpenAI key is set and allowed, which on the public demo means live turns. The rules planner (`rules_planner.py`, about a thousand lines of wording rules) runs everywhere else.
 
-The planner comparison showed where accuracy comes from. On the held-out cases, the rules planner scores 91% and the LLM 96%. Every gain in ADR 0010 came from code both planners share, not from either planner: the issuer index and company resolver, the window grammar, follow-up edits, and spec resolution. Improving the rules planner to match the LLM would mean writing a rule for every new phrasing, and chasing a model the product already has.
+The planner comparison showed where accuracy comes from. On the held-out cases, in the blind run, the rules planner scored 91% and the LLM 96% (the rules planner reaches 96% after the product decisions and refreshed recording that followed, a figure no longer blind). Every gain in ADR 0010 came from code both planners share, not from either planner: the issuer index and company resolver, the window grammar, follow-up edits, and spec resolution. Improving the rules planner to match the LLM would mean writing a rule for every new phrasing, and chasing a model the product already has.
 
 ## Decision
 

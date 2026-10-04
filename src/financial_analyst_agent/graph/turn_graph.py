@@ -10,10 +10,12 @@
              ├─ asked again ─→ clarify      (a period noted, or an option out of range)
              └─ set aside ───→ interpret    (a new question; the held one is discarded)
 
-``interpret`` is the only step that calls the model: it proposes a request
+``interpret`` is the only step where the model chooses: it proposes a request
 (a spec patch, an essay, or a filing comparison) from a closed set and never
-picks nodes. ``resolve`` decides identity, catalog membership, and periods
-deterministically, and either refuses, asks one question, or compiles tasks.
+picks nodes. The model writes an essay or a filing summary later, inside a
+step ``interpret`` chose, and that text never routes the turn. ``resolve``
+decides identity, catalog membership, and periods deterministically, and
+either refuses, asks one question, or compiles tasks.
 Figures come only from the deterministic workflows (``structured_analysis``);
 the essay nodes are held to the numeral lock. Edges are fixed; routing reads
 typed state.
@@ -158,7 +160,7 @@ def request_from_proposal(proposal: Any, message: str, deps: TurnDeps) -> Analys
             if patch.ranked_request is not None
             else unrecorded_companies(
                 message,
-                getattr(runtime.completer, "index", None),
+                names_index(runtime),
                 getattr(runtime.completer, "outside_index", None),
             )
         )
@@ -174,12 +176,23 @@ def request_from_proposal(proposal: Any, message: str, deps: TurnDeps) -> Analys
     raise ValueError(f"unsupported planner proposal: {proposal!r}")
 
 
+def names_index(runtime: Any) -> Any:
+    """The issuer index that reads company names on this runtime, whichever planner plans.
+
+    Spec resolution reads names with the ranking's index (ADR 0010); the guide,
+    the not-recorded note and a clarification's answer read them the same way,
+    so an LLM-planned turn, whose planner holds no index, reads names alike.
+    """
+    index = getattr(runtime.ranking, "index", None)
+    return index if index is not None else getattr(runtime.completer, "index", None)
+
+
 def _interpret(state: AnalysisRun, runtime: GraphRuntime[TurnDeps]) -> dict[str, Any]:
     """A guide reply, or the model's proposal typed as a closed request."""
     deps = runtime.context
     providers = deps.runtime
     message = state["message"]
-    index = getattr(providers.completer, "index", None)
+    index = names_index(providers)
     guide = guide_reply(message, deps.active_spec, index)
     if guide is not None:
         return {
@@ -266,9 +279,7 @@ def _clarify(state: AnalysisRun, runtime: GraphRuntime[TurnDeps]) -> dict[str, A
     message = interrupt(held)
     if not isinstance(message, str):
         raise TypeError(f"a clarification resumes with the analyst's message, not {message!r}")
-    reply = clarification_reply(
-        held.pending, message, getattr(deps.runtime.completer, "index", None)
-    )
+    reply = clarification_reply(held.pending, message, names_index(deps.runtime))
     update: dict[str, Any] = {"message": message, "patch": None, "set_aside": False}
     if reply is None:
         # ADR 0005: asking something unrelated discards the held analysis, explicitly.
@@ -408,13 +419,27 @@ def _restore(
         snapshot = TURN_GRAPH.copy(update={"checkpointer": checkpointer}).get_state(config)
         if not snapshot.next:
             return checkpointer, False
-        if isinstance(snapshot.values.get("clarification"), Clarification):
+        held = snapshot.values.get("clarification")
+        if _restored_whole(held):
             return checkpointer, True
-        problem = "not paused on a clarification"
+        problem = "not paused on a whole clarification"
     except Exception as exc:  # a damaged record must not fail every later turn
         problem = type(exc).__name__
     log_event("thread_checkpoint_dropped", reason=problem)
     return ThreadCheckpointer(thread_id), False
+
+
+def _restored_whole(held: Any) -> bool:
+    """Whether a restored clarification came back as the models it was saved as.
+
+    A field that no longer validates (a saved kind a later release renamed) is
+    rebuilt with ``model_construct``, leaving plain dicts that fail every turn.
+    """
+    return (
+        isinstance(held, Clarification)
+        and isinstance(held.pending, PendingClarification)
+        and isinstance(held.result, TurnResult)
+    )
 
 
 def run_analysis(

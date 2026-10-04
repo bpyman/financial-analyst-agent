@@ -327,12 +327,13 @@ def test_quarter_over_quarter_is_a_sequential_window() -> None:
     assert "year_over_year" not in patch.add_operations
 
 
-def test_last_n_quarters_year_over_year_fetches_a_year_more() -> None:
+def test_last_n_quarters_year_over_year_shows_the_n_quarters_asked() -> None:
     patch = bind_periods_from_message(
         SpecPatch(mode="replace"), "Apple revenue last 4 quarters yoy"
     )
 
-    assert patch.set_periods is not None and patch.set_periods.count == 8
+    # Each quarter's base is the comparative its own filing reports (ADR 0009).
+    assert patch.set_periods is not None and patch.set_periods.count == 4
     assert "year_over_year" in patch.add_operations
 
 

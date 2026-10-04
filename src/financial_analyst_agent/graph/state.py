@@ -73,6 +73,9 @@ class StructuredRequest(BaseModel):
     unrecorded: tuple[str, ...] = ()
     # What a change is measured against, as the analyst chose when asked.
     comparison: Literal["year_over_year", "sequential"] | None = None
+    # A shared name the analyst was asked about, and the ticker they chose
+    # ("Lincoln", "LNC"): the held wording names the company again on resume.
+    company_choice: tuple[str, str] | None = None
 
 
 QualitativeIntent = Literal[Intent.EXPLAIN, Intent.NEWS_AND_EXPLAIN, Intent.EXPLORATORY_RESEARCH]

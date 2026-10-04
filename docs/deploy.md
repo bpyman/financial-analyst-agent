@@ -109,7 +109,7 @@ The live runtime bounds what a slow or failing SEC can cost, also with defaults 
 | `SEC_MAX_RESPONSE_BYTES` | 64 MiB | One response after decompression. |
 | `SEC_TURN_BUDGET_SECONDS` | 90 | A turn's SEC time in all. Companies not read by then show "Source unavailable" and the turn answers with the rest. |
 | `TURN_TIMEOUT_SECONDS` | 150 | A whole turn. Past it the API ends the turn with an error and frees its thread and slot. |
-| `SEC_BLOCK_PAUSE_SECONDS` | 600 | How long every SEC request waits after SEC's "Undeclared Automated Tool" page. A `Retry-After` pauses requests the same way. |
+| `SEC_BLOCK_PAUSE_SECONDS` | 600 | How long SEC requests stop after SEC's "Undeclared Automated Tool" page. A request during the pause is refused at once and its cells read "Source unavailable"; only a pause of 5 seconds or less, within the turn's time, is waited out. A `Retry-After` pauses requests the same way. |
 | `SEC_CACHE_MAX_BYTES` | 1 GiB | The SEC disk cache, trimmed oldest files first. |
 
 **Who a visitor is.** The per-visitor limits count by client address. With

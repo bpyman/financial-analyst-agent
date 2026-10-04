@@ -109,7 +109,7 @@ def test_format_reason_domain_first() -> None:
     assert format_reason("missing_fact") == "Missing fact"
     assert format_reason("period_mismatch") == "Period mismatch"
     assert format_reason("ambiguous_concept") == "Ambiguous concept"
-    assert format_reason("zero_denominator") == "Zero denominator"
+    assert format_reason("zero_denominator") == "Not meaningful (zero base)"
     assert format_reason("not_reported_for_quarter") == "Reported for the year only"
 
 
@@ -1727,3 +1727,20 @@ def test_an_evidence_item_without_a_value_names_its_reason_in_words() -> None:
     [item] = present_turn(result).evidence
 
     assert item.amount == "Source unavailable"
+
+
+def test_an_exported_ratio_is_cut_at_ten_places_and_a_change_carries_its_percent() -> None:
+    from financial_analyst_agent.presentation import _raw_value
+
+    margin = TableRow(
+        company_name="Apple Inc.",
+        ticker="AAPL",
+        cik="0000320193",
+        metric="net_margin",
+        value=Decimal("0.2500561749002340012345678901"),
+        currency="USD",
+    )
+    assert _raw_value(margin) == "0.2500561749"
+    answer = _answer("Compare Microsoft and Apple revenue growth over the last four quarters")
+    change = next(i for i, key in enumerate(answer.table.keys) if key.startswith("change:"))
+    assert answer.table.raw_percent[0][change] == "17.7"

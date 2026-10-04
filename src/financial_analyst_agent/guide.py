@@ -206,7 +206,7 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
             return _guide(STOCK_PICKS_MESSAGE, list(STARTER_QUESTIONS[:3]))
         name, _query = named
         return _guide(
-            ADVICE_MESSAGE.format(subject=f"{name}'s"),
+            ADVICE_MESSAGE.format(subject=possessive(name)),
             [
                 f"How is {name} doing?",
                 f"Show {name}'s revenue year over year",
@@ -243,13 +243,26 @@ def guide_reply(message: str, spec: AnalysisSpec | None, index: Any = None) -> T
         return _guide(UNSUPPORTED_MESSAGE.format(names=_joined(unsupported)), suggestions)
     if _CHART.match(text):
         return _guide(CHART_MESSAGE, ["last 4 quarters", "show year-over-year"])
-    if _WHY.match(text) and len(text.split()) <= _WHY_MAX_WORDS:
+    if _WHY.match(text) and len(text.split()) <= _WHY_MAX_WORDS and not _names_figure(
+        message, index
+    ):
+        # "why?" alone gets the guide; "why did revenue drop?" is a change to show.
         named = _spec_company(spec)
         if named is None:
             return _guide(WHY_MESSAGE, list(STARTER_QUESTIONS[3:]))
         name, _query = named
         return _guide(WHY_MESSAGE, [f"What changed in {name}'s latest 10-Q?"])
     return None
+
+
+def _names_figure(message: str, index: Any) -> bool:
+    """Whether a message names a catalog metric or a company: an analysis, not a chat."""
+    from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
+
+    return (
+        resolve_metric_phrase(message).kind != "unknown"
+        or _named_company(message, index) is not None
+    )
 
 
 def _not_english(text: str) -> bool:
@@ -357,6 +370,13 @@ _SUFFIX = re.compile(
     r"|& co|& company|and company|a/s|ag|s\.?a|n\.?v|se)\.?)+$",
     re.IGNORECASE,
 )
+
+
+def possessive(name: str) -> str:
+    """ "Apple's", "Abbott Laboratories'", and "Lowe's" left as it is."""
+    if name.endswith(("'s", "’s")):
+        return name
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
 
 
 def short_name(name: str) -> str:

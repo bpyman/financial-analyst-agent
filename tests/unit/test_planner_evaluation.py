@@ -174,6 +174,31 @@ def test_a_spent_budget_stops_the_run() -> None:
     results = run_planner([_MSFT_PRETAX, _MSFT_PRETAX], completer, runs=2)
 
     assert [result.error for result in results] == ["budget reached"]
+    summary = summarize([_MSFT_PRETAX], results, usage, None)
+    assert summary["splits"] == {} and summary["stopped_in_run"] == 0
+
+
+def test_a_run_cut_short_by_the_budget_is_left_out_and_said_so() -> None:
+    usage = Usage()
+    calls = 0
+
+    def spend() -> None:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise BudgetExceeded("spent")
+
+    completer = MeteredCompleter(recorded_runtime().completer, usage, before_call=spend)
+
+    # One planner call a run: the first run completes, the second stops at once.
+    results = run_planner([_MSFT_PRETAX], completer, runs=2)
+    summary = summarize([_MSFT_PRETAX], results, usage, None)
+
+    # Run 1 completed; run 2 stopped on its first case and is not averaged in.
+    assert summary["runs"] == 1
+    assert summary["stopped_in_run"] == 1
+    assert summary["splits"]["all"]["accuracy_by_run"] == [1.0]
+    assert all(failure["error"] != "budget reached" for failure in summary["failures"])
 
 
 def test_agreement_counts_cases_whose_runs_all_saw_the_same() -> None:

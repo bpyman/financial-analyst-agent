@@ -39,6 +39,8 @@ export interface DisplayTable {
   evidence?: (number | null)[][];
   /** Each cell exactly (unrounded amounts, ISO dates), for CSV; absent in older answers. */
   raw?: string[][];
+  /** A change cell's percent ("16.4"), beside its amount in raw; "" elsewhere. */
+  raw_percent?: string[][];
 }
 
 export interface DisplayTrace {

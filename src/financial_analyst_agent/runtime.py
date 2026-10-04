@@ -1,6 +1,7 @@
 """The recorded runtime and the live runtime, and the builders that choose between them."""
 
 import json
+import logging
 import threading
 from collections.abc import Callable
 from functools import lru_cache
@@ -43,6 +44,8 @@ from financial_analyst_agent.rules_planner import (
 from financial_analyst_agent.rules_planner import issuer_index, recorded_issuer_index
 from financial_analyst_agent.sec_facts import SecFactLookup
 from financial_analyst_agent.session import SessionBudget
+
+_LOGGER = logging.getLogger("financial_analyst_agent")
 
 FIXTURE_EXPLAIN_ESSAY = (
     "AI can disrupt healthcare by automating imaging review, triage, and documentation. "
@@ -353,6 +356,15 @@ def runtime_for(
 
 
 def build_runtime(settings: Settings | None = None) -> Runtime:
-    """Build the runtime ``APP_MODE`` selects."""
+    """Build the runtime ``APP_MODE`` selects.
+
+    ``APP_MODE=live`` without ``SEC_USER_AGENT`` answers from the recording, as
+    the API does (``runtime_locked``); outside the API nothing else says so, so
+    it is logged here, and the MCP tools name the runtime in every answer.
+    """
     resolved = settings or get_settings()
+    if resolved.app_mode is AppMode.LIVE and not live_sec_configured(resolved):
+        _LOGGER.warning(
+            "APP_MODE=live but SEC_USER_AGENT is unset: answering from the recorded runtime"
+        )
     return runtime_for(default_runtime_kind(resolved), settings=resolved)

@@ -40,6 +40,35 @@ describe("inspectorOrder", () => {
   });
 });
 
+describe("pivotTable", () => {
+  it("reads quarters across when the companies' quarters end within a week", () => {
+    const pivot = pivotTable(SERIES);
+    expect(pivot?.rows.map((row) => row.slice(1).every(Boolean))).toEqual([true, true, true, true]);
+  });
+
+  it("keeps the table when fiscal calendars differ, rather than half-empty rows", () => {
+    // NVIDIA's quarters end in late July, Apple's in late June: a month apart.
+    const offset = {
+      ...SERIES,
+      rows: SERIES.rows.map((row, index) => (index < 4 ? ["NVIDIA Corporation", "NVDA", ...row.slice(2)] : row)),
+      numbers: SERIES.numbers.map((row, index) => (index < 4 ? [null, null, row[2], (row[3] as number) + 26] : row)),
+    };
+    expect(pivotTable(offset)).toBeNull();
+  });
+
+  it("shows a repeated company and quarter once", () => {
+    const repeated = {
+      ...SERIES,
+      rows: [...SERIES.rows, SERIES.rows[0]],
+      numbers: [...SERIES.numbers, SERIES.numbers[0]],
+      row_keys: [...(SERIES.row_keys ?? []), "MSFT@2026-06-30"],
+      evidence: [...(SERIES.evidence ?? []), [null, null, 0, null]],
+      raw: SERIES.raw ? [...SERIES.raw, SERIES.raw[0]] : undefined,
+    };
+    expect(pivotTable(repeated)?.rows).toHaveLength(4);
+  });
+});
+
 describe("barTicks", () => {
   it("stops at the first nice tick above the largest bar", () => {
     const ticks = barTicks([18.2e9, 5e9, null]);
@@ -103,6 +132,21 @@ describe("filing change order", () => {
     // A removed bullet holds figures, but "20% to 29%" says more than a paragraph gone.
     const removed = change("removed", "Segment revenue increased 11% driven by cloud growth of 12%.", "");
     expect(orderChanges([removed, added, small])).toEqual([small, removed, added]);
+  });
+
+  it("reads a reworded paragraph whose dates rolled forward as a rewording", () => {
+    const rolled = change(
+      "changed",
+      "As of March 31, 2026, we expect results in fiscal 2026 to be affected.",
+      "As of June 30, 2026, we now expect results in fiscal 2027 to be affected.",
+    );
+    const moved = change(
+      "changed",
+      "As of March 31, 2026, revenue grew 12%.",
+      "As of June 30, 2026, revenue grew 15%.",
+    );
+    expect(isWordingOnly(rolled)).toBe(true);
+    expect(isWordingOnly(moved)).toBe(false);
   });
 
   it("clamps a paragraph to the sentences that changed", () => {

@@ -19,6 +19,24 @@ describe("tableCsv", () => {
     ]);
   });
 
+  it("follows a change's amount with its percent", () => {
+    const csv = tableCsv(
+      {
+        headers: ["Company", "Revenue", "YoY change", "Quarter ended"],
+        keys: ["company_name", "value:revenue", "change:revenue:yoy", "end_date"],
+        rows: [["Apple Inc.", "$109.42 B", "+$15.38 B (+16.4%)", "Jun 27, 2026"]],
+        numbers: [[null, 109417000000, 16.4, 739794]],
+        raw: [["Apple Inc.", "109417000000", "15381000000", "2026-06-27"]],
+        raw_percent: [["", "", "16.4", ""]],
+      },
+      null,
+    );
+    expect(csv.split("\r\n").slice(0, 2)).toEqual([
+      "Company,Revenue,YoY change,YoY change %,Quarter ended",
+      "Apple Inc.,109417000000,15381000000,16.4,2026-06-27",
+    ]);
+  });
+
   it("quotes commas and quotes, and keeps text from reading as a formula", () => {
     const csv = tableCsv(
       {
@@ -47,16 +65,29 @@ describe("tableCsv", () => {
 
 describe("share links", () => {
   it("round-trips a question and a runtime", () => {
-    const link = shareLink("https://onfile.example", "Compare Apple & Microsoft revenue?", "recorded");
+    const link = shareLink("https://onfile.example", ["Compare Apple & Microsoft revenue?"], "recorded");
     expect(link).toBe("https://onfile.example/?q=Compare+Apple+%26+Microsoft+revenue%3F&rt=recorded");
     expect(parseShareLink(new URL(link).search, 2000)).toEqual({
-      question: "Compare Apple & Microsoft revenue?",
+      questions: ["Compare Apple & Microsoft revenue?"],
       runtime: "recorded",
     });
   });
 
+  it("carries a follow-up with the questions before it, in order", () => {
+    const link = shareLink("https://onfile.example", ["Microsoft revenue", "add Apple", "remove Apple"], null);
+    expect(parseShareLink(new URL(link).search, 2000)).toEqual({
+      questions: ["Microsoft revenue", "add Apple", "remove Apple"],
+      runtime: null,
+    });
+  });
+
+  it("refuses a conversation with a message missing or too many messages", () => {
+    expect(parseShareLink("?q=Microsoft+revenue&q=%20", 2000)).toBeNull();
+    expect(parseShareLink(`?${Array(9).fill("q=hi").join("&")}`, 2000)).toBeNull();
+  });
+
   it("ignores an unknown runtime and refuses an empty or overlong question", () => {
-    expect(parseShareLink("?q=Hi&rt=staging", 2000)).toEqual({ question: "Hi", runtime: null });
+    expect(parseShareLink("?q=Hi&rt=staging", 2000)).toEqual({ questions: ["Hi"], runtime: null });
     expect(parseShareLink("?q=%20%20", 2000)).toBeNull();
     expect(parseShareLink("?rt=live", 2000)).toBeNull();
     expect(parseShareLink(`?q=${"a".repeat(30)}`, 20)).toBeNull();

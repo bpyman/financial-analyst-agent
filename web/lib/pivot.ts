@@ -12,6 +12,9 @@ export interface ShownTable extends DisplayTable {
 
 // Apple's quarter ending June 27 and Microsoft's ending June 30 are one quarter.
 const SAME_QUARTER_DAYS = 7;
+// Two quarter ends further apart than a week but closer than a quarter are two
+// fiscal calendars (Apple's June quarter, NVIDIA's July one), not a gap.
+const OFFSET_CALENDAR_DAYS = 60;
 
 export function pivotTable(table: DisplayTable): ShownTable | null {
   const { keys } = table;
@@ -35,12 +38,29 @@ export function pivotTable(table: DisplayTable): ShownTable | null {
   const quarters: { day: number; rows: number[] }[] = [];
   for (const item of dated) {
     const last = quarters[quarters.length - 1];
-    if (last && last.day - item.day <= SAME_QUARTER_DAYS && !last.rows.some((row) => company(row) === company(item.row))) {
+    const repeated = last?.rows.find((row) => company(row) === company(item.row));
+    // The same company and quarter twice is one cell, not a second row.
+    if (repeated !== undefined && table.numbers[repeated]?.[end] === item.day) continue;
+    if (last && last.day - item.day <= SAME_QUARTER_DAYS && repeated === undefined) {
       last.rows.push(item.row);
     } else {
       quarters.push({ day: item.day, rows: [item.row] });
     }
   }
+  // Companies on different fiscal calendars would leave every row half empty,
+  // which reads as missing data: keep the table, each row with its own quarter.
+  const daysOf = new Map<string, number[]>();
+  for (const { row, day } of dated) daysOf.set(company(row), [...(daysOf.get(company(row)) ?? []), day]);
+  const offset = quarters.some((quarter) =>
+    companies.some(
+      (label) =>
+        !quarter.rows.some((row) => company(row) === label) &&
+        (daysOf.get(label) ?? []).some(
+          (day) => Math.abs(day - quarter.day) > SAME_QUARTER_DAYS && Math.abs(day - quarter.day) < OFFSET_CALENDAR_DAYS,
+        ),
+    ),
+  );
+  if (offset) return null;
 
   const cell = <T>(source: T[][] | undefined, row: number, column: number, empty: T): T =>
     source?.[row]?.[column] ?? empty;

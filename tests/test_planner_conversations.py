@@ -334,8 +334,10 @@ def test_an_unread_period_is_said(runtime) -> None:  # type: ignore[no-untyped-d
 
 def test_last_four_quarters_year_over_year_has_four_changes(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = _answers(runtime, "Apple revenue last 4 quarters yoy")
-    changes = [cell for cell in _column(answer, "YoY change") if cell]
-    assert len(changes) >= 4
+    changes = _column(answer, "YoY change")
+    # Four quarters, each with its change: not eight rows, half of them blank.
+    assert len(changes) == 4
+    assert all(changes)
 
 
 def test_a_future_quarter_is_not_reported_yet(runtime) -> None:  # type: ignore[no-untyped-def]
