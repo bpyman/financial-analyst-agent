@@ -234,7 +234,9 @@ export function readThreadView(raw: unknown): ThreadView {
     spec_chip_edits: list(body.spec_chip_edits, (item) => {
       const label = text(item.label);
       const kind = CHIP_KINDS.find((each) => each === item.kind) ?? "period";
-      return label ? { label, kind, remove: textOrNull(item.remove) || null } : null;
+      return label
+        ? { label, kind, remove: textOrNull(item.remove) || null, keep: textOrNull(item.keep) || null }
+        : null;
     }),
     quick_actions: readQuickActions(record(body.quick_actions)),
     pending_clarification: body.pending_clarification === true,

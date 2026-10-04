@@ -310,8 +310,8 @@ def test_spec_chip_edits_say_the_follow_up_each_chip_sends() -> None:
         ("AAPL", "remove Apple"),
         ("Revenue", "drop revenue"),
         ("Net income", "drop net income"),
-        ("Last 4 quarters", None),
-        ("Year over year", None),
+        ("Last 4 quarters", "latest quarter"),
+        ("Year over year", "remove year over year"),
     ]
     alone = SimpleNamespace(
         companies=(SimpleNamespace(ticker="MSFT", name="Microsoft Corporation", query="msft"),),
@@ -320,8 +320,33 @@ def test_spec_chip_edits_say_the_follow_up_each_chip_sends() -> None:
         periods=SimpleNamespace(kind="latest_quarter"),
         operations=(),
     )
-    # The last company or metric has no ×: removing it would leave nothing to show.
-    assert all(edit.remove is None for edit in spec_chip_edits(alone))
+    # The last company or metric has no ×: removing it would leave nothing to
+    # show, and the chip says so on hover. The latest quarter has nothing to undo.
+    edits = spec_chip_edits(alone)
+    assert all(edit.remove is None for edit in edits)
+    assert [edit.keep for edit in edits] == [
+        "The only company here. Name another to look at instead, or start over.",
+        "The only metric here. Name another to show instead, or start over.",
+        None,
+    ]
+
+
+def test_a_ranking_chip_keeps_its_period_and_says_why_it_has_no_remove() -> None:
+    spec = SimpleNamespace(
+        companies=(),
+        constituents=SimpleNamespace(limit=5, industry="banks"),
+        metrics=("net_income",),
+        periods=SimpleNamespace(kind="last_n_quarters", count=4),
+        operations=(),
+    )
+    edits = spec_chip_edits(spec)
+    assert [(edit.label, edit.remove) for edit in edits] == [
+        ("Top 5 banks", None),
+        ("Net income", None),
+        # A ranking shows each company's latest quarter, whatever was asked.
+        ("Latest quarter", None),
+    ]
+    assert edits[0].keep is not None and "ranking" in edits[0].keep
 
 
 def test_quick_actions_offer_follow_ups_the_planner_reads() -> None:

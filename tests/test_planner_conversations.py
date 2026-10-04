@@ -490,3 +490,21 @@ def test_a_ranking_word_is_not_an_unrecorded_company(runtime, question: str) -> 
 def test_biggest_expense_asks_which_expense(runtime) -> None:  # type: ignore[no-untyped-def]
     (answer,) = ask(runtime, "What is Apple's biggest expense?")
     assert set(answer.candidates) == {"Cost of revenue", "Operating expenses"}
+
+
+def test_removing_year_over_year_keeps_the_quarters_on_screen(runtime) -> None:  # type: ignore[no-untyped-def]
+    # The year-over-year chip's × sends this. "year over year" in it is not a
+    # request for two years of quarters.
+    answers, chips, _ = replay(
+        runtime, "Apple revenue growth last 4 quarters", "remove year over year"
+    )
+    assert chips == ("AAPL", "Revenue", "Last 4 quarters")
+    assert answers[1].table is not None
+    assert "YoY change" not in answers[1].table.headers
+    assert len(answers[1].table.rows) == 4
+
+
+def test_the_period_chip_s_remove_returns_to_the_latest_quarter(runtime) -> None:  # type: ignore[no-untyped-def]
+    answers, chips, _ = replay(runtime, "Apple revenue last 4 quarters", "latest quarter")
+    assert chips == ("AAPL", "Revenue", "Latest quarter")
+    assert answers[1].fact_card is not None

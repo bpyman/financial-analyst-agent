@@ -156,3 +156,27 @@ def test_an_answer_names_the_base_of_a_change(answer: str, base: str) -> None:
     reply = clarification_reply(pending, answer)
 
     assert reply is not None and reply.chosen == (base,)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "remove year over year",
+        "drop the year-over-year change",
+        "no YoY",
+        "without year over year growth",
+    ],
+)
+def test_removing_year_over_year_takes_the_change_away_and_keeps_the_window(message: str) -> None:
+    patch = bind_periods_from_message(SpecPatch(mode="extend"), message)
+
+    assert patch.set_periods is None
+    assert set(patch.remove_operations) == {"across_periods", "year_over_year"}
+    assert not patch.add_operations
+
+
+def test_year_over_year_on_its_own_still_asks_for_it() -> None:
+    patch = bind_periods_from_message(SpecPatch(mode="extend"), "year over year")
+
+    assert "year_over_year" in patch.add_operations
+    assert not patch.remove_operations

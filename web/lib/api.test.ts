@@ -111,6 +111,20 @@ describe("readThreadView", () => {
     expect(turn.candidate_slugs).toEqual([]);
   });
 
+  it("reads why a chip keeps no remove, and drops a reason that is not text", () => {
+    const view = readThreadView({
+      thread_id: "t",
+      spec_chip_edits: [
+        { label: "MSFT", kind: "company", remove: null, keep: "The only company here." },
+        { label: "Last 4 quarters", kind: "period", remove: "latest quarter", keep: 3 },
+      ],
+    });
+    expect(view.spec_chip_edits).toEqual([
+      { label: "MSFT", kind: "company", remove: null, keep: "The only company here." },
+      { label: "Last 4 quarters", kind: "period", remove: "latest quarter", keep: null },
+    ]);
+  });
+
   it("drops a chart of a kind it cannot draw and evens out a trace pair", () => {
     const [turn] = readThreadView({
       thread_id: "t",

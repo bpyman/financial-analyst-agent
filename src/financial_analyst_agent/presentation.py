@@ -622,6 +622,8 @@ class ChipEdit:
     label: str
     kind: str
     remove: str | None = None
+    # Why a chip has no ×, said on hover: the last company or metric, or a ranking.
+    keep: str | None = None
 
 
 @dataclass(frozen=True)
@@ -822,11 +824,23 @@ def spec_chips(spec: Any) -> tuple[str, ...]:
     return tuple(chips)
 
 
+_KEEP_LAST = {
+    "company": "The only company here. Name another to look at instead, or start over.",
+    "metric": "The only metric here. Name another to show instead, or start over.",
+    "constituents": "The ranking is what this analysis lists. Ask for another, or start over.",
+}
+# A window or a named period goes back to the latest quarter, as a person would ask.
+_LATEST_QUARTER_EDIT = "latest quarter"
+_REMOVE_OPERATION = {"Year over year": "remove year over year"}
+
+
 def spec_chip_edits(spec: Any) -> tuple[ChipEdit, ...]:
     """``spec_chips`` with what kind each is and the follow-up its × sends.
 
-    The follow-ups are the planner's own words ("remove Apple", "drop revenue").
-    The last company or metric has none: removing it would leave nothing to show.
+    The follow-ups are the planner's own words ("remove Apple", "drop revenue",
+    "latest quarter", "remove year over year"). The last company or metric, and a
+    ranking, have none: removing it would leave nothing to show, and ``keep``
+    says so.
     """
     companies = [
         company
@@ -834,8 +848,9 @@ def spec_chip_edits(spec: Any) -> tuple[ChipEdit, ...]:
         if (company.ticker or company.name) and (company.ticker or company.name) != "unknown"
     ]
     metrics = [str(metric) for metric in getattr(spec, "metrics", ())]
+    ranked = getattr(spec, "constituents", None) is not None
     kinds: list[str] = ["company"] * len(companies)
-    if getattr(spec, "constituents", None) is not None:
+    if ranked:
         kinds.append("constituents")
     kinds.extend(["metric"] * len(metrics))
     removals: list[str | None] = [
@@ -844,7 +859,7 @@ def spec_chip_edits(spec: Any) -> tuple[ChipEdit, ...]:
         else None
         for company in companies
     ]
-    if getattr(spec, "constituents", None) is not None:
+    if ranked:
         removals.append(None)
     removals.extend(
         f"drop {_in_sentence(format_field_name(metric))}" if len(metrics) > 1 else None
@@ -855,8 +870,16 @@ def spec_chip_edits(spec: Any) -> tuple[ChipEdit, ...]:
         kind = kinds[index] if index < len(kinds) else "period"
         if kind == "period" and label in _OPERATION_CHIPS.values():
             kind = "operation"
-        remove = removals[index] if index < len(removals) else None
-        edits.append(ChipEdit(label=label, kind=kind, remove=remove))
+        if index < len(removals):
+            remove = removals[index]
+        elif kind == "operation":
+            remove = _REMOVE_OPERATION.get(label)
+        else:
+            # A ranking and a snapshot figure show their own period, not one asked for.
+            moved = label != "Latest quarter" and not label.startswith("As of")
+            remove = _LATEST_QUARTER_EDIT if moved and not ranked else None
+        keep = _KEEP_LAST.get(kind) if remove is None else None
+        edits.append(ChipEdit(label=label, kind=kind, remove=remove, keep=keep))
     return tuple(edits)
 
 

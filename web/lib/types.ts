@@ -184,6 +184,8 @@ export interface ChipEdit {
   label: string;
   kind: "company" | "constituents" | "metric" | "period" | "operation";
   remove: string | null;
+  /** Why the chip has no ×, said on hover: the last company or metric, or a ranking. */
+  keep?: string | null;
 }
 
 /** A follow-up the active analysis's "+" offers. */

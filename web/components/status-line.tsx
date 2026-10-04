@@ -168,10 +168,13 @@ function ActiveAnalysis({
         </span>
         <ul className="flex shrink-0 items-center gap-1.5" aria-label="Active analysis">
           {chips.map((chip) => {
-            const remove = byLabel.get(chip)?.remove ?? null;
+            const edit = byLabel.get(chip);
+            const remove = edit?.remove ?? null;
+            const keep = editable && !remove ? (edit?.keep ?? undefined) : undefined;
             return (
               <li
                 key={chip}
+                title={keep}
                 className="inline-flex h-6 items-center rounded-md border border-border bg-surface-2 pl-1.5 pr-1.5 text-[11.5px] text-fg has-[button]:pr-0.5"
               >
                 {chip}
