@@ -29,6 +29,7 @@ from financial_analyst_agent.domain.errors import (
     ProviderError,
     ProviderRefusal,
 )
+from financial_analyst_agent.graph.state import FilingChangeRequest
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.observability import call_provider
 from financial_analyst_agent.providers.sec.company_resolver import resolve_company
@@ -800,14 +801,16 @@ def _form_asked(query: str) -> str:
     return "10-K" if _ANNUAL_WORDING.search(query) else "10-Q"
 
 
-def _request_refusal(query: str, company: str, older: str, newer: str, plan: Any) -> str:
+def _request_refusal(
+    query: str, company: str, older: str, newer: str, plan: FilingChangeRequest
+) -> str:
     """Why this request cannot be compared as asked, or ""."""
     found = ACCESSION_PATTERN.findall(query)
     if len(set(found)) > 2:
         return "Give exactly two accession numbers: the older filing and the newer one."
     if found and len(set(found)) == 1 and len(found) > 1:
         return "Those two accession numbers are the same filing. Give two different ones."
-    others = tuple(getattr(plan, "other_companies", ()) or ())
+    others = plan.other_companies
     if others and company:
         return (
             "I compare one company's filings at a time. Ask about each company "
@@ -952,14 +955,12 @@ def _unchanged_message(compared: list[SectionId], unreadable: list[SectionId]) -
     )
 
 
-def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnResult:
-    company = str(getattr(plan, "company", "") or "")
-    older, newer = _accessions_from_query(
-        query,
-        str(getattr(plan, "older_accession", "") or ""),
-        str(getattr(plan, "newer_accession", "") or ""),
-    )
-    sections = requested_sections(query) or parse_sections(str(getattr(plan, "section", "mda")))
+def run_filing_change(
+    plan: FilingChangeRequest, runtime: Runtime, *, query: str = ""
+) -> TurnResult:
+    company = plan.company
+    older, newer = _accessions_from_query(query, plan.older_accession, plan.newer_accession)
+    sections = requested_sections(query) or parse_sections(plan.section)
     traces = [
         ToolTrace(
             tool="filing_change",
@@ -1132,7 +1133,7 @@ def run_filing_change(plan: Any, runtime: Runtime, *, query: str = "") -> TurnRe
     )
     essay = None
     extras: list[str] = []
-    if runtime.essay is not None and getattr(plan, "summarize", False):
+    if runtime.essay is not None and plan.summarize:
         from financial_analyst_agent.turn import _numeral_lock_extras
 
         topic = (

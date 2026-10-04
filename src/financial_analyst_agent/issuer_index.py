@@ -15,6 +15,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
+from typing import Protocol
 
 from financial_analyst_agent.services.metric_catalog import metric_phrases
 from financial_analyst_agent.universe import UniverseCompany
@@ -303,6 +304,16 @@ class CompanyMention:
     bare_ticker: bool = False
     # Other words in the question that named the same company ("GOOG", "GOOGL").
     also_typed: tuple[str, ...] = ()
+
+
+class CompanyNames(Protocol):
+    """What a turn reads company names with: the issuer index, or a test's stand-in."""
+
+    def find(self, question: str, *, company_slot: bool = False) -> list[CompanyMention]: ...
+
+    def named(self, company: str) -> str | None: ...
+
+    def display_name(self, query: str) -> str: ...
 
 
 @dataclass

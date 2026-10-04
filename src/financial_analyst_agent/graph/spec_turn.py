@@ -72,6 +72,7 @@ from financial_analyst_agent.graph.analysis_spec import (
 )
 from financial_analyst_agent.graph.state import CompiledAnalysis, StructuredRequest
 from financial_analyst_agent.guide import possessive, short_name
+from financial_analyst_agent.issuer_index import CompanyNames
 from financial_analyst_agent.observability import log_event
 from financial_analyst_agent.period_window import asked_window
 from financial_analyst_agent.providers.sec.client import sec_turn_seconds_left
@@ -515,7 +516,9 @@ def _company_tokens(text: str) -> tuple[str, ...]:
     return tuple(part.strip(" .,?!") for part in parts if part.strip(" .,?!"))
 
 
-def _companies_in(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+def _companies_in(
+    text: str, patch: SpecPatch, index: CompanyNames | None
+) -> tuple[str, ...]:
     """The companies an edit's words name, read as the planner reads a question.
 
     "Oracle too" is Oracle and "Goldman" is GS: the issuer index reads the
@@ -786,7 +789,7 @@ def refine_patch_from_message(
     message: str,
     current_spec: AnalysisSpec | None,
     *,
-    index: Any = None,
+    index: CompanyNames | None = None,
 ) -> SpecPatch:
     """Turn follow-up wording into an extend patch when the planner still replaced.
 
@@ -901,22 +904,20 @@ def refine_patch_from_message(
     return patch
 
 
-def _named_by_index(text: str, patch: SpecPatch, index: Any) -> tuple[str, ...]:
+def _named_by_index(
+    text: str, patch: SpecPatch, index: CompanyNames | None
+) -> tuple[str, ...]:
     """The companies the index finds in ``text``, in the planner's spelling where it has one."""
-    find = getattr(index, "find", None)
-    if not callable(find):
+    if index is None:
         return ()
-    found = tuple(dict.fromkeys(mention.query for mention in find(text)))
-    named = getattr(index, "named", None)
-    spelled: dict[str, str] = {}
-    if callable(named):
-        # The planner's "Nvidia" stays "Nvidia" when it is the NVDA the words name.
-        spelled = {named(company) or company: company for company in patch.add_companies}
+    found = tuple(dict.fromkeys(mention.query for mention in index.find(text)))
+    # The planner's "Nvidia" stays "Nvidia" when it is the NVDA the words name.
+    spelled = {index.named(company) or company: company for company in patch.add_companies}
     return tuple(spelled.get(query, query) for query in found)
 
 
 def _company_edit(
-    message: str, patch: SpecPatch, spec: AnalysisSpec, index: Any
+    message: str, patch: SpecPatch, spec: AnalysisSpec, index: CompanyNames | None
 ) -> SpecPatch | None:
     """ "Oracle too" adds Oracle; "what about Goldman?" puts Goldman in their place.
 
@@ -924,7 +925,7 @@ def _company_edit(
     net margin?" and "what about over the past two years?" are other edits,
     and a ranked list is left to the planner.
     """
-    if spec.constituents is not None or not callable(getattr(index, "find", None)):
+    if spec.constituents is not None or index is None:
         return None
     instead = _INSTEAD_EDIT.match(message)
     also = None if instead is not None else _ALSO_EDIT.match(message)

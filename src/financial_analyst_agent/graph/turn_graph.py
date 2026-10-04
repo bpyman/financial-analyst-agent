@@ -74,6 +74,7 @@ from financial_analyst_agent.guide import (
     resets_analysis,
     unrecorded_companies,
 )
+from financial_analyst_agent.issuer_index import CompanyNames
 from financial_analyst_agent.observability import call_provider, log_event
 from financial_analyst_agent.turn import (
     current_events_answer,
@@ -176,15 +177,17 @@ def request_from_proposal(proposal: Any, message: str, deps: TurnDeps) -> Analys
     raise ValueError(f"unsupported planner proposal: {proposal!r}")
 
 
-def names_index(runtime: Any) -> Any:
+def names_index(runtime: Any) -> CompanyNames | None:
     """The issuer index that reads company names on this runtime, whichever planner plans.
 
     Spec resolution reads names with the ranking's index (ADR 0010); the guide,
     the not-recorded note and a clarification's answer read them the same way,
     so an LLM-planned turn, whose planner holds no index, reads names alike.
     """
-    index = getattr(runtime.ranking, "index", None)
-    return index if index is not None else getattr(runtime.completer, "index", None)
+    index: CompanyNames | None = getattr(runtime.ranking, "index", None)
+    if index is None:
+        index = getattr(runtime.completer, "index", None)
+    return index
 
 
 def _interpret(state: AnalysisRun, runtime: GraphRuntime[TurnDeps]) -> dict[str, Any]:

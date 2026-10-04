@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from financial_analyst_agent.contracts import RendererKind, TurnResult
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
@@ -21,6 +21,7 @@ from financial_analyst_agent.graph.state import (
     PendingClarification,
     StructuredRequest,
 )
+from financial_analyst_agent.issuer_index import CompanyNames
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)
@@ -73,7 +74,7 @@ def match_clarification_answer(pending: PendingClarification, message: str) -> s
 
 
 def clarification_reply(
-    pending: PendingClarification, message: str, index: Any = None
+    pending: PendingClarification, message: str, index: CompanyNames | None = None
 ) -> ClarifyReply | None:
     """How the message answers the open question; None when it asks a new one."""
     text = message.strip().casefold().rstrip(".!?")
@@ -106,8 +107,7 @@ def clarification_reply(
         # "What was Microsoft's net income?" names a candidate but is a new
         # question; answering the held patch would drop its company.
         return None
-    find = getattr(index, "find", None)
-    if callable(find) and find(message):
+    if index is not None and index.find(message):
         # "Microsoft net margin" is a question about Microsoft.
         return None
     if _EVERY_ANSWER.fullmatch(plain) and (plain != "both" or len(pending.candidates) == 2):
@@ -125,7 +125,7 @@ _YEAR_ANSWER = re.compile(r"\b(?:year|yoy|annual|annually|yearly)\b")
 _QUARTER_ANSWER = re.compile(r"\b(?:quarter|qoq|sequential|sequentially|before|previous|prior)\b")
 
 
-def _asks_anew(message: str, index: Any) -> bool:
+def _asks_anew(message: str, index: CompanyNames | None) -> bool:
     """Whether a reply is a question of its own: it asks, names a company or a metric.
 
     "vs the previous quarter" answers "Compared with what?", so "vs" alone asks nothing.
@@ -134,8 +134,7 @@ def _asks_anew(message: str, index: Any) -> bool:
         return True
     if resolve_metric_phrase(message).kind != "unknown":
         return True
-    find = getattr(index, "find", None)
-    return callable(find) and bool(find(message))
+    return index is not None and bool(index.find(message))
 
 
 def _comparison_named(text: str) -> str | None:
@@ -153,7 +152,9 @@ def _comparison_named(text: str) -> str | None:
     return "sequential" if quarter else None
 
 
-def _company_named(pending: PendingClarification, text: str, index: Any) -> str | None:
+def _company_named(
+    pending: PendingClarification, text: str, index: CompanyNames | None
+) -> str | None:
     """The one offered company an answer names: "COKE", "Coca-Cola Consolidated".
 
     An answer naming none of them, or more than one, is a new question.
@@ -163,9 +164,8 @@ def _company_named(pending: PendingClarification, text: str, index: Any) -> str 
     for ticker in pending.candidates:
         if text == ticker.casefold():
             return ticker
-    find = getattr(index, "find", None)
-    if callable(find):
-        named = {mention.query for mention in find(text, company_slot=True)}
+    if index is not None:
+        named = {mention.query for mention in index.find(text, company_slot=True)}
         offered = [ticker for ticker in pending.candidates if ticker in named]
         if len(offered) == 1 and named <= set(pending.candidates):
             return offered[0]
