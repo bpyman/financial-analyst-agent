@@ -15,13 +15,13 @@ from typing import Literal
 
 from financial_analyst_agent.contracts import ComparisonBase, RendererKind, TurnResult
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import bind_periods_from_message, is_removal
 from financial_analyst_agent.graph.state import (
     Clarification,
     PendingClarification,
     StructuredRequest,
 )
 from financial_analyst_agent.issuer_index import CompanyNames
+from financial_analyst_agent.request_wording import bind_periods_from_message, is_removal
 from financial_analyst_agent.services.metric_catalog import resolve_metric_phrase
 
 _NEW_QUESTION = re.compile(r"\b(?:what|which|how|compare|versus|vs)\b|['’]s\b", re.IGNORECASE)

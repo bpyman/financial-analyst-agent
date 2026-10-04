@@ -1,6 +1,6 @@
 # 08 — Read follow-up wording in one place
 
-**What to build:** "what about / how about / same for" is read twice: by the shared edit reading (`spec_turn._INSTEAD_EDIT`, ADR 0010) and again by the rules planner's `_SWAP_WORDING`. ADR 0011 puts such fixes in the shared layers; remove the rules planner's copy once the shared reading covers what it does (industry swaps after a ranking stay with the planner).
+**What to build:** "what about / how about / same for" is read twice: by the shared edit reading (`request_wording._INSTEAD_EDIT`, ADR 0010) and again by the rules planner's `_SWAP_WORDING`. ADR 0011 puts such fixes in the shared layers; remove the rules planner's copy once the shared reading covers what it does (industry swaps after a ranking stay with the planner).
 
 The conversation test helpers that were copied across four test files now live in `tests/conversation_replay.py`; only the wording half is open.
 

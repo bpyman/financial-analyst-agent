@@ -6,12 +6,9 @@ import pytest
 
 from financial_analyst_agent.contracts import Intent
 from financial_analyst_agent.graph.analysis_spec import PeriodSelection, SpecPatch
-from financial_analyst_agent.graph.spec_turn import (
-    bind_periods_from_message,
-    plan_to_spec_patch,
-    planner_window,
-)
+from financial_analyst_agent.graph.spec_turn import plan_to_spec_patch
 from financial_analyst_agent.planner import Plan
+from financial_analyst_agent.request_wording import bind_periods_from_message, planner_window
 
 
 def _lookup(recent_quarters: int | None) -> Plan:

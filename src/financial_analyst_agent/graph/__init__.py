@@ -7,6 +7,8 @@
 - ``clarify``: reading the analyst's reply to an open clarification.
 - ``checkpointer``: the thread-record checkpointer that lets a clarification resume.
 - ``analysis_spec`` and ``spec_turn``: the spec, its patches, resolution, and tasks.
+  The wording they read is ``financial_analyst_agent.request_wording``, and the
+  notes an answer carries ``financial_analyst_agent.answer_notes``.
 
 Importing the package loads none of these, so modules that only need the spec
 types (``analysis_spec``) do not pull in LangGraph or the workflows.

@@ -52,7 +52,6 @@ from financial_analyst_agent.graph.spec_turn import (
     is_qualitative_proposal,
     is_structured_proposal,
     plan_to_spec_patch,
-    planner_window,
     resolve_request,
 )
 from financial_analyst_agent.graph.state import (
@@ -76,6 +75,7 @@ from financial_analyst_agent.guide import (
 )
 from financial_analyst_agent.issuer_index import CompanyNames
 from financial_analyst_agent.observability import call_provider, log_event
+from financial_analyst_agent.request_wording import planner_window
 from financial_analyst_agent.turn import (
     current_events_answer,
     explain_answer,

@@ -432,3 +432,14 @@ def _derivation_part(fact: FinancialFact) -> DerivationPart:
         source_url=fact.source_url,
         derivation=fact.derivation,
     )
+
+
+# One fiscal quarter is 13 weeks, or 14 in a 53-week year; calendar quarters run
+# 90 to 92 days. Anything outside this band pairs non-adjacent quarters.
+# Up to 17 weeks: some 52/53-week retailers (Costco) run a 16- or 17-week fourth quarter.
+_ADJACENT_QUARTER_GAP = (timedelta(days=84), timedelta(days=126))
+
+
+def adjacent_quarters(newer: date, older: date) -> bool:
+    low, high = _ADJACENT_QUARTER_GAP
+    return low <= newer - older <= high

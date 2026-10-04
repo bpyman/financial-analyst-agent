@@ -11,11 +11,11 @@ from financial_analyst_agent.graph.analysis_spec import (
     apply_patch,
     resolve_spec,
 )
-from financial_analyst_agent.graph.spec_turn import (
+from financial_analyst_agent.ranking import SnapshotRanking
+from financial_analyst_agent.request_wording import (
     bind_periods_from_message,
     refine_patch_from_message,
 )
-from financial_analyst_agent.ranking import SnapshotRanking
 from financial_analyst_agent.rules_planner import DemoCompleter, issuer_index
 from financial_analyst_agent.runtime import FIXTURE_UNIVERSE_SNAPSHOT_PATH
 
@@ -126,7 +126,7 @@ def test_over_the_past_year_is_the_years_quarters_not_growth() -> None:
     ],
 )
 def test_what_a_change_is_measured_against(message: str, base: str | None) -> None:
-    from financial_analyst_agent.graph.spec_turn import comparison_asked
+    from financial_analyst_agent.request_wording import comparison_asked
 
     assert comparison_asked(message) == base
 
@@ -145,8 +145,8 @@ def test_what_a_change_is_measured_against(message: str, base: str | None) -> No
 )
 def test_an_answer_names_the_base_of_a_change(answer: str, base: str) -> None:
     from financial_analyst_agent.graph.clarify import clarification_reply
-    from financial_analyst_agent.graph.spec_turn import COMPARISON_CANDIDATES
     from financial_analyst_agent.graph.state import PendingClarification
+    from financial_analyst_agent.request_wording import COMPARISON_CANDIDATES
 
     pending = PendingClarification(
         kind="ambiguous_comparison",

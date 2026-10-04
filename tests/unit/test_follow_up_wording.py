@@ -463,7 +463,7 @@ def test_what_about_puts_the_company_in_place_of_those_on_screen(
     message: str, proposed: tuple[str, ...]
 ) -> None:
     from financial_analyst_agent.graph.analysis_spec import SpecPatch
-    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+    from financial_analyst_agent.request_wording import refine_patch_from_message
 
     spec, index = _bank_spec()
     patch = refine_patch_from_message(
@@ -487,7 +487,7 @@ def test_what_about_puts_the_company_in_place_of_those_on_screen(
 )
 def test_too_and_as_well_add_the_company(message: str, proposed: tuple[str, ...]) -> None:
     from financial_analyst_agent.graph.analysis_spec import SpecPatch
-    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+    from financial_analyst_agent.request_wording import refine_patch_from_message
 
     spec, index = _bank_spec()
     patch = refine_patch_from_message(
@@ -504,7 +504,7 @@ def test_too_and_as_well_add_the_company(message: str, proposed: tuple[str, ...]
 )
 def test_what_about_without_a_company_is_left_to_the_other_edits(message: str) -> None:
     from financial_analyst_agent.graph.analysis_spec import SpecPatch
-    from financial_analyst_agent.graph.spec_turn import refine_patch_from_message
+    from financial_analyst_agent.request_wording import refine_patch_from_message
 
     spec, index = _bank_spec()
     patch = refine_patch_from_message(SpecPatch(mode="extend"), message, spec, index=index)

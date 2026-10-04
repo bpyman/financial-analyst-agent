@@ -21,11 +21,6 @@ from financial_analyst_agent.filing_change import (
     requested_sections,
 )
 from financial_analyst_agent.graph.analysis_spec import AnalysisSpec, SpecPatch
-from financial_analyst_agent.graph.spec_turn import (
-    OVERVIEW_PLAN,
-    implied_metrics,
-    parse_named_periods,
-)
 from financial_analyst_agent.guide import short_name
 from financial_analyst_agent.issuer_index import (
     CompanyMention,
@@ -33,6 +28,11 @@ from financial_analyst_agent.issuer_index import (
     expand_groups,
     normalize,
     plain_text,
+)
+from financial_analyst_agent.request_wording import (
+    OVERVIEW_PLAN,
+    implied_metrics,
+    parse_named_periods,
 )
 from financial_analyst_agent.services.metric_catalog import (
     metric_phrases,
